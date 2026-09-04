@@ -7,9 +7,9 @@ from src.search.embedder import EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
 
-# --- Schema identifiers (single source of truth for Stories 2.3-2.5) -----------------------
-# The index builder (2.3) and search tools (2.4-2.5) import these rather than hardcoding the
-# table/column names; the vector dimension comes from EMBEDDING_DIM (Story 2.1) — never 384.
+# --- Schema identifiers (single source of truth for the index pipeline) --------------------
+# The index builder and search tools import these rather than hardcoding the
+# table/column names; the vector dimension comes from EMBEDDING_DIM — never 384.
 CARD_VEC_TABLE = "card_vec"
 CARD_ID_COL = "card_id"
 EMBEDDING_COL = "embedding"
@@ -20,7 +20,7 @@ COLOR_COLS = ("color_w", "color_u", "color_b", "color_r", "color_g")
 #: (legality, name, type_line, oracle_text, image_uris, …) resolves via JOIN to ``cards``.
 METADATA_COLS = (MANA_VALUE_COL, *COLOR_COLS)
 
-# --- Companion content-hash table (Story 2.3) ----------------------------------------------
+# --- Companion content-hash table ----------------------------------------------------------
 # ``card_embedding_meta`` is an *ordinary relational* table (no ``vec0``, no extension needed),
 # but it belongs to the **search index**, so it is created on the same sync ``ConnectionFactory``
 # connection as ``card_vec`` — keeping the whole index pipeline on one connection/script. The
@@ -66,7 +66,7 @@ def create_card_vec_table(conn: sqlite3.Connection) -> None:
     for the L2-normalized bge vectors).
 
     The statement uses ``IF NOT EXISTS``, so calling this repeatedly is idempotent and leaves a
-    single table. This story creates an **empty** table; Story 2.3's index builder populates the
+    single table. This creates an **empty** table; the index builder populates the
     embedding and metadata values.
 
     Args:
@@ -98,7 +98,7 @@ def drop_card_vec_table(conn: sqlite3.Connection) -> None:
 
     A ``vec0`` virtual table **cannot** be ``ALTER``-ed to change its vector dimension or add
     columns, so the only supported migration for a model/dimension change is a **rebuild**:
-    ``drop_card_vec_table`` → :func:`create_card_vec_table` → re-run the Story 2.3 index builder.
+    ``drop_card_vec_table`` → :func:`create_card_vec_table` → re-run the index builder.
     (Ops note: ``PRAGMA wal_checkpoint(TRUNCATE)`` before any file-copy backup of ``cards.db``,
     or the latest vectors may sit unflushed in the ``-wal`` file.)
 
@@ -128,7 +128,7 @@ def create_card_embedding_meta_table(conn: sqlite3.Connection) -> None:
 
     This is an **ordinary relational table** — ``card_id TEXT PRIMARY KEY`` 1:1 with
     ``card_vec``, plus a ``content_hash TEXT NOT NULL`` holding
-    ``sha256(compose_card_text(...))`` for each card. The Story 2.3 index builder consults it to
+    ``sha256(compose_card_text(...))`` for each card. The index builder consults it to
     decide which cards changed since the last build (re-embed) versus stayed identical (skip).
     Unlike ``card_vec`` it is a plain table, so the relational ``UPSERT``
     (``INSERT … ON CONFLICT(card_id) DO UPDATE``) works on it — the builder relies on that.

@@ -1,6 +1,6 @@
 """The discovery file — how a running companion is found, and nothing else (AD-4).
 
-A companion process may bind a port it did not ask for (c1-3's ephemeral fallback), so no caller
+A companion process may bind a port it did not ask for (the ephemeral fallback), so no caller
 can hardcode where it lives. The **sole** rendezvous is one small JSON file at
 ``src.paths.data_dir()/companion.json`` holding ``{port, token, instance_id}``: the lifespan writes
 it on startup and removes it on clean shutdown, and every agent-side caller reads it to learn both
@@ -145,7 +145,7 @@ def write_discovery(record: DiscoveryRecord) -> Path:
         OSError: The data directory is unwritable, or the replace failed (on Windows, a reader
             holding the target open is enough). The caller — the lifespan — lets this abort the
             launch: a companion that cannot publish its rendezvous is unreachable by every agent
-            tool while appearing to run, and a loud failure is the diagnosable one (Decide-once #3).
+            tool while appearing to run, and a loud failure is the diagnosable one.
     """
     target = discovery_path()
     directory = target.parent
@@ -211,8 +211,8 @@ def read_discovery() -> DiscoveryRecord | None:
 def remove_discovery(instance_id: str) -> bool:
     """Retract our own rendezvous — and only ours.
 
-    Ownership-guarded rather than a bare ``unlink``: from c1-8 onward a second launch may meet a
-    file it did not write, and a shutting-down process (or a test) must not delete a *live*
+    Ownership-guarded rather than a bare ``unlink``: a second launch may meet a file it did not
+    write, and a shutting-down process (or a test) must not delete a *live*
     instance's rendezvous. The file is read back and unlinked only when its recorded
     ``instance_id`` matches. A foreign entry, an absent file and an unparseable one are all left
     exactly as found. It also composes with the never-published case for free: a process that
@@ -224,8 +224,8 @@ def remove_discovery(instance_id: str) -> bool:
     own guard for the same reason: :func:`discovery_path` ends in a ``mkdir`` that can fail.
 
     The read-compare-unlink sequence is not atomic: a second instance that replaces the file
-    between our read and our unlink would lose its rendezvous. Since c1-9 that second instance
-    cannot exist for companions launched through :func:`src.companion.app.server.run` — a held OS
+    between our read and our unlink would lose its rendezvous. That second instance cannot exist
+    for companions launched through :func:`src.companion.app.server.run` — a held OS
     advisory lock (``src.companion.app.singleton``), acquired there, enforces single-instance
     mutual exclusion for a process's whole life, so within one ``PLANESWALKER_DATA_DIR`` there is
     never a second live ``run()``-launched companion to race against. (A ``build_app()`` served

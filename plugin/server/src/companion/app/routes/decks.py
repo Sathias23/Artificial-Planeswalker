@@ -15,8 +15,7 @@ itself and the format check is the report itself, with no ``status``/``count``/`
 lives here rather than in a module of its own: it is a deck read, ``decks.router`` is
 already registered above ``install_spa(app)``, and the differential router list in
 ``tests/unit/companion/test_spa.py`` compares path sets built from these same routers — so a
-new path on an existing router needs no line there. Both facts are measured in the story
-record rather than assumed.
+new path on an existing router needs no line there.
 """
 
 from fastapi import APIRouter

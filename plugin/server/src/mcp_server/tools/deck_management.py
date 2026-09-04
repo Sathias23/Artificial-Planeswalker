@@ -1,11 +1,11 @@
-"""Structured deck-management logic for the Epic-1 deck tools (Story 1.5).
+"""Structured deck-management logic for the deck tools.
 
 Wraps the existing ``DeckRepository`` 1:1 (D-1.4a): these helpers hold no SQL —
 they validate inputs gracefully, await the async repositories, and project each
 deck to lightweight summaries (``DeckSummary.from_deck`` / ``DeckDetail.from_deck``,
 D-1.5e) so neither ``list_decks`` nor ``load_deck`` dumps full ``Card`` payloads at
-the LLM client. Those constructors live on the schemas in ``src.data.schemas.deck``
-(c3-1), so the companion's REST shell projects decks through the same code rather
+the LLM client. Those constructors live on the schemas in ``src.data.schemas.deck``,
+so the companion's REST shell projects decks through the same code rather
 than its own copy of the count arithmetic. The six helpers back the ``list_decks`` /
 ``create_deck`` / ``load_deck`` / ``delete_deck`` / ``add_card_to_deck`` /
 ``remove_card_from_deck`` tools.
@@ -15,9 +15,9 @@ Stateless (FR3 / D5 / D-1.5d): the "active deck" is the client-supplied
 session, or delete-confirmation handshake (all of the legacy ``_session_manager``
 machinery is dropped). Pure CRUD (D-1.5b): ``add_card_to_deck`` only persists the
 association — Standard-legality, the 4-copy limit, and deck-size checks are
-deferred to ``validate_deck`` (Story 1.6). Because foreign-key enforcement is OFF
+deferred to ``validate_deck``. Because foreign-key enforcement is OFF
 on the async engine, add/remove pre-validate that the deck and card exist before
-touching ``deck_cards`` (AC4).
+touching ``deck_cards``.
 """
 
 import logging

@@ -1,46 +1,38 @@
-"""FastMCP server builder for Artificial-Planeswalker (Story 1.3; RAG tools added 2.4/2.5).
+"""FastMCP server builder for Artificial-Planeswalker.
 
-Constructs the ``FastMCP`` server and registers the tool surface. The Epic-1 tools are
-``async def`` and ``await`` the async ``src/data`` repositories directly on the
-FastMCP event loop (D-1.3a), closing over a ``session_factory`` so the server is
-test-injectable; the default factory reuses the data-layer engine.
+Constructs the ``FastMCP`` server and registers the tool surface. The card and deck tools are
+``async def`` and ``await`` the async ``src/data`` repositories directly on the FastMCP event
+loop, closing over a ``session_factory`` so the server is test-injectable; the default factory
+reuses the data-layer engine.
 
-The Epic-2 search tools are fundamentally different: their helpers are **sync** because the vector
-index is reachable only on the sync ``sqlite-vec`` ``ConnectionFactory`` connection — the async
-aiosqlite engine never loads the extension. FastMCP calls a sync tool inline on its event loop (it
-does not threadpool them), so each of these tools is an ``async def`` closure that runs its helper
-— connection acquisition included — in ``asyncio.to_thread``; otherwise a five-minute index build
-would stall every other call and the MCP ping. ``semantic_search_cards`` (Story 2.4) embeds a
-natural-language query, so it also closes over an optional ``embedder`` (a test seam; the production
-embedder is resolved lazily inside the worker via :func:`get_embedder`, never at build time).
-``find_similar_cards`` (Story 2.5) is seeded by a card's **stored** vector and **never embeds**, so
-it uses only the ``connection_factory`` seam — no embedder. Both close over the injected
-``connection_factory`` (per-thread sqlite-vec connection, NFR6: the connection is taken on the
-worker thread, never on the loop thread).
+The search tools' helpers are **sync** because the vector index is reachable only on the sync
+``sqlite-vec`` ``ConnectionFactory`` connection; the async aiosqlite engine never loads the
+extension. FastMCP calls a sync tool inline on its event loop (it does not threadpool them), so
+each of these tools is an ``async def`` closure that runs its helper, connection acquisition
+included, in ``asyncio.to_thread``; otherwise a five-minute index build would stall every other
+call and the MCP ping. The per-thread sqlite-vec connection is taken on the worker thread, never on
+the loop thread (NFR6). ``semantic_search_cards`` also closes over an optional ``embedder`` (a test
+seam; the production embedder is resolved lazily inside the worker via :func:`get_embedder`, never
+at build time); ``find_similar_cards`` is seeded by a card's **stored** vector and never embeds.
 
-Two first-run tools sit alongside these: ``initialize_database`` (async — the one-time in-client
-Scryfall card import that build-on-first-run depends on, since a packaged install ships no data;
-its aggregate and parse passes are offloaded to a worker thread) and ``build_search_index``
-(builds the ``card_vec`` index, offloaded the same way as the search tools). Every card/deck tool
-guards an un-imported database with a graceful ``database_not_initialized`` status that points at
+``initialize_database`` (the one-time Scryfall import a packaged install depends on, since it ships
+no data) and ``build_search_index`` offload their heavy passes the same way. Every card/deck tool
+guards an un-imported database with a ``database_not_initialized`` status that points at
 ``initialize_database`` rather than leaking a raw "no such table" error.
 
-The read-only ``view_deck`` tool renders a saved deck to a self-contained HTML page and
-best-effort opens it in the host's default browser (a local-bundle side effect; the file
-path is always returned, so a headless host degrades gracefully). **It is deprecated
-(AD-15)**: the companion app superseded it, ``src/viewer`` is frozen, and its removal is
-deferred to the next minor release once the companion is proven. It still registers and
-behaves exactly as before — nothing new is built on it.
+``view_deck`` renders a saved deck to a self-contained HTML page and best-effort opens it in the
+host's browser (the file path is always returned, so a headless host degrades gracefully). **It is
+deprecated (AD-15)**: the companion app superseded it, ``src/viewer`` is frozen, and nothing new is
+built on it.
 
-``companion_set_active_deck`` is the first tool that talks to something other than the local data
-files: it validates the deck against the database here and then calls the companion backend's
-``PUT /api/active-deck`` through the leaf client (``src/companion/client.py``). The leaf is
-importable from this package by design (AD-3) — it reaches only ``httpx`` and ``pydantic``, so a
-stdio session never transitively loads a web framework. Like every other tool it never raises: a
-companion that is closed, restarting or wedged is a ``status``, not an exception (FR-12).
+The ``companion_*`` tools reach the companion backend through the leaf client
+(``src/companion/client.py``), importable from this package by design (AD-3): it reaches only
+``httpx`` and ``pydantic``, so a stdio session never transitively loads a web framework. Like every
+other tool they never raise: a companion that is closed, restarting or wedged is a ``status``, not
+an exception (FR-12).
 
-Registration is transport-agnostic: the transport string is selected only at the
-entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
+Registration is transport-agnostic: the transport string is selected only at the entry point
+(``src/mcp_server/__main__.py``), never here.
 """
 
 import asyncio
@@ -129,33 +121,27 @@ logger = logging.getLogger(__name__)
 
 
 async def _emit_deck_changed(deck_id: str | None) -> None:
-    """Tell the companion a deck's contents changed — after the commit, never inside it (c7-2).
+    """Tell the companion a deck's contents changed, after the commit and never inside it.
 
-    The one wire between the five deck-mutation tools and c7-1's shared notifier
+    The one wire between the deck-mutation tools and the shared notifier
     (:func:`src.companion.client.notify_deck_changed`). Each mutation wrapper awaits this *after*
-    its ``async with session_factory()`` block has exited — every commit has landed and the pooled
-    connection is released before the up-to-~1 s notify window opens — and only when its result
-    proves a write actually happened. A plain bounded await, deliberately never a detached task
-    (``create_task``/``ensure_future``/``TaskGroup``/``gather`` are banned on this path — a task
-    outliving the tool call can be torn down before it runs, silently losing the event).
-
-    The outcome never alters the tool's own result: the notifier never raises (AD-9), and all this
+    its ``async with session_factory()`` block has exited, so every commit has landed and the pooled
+    connection is released before the up-to-~1 s notify window opens, and only when its result
+    proves a write actually happened. A plain bounded await, never a detached task
+    (``create_task``/``ensure_future``/``TaskGroup``/``gather`` are banned on this path: a task
+    outliving the tool call can be torn down before it runs, silently losing the event). The
+    outcome never alters the tool's own result; the notifier never raises (AD-9), and all this
     function does with the :class:`~src.companion.client.PushOutcome` is debug-log it.
 
-    **The accepted staleness window, stated where it is created (c7-7).** The ruling is AD-9
-    (``ARCHITECTURE-SPINE.md:211``), and its twin copy lives on
-    :func:`src.companion.client.notify_deck_changed`, the function this one awaits — same rule,
-    stated at both sites that swallow so a reader arrives at it from either. **An amendment starts
-    at the spine and changes both.** When this emit does
-    not land — the companion is closed, the POST is refused, the backend answers 500, the one-second
-    budget expires — the database has already changed and the glass has not heard about it. The deck
-    view is then **stale until the next event or a WebSocket reconnect**, and *that is expected
-    behaviour, not a defect to repair here*: out-of-band change detection is a later phase (FR-16),
-    and until it ships the UI shows **no staleness warning of any kind** — the silence is
-    deliberate, ruled at AD-9 and written into ``EXPERIENCE.md``'s Flow 1 failure path (*"the deck
-    view is stale until the next event or reconnect; no error surfaces"*). Nothing in this function
-    may grow a retry loop, a queue, a status field or a user-visible warning to close that window;
-    the mutation's own result stays byte-identical to the no-companion baseline either way.
+    **The accepted staleness window (AD-9, ``ARCHITECTURE-SPINE.md:211``)**, stated at both sites
+    that swallow (here and on :func:`src.companion.client.notify_deck_changed`), so an amendment
+    starts at the spine and changes both. When this emit does not land, the database has already
+    changed and the glass has not heard about it: the deck view is **stale until the next event or
+    a WebSocket reconnect**, and that is expected behaviour, not a defect to repair here.
+    Out-of-band change detection is FR-16's, and until it ships the UI shows **no staleness
+    warning of any kind** (``EXPERIENCE.md``'s Flow 1 failure path states the same promise).
+    Nothing in this function may grow a retry loop, a queue, a status field or a user-visible
+    warning to close that window; the mutation's own result stays identical either way.
     """
     outcome = await _notify_deck_changed(deck_id)
     logger.debug(
@@ -171,26 +157,25 @@ def build_server(
     connection_factory: ConnectionFactory | None = None,
     embedder: Embedder | None = None,
 ) -> FastMCP:
-    """Build the FastMCP server with the Epic-1 tools plus the Story 2.4/2.5 sync search tools.
+    """Build the FastMCP server with every tool registered.
 
     Args:
-        session_factory: Async session factory the ``async`` Epic-1 tools use for DB access. If
+        session_factory: Async session factory the card and deck tools use for DB access. If
             ``None``, a default factory is built from the data-layer engine
-            (reusing ``create_engine`` / ``create_session_factory``).
+            (``create_engine`` / ``create_session_factory``).
         connection_factory: Sync :class:`~src.search.connection.ConnectionFactory` the
             ``semantic_search_cards`` and ``find_similar_cards`` tools use to reach the
-            ``sqlite-vec`` index. If ``None``, a default is constructed — it resolves the **same**
-            DB file as the async engine via ``CARDS_DATABASE_URL`` / the central
-            ``src.paths.database_path()`` (single-file topology, D2).
+            ``sqlite-vec`` index. If ``None``, a default is constructed that resolves the **same**
+            DB file as the async engine via ``CARDS_DATABASE_URL`` / ``src.paths.database_path()``
+            (single-file topology).
         embedder: Optional :class:`~src.search.embedder.Embedder` override (a **test seam**) used
-            only by ``semantic_search_cards`` (``find_similar_cards`` never embeds). In production
-            this stays ``None`` and the tool resolves the process-lifetime singleton lazily via
-            :func:`~src.search.embedder.get_embedder` on first call — the model is never loaded at
+            only by ``semantic_search_cards``. In production this stays ``None`` and the tool
+            resolves the process-lifetime singleton lazily via
+            :func:`~src.search.embedder.get_embedder` on first call; the model is never loaded at
             build time.
 
     Returns:
-        A configured ``FastMCP`` instance with every tool registered (async Epic-1 tools plus the
-        sync ``semantic_search_cards`` and ``find_similar_cards``).
+        A configured ``FastMCP`` instance.
     """
     if session_factory is None:
         session_factory = create_session_factory(create_engine())
@@ -988,9 +973,8 @@ def build_server(
             the ``initialize_database`` tool).
         """
 
-        # Off the loop: the per-thread sqlite-vec connection (NFR6) and the embedder — the
-        # injected test seam or the lazily-built process singleton, never loaded at build — are
-        # both resolved inside the worker, then the sync helper runs there.
+        # Off the loop: the per-thread sqlite-vec connection (NFR6) and the embedder are both
+        # resolved inside the worker, then the sync helper runs there.
         def _run() -> SemanticSearchResult:
             conn = connection_factory.get_connection()
             emb = embedder if embedder is not None else get_embedder()
@@ -1130,10 +1114,8 @@ def build_server(
             A result whose ``status`` is ``ok`` (index built — see ``cards_indexed`` /
             ``cards_skipped``), ``database_not_initialized`` (import the cards first), or ``error``.
         """
-        # Off the loop: the whole build — connection, embedder resolution, embedding — runs in a
-        # worker thread so other tool calls are answered while it works. Reuses the injected
-        # sqlite-vec connection factory and the lazily-built embedder singleton (``embedder`` is
-        # the build_server test seam).
+        # Off the loop: the whole build (connection, embedder resolution, embedding) runs in a
+        # worker thread so other tool calls are answered while it works.
         return await asyncio.to_thread(
             _build_search_index_helper, connection_factory, embedder=embedder, rebuild=rebuild
         )

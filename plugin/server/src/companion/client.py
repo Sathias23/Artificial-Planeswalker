@@ -1,57 +1,26 @@
-"""Talking *to* the companion backend from outside it — identity, then the push (AD-3, AD-4, AD-8).
+"""Talking *to* the companion backend from outside it: identity, then the push (AD-3, AD-4, AD-8).
 
-This is the whole leaf client named in the spine's Structural Seed
-(``client.py # LEAF — /health + /agent/events, notifier``). c1-8 landed the **``/health`` half**:
-finding out whether a companion is genuinely live on the discovered port, and refusing to believe
-anything else. c6-1 landed the **``POST /agent/events`` half**: :func:`push_event`, its retry-once,
-and the closed outcome vocabulary every companion MCP tool reports through. c6-2 added a sibling
-verb on the same gate — :func:`set_active_deck`, ``PUT /api/active-deck`` — sharing the discovery
-read and the retry-once shape rather than duplicating them. c7-1 adds the third verb on the same
-gate, :func:`notify_deck_changed` — the one shared notifier AD-9 requires, POSTing to the same
-``/agent/events`` route :func:`push_event` already uses, but under a **~1 s** whole-call budget
-instead of :func:`push_event`'s ~10 s, and swallowing every exception rather than letting an
-unexpected one through: the mutation tool that calls it must never fail because a notification did.
+:func:`live_instance` proves that a companion is genuinely running on the discovered port;
+:func:`push_event`, :func:`set_active_deck` and :func:`notify_deck_changed` are the authenticated
+verbs, sharing one discovery read, one retry shape and one closed outcome vocabulary.
 
-**What the probe is for (AD-4, amended).** The discovery file says *where* the companion is, but a
-file outlives the process that wrote it: AD-15 accepts that a crash leaves a stale entry behind,
-and the operating system is free to hand that port to something else entirely. "Something answered"
-is therefore not evidence — only an ``instance_id`` echoed back that **matches the recorded one**
-proves the process answering is the process the file describes. That proof is what the runner's
-single-instance check and ``companion_status`` need, and :func:`live_instance` is where they get
-it. The authenticated verbs no longer probe before each send: the discovery file stays the trust
-root (no file, or an unreadable one, is ``app_not_running`` with zero network), a refused
-connection on the send itself is ``app_not_running`` too, and the residual case — the app died and
-a foreign loopback process took its port before the file was removed — already runs as the same
-user, so the per-process token is not worth a round trip per push (the ruling is recorded in
-``_bmad-output/specs/spec-quality-audit-p1/stories/3-indexed-lookup-single-transaction-import-off-loop-search.md``,
-Design Notes).
+Identity, not "something answered" (AD-4): a discovery file outlives the process that wrote it
+(AD-15) and the port may be reused, so only an echoed ``instance_id`` matching the recorded one
+proves anything. The authenticated verbs do not probe before each send: the discovery file is the
+trust root (no usable file is ``app_not_running`` with zero network), a refused connection is
+``app_not_running`` too, and a foreign loopback process already runs as the same user. ``/health``
+is unauthenticated by design: it is read *before* the port is trusted, so requiring the token would
+hand the credential to an unproven process. Nothing on that path sends, reads or logs a token.
 
-**``/health`` is unauthenticated by design, and that is not a gap.** It is what a caller reads
-*before* deciding to trust the port, so requiring the token to read it would invert the order: the
-credential would have to be handed to an unproven process to find out whether that process deserved
-it. Nothing on this path sends a token, reads one, or logs one.
+Timeouts are split because a connect to a *dead* loopback port takes ~2 s to report refusal while
+a live instance answers in ~15 ms, and a stale file is the ordinary post-crash state: the connect
+deadline is tight (a live listener completes the handshake in the kernel, busy or not) and the read
+deadline generous, since calling a live-but-busy companion dead starts the second instance the
+startup check exists to prevent.
 
-**One client, shared.** Every request here goes through one lazily built ``httpx.AsyncClient``
-(:func:`_shared_client`), cached per running event loop so a push reuses the pooled connection
-instead of paying a fresh client and handshake each call; :func:`aclose_shared_client` is the
-server lifespan's hook to close it. Per-request ``timeout=`` keeps each verb's own deadline.
-
-**Why the timeout is split — a short connect, a longer read.** Measured on the primary development
-platform, a TCP connect to a *dead* loopback port takes **~2 s** to report refusal (raw socket,
-``asyncio.open_connection`` and httpx all agree), while a live instance answers ``/health`` in
-~15 ms. A stale discovery file is the *ordinary* post-crash state, so a single undivided deadline
-would make every launch after a crash stall for seconds. The connect deadline is therefore tight —
-a live listener completes the loopback handshake in the kernel, in microseconds, busy or not, so a
-short connect deadline cannot make a live instance look dead. The read deadline is deliberately
-generous, because the read is the half that genuinely can be slow on a live app, and calling a
-live-but-busy companion dead is the expensive mistake: it starts a second instance, which is
-precisely what the startup check exists to prevent.
-
-This module is a **leaf** (AD-3): stdlib, ``pydantic``, ``httpx``, ``src.paths`` and its sibling
-leaves only — never ``fastapi``, ``uvicorn``, ``sqlalchemy`` or ``src.companion.app``, and not even
-under ``if TYPE_CHECKING:``. That is what lets ``src/mcp_server`` import it so a stdio MCP session
-can ask "is the app running?" without transitively importing a web framework and a server, and it
-is why the probe lives here rather than as a private helper inside the runner.
+Leaf (AD-3): stdlib, ``pydantic``, ``httpx``, ``src.paths`` and sibling leaves only; never
+``fastapi``, ``uvicorn``, ``sqlalchemy`` or ``src.companion.app``, not even under
+``if TYPE_CHECKING:``, so ``src/mcp_server`` can import it without loading a web framework.
 ``tests/unit/companion/test_import_boundary.py`` enforces it.
 """
 
@@ -79,75 +48,38 @@ from src.companion.discovery import DiscoveryRecord, read_discovery
 logger = logging.getLogger(__name__)
 
 LOOPBACK_HOST = "127.0.0.1"
-"""The address a caller dials to reach the companion.
-
-Deliberately **not** imported from ``src.companion.app.server.HOST``: a leaf may not import the
-app (AD-3), and that constraint is worth more than removing one duplicated literal. The twin is
-``server.HOST``, and NFR-01 fixes both to loopback IPv4 — neither is configurable, so they cannot
-drift apart by configuration, only by an edit that would have to change both.
+"""The address a caller dials. Not imported from ``src.companion.app.server.HOST`` because a leaf
+may not import the app (AD-3); NFR-01 fixes both to loopback IPv4.
 """
 
 HEALTH_PATH = "/health"
-"""The unauthenticated identity endpoint c1-2 serves (FR-14)."""
+"""The unauthenticated identity endpoint (FR-14)."""
 
 EVENTS_PATH = "/agent/events"
-"""The token-authenticated ingest endpoint c5-5 serves (FR-06)."""
+"""The token-authenticated ingest endpoint (FR-06)."""
 
 ACTIVE_DECK_PATH = "/api/active-deck"
-"""The token-authenticated display-control endpoint c3-4 serves (FR-07).
-
-The same string names a **credential-free** ``GET`` on that route, which this module never calls:
-the read is the browser's (AD-5), and the only reason the leaf knows this path is the ``PUT``.
-"""
+"""The token-authenticated display-control endpoint (FR-07); only its ``PUT`` is called here."""
 
 PROBE_TIMEOUT = httpx.Timeout(connect=1.0, read=2.0, write=2.0, pool=2.0)
-"""The measured connect/read split explained in the module docstring.
-
-Short connect so a stale entry costs a fraction of a second rather than the ~2 s a dead loopback
-port takes to refuse; long read so a live-but-busy companion is never mistaken for a dead one.
+"""Short connect (a dead loopback port takes ~2 s to refuse), long read (a busy live companion
+must never be mistaken for a dead one); see the module docstring.
 """
 
 _PROBE_TOTAL_SECONDS = 5.0
-"""The whole-probe deadline that bounds what :data:`PROBE_TIMEOUT` cannot.
-
-``httpx``'s ``read`` deadline caps the gap *between chunks*, not the whole exchange — a foreign
-server on a recycled port that drips one byte every second, or streams an enormous body, would
-otherwise hold the probe (and therefore a launching ``run()``) open indefinitely. Comfortably
-above ``connect + read`` so it can never fire on the ordinary outcomes, and small enough that the
-worst pathological listener costs a launch five seconds, not forever. (Review finding, c1-8:
-a sanctioned widening of AC 4's net — the ``TimeoutError`` it raises is folded into ``None``.)
+"""The whole-probe deadline: ``httpx``'s ``read`` caps only the gap *between chunks*, so a foreign
+server dripping one byte a second would otherwise hold a launching ``run()`` open forever.
 """
 
 _PUSH_TOTAL_SECONDS = 10.0
-"""The deadline on a whole authenticated call — the request and its one retry together.
-
-Named for the push it was measured against, and shared unchanged by every verb that goes through
-:func:`_once_then_retry`: each has exactly the same two-attempt shape, so a second constant would
-need its own pin and would buy nothing but a second thing to keep in step.
-
-An authenticated call has an exposure a single request does not: :data:`PROBE_TIMEOUT`'s ``read``
-still caps only the gap between chunks, and there are up to *two* legs behind that gap. One cap
-over both of them is what makes "this call returns" a property of the function rather than a sum
-of independent hopes.
-
-Ten seconds, not five, because it has to clear **two whole attempts**: a deadline that could fire
-mid-retry would cut off the very transparency FR-12's retry exists to provide, turning a healthy
-restart into a ``backend_error``. AD-9's ~1 s responsiveness bound governs c7's notifier — the
-thing a *user* waits on — not this path, where the caller is an agent turn that has already
-committed to a network round trip. (Q4, Brad 2026-08-09.)
+"""The deadline on a whole authenticated call, the request and its one retry together: ten seconds
+so it clears both attempts, since a deadline firing mid-retry would turn a healthy restart into
+``backend_error``. AD-9's ~1 s bound governs the notifier, which a *user* waits on, not this path.
 """
 
 _NOTIFY_TOTAL_SECONDS = 1.0
-"""The whole-call deadline for :func:`notify_deck_changed` — AD-9's ~1 s bound, spent (Q4 above).
-
-Ten times tighter than :data:`_PUSH_TOTAL_SECONDS`, and deliberately its own constant rather than a
-parameter a caller can widen: this budget caps the latency a deck-mutation tool pays for telling the
-glass a deck changed, and AD-9 draws that line at roughly one second, not ten. The notifier still
-gets the same two-attempt shape as every other verb through :func:`_once_then_retry` — send, and
-on a refused credential, re-read discovery and retry once — all of it inside this one second rather
-than ten, because losing the retry to a tight budget is an acceptable trade here: the caller never
-sees the difference between a budget expiry and any other ``backend_error``, and never waits to
-find out which happened.
+"""The whole-call deadline for :func:`notify_deck_changed`: AD-9's ~1 s bound, its own constant
+rather than a parameter a caller can widen. Losing the retry to the budget is acceptable.
 """
 
 PushOutcomeToken = Literal[
@@ -159,43 +91,15 @@ PushOutcomeToken = Literal[
 ]
 """Everything this client can report about one authenticated call, and nothing else (AD-8).
 
-Written for the push and unchanged by the verbs that joined it: every one of them reads discovery,
-sends one authenticated request, and learns the same five things from the answer. A verb whose
-*caller* can distinguish more than five outcomes layers those above this set rather than widening
-it — ``deck_not_found`` is the shipped example, and it lives in the MCP tool because the deck lookup
-that produces it happens before this client is ever called.
-
-**Five tokens, closed, and none of them carries a number or a phrase.** A caller switches on these;
-a human reads the tool's own wording built *from* them. That split is the same convention the MCP
-tools already use for their ``status`` values, and it is why the count travels beside the token in
-:attr:`PushOutcome.clients` rather than inside it — ``displayed_to_two`` would be a token nothing
-could compare and everything would have to parse.
-
-**The field is named** ``outcome``, **not** ``status`` (dw:3098, ruled here). ``status`` is already
-taken in this repo: it is the MCP tool result key whose values include ``deck_not_found`` and
-``card_not_found``, spellings that predate the HTTP wire contract and are documented in shipped
-``skills/**`` files. One word carrying two vocabularies in one skill document is a collision a
-different field name costs nothing to avoid. This set is closed to exactly these five because it
-is what the client itself can observe on the wire; a tool built above this client is free to layer
-its own, wider vocabulary (see ``deferred-work.md``) — that layering does not belong here.
-
-Why each token exists, in the order a caller cares:
-
-* ``displayed`` — the backend delivered the event to at least one connected browser.
-* ``no_clients_connected`` — the backend took it and no tab was listening. On the wire this is a
-  **success** (``200 {"clients": 0}``), not an error; this is the only place it becomes "nobody saw
-  it". A caller must not retry it — c5-5's ruling: the backend will not re-send, so a retry pushes
-  duplicates at the first tab to open.
-* ``app_not_running`` — no companion could be reached, so nothing landed. Covers a missing or
-  unreadable discovery file and a port that refuses the connection alike (and, where identity is
-  still probed, a failed match), because a caller can do exactly one thing about all of them. On
-  the retry it is reported even though the first request reached a live backend: the app went
-  away between the refusal and the re-read, and *not running* is the honest answer.
-* ``payload_rejected`` — the backend refused the envelope itself (400 or 413). Retrying is
-  pointless; the payload has to change.
-* ``backend_error`` — the companion is there and the push did not land. The residual: 5xx, an
-  unexpected status, a body that is not a receipt, a dropped connection, a blown deadline, and a
-  credential still refused after the one retry.
+Closed at five because five is what the *wire* can tell the client; a caller that can distinguish
+more (``deck_not_found``, from the MCP tool's own database lookup) layers above this set. The count
+travels beside the token in :attr:`PushOutcome.clients`, never inside it. The field is ``outcome``,
+not ``status``, because ``status`` is already the MCP tool result key with its own vocabulary.
+``no_clients_connected`` is a **success** on the wire that must never be retried (the backend will
+not re-send, so a retry pushes duplicates at the first tab to open); ``app_not_running`` covers a
+missing discovery file and a refused connection alike, because a caller can do one thing about
+either; ``payload_rejected`` (400 or 413) needs a different payload, not a retry; ``backend_error``
+is the residual, including a credential still refused after the one retry.
 """
 
 PUSH_OUTCOMES: tuple[PushOutcomeToken, ...] = get_args(PushOutcomeToken)
@@ -203,22 +107,14 @@ PUSH_OUTCOMES: tuple[PushOutcomeToken, ...] = get_args(PushOutcomeToken)
 
 
 class PushOutcome(BaseModel):
-    """What one :func:`push_event` call reports back — one token, and who received it (AD-8).
+    """What one authenticated call reports back: one token, and who received it (AD-8).
 
-    Frozen, because a report a caller can edit is not a report: this value crosses from the client
-    into a tool's own result assembly, and the tool's job is to *read* it.
+    Frozen: this value crosses into a tool's result assembly, and the tool's job is to *read* it.
 
     Attributes:
         outcome: The single token from :data:`PushOutcomeToken`.
-        clients: How many connected browsers the backend delivered to, when it said — the receipt's
-            own count (c5-5: **delivered**, not registered). ``None`` on every outcome that never
-            reached a receipt, which is deliberately distinguishable from ``0``: "the backend never
-            told us" and "the backend told us nobody was listening" are different facts, and only
-            the second one is a successful push.
-
-    Example:
-        >>> PushOutcome(outcome="displayed", clients=2).model_dump()
-        {'outcome': 'displayed', 'clients': 2}
+        clients: How many connected browsers the backend **delivered** to, when it said. ``None``
+            when no receipt was reached, deliberately distinct from ``0`` (a successful push).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -228,18 +124,10 @@ class PushOutcome(BaseModel):
 
 
 def base_url(port: int) -> str:
-    """Assemble the companion's base URL — the one place in the codebase that does.
+    """Assemble the companion's base URL (no trailing slash) for *port*, the one place that does.
 
-    ``127.0.0.1`` literally rather than ``localhost``: the companion's socket is IPv4-only and
-    ``localhost`` resolves to ``::1`` first on Windows and modern Linux, so the name would dial an
-    address nothing is listening on. :func:`probe_health` and :func:`push_event` both dial what this
-    returns, and the runner prints it.
-
-    Args:
-        port: The loopback port the companion bound.
-
-    Returns:
-        The scheme-and-authority prefix, with no trailing slash.
+    ``127.0.0.1`` literally rather than ``localhost``: the socket is IPv4-only and ``localhost``
+    resolves to ``::1`` first on Windows and modern Linux.
     """
     return f"http://{LOOPBACK_HOST}:{port}"
 
@@ -251,18 +139,11 @@ _shared: tuple[asyncio.AbstractEventLoop, httpx.AsyncClient] | None = None
 def _shared_client() -> httpx.AsyncClient:
     """Return the one ``httpx.AsyncClient`` every request in this module goes through.
 
-    Built lazily on first use and cached against the running event loop: an ``AsyncClient``'s
-    connection pool belongs to the loop it was first used on, so a different loop (each pytest
-    async test gets its own; the runner's ``asyncio.run`` startup check closes its loop) gets a
-    fresh client and the stale one is simply dropped. ``trust_env=False`` for both of its reasons —
-    a configured proxy would misroute the loopback dial, and ``.netrc`` would otherwise quietly
-    attach an ``Authorization`` header of its own. No default timeout: every call passes its own,
-    so each verb keeps its measured deadline.
-
-    ``keepalive_expiry=2.0``: uvicorn closes an idle keep-alive connection after 5 s and httpx's
-    default pool expiry is also 5 s, so a pooled socket could be closed by the server at the very
-    moment the next push reuses it — a spurious ``backend_error``. Expiring the pooled socket well
-    before the server does means a push after a pause dials afresh instead.
+    Cached against the running loop, since a pool belongs to the loop it was first used on.
+    ``trust_env=False`` because a configured proxy would misroute the loopback dial and ``.netrc``
+    would quietly attach an ``Authorization`` header. No default timeout: every call passes its
+    own. ``keepalive_expiry=2.0`` because uvicorn closes an idle keep-alive after 5 s, as does
+    httpx's default pool expiry, so a pooled socket could be closed at the moment it is reused.
 
     Returns:
         The shared client for the running loop.
@@ -279,21 +160,13 @@ def _shared_client() -> httpx.AsyncClient:
 
 
 def reset_shared_client() -> None:
-    """Forget the cached client without closing it (test isolation only).
-
-    The next call on any loop builds a fresh client; the forgotten one's sockets close when it is
-    garbage-collected. Production code closes properly through :func:`aclose_shared_client`.
-    """
+    """Forget the cached client without closing it (test isolation only)."""
     global _shared
     _shared = None
 
 
 async def aclose_shared_client() -> None:
-    """Close the shared client, if this loop owns one, and forget it.
-
-    The MCP server's lifespan calls this when its run ends. A client cached for a *different* loop
-    cannot be closed from here (its pool lives on that loop) and is dropped instead.
-    """
+    """Close the shared client if this loop owns one, and forget it; another loop's is dropped."""
     global _shared
     if _shared is None:
         return
@@ -306,45 +179,19 @@ async def aclose_shared_client() -> None:
 async def probe_health(port: int, *, timeout: httpx.Timeout | None = None) -> HealthResponse | None:
     """Ask *port* who it is, and return its answer only if a companion gave one.
 
-    **Never raises.** Every way this can fail means the same thing to a caller — *no companion is
-    answering there* — so all of them return ``None``: nothing listening (``ConnectTimeout`` under
-    a short deadline, ``ConnectError`` under a long one), a listener that accepts and never answers
-    (``ReadTimeout``), a listener that answers but too slowly overall — dripping chunks that each
-    beat the read deadline, or streaming an endless body — cut off by the whole-probe
-    :data:`_PROBE_TOTAL_SECONDS` (``TimeoutError``), a foreign server returning HTML, JSON of the
-    wrong shape, bytes that are not UTF-8, and any status other than ``200`` — the only status a
-    real companion's ``/health`` returns, so a ``201`` or ``204`` is just as foreign as a ``400``.
-    The whole body sits inside one ``except (TimeoutError, httpx.HTTPError, ValueError)``,
-    including obtaining the shared client: a "never raises" promise that only covers the happy
-    path is not one (the c1-7 review's first finding).
-
-    All three members of that tuple are load-bearing and none is redundant — ``httpx.HTTPError``
-    is the root of the transport family and is *not* a ``ValueError``, ``TimeoutError`` (what
-    ``asyncio.timeout`` raises) is an ``OSError`` and belongs to neither family, while
-    ``pydantic.ValidationError`` (and the ``UnicodeDecodeError`` / ``JSONDecodeError`` that
-    ``model_validate_json`` raises on undecodable or non-JSON bytes) *are* ``ValueError``
-    subclasses. It is deliberately **not** ``except Exception``: a ``MemoryError`` mid-probe is a
-    broken machine, not a companion that is not running.
-
-    **The dial ignores proxy environment variables** (the shared client's ``trust_env=False``).
-    httpx grants loopback no exemption from ``HTTP_PROXY``/``ALL_PROXY``, so without this a machine
-    with a proxy configured would send the probe *to the proxy*, judge the live companion dead, and
-    start the duplicate instance this probe exists to prevent. It also stops ``.netrc`` from
-    quietly attaching an ``Authorization`` header — nothing on this path may carry a credential
-    (AC 6).
-
-    The status is checked explicitly rather than via ``raise_for_status()``. That keeps "this is
-    not our app" an ordinary outcome instead of an exception caught two lines later, and it keeps
-    the non-2xx case distinguishable from a transport failure in the log.
-
-    Rejections log at DEBUG, not WARNING: on the push path below, the *expected* case is that
-    nothing is there, and a warning on every push would be noise in the user's terminal.
+    **Never raises.** Every failure means *no companion is answering there*, so all return
+    ``None``: nothing listening, a listener that never answers or is too slow overall (cut off by
+    :data:`_PROBE_TOTAL_SECONDS`), a foreign body, and any status other than ``200``, the only one
+    a real ``/health`` returns. The whole body sits inside one ``except (TimeoutError,
+    httpx.HTTPError, ValueError)``; all three are load-bearing (``HTTPError`` is not a
+    ``ValueError``, ``TimeoutError`` is an ``OSError``, the pydantic and decode errors are
+    ``ValueError`` subclasses) and it is deliberately not ``except Exception``: a ``MemoryError``
+    is a broken machine, not a companion that is not running. Rejections log at DEBUG because on
+    the push path nothing being there is the expected case.
 
     Args:
         port: The loopback port to probe.
-        timeout: Override the deadline. Exists so a test can drive the dead-port and
-            never-answers cases in milliseconds; production callers pass nothing and get
-            :data:`PROBE_TIMEOUT`.
+        timeout: Override the deadline (a test seam); production callers get :data:`PROBE_TIMEOUT`.
 
     Returns:
         The parsed health body, or ``None`` if anything other than this application answered.
@@ -369,22 +216,12 @@ async def probe_health(port: int, *, timeout: httpx.Timeout | None = None) -> He
 
 
 async def live_instance(*, timeout: httpx.Timeout | None = None) -> DiscoveryRecord | None:
-    """Answer "is a companion actually running?" — the whole question, in one call (AD-4).
+    """Answer "is a companion actually running?" in one call (AD-4). Never raises.
 
-    The sequence short-circuits deliberately. With no usable discovery file there is nothing to
-    probe and **no network call is made at all**, which is an assertable behaviour rather than an
-    optimisation: a launch on a clean machine must not pay for a connect attempt against a port
-    nobody named. With a record in hand, its port is probed and the echoed identity compared; only
-    an exact match counts.
-
-    The *record* is returned rather than a bool because its other fields are wanted the moment
-    identity is proven — its ``port`` is what the runner's refusal message prints and what
-    ``companion_status`` probes again for the tab count. Nothing *here* reads the token: this
-    function's contract is that it hands back a proven record, and the one place a credential is
-    read is the one place it is sent (:func:`_send`, which reads discovery itself).
-
-    **Never raises.** ``read_discovery`` and :func:`probe_health` both make that promise already,
-    and this function adds no third failure mode of its own.
+    With no usable discovery file **no network call is made at all**: a launch on a clean machine
+    must not pay for a connect against a port nobody named. Otherwise the port is probed and only
+    an exact identity match counts. The *record* is returned rather than a bool because callers
+    need its ``port``; the token beside it is never read here.
 
     Args:
         timeout: Forwarded to :func:`probe_health`; ``None`` uses :data:`PROBE_TIMEOUT`.
@@ -419,46 +256,22 @@ async def _send(
 ) -> httpx.Response | PushOutcome:
     """Make one authenticated request to the companion the discovery record names.
 
-    **Never raises**, on the same terms and with the same net as :func:`probe_health`: the whole
-    body — obtaining the shared client included — sits inside one
-    ``except (TimeoutError, httpx.HTTPError, ValueError)``, and deliberately not ``except
-    Exception``. A ``MemoryError`` mid-send is a broken machine, not a backend that did not answer.
-
-    A connection that is **refused or never completes** (``ConnectError``, ``ConnectTimeout``) is
-    the ordinary post-crash state — a stale file naming a dead port — and is reported as
-    ``app_not_running``; it used to be the probe's job to catch that before the token moved. Every
-    other failure to complete the exchange (a read timeout, a dropped connection) means something
-    is listening and did not answer properly, which is ``backend_error``.
-
-    The shared client's ``trust_env=False`` is load-bearing here for *both* of its reasons, where
-    the probe only had one. A configured proxy would misroute the loopback dial exactly as it would
-    a probe — and this request carries a credential, so ``.netrc`` quietly attaching an
-    ``Authorization`` header of its own would be a second one on a request that already has the
-    right one.
-
-    Generic over method and path rather than hard-wired to the push, so that a sibling verb against
-    the same gate — same header, timeouts and net — can reuse this implementation instead of
-    duplicating it: c6-2's :func:`set_active_deck` (``PUT /api/active-deck``) is the first such
-    reuse. It stays private — the public surface of this module is :func:`push_event`,
-    :func:`set_active_deck` and c7-1's :func:`notify_deck_changed`, and a story that needs another
-    verb adds another named function rather than exporting this one (Q1, Brad 2026-08-09).
-
-    **The token is read here and nowhere else**, is placed in exactly one header, and appears in no
-    log line at any level. There is no error branch that echoes the request.
+    **Never raises**, with :func:`probe_health`'s net. A refused or never-completed connection is
+    the ordinary post-crash state (a stale file naming a dead port) and is ``app_not_running``;
+    any other incomplete exchange means something is listening and did not answer properly, which
+    is ``backend_error``. Generic over method and path so every verb shares one header, timeout
+    and net; it stays private. **The token is read here and nowhere else**, placed in exactly one
+    header, and appears in no log line at any level.
 
     Args:
-        record: The discovery record just read from disk. Its ``token`` is the credential and its
-            ``port`` the destination.
+        record: The discovery record just read; its ``token`` is the credential.
         method: The HTTP method, e.g. ``"POST"``.
         path: The path to request, e.g. :data:`EVENTS_PATH`.
         body: The already-serialised JSON body.
-        timeout: Override the per-request deadline; ``None`` uses :data:`PROBE_TIMEOUT`, whose
-            connect/read split applies unchanged — a live companion answers this route as promptly
-            as it answers ``/health``, and a dead port is refused inside the short connect half.
+        timeout: Override the per-request deadline; ``None`` uses :data:`PROBE_TIMEOUT`.
 
     Returns:
-        The response, whatever its status, or the outcome to report if the exchange never
-        completed: ``app_not_running`` when no connection could be made, else ``backend_error``.
+        The response, whatever its status, or the outcome to report if the exchange never completed.
     """
     url = f"{base_url(record.port)}{path}"
     try:
@@ -481,30 +294,20 @@ async def _send(
 
 
 def _outcome_for(response: httpx.Response) -> PushOutcome | None:
-    """Turn one answered request into its token — or into the decision to retry.
+    """Turn one answered request into its token, or into the decision to retry.
 
-    **Statuses only, never the** ``reason`` **string.** The error body is written for humans and
-    logs; switching on its wording would break on any rewording and would buy nothing, because the
-    statuses already separate every case this client distinguishes (``app/errors.py``'s
-    ``STATUS_BY_REASON`` is the pairing, and it is one-to-one on the codes that reach here).
-
-    ``400`` and ``413`` fold into one token deliberately (Q7, Brad 2026-08-08). A violated field cap
-    is a pydantic error and answers ``400``; the 64 KB envelope cap is enforced pre-parse and
-    answers ``413``. Both mean *the payload was refused, in full, and nothing was rendered* — the
-    property the epic AC actually protects — and a caller can do the same one thing about either.
-
-    A ``200`` is only a delivery if its body is a receipt. The parse is
-    :class:`~src.companion.contracts.EventIngestReceipt` rather than a hand-rolled
-    ``body["clients"]`` read, which is what makes ``{"clients": -1}`` a ``backend_error`` instead of
-    quietly reading as *nobody was listening*.
+    Statuses only, never the ``reason`` string: the error body is written for humans, and the
+    statuses already separate every case (``app/errors.py``'s ``STATUS_BY_REASON`` is one-to-one
+    on the codes that reach here). ``400`` (a field cap) and ``413`` (the 64 KB envelope cap) fold
+    into one token because both mean the payload was refused in full. A ``200`` is a delivery only
+    if its body parses as an ``EventIngestReceipt``, so ``{"clients": -1}`` is a ``backend_error``.
 
     Args:
         response: The answer to a request that completed.
 
     Returns:
-        The outcome, or ``None`` for a ``403`` — the one status this function does not resolve,
-        because whether a refused credential is a retry or a failure is the caller's budget to
-        spend, not a property of the response.
+        The outcome, or ``None`` for a ``403``: whether a refused credential is a retry or a
+        failure is the caller's budget to spend.
     """
     status = response.status_code
     if status == 403:
@@ -526,18 +329,10 @@ def _outcome_for(response: httpx.Response) -> PushOutcome | None:
 
 
 async def _attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome | None:
-    """Run one whole read-then-send cycle: discovery, then the POST.
+    """Run one read-then-send cycle (discovery, then the POST) for the serialised *body*.
 
-    Discovery is re-read on **every** attempt, including the retry: the retry exists to pick up a
-    *different* token from a file that has demonstrably just changed, and a re-read that finds no
-    file means the app went away between the refusal and the retry.
-
-    Args:
-        body: The serialised envelope.
-        timeout: Forwarded to the request.
-
-    Returns:
-        The outcome, or ``None`` if the backend refused the credential and a retry could help.
+    Discovery is re-read on **every** attempt, since the retry exists to pick up a *different*
+    token. Returns the outcome, or ``None`` if the credential was refused and a retry could help.
     """
     record = read_discovery()
     if record is None:
@@ -554,31 +349,18 @@ async def _once_then_retry(
     what: str,
     budget: float | None = None,
 ) -> PushOutcome:
-    """Run *attempt*, and if the credential was refused, run it once more — then stop.
+    """Run *attempt*, and if the credential was refused, run it once more, then stop.
 
-    The retry budget, the whole-call deadline and the terminal token in one place, so every
-    authenticated verb spends them identically. An ``attempt`` returning ``None`` means *the backend
-    refused the credential and a retry could help*; anything else is the answer.
-
-    **The retry is exactly one, and it is spent on a refused credential alone** (FR-12). The
-    backend mints a fresh token every start, so a companion restarted mid-session refuses the token
-    a tool holds. That is the single case where trying again is a correction, not a duplicate. A
-    second refusal is ``backend_error``: the credential is not merely stale, and a client that kept
-    retrying would re-send indefinitely against a backend that keeps saying no. **At most two
-    authenticated requests ever leave a call through here.**
+    **The retry is exactly one, spent on a refused credential alone** (FR-12): the backend mints a
+    fresh token every start, so a companion restarted mid-session refuses the token a tool holds,
+    the single case where trying again is a correction rather than a duplicate. A second refusal is
+    ``backend_error``. **At most two authenticated requests ever leave a call through here.**
 
     Args:
-        attempt: One whole read-then-send cycle, called with no arguments so the verb closes over
-            its own body, path and timeout.
-        what: The verb's name for the log line, e.g. ``"push"``. Never a payload and never a
-            credential — this module logs neither.
-        budget: The whole-call deadline in seconds, covering both attempts together. ``None`` reads
-            :data:`_PUSH_TOTAL_SECONDS` **at call time** rather than defaulting to it directly, so
-            every existing call site is unchanged and a test that shrinks the module attribute
-            through ``monkeypatch`` (there is no argument to pass it through) still takes effect —
-            an ordinary parameter default is bound once, at import time, and would not see that
-            change. c7-1's :func:`notify_deck_changed` is the first caller to pass its own, tighter
-            :data:`_NOTIFY_TOTAL_SECONDS` (AD-9).
+        attempt: One whole read-then-send cycle; ``None`` means the credential was refused.
+        what: The verb's name for the log line. Never a payload or a credential.
+        budget: The whole-call deadline covering both attempts. ``None`` reads
+            :data:`_PUSH_TOTAL_SECONDS` at call time so a ``monkeypatch`` of it takes effect.
 
     Returns:
         Exactly one :class:`PushOutcome`.
@@ -604,50 +386,23 @@ async def _once_then_retry(
 async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None) -> PushOutcome:
     """Push one event to the companion's glass, and report the single thing that happened (AD-8).
 
-    The one public way anything outside this module reaches ``POST /agent/events``. Every companion
-    MCP tool funnels through it so that they all fail the same way, and **none of them can break an
-    agent turn** over anything the companion itself does: whatever the discovery file, the network,
-    or the backend answer with — closed, crashed, restarting, wedged, malformed — is one of the five
-    tokens above, never an exception. That is FR-12's actual requirement. The net is the same one
-    :func:`probe_health` and :func:`_send` draw: a ``MemoryError`` (or similar) mid-call is a broken
-    machine, not a companion that did not answer, and is deliberately let through rather than folded
-    into ``backend_error``.
-
-    **The sequence.** Read discovery → send the token to the recorded port, in one request. No
-    usable file is ``app_not_running`` and **no credential leaves the process**; a refused
-    connection on the send is ``app_not_running`` too (the file outlived its process).
-
-    **The retry, and why it is exactly one** (FR-12). The backend mints a fresh token every start,
-    so a companion restarted mid-session refuses the token a tool is holding with a ``403``. That is
-    the single case where trying again is not a duplicate but a correction, and the whole cycle is
-    re-run — file, then send — before the newly read token is sent (:func:`_once_then_retry`
-    owns that budget, and every authenticated verb spends it identically). A second ``403`` is
-    ``backend_error``: the credential is not merely stale, and a client that kept retrying would
-    re-send the payload indefinitely against a backend that keeps saying no. **At most two POSTs
-    ever leave this function.** If the re-read finds nothing live, the honest answer is
-    ``app_not_running`` — nothing broke; the app went away between the refusal and the retry.
-
-    The retry is spent on ``403`` **alone**. A ``500`` or a dropped connection buys no second
-    attempt: neither is a stale credential, and re-sending a payload the backend may already have
-    accepted-then-failed on is how one push becomes two renders.
+    The one public way anything outside this module reaches ``POST /agent/events``. Every
+    companion MCP tool funnels through it so they all fail the same way and **none can break an
+    agent turn**: whatever the companion does is one of the five tokens, never an exception
+    (FR-12); a ``MemoryError`` mid-call is a broken machine and is let through. The retry is spent
+    on ``403`` alone: a ``500`` or a dropped connection buys no second attempt, because re-sending
+    a payload the backend may already have accepted-then-failed on is how one push becomes two
+    renders.
 
     Args:
-        event: A concrete envelope instance — one of the six members of
-            :data:`~src.companion.contracts.AgentEvent`. Taken already-built and **never
-            re-validated**: the union is an ``Annotated`` discriminated union with no
-            ``.model_validate``, and the caller has by construction handed over something valid.
-        timeout: Override the per-request deadline. Exists so a test can drive the dead-port and
-            never-answers cases in milliseconds; production callers pass nothing and get
-            :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`, which
-            production callers must not be able to opt out of.
+        event: A concrete envelope, one member of :data:`~src.companion.contracts.AgentEvent`,
+            taken already-built and **never re-validated**: the union is an ``Annotated``
+            discriminated union with no ``.model_validate``.
+        timeout: Override the per-request deadline (a test seam). It does **not** override
+            :data:`_PUSH_TOTAL_SECONDS`.
 
     Returns:
         Exactly one :class:`PushOutcome`.
-
-    Example:
-        >>> outcome = await push_event(event)  # doctest: +SKIP
-        >>> outcome.outcome, outcome.clients  # doctest: +SKIP
-        ('displayed', 2)
     """
     body = event.model_dump_json()
     return await _once_then_retry(lambda: _attempt(body, timeout=timeout), what="push")
@@ -658,79 +413,38 @@ async def notify_deck_changed(
 ) -> PushOutcome:
     """Tell the companion a deck's contents changed, and never let the caller find out how (AD-9).
 
-    The one shared notifier c7-1 exists to build: every deck-mutation tool funnels through this
-    single function rather than growing its own emit path, so "did the glass hear about this
-    change" has exactly one answer to reason about. It mints the ``deck_changed`` envelope itself —
-    the caller supplies only the id — POSTs it through the same ``/agent/events`` route
-    :func:`push_event` already uses (this is a system signal on the same wire, not a new endpoint),
-    and reports one of the five tokens :func:`push_event` reports, on the identical closed
-    vocabulary (AD-8): a caller that wants to debug-log the outcome in c7-2 reads the same
-    :class:`PushOutcome` shape it already knows.
+    The one shared notifier every deck-mutation tool funnels through. It mints the ``deck_changed``
+    envelope itself, POSTs it through the same ``/agent/events`` route as :func:`push_event` (a
+    system signal on the same wire, not a new endpoint), and reports the same five tokens (AD-8).
 
-    **Bounded await, never a detached task** (AD-9's whole point). This function is awaited by a
-    mutation tool *after* its transaction commits, and the notification must never outlive that
-    call or run loose after it: ``asyncio.create_task``, ``ensure_future``, ``TaskGroup`` and
-    ``gather`` are all banned on this path (a task that outlives the tool call can be torn down
-    before it runs, silently losing the event — precisely what a detached task would risk), and
-    ``test_ws.py``'s ``test_the_push_path_creates_no_task`` sweeps every module under
-    ``src/companion`` for exactly those four names. The bound is
-    :data:`_NOTIFY_TOTAL_SECONDS` — **~1 s**, not :func:`push_event`'s ~10 s — because AD-9 draws
-    the line at what a *user* waits on: a mutation tool's response is held up by this await, so the
-    deadline has to be short enough that a wedged or absent companion never becomes the reason an
-    agent turn feels slow. The same two-attempt shape (send, and on a refused credential, re-read
-    discovery and retry once) runs through :func:`_once_then_retry` inside that one second, sharing
-    :func:`_attempt` — and therefore the same discovery gate and the same ``/agent/events`` POST —
-    with :func:`push_event` rather than duplicating either.
+    **Bounded await, never a detached task.** A mutation tool awaits this after its transaction
+    commits, and the notification must never outlive that call: ``asyncio.create_task``,
+    ``ensure_future``, ``TaskGroup`` and ``gather`` are banned on this path (a task outliving the
+    tool call can be torn down before it runs, silently losing the event);
+    ``test_the_push_path_creates_no_task`` in ``test_ws.py`` sweeps ``src/companion`` for them.
+    The bound is :data:`_NOTIFY_TOTAL_SECONDS`, ~1 s rather than :func:`push_event`'s ~10 s,
+    because a mutation tool's response is held up by this await.
 
-    **Every exception is caught, and none of them propagates** — the one deliberate divergence from
-    :func:`push_event` and :func:`set_active_deck`, both of which let a genuine bug (a
-    ``MemoryError`` mid-call, say) through rather than mask it. Those two are called from an agent
-    turn that has already committed to round-tripping the network and can afford to surface a real
-    bug loudly; this one is called from *inside* a deck-mutation tool's success path, where a defect
-    in the notifier must never turn an otherwise-successful add, remove or import into a failure the
-    agent reports as broken. The outer ``except Exception`` below is that promise kept: logged at
-    WARNING with ``exc_info`` (the unexpected case), never at the cost of raising. Every *expected*
-    absence — no companion running, nobody listening, a refused credential, a blown budget — is
-    already one of the five tokens by the time it reaches here, logged at DEBUG by the functions
-    this one delegates to; nothing about that logging changes.
+    **Every exception is caught**, the one divergence from :func:`push_event`: this runs inside a
+    mutation tool's success path, where a notifier defect must never turn a successful add, remove
+    or import into a failure. The outer ``except Exception`` logs at WARNING with ``exc_info``.
 
-    **What the swallow costs, named rather than left implicit (c7-7).** The ruling is AD-9
-    (``ARCHITECTURE-SPINE.md:211``), and it is written into the **two** sites that actually swallow:
-    here, and :func:`src.mcp_server.server._emit_deck_changed`, which awaits this function and
-    discards its outcome. The two are deliberate copies of one rule rather than one prose home and a
-    pointer, because a reader debugging a stale deck view arrives at whichever of them they are
-    standing in — but they are copies, so **an amendment starts at the spine and changes both**.
-    Every token but
-    ``displayed`` means the mutation committed and the glass did not hear about it, so the deck view
-    is **stale until the next event or a WebSocket reconnect**. That window is **accepted behaviour
-    until FR-16**, not a defect this function may close: out-of-band change detection is a later
-    phase, and until it ships the UI deliberately shows **no staleness warning** — no banner, no
-    dimmed header, no "may be out of date" token in the closed ``reason`` set. ``EXPERIENCE.md``'s
-    Flow 1 failure path states the same promise from the user's side (*"the deck view is stale
-    until the next event or reconnect; no error surfaces"*). So the correct behaviour on a failed
-    notify is exactly what happens below — log it and return a token nobody acts on. Do not add a
-    retry beyond :func:`_once_then_retry`'s single re-probe, a persistent queue, or any surfacing
-    path; each would trade AD-9's "the mutation never pays for the companion" for a window FR-16 is
-    scheduled to close properly. The reconnect refetch (``ui/src/state/connection.ts`` — the
-    FRONTEND tree, not this package's ``src/``) is what actually heals a missed event today, and it
-    is the only healer this design has.
+    **What the swallow costs (AD-9, ``ARCHITECTURE-SPINE.md:211``)**, stated at both sites that
+    swallow, here and :func:`src.mcp_server.server._emit_deck_changed`, so an amendment starts at
+    the spine and changes both: every token but ``displayed`` means the mutation committed and the
+    glass did not hear, so the deck view is **stale until the next event or a WebSocket
+    reconnect**. That window is accepted until FR-16 (out-of-band change detection), and until then
+    the UI deliberately shows **no staleness warning** (``EXPERIENCE.md``'s Flow 1 failure path).
+    Do not add a further retry, a persistent queue, or any surfacing path; the reconnect refetch in
+    ``ui/src/state/connection.ts`` is the only healer this design has.
 
     Args:
-        deck_id: The deck that changed, or ``None`` meaning "refetch whatever is active" — the
-            payload's own nullable contract (:class:`~src.companion.contracts.DeckChangedPayload`),
-            reused unchanged. c7-2 is where a real deck id is threaded through; c7-1 wires no
-            caller.
-        timeout: Override the per-request deadline, on :func:`push_event`'s terms. Production
-            callers pass nothing and get :data:`PROBE_TIMEOUT`. It does **not** override
-            :data:`_NOTIFY_TOTAL_SECONDS`, which production callers must not be able to opt out of.
+        deck_id: The deck that changed, or ``None`` meaning "refetch whatever is active".
+        timeout: Override the per-request deadline. It does **not** override
+            :data:`_NOTIFY_TOTAL_SECONDS`.
 
     Returns:
         Exactly one :class:`PushOutcome`. Never raises.
-
-    Example:
-        >>> outcome = await notify_deck_changed("076ac3ed")  # doctest: +SKIP
-        >>> outcome.outcome  # doctest: +SKIP
-        'displayed'
     """
     try:
         event = DeckChangedEvent(
@@ -753,33 +467,20 @@ async def notify_deck_changed(
 
 
 def _active_deck_outcome_for(response: httpx.Response) -> PushOutcome | None:
-    """Turn one answered ``PUT /api/active-deck`` into its token — or into the decision to retry.
+    """Turn one answered ``PUT /api/active-deck`` into its token, or into the decision to retry.
 
-    A deliberate sibling of :func:`_outcome_for` rather than a widening of it. The two functions
-    agree on every status **and disagree on the one thing that matters**: what a ``200`` body is.
-    This route answers :class:`~src.companion.contracts.ActiveDeckSetReceipt`; the push answers
-    :class:`~src.companion.contracts.EventIngestReceipt`. Parsing either body with the other model
-    is invisible at type level — both calls type-check, both return a receipt — and would turn every
-    successful call into a ``backend_error``. Two named functions make the pairing something a
-    reader can see at the call site instead of a parameter someone can pass wrongly.
-
-    Everything else is the push's mapping, restated because it is the *client's* mapping and not the
-    push's: statuses only and never the ``reason`` string; ``400`` and ``413`` folded into one token
-    (Q7, Brad 2026-08-08); ``403`` unresolved because the retry budget is the caller's to spend.
-    ``401`` is not special — it folds into ``backend_error`` unretried, because the shipped backend
-    structurally cannot answer it on this gate (c3-4: the raise path cannot attach the
-    ``WWW-Authenticate`` header a ``401`` requires), so one arriving means something that is not
-    this backend answered.
-
-    **There is no** ``deck_not_found`` **here, and there cannot be** (AD-16). This route has no
-    database and no ``404``: a ``PUT`` naming a deck that does not exist *succeeds*. The tool above
-    this client is the party that can observe that, and it is where the token lives.
+    A sibling of :func:`_outcome_for` rather than a widening of it: the two agree on every status
+    and disagree on what a ``200`` body is (``ActiveDeckSetReceipt`` here, ``EventIngestReceipt``
+    for the push), and parsing either with the other model type-checks yet turns every success into
+    ``backend_error``. ``401`` folds into ``backend_error`` unretried because this backend cannot
+    answer it on this gate, so one arriving means something else answered. **There is no
+    ``deck_not_found`` here** (AD-16): the route has no database and no ``404``.
 
     Args:
         response: The answer to a request that completed.
 
     Returns:
-        The outcome, or ``None`` for a ``403`` — the one status this function does not resolve.
+        The outcome, or ``None`` for a ``403``, the one status this function does not resolve.
     """
     status = response.status_code
     if status == 403:
@@ -801,18 +502,7 @@ def _active_deck_outcome_for(response: httpx.Response) -> PushOutcome | None:
 
 
 async def _active_deck_attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome | None:
-    """Run one whole read-then-send cycle: discovery, then the ``PUT``.
-
-    Discovery is re-read on **every** attempt, including the retry, for :func:`_attempt`'s reason:
-    the retry sends a *different* token, read from a file that has just changed.
-
-    Args:
-        body: The serialised request.
-        timeout: Forwarded to the request.
-
-    Returns:
-        The outcome, or ``None`` if the backend refused the credential and a retry could help.
-    """
+    """Run one read-then-send cycle (discovery, then the ``PUT``); see :func:`_attempt`."""
     record = read_discovery()
     if record is None:
         return PushOutcome(outcome="app_not_running")
@@ -827,40 +517,22 @@ async def set_active_deck(
 ) -> PushOutcome:
     """Tell the companion which deck to display, and report the single thing that happened (FR-07).
 
-    The one public way anything outside this module reaches ``PUT /api/active-deck``. It is a
-    **control** call rather than a push — it changes what the glass is pointed at instead of adding
-    something to it — but from this client's side the shape is identical to :func:`push_event`'s:
-    read discovery, send one authenticated request, report one of the five tokens, and **never
-    break an agent turn** with an exception (FR-12). Same net, same ``MemoryError`` carve-out.
-
-    ``displayed`` here means *the change reached at least one open tab*, and
-    ``no_clients_connected`` means the backend stored it with nobody watching — a success on the
-    wire, and the thing an agent should say out loud rather than retry. The backend broadcasts on
-    **every** set, including one that writes the same id again (a duplicate costs one idempotent
-    refetch), so this function must not dedupe.
-
-    **The deck is not checked for existence anywhere on this path**, and that is the ruling rather
-    than an omission (AD-16): the route has no database, so there is no ``404`` to observe. A caller
-    that can report ``deck_not_found`` is a caller with database access — the MCP tool — and it does
-    that lookup *before* calling this function.
+    The one public way anything outside this module reaches ``PUT /api/active-deck``. A **control**
+    call rather than a push, but :func:`push_event`'s shape: read discovery, send one authenticated
+    request, report one of the five tokens, and **never break an agent turn** (FR-12). The backend
+    broadcasts on **every** set, including a repeat of the same id, so this function must not
+    dedupe. **The deck is not checked for existence anywhere on this path** (AD-16): the route has
+    no database, so there is no ``404`` to observe; the MCP tool reports ``deck_not_found`` from
+    its own lookup.
 
     Args:
-        request: A concrete, already-valid
-            :class:`~src.companion.contracts.ActiveDeckRequest`. Taken already-built and **never
-            re-validated**, mirroring :func:`push_event`'s concrete-envelope rule: the caller has by
-            construction handed over something valid, and the backend's answer is authoritative
-            about everything else.
-        timeout: Override the per-request deadline. Exists so a test can drive the dead-port and
-            never-answers cases in milliseconds; production callers pass nothing and get
-            :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`.
+        request: A concrete, already-valid :class:`~src.companion.contracts.ActiveDeckRequest`,
+            **never re-validated**.
+        timeout: Override the per-request deadline (a test seam). It does **not** override
+            :data:`_PUSH_TOTAL_SECONDS`.
 
     Returns:
         Exactly one :class:`PushOutcome`.
-
-    Example:
-        >>> outcome = await set_active_deck(ActiveDeckRequest(deck_id="d-1"))  # doctest: +SKIP
-        >>> outcome.outcome, outcome.clients  # doctest: +SKIP
-        ('displayed', 1)
     """
     body = request.model_dump_json()
     return await _once_then_retry(

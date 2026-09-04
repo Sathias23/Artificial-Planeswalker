@@ -145,8 +145,7 @@ class DeckCardSummary(BaseModel):
         The bounded counterpart to :class:`DeckCard`, which nests the full
         :class:`Card`. Keeping ``load_deck`` payloads small matters most for LLM
         clients, which pay for every token of a tool result; those callers follow
-        up with ``lookup_card_by_name``. Reused by the Story 1.6 deck-analysis
-        tools.
+        up with ``lookup_card_by_name``. Reused by the deck-analysis tools.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -171,9 +170,8 @@ class DeckSummary(BaseModel):
         Build with :meth:`from_deck`, never ``model_validate``: the counts are
         computed from a source ``Deck``'s ``deck_cards``, and a ``Deck`` has no
         such attributes, so ``model_validate`` would silently apply the ``0``
-        defaults. Mirrors the Story 1.4 ``CardSummary`` decision so ``list_decks``
-        never dumps full decks at an LLM client. Reused by the Story 1.6
-        deck-analysis tools.
+        defaults. Mirrors the ``CardSummary`` decision so ``list_decks``
+        never dumps full decks at an LLM client. Reused by the deck-analysis tools.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -273,7 +271,7 @@ class DeckDetail(DeckSummary):
         Returned by ``create_deck`` (empty ``cards``) and ``load_deck`` (full
         contents), and by ``GET /api/deck/{deck_id}``. Like ``DeckSummary``, build
         it with :meth:`from_deck` rather than ``model_validate``. Reused by the
-        Story 1.6 deck-analysis tools.
+        deck-analysis tools.
     """
 
     cards: list[DeckCardSummary] = []

@@ -69,15 +69,15 @@ twice (a miss puts ``deck_id`` in both the field and the message sentence; a suc
 for ``deck_name``), and the ``database_not_initialized`` path pairs one echo with
 ``DATABASE_NOT_INITIALIZED_MESSAGE`` (225 chars on its own) — so even the wire's own 256-char cap
 on ``deck_id`` would blow the ~200-token budget doubled, and this needs a smaller number than that.
-All 40 ids in the shipped database are 36-character uuids (measured 2026-08-01, the same measurement
+All ids in the shipped database are 36-character uuids (the same measurement
 ``_MAX_DECK_ID_LENGTH`` cites); 48 is headroom above that without threatening the budget in the
 message that already carries the most fixed text (measured: 378 of the 400-char test convention
-used throughout this file, itself half of AC 5's ~200-token/~800-character estimate).
+used throughout this file, itself half of the ~200-token/~800-character estimate).
 """
 
 
 def _truncate_for_echo(value: str) -> str:
-    """Bound a caller- or database-sourced string before it is echoed into a result (CM-1, AC 5)."""
+    """Bound a caller- or database-sourced string before it is echoed into a result (CM-1)."""
     return value if len(value) <= _ECHO_LIMIT else value[:_ECHO_LIMIT] + "…"
 
 
@@ -86,7 +86,7 @@ class SetActiveDeckResult(BaseModel):
 
     The ``status`` values are the leaf client's five wire outcomes plus three this layer owns:
     ``deck_not_found`` (the database read, before any HTTP) and the ``database_not_initialized`` /
-    ``error`` pair every tool in this package carries. Layering rather than widening is the ruling
+    ``error`` pair every tool in this package carries. Layering rather than widening is deliberate
     (AD-16): the client's set stays closed at five because five is what the *wire* can tell it.
 
     Attributes:
@@ -232,7 +232,7 @@ class ShowSuggestionsResult(BaseModel):
 
     **Counts, never contents.** Both numeric fields are facts *about* the push rather than pieces of
     it, which is what lets the result confirm scope without repeating a single card id or reason
-    back into the conversation the agent is already holding them in (CM-1, AC 5).
+    back into the conversation the agent is already holding them in (CM-1).
 
     Attributes:
         status: ``displayed`` (the companion delivered the push to at least one connected browser),
@@ -263,7 +263,7 @@ class ShowSuggestionsResult(BaseModel):
 
 
 def _push_messages(noun: str) -> dict[str, str]:
-    """Build the four push-failure sentences for one content noun (16.2's consolidation).
+    """Build the four push-failure sentences for one content noun.
 
     The four sentences were measured to be pure "…the {noun}…" templates before this builder
     existed: the shipped suggestions and swaps tables differed **only** in the word naming the
@@ -375,7 +375,7 @@ class ShowSwapsResult(BaseModel):
     (AD-7) and deck existence is the control tool's business (AD-16) — so there is no fourth kind
     of failure to layer on top.
 
-    **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
+    **Counts, never contents** (CM-1): both numeric fields describe the push without
     repeating one card id or rationale back into the conversation the agent is already holding.
 
     Attributes:
@@ -406,21 +406,14 @@ class ShowSwapsResult(BaseModel):
 
 
 _SWAPS_PUSH_MESSAGES = _push_messages("swaps")
-"""The swaps wording — :func:`_push_messages` with this tool's noun.
-
-Before 16.2 this was a verbatim clone of the suggestions table with one word changed, and its
-docstring predicted a shared table "would either misname this tool's content or force both tools
-through a blander sentence neither asked for". The builder answers both horns: each kind still
-names its own content, and no sentence got blander — the templates are the shipped sentences,
-byte for byte, with the noun as the one slot they ever differed in.
-"""
+"""The swaps wording — :func:`_push_messages` with this tool's noun."""
 
 
 async def show_swaps(*, payload: SwapsPayload) -> ShowSwapsResult:
     """Put a list of proposed card swaps on the companion's glass (FR-08, AD-8).
 
-    The push-tool shape, second application — :func:`show_suggestions` is the pattern source and
-    every ruling there carries over unchanged: no database read, no id resolution, no cap
+    The push-tool shape — :func:`show_suggestions` is the pattern source and every constraint
+    there carries over unchanged: no database read, no id resolution, no cap
     enforcement here (the caps are the payload model's, applied by FastMCP at the tool boundary),
     and what arrives is what is sent — **order included**, because payload order is render order
     and nothing here sorts, dedupes or trims.
@@ -469,7 +462,7 @@ class ShowTierListResult(BaseModel):
     fourth kind of failure to layer on top. Four distinct classes rather than one shared model
     because these docstrings are wire-visible: each tool's result documents its own count noun.
 
-    **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
+    **Counts, never contents** (CM-1): both numeric fields describe the push without
     repeating one card id, tier name or note back into the conversation the agent is already
     holding.
 
@@ -520,16 +513,16 @@ async def _execute_push[
     messages: dict[str, str],
     shown: str,
 ) -> ResultT:
-    """Hand one already-minted envelope to the leaf and fold the outcome into a result (16.2).
+    """Hand one already-minted envelope to the leaf and fold the outcome into a result.
 
-    The shared back half of every push tool — extracted because the helpers' bodies (three at
-    the extraction, four since 16.3) differed in exactly five tokens (event class and kind,
+    The shared back half of every push tool — extracted because the per-kind bodies differed in
+    exactly five tokens (event class and kind,
     payload type, result class, count-noun pluralizer, success sentence), and the first four
     arrive here as arguments while the fifth is ``shown``, preformatted by the caller because
     ``items_pushed`` is caller-computed: what an "item" is (a suggestion, a pair, a tier, a
     group) is the one real semantic difference between kinds.
 
-    Everything the pre-consolidation bodies guaranteed still holds, structurally: one call is one
+    Every push tool's guarantees hold structurally: one call is one
     push (nothing here retries), the envelope crosses to the leaf untouched, and never raising is
     inherited from the client's own closed outcome vocabulary (FR-12). An unexpected exception is
     deliberately **not** caught: that is a bug, and crashing loudly is this package's convention
@@ -565,8 +558,8 @@ async def _execute_push[
 async def show_tier_list(*, payload: TierListPayload) -> ShowTierListResult:
     """Put a tier list on the companion's glass (FR-08, AD-8).
 
-    The push-tool shape, third application, on the shared path 16.2 consolidated — every ruling
-    from :func:`show_suggestions` carries over unchanged: no database read, no id resolution, no
+    The push-tool shape on the shared path — every constraint from :func:`show_suggestions`
+    carries over unchanged: no database read, no id resolution, no
     cap enforcement here (the caps are the payload model's, applied by FastMCP at the tool
     boundary), and what arrives is what is sent — **order included**, because payload order is
     render order and nothing here sorts, dedupes or trims. Two tiers sharing a letter are a legal
@@ -623,7 +616,7 @@ class ShowGroupsResult(BaseModel):
     classes rather than one shared model because these docstrings are wire-visible: each tool's
     result documents its own count noun.
 
-    **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
+    **Counts, never contents** (CM-1): both numeric fields describe the push without
     repeating one card id, group title or rationale back into the conversation the agent is
     already holding.
 
@@ -667,8 +660,8 @@ grain ``items_pushed`` counts.
 async def show_groups(*, payload: GroupsPayload) -> ShowGroupsResult:
     """Put titled card groups on the companion's glass (FR-08, AD-8).
 
-    The push-tool shape, fourth application, on the shared path 16.2 consolidated — every
-    ruling from :func:`show_suggestions` carries over unchanged: no database read, no id
+    The push-tool shape on the shared path — every constraint from :func:`show_suggestions`
+    carries over unchanged: no database read, no id
     resolution, no cap enforcement here (the caps are the payload model's, applied by FastMCP
     at the tool boundary), and what arrives is what is sent — **order included**, because
     payload order is render order and nothing here sorts, dedupes or merges. A group may name
@@ -723,16 +716,16 @@ _INSTALL_ROOT = Path(__file__).resolve().parents[3]
 is the directory holding ``pyproject.toml`` — the repo checkout for a clone, and
 ``<plugin>/server`` for a plugin install, where the README's ``--directory`` anchor already
 points. Derived from ``__file__`` rather than ``${CLAUDE_PLUGIN_ROOT}`` because nothing inside
-``src/`` may depend on the host's environment (17.4, Never), and the file's own path is the one
+``src/`` may depend on the host's environment, and the file's own path is the one
 fact true on both install shapes.
 """
 
 
 def launch_command() -> str:
-    """The exact shell command that starts the companion and opens a browser tab on it (17.4).
+    """The exact shell command that starts the companion and opens a browser tab on it.
 
     The ``--directory`` form so the same string works from any working directory and for a plugin
-    install (deferred-work.md:6516); ``--open`` so the page appears without a second step. The
+    install; ``--open`` so the page appears without a second step. The
     companion's own process opens the browser — the MCP server never spawns it (AD-15); the agent
     runs this in a background shell it owns.
 
@@ -758,7 +751,7 @@ class CompanionStatusResult(BaseModel):
             ``not_running`` (nothing provable is). ``error`` is reserved and never minted today —
             every way the probe can fail is ``not_running`` by the client's own contract.
         url: The running companion's base URL, or ``None`` when there is none to name.
-        clients: How many browser tabs are connected, when the companion said (17.4's ``/health``
+        clients: How many browser tabs are connected, when the companion said (the ``/health``
             field). ``None`` when not running, or when an older companion answered without it.
         launch_command: The exact command that starts the companion and opens a tab on it. Set on
             **every** status — on ``running`` with no tab open, the same command's already-running
@@ -777,7 +770,7 @@ class CompanionStatusResult(BaseModel):
 
 
 async def companion_status() -> CompanionStatusResult:
-    """Report whether the companion is running, who is watching, and how to start it (17.4).
+    """Report whether the companion is running, who is watching, and how to start it.
 
     Read-only. :func:`~src.companion.client.live_instance` does the whole proof — discovery file,
     probe, identity match — and its record is used only for the *port*; the token beside it is

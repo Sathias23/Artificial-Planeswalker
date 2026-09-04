@@ -1,4 +1,4 @@
-"""Commander Spellbook bulk-export downloader (Story 6.2, AD-9).
+"""Commander Spellbook bulk-export downloader (AD-9).
 
 Sibling to :mod:`src.data.importers.scryfall_api`, mirroring its hardening: streaming
 download, hard byte ceiling with no-retry abort + partial-file cleanup, and manual
@@ -7,7 +7,7 @@ deliberate: the URL is a pinned constant (no metadata indirection, so no downloa
 validation counterpart is needed) and the client sends an explicit descriptive
 ``User-Agent`` AND ``Accept`` header (the AD-9 rule postdates the Scryfall client).
 
-The httpx decoding trap (verified live 2026-07-16): the ``.gz`` object is served with
+The httpx decoding trap (verified against the live endpoint): the ``.gz`` object is served with
 ``Content-Encoding: gzip`` and httpx auto-decompresses encoded responses. Streaming via
 ``response.aiter_bytes()`` would yield the ~579 MB DECODED stream — silently blowing
 the ceiling and writing plain JSON that ``gzip.open`` rejects. This module streams

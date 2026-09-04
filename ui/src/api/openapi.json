@@ -8,7 +8,7 @@
     "/health": {
       "get": {
         "summary": "Read Health",
-        "description": "Report that this process is alive and say which process it is.\n\nDeliberately requires **no authentication**: it is what a caller reads *before* deciding to\nsend its token, to confirm that whatever holds the discovered port is this companion and not an\nunrelated local server (AD-4). There is no failure path to model — a companion that cannot\nanswer does not answer at all — so under a running lifespan the response is always ``200`` with\n``status=\"ok\"``. The lifespan is a real precondition: served without one (no supported path\ndoes), the missing ``instance_id`` is an unhandled error, not a modelled state.\n\n``clients`` is the connection registry's live count (17.4) — how many tabs hold a WebSocket at\nthis instant, read through ``connection_registry`` in ``src.companion.app.state`` like every\nother reader of that state. ``None`` when the registry does not exist — a constructed but\nnever-started app, which no supported serving path produces but a test can — and the optional\nwire shape also lets an older leaf read a newer companion's body and vice versa.",
+        "description": "Report that this process is alive and say which process it is.\n\nDeliberately requires **no authentication**: it is what a caller reads *before* deciding to\nsend its token, to confirm that whatever holds the discovered port is this companion and not an\nunrelated local server (AD-4). There is no failure path to model — a companion that cannot\nanswer does not answer at all — so under a running lifespan the response is always ``200`` with\n``status=\"ok\"``. The lifespan is a real precondition: served without one (no supported path\ndoes), the missing ``instance_id`` is an unhandled error, not a modelled state.\n\n``clients`` is the connection registry's live count — how many tabs hold a WebSocket at\nthis instant, read through ``connection_registry`` in ``src.companion.app.state`` like every\nother reader of that state. ``None`` when the registry does not exist — a constructed but\nnever-started app, which no supported serving path produces but a test can — and the optional\nwire shape also lets an older leaf read a newer companion's body and vice versa.",
         "operationId": "read_health_health_get",
         "responses": {
           "200": {
@@ -538,7 +538,7 @@
     "/api/session": {
       "get": {
         "summary": "Mint Session Ticket",
-        "description": "Issue a single-use ticket for one WebSocket upgrade.\n\nCall this immediately before opening the socket, and present the ticket on the upgrade. Every\ncall issues a **new** ticket — there is no session to resume and nothing is reused — so a client\nthat reconnects asks again rather than holding one.\n\nRequires **no credential**: the browser holds none and never will (AD-5), the same ruling\n``GET /api/active-deck`` already answers under. There is no failure path to model, so under a\nrunning lifespan the response is always ``200``.",
+        "description": "Issue a single-use ticket for one WebSocket upgrade.\n\nCall this immediately before opening the socket, and present the ticket on the upgrade. Every\ncall issues a **new** ticket — there is no session to resume and nothing is reused — so a client\nthat reconnects asks again rather than holding one.\n\nRequires **no credential**: the browser holds none and never will (AD-5). There is no failure\npath to model, so under a running lifespan the response is always ``200``.",
         "operationId": "mint_session_ticket_api_session_get",
         "responses": {
           "200": {
@@ -737,7 +737,7 @@
             "payload": {
               "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
             },
-            "ts": "2026-08-07T09:20:00Z"
+            "ts": "2025-01-01T09:20:00Z"
           }
         ]
       },
@@ -759,7 +759,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ActiveDeckChangedPayload",
-        "description": "The companion is now displaying a different deck — switch to it (FR-07, FR-11).\n\n**Not the same signal as** ``deck_changed``, and the distinction is load-bearing: this one says\n*which deck you are looking at* has changed, the other says *the deck you are looking at was\nedited*. A client that conflates them refetches the deck it is leaving instead of the one it is\nswitching to, and shows stale contents that look authoritative.\n\nIt fires on **every** set, including one that writes the same deck id again. Suppressing a\nredundant broadcast sounds like a free optimisation and is not: the active-deck slot needs no\nlock precisely because writing it is a single assignment that never consults the old value, and\n\"only broadcast if it changed\" is exactly a read-modify-write. A duplicate signal costs one\nidempotent refetch; the alternative costs a lock (Q10, Brad 2026-08-07)."
+        "description": "The companion is now displaying a different deck — switch to it (FR-07, FR-11).\n\n**Not the same signal as** ``deck_changed``, and the distinction is load-bearing: this one says\n*which deck you are looking at* has changed, the other says *the deck you are looking at was\nedited*. A client that conflates them refetches the deck it is leaving instead of the one it is\nswitching to, and shows stale contents that look authoritative.\n\nIt fires on **every** set, including one that writes the same deck id again. Suppressing a\nredundant broadcast sounds like a free optimisation and is not: the active-deck slot needs no\nlock precisely because writing it is a single assignment that never consults the old value, and\n\"only broadcast if it changed\" is exactly a read-modify-write. A duplicate signal costs one\nidempotent refetch; the alternative costs a lock."
       },
       "ActiveDeckRequest": {
         "properties": {
@@ -776,7 +776,7 @@
           "deck_id"
         ],
         "title": "ActiveDeckRequest",
-        "description": "The body of ``PUT /api/active-deck`` — the deck to display (FR-07).\n\nCarries the deck id and nothing else — **enforced**, not aspirational: an unknown field is\nrefused (``extra=\"forbid\"``), because silently dropping it would answer ``200`` to an agent\nwhose mental model of this body is wrong and leave nothing to correct it (c3-4 review, Brad\n2026-08-01). The id must be a non-empty string, and *non-empty means non-blank*: a\nwhitespace-only id is refused with the same reasoning as ``\"\"`` — the alternative is storing a\nvalue that would be reported as the active deck forever while resolving to no deck at all, just\nspelled with characters ``min_length`` cannot see (same review). Beyond non-blankness and an\nupper length bound nothing about the id is constrained — a deck id has **no declared shape** in\nthis system (Q4), so an id that names no deck is accepted here and simply not found later.\n\nThere is deliberately **no way to clear the active deck** over the wire: the field is required\nand does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a\n*client-side* transition (the refetch 404s), and a restart clears the slot anyway — so the verb\nis not built until something needs it."
+        "description": "The body of ``PUT /api/active-deck`` — the deck to display (FR-07).\n\nCarries the deck id and nothing else — **enforced**, not aspirational: an unknown field is\nrefused (``extra=\"forbid\"``), because silently dropping it would answer ``200`` to an agent\nwhose mental model of this body is wrong and leave nothing to correct it. The id must be a\nnon-empty string, and *non-empty means non-blank*: a whitespace-only id is refused with the\nsame reasoning as ``\"\"`` — the alternative is storing a value that would be reported as the\nactive deck forever while resolving to no deck at all, just spelled with characters\n``min_length`` cannot see. Beyond non-blankness and an upper length bound nothing about the id\nis constrained — a deck id has **no declared shape** in this system, so an id that names no\ndeck is accepted here and simply not found later.\n\nThere is deliberately **no way to clear the active deck** over the wire: the field is required\nand does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a\n*client-side* transition (the refetch 404s), and a restart clears the slot anyway — so the verb\nis not built until something needs it."
       },
       "ActiveDeckSetReceipt": {
         "properties": {
@@ -1143,7 +1143,7 @@
             "payload": {
               "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
             },
-            "ts": "2026-08-07T09:19:00Z"
+            "ts": "2025-01-01T09:19:00Z"
           }
         ]
       },
@@ -1165,7 +1165,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "DeckChangedPayload",
-        "description": "The contents of a deck were edited — refetch it (FR-11).\n\nA system signal, not a view: it carries no items and renders nothing. NFR-04's model is\n\"something changed, refetch\", so this says which deck and stops.\n\n``deck_id`` is **nullable, and that is deliberate today rather than lax**. A later phase emits a\ndeck-agnostic version of this same signal — \"some deck you may be showing changed\" — and if the\nfield shipped required, that phase would have to break a contract already committed into a\n``.d.ts`` and two mirrored plugin bundles. Which is the exact ripple this whole story exists to\nprevent, so the nullability is bought now, for free (Q5, Brad 2026-08-07)."
+        "description": "The contents of a deck were edited — refetch it (FR-11).\n\nA system signal, not a view: it carries no items and renders nothing. NFR-04's model is\n\"something changed, refetch\", so this says which deck and stops.\n\n``deck_id`` is **nullable, and that is deliberate rather than lax**. A deck-agnostic version of\nthis same signal — \"some deck you may be showing changed\" — is anticipated, and if the field\nshipped required, adding it would break a contract already committed into a ``.d.ts`` and two\nmirrored plugin bundles. The nullability is bought now, for free."
       },
       "DeckDetailFull": {
         "properties": {
@@ -1365,7 +1365,7 @@
           "reason"
         ],
         "title": "ErrorResponse",
-        "description": "The body of every non-2xx response — the token, and nothing else (AD-16).\n\nThe serialised shape is exactly ``{\"reason\": \"<token>\"}``. There is deliberately **no**\n``message``, ``detail``, ``status`` or ``errors[]`` field:\n\n* **the copy lives in the UI.** ``EXPERIENCE.md`` fixes the verbatim wording of every state\n  panel, and UX-DR33 bans \"something went wrong\"; a server-side prose field would be a second\n  source of user-facing copy that no UX review covers.\n* **prose would leak input back.** FastAPI's validation detail echoes the offending value, and\n  the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.\n* **the token is the contract.** Anything a human needs beyond it belongs in the log. If a\n  later story genuinely needs machine-readable specifics, it adds a *typed* optional field with\n  a named UX consumer — not a free-text bucket.\n\nWhat each token means on the glass, which is why the set is closed:\n\n* ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a\n  refetch); the SPA clears to the **No-active-deck** panel.\n* ``card_not_found`` — no card in the local database carries that printing id. The **only**\n  token whose destination is not a panel: the view that referenced the card renders normally\n  and shows an **\"Unknown card\"** placeholder in that one slot, with no banner and no apology\n  (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is\n  built in c4-3.\n* ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:\n  either the printing carries no image data at all (79 cards in the shipped corpus), or the\n  requested face is beyond the images it has. **Permanent** — retrying cannot help — so the\n  view renders normally and that one slot draws the **named Card placeholder** (the card's\n  name, mana cost and type line, which the client already holds — from the deck detail's\n  embedded card, or from ``GET /api/cards/{card_id}`` for an id outside the deck). Never a\n  grey rectangle, a 1×1 pixel or a generic card back.\n* ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN\n  timed out, answered a non-2xx, returned something that was not an image, or the stored URL\n  pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole\n  reason it is a separate token from ``no_image_data`` — the pixels are identical (the same\n  named Card placeholder) but only this one may ever be retried. Since c3-8 a failure is\n  **negative-cached with an exponential backoff**, so a repeat request inside the window is\n  answered from memory with this same token and no CDN request at all; the window starts at 30\n  seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh\n  failure on the wire, deliberately: a client has no different action to take, and the\n  consequence a reader of this file should know is that a tile can stay a placeholder for up to\n  the ceiling **after** the CDN has recovered.\n* ``database_not_initialized`` — fresh install, no card database yet; the **\"Card database not\n  set up yet.\"** panel, which tells the user to ask their agent to run ``initialize_database``.\n* ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an\n  unhandled backend fault); the **\"Card database is updating.\"** panel, which retries quietly.\n* ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``\n  the companion does not serve. No panel of its own: the SPA never generates one, so it means\n  a client bug or a stray caller, and the log is where it is diagnosed.\n* ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like\n  ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds\n  the credential and never calls a route that wants one, so a panel here would report a\n  failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome\n  vocabulary, where AD-8's re-read-discovery-and-retry-once lives.\n* ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*\n  through the MCP tool's outcome vocabulary, not to the glass.\n* ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the\n  SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel\n  is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token."
+        "description": "The body of every non-2xx response — the token, and nothing else (AD-16).\n\nThe serialised shape is exactly ``{\"reason\": \"<token>\"}``. There is deliberately **no**\n``message``, ``detail``, ``status`` or ``errors[]`` field:\n\n* **the copy lives in the UI.** ``EXPERIENCE.md`` fixes the verbatim wording of every state\n  panel, and UX-DR33 bans \"something went wrong\"; a server-side prose field would be a second\n  source of user-facing copy that no UX review covers.\n* **prose would leak input back.** FastAPI's validation detail echoes the offending value, and\n  the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.\n* **the token is the contract.** Anything a human needs beyond it belongs in the log. If a\n  later change genuinely needs machine-readable specifics, it adds a *typed* optional field\n  with a named UX consumer — not a free-text bucket.\n\nWhat each token means on the glass, which is why the set is closed:\n\n* ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a\n  refetch); the SPA clears to the **No-active-deck** panel.\n* ``card_not_found`` — no card in the local database carries that printing id. The **only**\n  token whose destination is not a panel: the view that referenced the card renders normally\n  and shows an **\"Unknown card\"** placeholder in that one slot, with no banner and no apology\n  (FR-13). One unknown card must never fail a whole view or a whole push.\n* ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:\n  either the printing carries no image data at all (79 cards in the shipped corpus), or the\n  requested face is beyond the images it has. **Permanent** — retrying cannot help — so the\n  view renders normally and that one slot draws the **named Card placeholder** (the card's\n  name, mana cost and type line, which the client already holds — from the deck detail's\n  embedded card, or from ``GET /api/cards/{card_id}`` for an id outside the deck). Never a\n  grey rectangle, a 1×1 pixel or a generic card back.\n* ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN\n  timed out, answered a non-2xx, returned something that was not an image, or the stored URL\n  pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole\n  reason it is a separate token from ``no_image_data`` — the pixels are identical (the same\n  named Card placeholder) but only this one may ever be retried. A failure is\n  **negative-cached with an exponential backoff**, so a repeat request inside the window is\n  answered from memory with this same token and no CDN request at all; the window starts at 30\n  seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh\n  failure on the wire, deliberately: a client has no different action to take, and the\n  consequence a reader of this file should know is that a tile can stay a placeholder for up to\n  the ceiling **after** the CDN has recovered.\n* ``database_not_initialized`` — fresh install, no card database yet; the **\"Card database not\n  set up yet.\"** panel, which tells the user to ask their agent to run ``initialize_database``.\n* ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an\n  unhandled backend fault); the **\"Card database is updating.\"** panel, which retries quietly.\n* ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``\n  the companion does not serve. No panel of its own: the SPA never generates one, so it means\n  a client bug or a stray caller, and the log is where it is diagnosed.\n* ``forbidden`` — an agent-only endpoint was called without a valid credential. Like\n  ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds\n  the credential and never calls a route that wants one, so a panel here would report a\n  failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome\n  vocabulary, where AD-8's re-read-discovery-and-retry-once lives.\n* ``payload_too_large`` — an agent push exceeded the ingest cap. Surfaced to the *agent*\n  through the MCP tool's outcome vocabulary, not to the glass.\n* ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the\n  SPA must **not** quietly retry it the way ``database_unavailable`` retries; it has a state\n  panel of its own. The log carries the traceback; the wire carries the token."
       },
       "EventIngestReceipt": {
         "properties": {
@@ -1550,7 +1550,7 @@
               ],
               "title": "What this deck is doing"
             },
-            "ts": "2026-08-07T09:18:00Z"
+            "ts": "2025-01-01T09:18:00Z"
           }
         ]
       },
@@ -1732,7 +1732,7 @@
               ],
               "title": "Resilience options"
             },
-            "ts": "2026-08-07T09:15:00Z"
+            "ts": "2025-01-01T09:15:00Z"
           }
         ]
       },
@@ -1818,7 +1818,7 @@
           "in_qty"
         ],
         "title": "SwapItem",
-        "description": "One card out, one card in, and the reasoning for the trade (AD-7).\n\nThe two quantities render as the literal ``\"Out · N copies\"`` and ``\"In · N copies\"``, and the\n``rationale`` sits beside the pair — it is per-swap, not per-payload, because a list of swaps\nwith one shared justification is a list the reader cannot act on selectively.\n\n**Zero is a legal quantity.** A swap whose in-card has no copies available renders \"0 copies\"\nand is a designed case, not a malformed one, so neither quantity may be constrained to be\npositive. A ``ge=1`` here would reject a payload the experience specification asks for.\n\nThere is deliberately **no price field.** The design asks for a price chip and Epic 9 inherited\nthe ask, but no price data exists anywhere in this system — the card table carries no price\ncolumn and the Scryfall importer never reads the ``prices`` object — so the field could never be\npopulated. Four earlier amendments already stripped price from the deck row and the detail\npanel; this is the one they missed, struck here so Epic 9 does not rediscover it as a bug\n(Q3, Brad 2026-08-07). Nothing is lost that could have been shown.",
+        "description": "One card out, one card in, and the reasoning for the trade (AD-7).\n\nThe two quantities render as the literal ``\"Out · N copies\"`` and ``\"In · N copies\"``, and the\n``rationale`` sits beside the pair — it is per-swap, not per-payload, because a list of swaps\nwith one shared justification is a list the reader cannot act on selectively.\n\n**Zero is a legal quantity.** A swap whose in-card has no copies available renders \"0 copies\"\nand is a designed case, not a malformed one, so neither quantity may be constrained to be\npositive. A ``ge=1`` here would reject a payload the experience specification asks for.\n\nThere is deliberately **no price field.** No price data exists anywhere in this system — the\ncard table carries no price column and the Scryfall importer never reads the ``prices`` object\n— so the field could never be populated. Nothing is lost that could have been shown.",
         "examples": [
           {
             "confidence": "medium",
@@ -1878,7 +1878,7 @@
               ],
               "title": "Cheaper removal"
             },
-            "ts": "2026-08-07T09:16:00Z"
+            "ts": "2025-01-01T09:16:00Z"
           }
         ]
       },
@@ -2018,7 +2018,7 @@
               ],
               "title": "How this deck's creatures rank"
             },
-            "ts": "2026-08-07T09:17:00Z"
+            "ts": "2025-01-01T09:17:00Z"
           }
         ]
       },

@@ -1,8 +1,7 @@
-"""The pre-parse request-body ceiling — one mechanism, every body route (AD-7, c5-5).
+"""The pre-parse request-body ceiling — one mechanism, every body route (AD-7).
 
-``payload_too_large`` was declared at c1-4 and had **no producer** until this module existed;
-:data:`~src.companion.contracts._MAX_ENVELOPE_BYTES` was a constant nothing read. This is what
-makes both real, and the shape it takes was ruled at c5-5's Q2 (Brad, 2026-08-08).
+This module is the sole producer of ``payload_too_large`` and the sole reader of
+:data:`~src.companion.contracts._MAX_ENVELOPE_BYTES`.
 
 **Why it cannot be a pydantic validator.** A model validator runs *after* the body has been read
 and parsed, so it could reject an oversized envelope but could not stop an unauthenticated caller
@@ -12,12 +11,12 @@ before parsing, which means before FastAPI is involved at all, which means here.
 
 **Why it cannot be a dependency either.** A dependency is solved inside the router, one route at a
 time, so a cap shaped that way would be duplicated per endpoint and — worse — would leave the hole
-*open by default* on every body route a later story adds. ``deferred-work.md``'s entry (from c3-4's
-Q4) asks for one mechanism covering ``POST /agent/events`` **and** ``PUT /api/active-deck``, and
-one mechanism is what this is: neither route contains a line about size.
+*open by default* on every body route added later. One mechanism covers ``POST /agent/events``
+**and** ``PUT /api/active-deck``: neither route contains a line about size.
 
-**Why it sends rather than raises** (c1-5's ruling, restated in ``errors.py``). Starlette's stack is
-``ServerErrorMiddleware`` → user middleware → ``ExceptionMiddleware`` → router, so a handler
+**Why it sends rather than raises** (the rule ``errors.py`` states for every middleware).
+Starlette's stack is ``ServerErrorMiddleware`` → user middleware → ``ExceptionMiddleware`` →
+router, so a handler
 registered with ``add_exception_handler`` sits *inside* every user middleware and can never see what
 one of them raises. A :class:`~src.companion.app.errors.CompanionError` raised here would reach the
 caller as ``500 internal_error`` with a false traceback — a routine, caller-triggered refusal

@@ -1,11 +1,11 @@
-"""Read-only repository over the local Commander Spellbook combo snapshot (Story 6.3).
+"""Read-only repository over the local Commander Spellbook combo snapshot.
 
 The read side of AD-5: the three snapshot tables are written ONLY by
 ``scripts/import_spellbook_combos.py`` — this module exposes no write/commit path.
 Like ``card_vec``, the snapshot is a build prerequisite, never committed: a fresh
 checkout has empty tables, and every method here reads missing-or-empty tables as
 absent (``False`` / ``None`` / ``()``) rather than raising — the probe the edge maps
-to ``combo_data_unavailable`` (AD-6, Story 7.2).
+to ``combo_data_unavailable`` (AD-6).
 
 No matching and no degradation decisions happen here: bucket assignment, shortfall
 math, and commander gating belong to :func:`src.logic.assessment.combos.match_combos`
@@ -114,7 +114,7 @@ class ComboSnapshotRepository(BaseRepository):
         ``spellbook_id`` (deterministic for identical input). Records carry
         ``bucket=None`` — only the core matcher assigns buckets (AD-11).
 
-        Decide-once consequences of the ≥1-overlap filter (epic-blessed):
+        Consequences of the ≥1-overlap filter:
 
         - Over-fetch is fine — the pure matcher is the exactness authority (shortfall
           ≥ 2 variants are excluded there, AD-9).

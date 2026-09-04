@@ -2,7 +2,7 @@
 
 Everything in this package is a pure function or frozen constant over already-loaded inputs:
 no network, no database, no clock. Format-relative scoring constants live in
-:mod:`src.logic.assessment.profiles` (AD-3); the scoring math lands in later Epic-5 stories.
+:mod:`src.logic.assessment.profiles` (AD-3).
 """
 
 from src.data.schemas.combo import ComboBracketTag, ComboBucket, ComboRecord

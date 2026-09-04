@@ -29,9 +29,9 @@ async def fetch_bulk_data_list(
         retry_delay: Initial delay between retries in seconds (exponential backoff).
 
     Returns:
-        List of bulk data objects. As of 2026-08 each carries ``type``, ``jsonl_download_uri``,
+        List of bulk data objects. Each currently carries ``type``, ``jsonl_download_uri``,
         ``compressed_size`` and ``updated_at``; the older ``download_uri``/``size`` spellings were
-        removed upstream on 2026-08-02. This function does **not** validate the shape — key
+        removed upstream. This function does **not** validate the shape — key
         resolution and its diagnosis live in
         :func:`~src.data.importers.scryfall._resolve_download_uri`, which accepts either spelling
         and names what arrived when neither is present.

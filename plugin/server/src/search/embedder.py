@@ -73,7 +73,7 @@ def _resolve_cache_dir(cache_dir: str | None) -> str:
 class Embedder:
     """Thin synchronous embedding port over a fastembed ``TextEmbedding`` (bge-small-en-v1.5).
 
-    Turns a string into a 384-dim ``float32`` numpy vector. This is the sibling of Story 1.2's
+    Turns a string into a 384-dim ``float32`` numpy vector. This is the sibling of
     :class:`~src.search.connection.ConnectionFactory`, but with the **opposite** sharing model:
     a ``sqlite3`` connection is per-thread, whereas the ONNX model is thread-safe and read-only
     at inference (ONNX Runtime releases the GIL during native inference), so it is loaded **once
@@ -86,7 +86,8 @@ class Embedder:
 
     The returned vector is the **raw** model output: fastembed already L2-normalizes bge
     embeddings, so it is *not* re-normalized here. Vectors are numpy arrays (not ``list[float]``)
-    because Story 2.3 serializes them via the buffer protocol (``sqlite_vec.serialize_float32``).
+    because the index builder serializes them via the buffer protocol
+    (``sqlite_vec.serialize_float32``).
 
     Args:
         cache_dir: Explicit persistent cache directory. If ``None``, derived from the
@@ -137,8 +138,8 @@ class Embedder:
         """Embed a single string into a 384-dim ``float32`` vector.
 
         Args:
-            text: The text to embed (for a card this is composed upstream in Story 2.3 as
-                ``name + type_line + mana_cost + oracle_text + keywords``).
+            text: The text to embed (for a card this is composed upstream by the index builder
+                as ``name + type_line + mana_cost + oracle_text + keywords``).
 
         Returns:
             A ``numpy.ndarray`` of shape ``(384,)`` and dtype ``float32`` — the raw, already
@@ -165,7 +166,7 @@ class Embedder:
     def encode_batch(self, texts: Sequence[str]) -> list[NDArray[np.float32]]:
         """Embed a batch of strings in a single fastembed pass, preserving input order.
 
-        Used by the Story 2.3 index builder to embed ~60k cards efficiently.
+        Used by the index builder to embed ~60k cards efficiently.
 
         Args:
             texts: The texts to embed, in the order results should be returned.
@@ -187,10 +188,10 @@ class Embedder:
         return vectors
 
 
-# --- Process-lifetime singleton (AC2) ------------------------------------------------------
+# --- Process-lifetime singleton ------------------------------------------------------------
 # The model is shared across the whole process and every worker thread the search tools run on
 # (``asyncio.to_thread``). This is the ONLY supported way to obtain an Embedder for build-time
-# (Story 2.3) and serve-time (Stories 2.4-2.5).
+# (the index builder) and serve-time (the search tools).
 _embedder: Embedder | None = None
 _lock = threading.Lock()
 

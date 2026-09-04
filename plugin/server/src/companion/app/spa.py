@@ -59,13 +59,11 @@ cache header below safe: a changed file is a changed name."""
 _RESERVED_SEED = frozenset({"api"})
 """Path prefixes reserved before any route claims them.
 
-``/api`` now has routes — c3-1's ``/api/decks`` and ``/api/deck/{deck_id}`` — so
-:func:`_reserved_prefixes` derives ``api`` from the live route table on its own and this seed is
-belt-and-braces. It stays anyway: the seed is what makes the reservation independent of *which*
-routes happen to be registered, so a tree with no ``/api`` route (a future refactor, a test app
-built from a subset of routers) still answers ``404`` to ``GET /api/deckz`` rather than serving the
-index. That was the original reason for seeding it before any route existed, and removing it now
-would quietly re-open exactly the case it was added for.
+``/api`` has routes, so :func:`_reserved_prefixes` derives ``api`` from the live route table on
+its own and this seed is belt-and-braces. It stays anyway: the seed is what makes the reservation
+independent of *which* routes happen to be registered, so a tree with no ``/api`` route (a future
+refactor, a test app built from a subset of routers) still answers ``404`` to ``GET /api/deckz``
+rather than serving the index. Removing it would quietly re-open exactly the case it was added for.
 """
 
 _IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
@@ -117,10 +115,8 @@ def _route_paths(routes: Iterable[BaseRoute], prefix: str = "") -> Iterator[str]
     * FastAPI's ``include_router`` wraps the included router in an ``_IncludedRouter``, which
       carries **neither** — its routes hang off ``.original_router`` and its prefix off
       ``.include_context``. Missing this shape is not a crash, it is a silently empty reservation:
-      every prefix a story registers via ``include_router`` (c3-1's ``/api``, c5-5's ``/agent``)
-      would fall through to the SPA index instead of a typed 404. **c5-5 landed and the walk held**:
-      ``agent`` is derived, ``GET /agent/eventz`` answers the typed 404, and the prefix set moved
-      from six entries to seven with no change to this function.
+      every prefix registered via ``include_router`` (``/api``, ``/agent``) would fall through to
+      the SPA index instead of a typed 404.
 
     Those last two attributes are FastAPI internals, so every read is a ``getattr`` with a
     fallback — and ``test_spa.py::test_the_reserved_prefixes_are_derived_from_the_route_table``
@@ -153,8 +149,8 @@ def _route_paths(routes: Iterable[BaseRoute], prefix: str = "") -> Iterator[str]
 def _reserved_prefixes(app: FastAPI) -> frozenset[str]:
     """Collect the first path segment of every route already registered on *app*.
 
-    Derived from the live route table rather than hand-typed, so a story that adds ``/api/decks``
-    or ``/agent/events`` reserves its own prefix with no edit here. This is the other half of why
+    Derived from the live route table rather than hand-typed, so a new router under ``/api`` or
+    ``/agent`` reserves its own prefix with no edit here. This is the other half of why
     the mount must be installed last: at install time the route table has to be complete.
 
     Args:
@@ -199,17 +195,14 @@ class _SpaMount(Mount):
     partial is exactly how Starlette produces ``405`` with the RFC-mandated ``Allow`` header, and
     ``errors.py`` deliberately preserves those headers because dropping them "would make the typed
     body a downgrade". Without this class, ``POST /health`` answers ``405`` with no ``Allow``, and
-    — **the POST-only ``/agent/events`` this paragraph predicted arrived at c5-5** — a plain ``GET``
-    of it would answer ``404`` instead of ``405 Allow: POST``. It is the first path in the app
-    served by exactly one method, which makes it the cleanest case this class exists for.
+    a plain ``GET`` of the POST-only ``/agent/events`` would answer ``404`` instead of
+    ``405 Allow: POST``.
 
-    **c3-4 got there before c5-5 and measured it.** ``PUT /api/active-deck`` made that path the
-    first served by more than one method, and a ``POST`` of it answers ``405`` carrying an
-    ``Allow`` — so the decline above does what this docstring has claimed since c2-2. The
-    measurement also found the claim's *limit*, which is worth knowing before trusting the header:
-    Starlette builds ``Allow`` from the **first** partially-matching route alone, so the raw answer
-    was ``Allow: GET``, silently omitting the ``PUT``. Returning ``Match.NONE`` is necessary for a
-    correct 405 and not sufficient for a correct ``Allow``; the union is recomputed in
+    **The decline is necessary and not sufficient.** ``/api/active-deck`` is served by two methods,
+    and a ``POST`` of it answers ``405`` carrying an ``Allow`` — but Starlette builds ``Allow``
+    from the **first** partially-matching route alone, so the raw answer was ``Allow: GET``,
+    silently omitting the ``PUT``. Returning ``Match.NONE`` is necessary for a correct 405 and not
+    sufficient for a correct ``Allow``; the union is recomputed in
     :func:`~src.companion.app.errors.supported_methods`.
 
     Returning ``Match.NONE`` for reserved prefixes hands those paths back to the router, which
@@ -236,9 +229,8 @@ class _SpaMount(Mount):
         """
         # Starlette's Mount matches websocket scopes too, but StaticFiles serves only HTTP — its
         # first line is `assert scope["type"] == "http"`. Without this decline, a WebSocket
-        # handshake to any unreserved path (**c5-6's `/ws`, now shipped**, or any client route)
-        # would be dispatched into that assert and die as a server error instead of getting the
-        # router's clean
+        # handshake to any unreserved path (`/ws`, or any client route) would be dispatched into
+        # that assert and die as a server error instead of getting the router's clean
         # no-such-route rejection.
         if scope["type"] != "http":
             return Match.NONE, {}
@@ -258,8 +250,8 @@ class _SpaFiles(StaticFiles):
 
     def __init__(self, *, directory: Path, reserved_prefixes: frozenset[str]) -> None:
         # html=False deliberately. html=True would serve `index.html` for a directory request, but
-        # it also makes Starlette look for a `404.html` before raising — and if a later story ever
-        # adds one to the bundle, every client route would silently start answering with a 404
+        # it also makes Starlette look for a `404.html` before raising — and if one is ever added
+        # to the bundle, every client route would silently start answering with a 404
         # status and that document instead of the index. With html=False the only path to the index
         # is the explicit rule below, which is the behaviour the tests pin. check_dir stays at its
         # default: a missing bundle must fail loudly (install_spa gets there first with a better
@@ -318,9 +310,8 @@ class _SpaFiles(StaticFiles):
         * **No parent traversal.** A path that climbed out of the bundle is not a client route.
 
         The query string is deliberately absent from all of this: an ASGI ``scope["path"]`` never
-        contains one. (Vite's dev proxy *does* match the full URL including the query, which is the
-        bug c2-1's round-2 review found — the two matchers do not share the hazard, and
-        ``test_spa.py`` pins that rather than assuming it.)
+        contains one. (Vite's dev proxy *does* match the full URL including the query — the two
+        matchers do not share the hazard, and ``test_spa.py`` pins that rather than assuming it.)
 
         Args:
             path: The OS-separated relative path Starlette resolved from the request.
@@ -376,10 +367,10 @@ def install_spa(app: FastAPI, *, static_dir: Path | None = None) -> None:
 
     **Call this last in** ``build_app()``. A mount at ``/`` matches every path, and Starlette
     matches routes in list order, so any router registered *after* this call is shadowed — its
-    endpoints answer ``200`` with ``index.html`` instead of running. c3-1, c5-2, c5-3 and c5-5 all
-    add routers, and all four add them above the ``install_spa(app)`` line. c5-5's ``/agent`` is
-    the one with the least margin for error: ``_RESERVED_SEED``'s belt-and-braces covers ``/api``
-    only, so ordering is the *sole* thing keeping that prefix out of the mount's reach.
+    endpoints answer ``200`` with ``index.html`` instead of running. Every router is registered
+    above the ``install_spa(app)`` line. ``/agent`` has the least margin for error:
+    ``_RESERVED_SEED``'s belt-and-braces covers ``/api`` only, so ordering is the *sole* thing
+    keeping that prefix out of the mount's reach.
 
     Construction stays inert (AD-10): this stats two paths and builds an in-process object. It
     creates no directory, binds no port and opens no database.

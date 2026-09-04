@@ -34,7 +34,7 @@ class HealthResponse(BaseModel):
         instance_id: The per-process identity minted at startup, echoed so a caller can match it
             against the value the discovery file advertised.
         clients: How many browser tabs hold an open WebSocket right now — the registry's own
-            count, **not** a delivery receipt (17.4). Optional so a reader built against the older
+            count, **not** a delivery receipt. Optional so a reader built against the older
             two-field body still parses a newer companion's answer, and ``None`` from an older
             companion that never sent it. This is the only read-only tab count the companion
             exposes: ``companion_status`` reads it so the agent can tell "running, no tab open"
@@ -51,33 +51,28 @@ class HealthResponse(BaseModel):
 
 
 _MAX_DECK_ID_LENGTH = 256
-"""An upper bound on a stored deck id, and deliberately **not** a claim about its shape (Q4).
+"""An upper bound on a stored deck id, and deliberately **not** a claim about its shape.
 
-c3-1 ruled that a deck id has no declared shape, and this does not declare one: there is no pattern,
-no format and no exact length here, so every real id is accepted and an unknown one is simply *not
-found* rather than *malformed*. All 40 ids in the shipped database are 36-character uuids (measured
-2026-08-01), so 256 is roughly seven times the observed maximum — wide enough that a future id
-scheme is not pre-refused, narrow enough that the value the backend agrees to hold in memory and
-echo back is bounded.
+A deck id has no declared shape, and this does not declare one: there is no pattern, no format and
+no exact length here, so every real id is accepted and an unknown one is simply *not found* rather
+than *malformed*. Every id in the shipped database is a 36-character uuid (measured), so 256 is
+roughly seven times the observed maximum — wide enough that a future id scheme is not pre-refused,
+narrow enough that the value the backend agrees to hold in memory and echo back is bounded.
 
 It bounds a *field*, not a *request*. The body is read and parsed before dependencies are solved
-(measured against FastAPI 0.140.0's ``routing.py``: body at lines 423-448, ``solve_dependencies`` at
-473), so this constraint cannot stop an unauthenticated caller from making the process buffer a
-large body — only from storing one. **The pre-parse cap shipped at c5-5** as
-:class:`~src.companion.app.body_cap.BodyCapMiddleware`, which owns
-``payload_too_large`` and AD-7's 64 KB envelope limit. It **is** one mechanism for both endpoints
-rather than two, exactly as ``deferred-work.md``'s entry (now closed) asked: a pure-ASGI middleware
-outside the routers, so neither ``PUT /api/active-deck`` nor ``POST /agent/events`` contains a line
-about size.
+(measured against FastAPI 0.140.0's ``routing.py``), so this constraint cannot stop an
+unauthenticated caller from making the process buffer a large body — only from storing one. The
+pre-parse cap is :class:`~src.companion.app.body_cap.BodyCapMiddleware`, which owns
+``payload_too_large`` and AD-7's 64 KB envelope limit: one pure-ASGI middleware outside the routers,
+so neither ``PUT /api/active-deck`` nor ``POST /agent/events`` contains a line about size.
 """
 
 
 # NOT PUBLISHED. The attribute docstring below is a `__doc__` on a module-level assignment, which
-# `app.openapi()` never reads — so editing it is free of wire consequences. MEASURED at c3-8
-# (2026-08-02): a commit that edited BOTH this docstring and `ErrorResponse`'s class docstring
-# produced a diff in the generated files from the second edit only. The distinction is twelve
-# lines wide and was a 50/50 guess for every author until c3-9 wrote it down (Q9). See
-# `scripts/dump_openapi.py` for the mechanism.
+# `app.openapi()` never reads — so editing it is free of wire consequences. A class docstring, by
+# contrast, is the schema's `description` and does reach the generated files (measured: editing
+# both produced a diff from the class docstring alone). See `scripts/dump_openapi.py` for the
+# mechanism.
 ErrorReason = Literal[
     "deck_not_found",
     "card_not_found",
@@ -94,33 +89,26 @@ ErrorReason = Literal[
 
 Closed at **ten**, with nothing planned. Adding another is a deliberate act with a failing test
 attached (``tests/unit/companion/test_errors.py``), because AD-16's extension rule is that a new
-token and the UI state it drives are added together — never a token alone. ``internal_error`` was
-added under exactly that rule by the c1-4 review (Brad, 2026-07-25): an unhandled bug must be
-distinguishable from a transient database outage *before* Epic 2 freezes the TypeScript union,
-with its state panel homed on c2-9. ``card_not_found`` was added the same way by c3-2, under the
-C2 retro's R1 ruling that made the pairing explicit — its UI destination shipped in the same
-commit as the token (see :class:`ErrorResponse` below, and ``ui/src/components/StatePanel/
-states.ts``), because C1 shipping ``internal_error`` alone had already cost c2-9 a repair AC.
+token and the UI state it drives are added together — never a token alone. ``internal_error``
+exists so an unhandled bug is distinguishable from a transient database outage, and it has a state
+panel of its own; ``card_not_found`` shipped in the same commit as its UI destination (see
+:class:`ErrorResponse` below, and ``ui/src/components/StatePanel/states.ts``).
 
-``forbidden`` is c3-4's, and it is the first token whose paired "UI state" is a **decision that the
-glass shows nothing** rather than a panel (Q2, Brad 2026-08-01). ``payload_too_large`` is the
-precedent: an agent-facing rejection has no business interrupting a human reading a deck. What made
-it worth the eight-site ripple rather than reusing ``invalid_request``: AD-8 requires the agent-side
-client to **re-read the discovery file and retry exactly once** on an auth rejection, and to do no
-such thing on a malformed request. Both answering ``400 invalid_request`` would make that rule
-unimplementable — the client would retry the wrong failure or fail to retry the right one — and this
-is where the wire is settled, before Epic 5 freezes the union.
+``forbidden`` is the first token whose paired "UI state" is a **decision that the glass shows
+nothing** rather than a panel, and ``payload_too_large`` follows the same precedent: an agent-facing
+rejection has no business interrupting a human reading a deck. What makes ``forbidden`` worth a
+token of its own rather than reusing ``invalid_request``: AD-8 requires the agent-side client to
+**re-read the discovery file and retry exactly once** on an auth rejection, and to do no such thing
+on a malformed request. Both answering ``400 invalid_request`` would make that rule unimplementable
+— the client would retry the wrong failure or fail to retry the right one.
 
-``no_image_data`` and ``image_fetch_failed`` are c3-5's pair (Q2, Brad 2026-08-01), and they are
-the first tokens added **two at a time** — because AD-11 requires *"a card with no image and a
-fetch failure are signalled distinguishably"*, and a status this codebase derives from the token
-means distinguishable can only mean *different tokens*. The distinction is not cosmetic even
-though the pixels are identical: one is permanent (79 cards in the shipped corpus carry no image
-data at all, measured) and the other is transient (one flight-mode away), so a client may retry
-exactly one of them, and **c3-8 added negative caching and backoff as pure behaviour with no wire
-change at all** — the vocabulary was paid for here, and the prediction that it would suffice was
-confirmed by running the generator rather than by argument (2026-08-02). Their UI half was
-unusually cheap:
+``no_image_data`` and ``image_fetch_failed`` are a pair, because AD-11 requires *"a card with no
+image and a fetch failure are signalled distinguishably"*, and a status this codebase derives from
+the token means distinguishable can only mean *different tokens*. The distinction is not cosmetic
+even though the pixels are identical: one is permanent (79 cards in the shipped corpus carry no
+image data at all, measured) and the other is transient (one flight-mode away), so a client may
+retry exactly one of them — and negative caching with backoff was added as pure behaviour with no
+wire change at all, because the vocabulary was already paid for here. Their UI half was cheap:
 ``EXPERIENCE.md`` already carried both rows — *"Card with no image data → Named Card placeholder"*
 and *"CDN fetch failure → … UI renders the named Card placeholder"* — so AD-16's pairing rule was
 satisfied by an artefact written before the tokens existed.
@@ -144,11 +132,10 @@ because a leaf module has no business knowing HTTP.
 
 
 # WIRE-VISIBLE, IN FULL. This class docstring crosses the wire as the schema's `description`,
-# uncut — `_CompanionFastAPI.openapi()` truncates at the first Google-style header and this
-# docstring has none, so every paragraph below reaches `openapi.json`, `types.d.ts` and `/docs`.
-# Editing it IS a wire change: regenerate with `npm run gen:api` and commit both generated files
-# in the same commit, or `test_openapi_contract.py` turns CI red. (Q9, c3-9; measured at c3-8,
-# which predicted "no wire diff" here and was wrong.)
+# uncut — `_CompanionFastAPI.openapi()` truncates at the first Google-style header, so every
+# paragraph above `Attributes:` reaches `openapi.json`, `types.d.ts` and `/docs`. Editing it IS a
+# wire change: regenerate with `npm run gen:api` and commit both generated files in the same
+# commit, or `test_openapi_contract.py` turns CI red.
 class ErrorResponse(BaseModel):
     """The body of every non-2xx response — the token, and nothing else (AD-16).
 
@@ -161,8 +148,8 @@ class ErrorResponse(BaseModel):
     * **prose would leak input back.** FastAPI's validation detail echoes the offending value, and
       the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.
     * **the token is the contract.** Anything a human needs beyond it belongs in the log. If a
-      later story genuinely needs machine-readable specifics, it adds a *typed* optional field with
-      a named UX consumer — not a free-text bucket.
+      later change genuinely needs machine-readable specifics, it adds a *typed* optional field
+      with a named UX consumer — not a free-text bucket.
 
     What each token means on the glass, which is why the set is closed:
 
@@ -171,8 +158,7 @@ class ErrorResponse(BaseModel):
     * ``card_not_found`` — no card in the local database carries that printing id. The **only**
       token whose destination is not a panel: the view that referenced the card renders normally
       and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
-      (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
-      built in c4-3.
+      (FR-13). One unknown card must never fail a whole view or a whole push.
     * ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:
       either the printing carries no image data at all (79 cards in the shipped corpus), or the
       requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
@@ -184,7 +170,7 @@ class ErrorResponse(BaseModel):
       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
       reason it is a separate token from ``no_image_data`` — the pixels are identical (the same
-      named Card placeholder) but only this one may ever be retried. Since c3-8 a failure is
+      named Card placeholder) but only this one may ever be retried. A failure is
       **negative-cached with an exponential backoff**, so a repeat request inside the window is
       answered from memory with this same token and no CDN request at all; the window starts at 30
       seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh
@@ -198,16 +184,16 @@ class ErrorResponse(BaseModel):
     * ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``
       the companion does not serve. No panel of its own: the SPA never generates one, so it means
       a client bug or a stray caller, and the log is where it is diagnosed.
-    * ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like
+    * ``forbidden`` — an agent-only endpoint was called without a valid credential. Like
       ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds
       the credential and never calls a route that wants one, so a panel here would report a
       failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome
       vocabulary, where AD-8's re-read-discovery-and-retry-once lives.
-    * ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*
+    * ``payload_too_large`` — an agent push exceeded the ingest cap. Surfaced to the *agent*
       through the MCP tool's outcome vocabulary, not to the glass.
     * ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the
-      SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel
-      is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token.
+      SPA must **not** quietly retry it the way ``database_unavailable`` retries; it has a state
+      panel of its own. The log carries the traceback; the wire carries the token.
 
     Attributes:
         reason: The token, drawn from :data:`ErrorReason`.
@@ -245,7 +231,7 @@ class ActiveDeck(BaseModel):
         deck_id: The displayed deck's id, or ``None`` if none has been set since this process
             started. Byte-identical to the value that was written. A reader fetching the deck
             interpolates it into ``GET /api/deck/{deck_id}`` **URL-encoded**, like any path
-            segment: the id has no declared shape (Q4), so nothing forbids characters — ``/``,
+            segment: the id has no declared shape, so nothing forbids characters — ``/``,
             ``?``, ``#`` — that a raw interpolation would mis-route.
 
     Example:
@@ -261,13 +247,13 @@ class ActiveDeckRequest(BaseModel):
 
     Carries the deck id and nothing else — **enforced**, not aspirational: an unknown field is
     refused (``extra="forbid"``), because silently dropping it would answer ``200`` to an agent
-    whose mental model of this body is wrong and leave nothing to correct it (c3-4 review, Brad
-    2026-08-01). The id must be a non-empty string, and *non-empty means non-blank*: a
-    whitespace-only id is refused with the same reasoning as ``""`` — the alternative is storing a
-    value that would be reported as the active deck forever while resolving to no deck at all, just
-    spelled with characters ``min_length`` cannot see (same review). Beyond non-blankness and an
-    upper length bound nothing about the id is constrained — a deck id has **no declared shape** in
-    this system (Q4), so an id that names no deck is accepted here and simply not found later.
+    whose mental model of this body is wrong and leave nothing to correct it. The id must be a
+    non-empty string, and *non-empty means non-blank*: a whitespace-only id is refused with the
+    same reasoning as ``""`` — the alternative is storing a value that would be reported as the
+    active deck forever while resolving to no deck at all, just spelled with characters
+    ``min_length`` cannot see. Beyond non-blankness and an upper length bound nothing about the id
+    is constrained — a deck id has **no declared shape** in this system, so an id that names no
+    deck is accepted here and simply not found later.
 
     There is deliberately **no way to clear the active deck** over the wire: the field is required
     and does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a
@@ -276,11 +262,6 @@ class ActiveDeckRequest(BaseModel):
 
     Attributes:
         deck_id: The deck to display, stored verbatim.
-
-            The decision to ship no clearing verb is ledgered in ``deferred-work.md`` rather than
-            left to be rediscovered. That pointer sits below this header on purpose: it is a
-            repo-internal artifact name, useless to a TypeScript reader, and this section is
-            truncated off the wire.
 
     Example:
         >>> ActiveDeckRequest(deck_id="076ac3ed-b59a-431f-b286-af7ed2c8704e").deck_id[:8]
@@ -300,7 +281,7 @@ class ActiveDeckRequest(BaseModel):
         return value
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class ActiveDeckSetReceipt(BaseModel):
     """The body of ``PUT /api/active-deck`` — what was stored, and how many tabs saw it (FR-07).
 
@@ -336,8 +317,8 @@ class ActiveDeckSetReceipt(BaseModel):
         {'deck_id': 'deck-1', 'clients': 0}
     """
 
-    # `extra="forbid"`, unlike `EventIngestReceipt`, which `deferred-work.md` records as the
-    # looser sibling this one deliberately does not copy. Both are parsed by the leaf client from a
+    # `extra="forbid"`, unlike `EventIngestReceipt`, the looser sibling this one deliberately does
+    # not copy. Both are parsed by the leaf client from a
     # backend shipped in the SAME installed package — there is no version skew to be forward
     # compatible with — so an unexpected field means the two halves disagree about the contract,
     # and a `backend_error` is the honest report of that. (Contrast `HealthResponse`, which stays
@@ -368,18 +349,12 @@ class SessionTicket(BaseModel):
         ticket: The value to present on the upgrade. Opaque: it has no parseable structure, carries
             no identity, and nothing about it should be inspected, logged or persisted.
 
-            The remaining lifetime is deliberately **not** published (c5-2, Q4, Brad 2026-08-08).
-            A client mints per attempt and never inspects the TTL, so a field would be a wire
-            commitment with no consumer. Story 15.3's amendment list once omitted
-            ``GET /api/session`` because NFR-01 named the endpoint and nothing else; that story
-            recorded the path against NFR-01, and its route-parity guard now asserts it both ways.
-            (Written as "Story 8.3" until 2026-08-18: this story was ``c8-3``, and ``c8`` renumbered
-            to **Epic 15**, not Epic 8 — Story 8.3 is a live, unrelated story about port selection.)
+            The remaining lifetime is deliberately **not** published. A client mints per attempt
+            and never inspects the TTL, so a field would be a wire commitment with no consumer.
             This paragraph sits below the header on purpose: it is repo-internal reasoning, and
             ``main._DOCSTRING_SECTIONS`` truncates it off the wire. The concrete number stays out
             of the paragraphs *above* for the same reason — they ship verbatim as the schema
-            description, and a number there would be a wire commitment Q4 ruled against (c5-2
-            review, Brad 2026-08-08).
+            description, and a number there would be a wire commitment.
 
     Example:
         >>> SessionTicket(ticket="p2s5...").model_dump()
@@ -392,18 +367,13 @@ class SessionTicket(BaseModel):
 # ---------------------------------------------------------------------------------------------
 # The agent event envelope and its six payloads (AD-6, AD-7, FR-11, FR-18)
 #
-# Everything below this line is declared in one story (c5-1) on purpose. AD-6's envelope and
-# AD-7's four payload shapes are frozen up front so that Epic 9 can add three MCP tools and three
-# views while changing no contract at all — `epics:3424` prices Phase 2 on exactly that. A shape
-# narrowed "until somebody needs it" would be paid for later as a `.d.ts` regeneration through
-# both mirrored plugin bundles.
+# AD-6's envelope and AD-7's payload shapes are frozen up front so that MCP tools and views can be
+# added while changing no contract at all. A shape narrowed "until somebody needs it" would be paid
+# for later as a `.d.ts` regeneration through both mirrored plugin bundles.
 #
-# NONE OF THESE MODELS REACHED `components.schemas` UNTIL c5-5, and that was correct rather than a
-# bug: a model no route references never lands there (`main.py:443-445`). The union became
-# reachable when **c5-5** declared it as `POST /agent/events`'s request body — one route
-# declaration, seventeen models, thirteen components to thirty in a single step. A dummy endpoint
-# to force them in early was explicitly banned (c2-3), and the ban held: no such endpoint was ever
-# written, and the union arrived on a real route the way AD-12 said it would.
+# A model no route references never lands in `components.schemas`; these reach the document
+# because `POST /agent/events` declares the union as its request body. A dummy endpoint to force
+# models in early is banned.
 # ---------------------------------------------------------------------------------------------
 
 
@@ -415,12 +385,10 @@ agent view is allowed to hand the glass to render.
 
 **It is not a deck-construction rule, and nothing here applies it as one.** The number coincides
 with a familiar deck size, and the coincidence is close enough that the AD-1 scan in
-``test_routes_format_check.py`` flagged it on sight (measured 2026-08-07, the second such
-collision after c3-6's ``FETCH_CONCURRENCY``). But this module holds no deck, reads no card,
+``test_routes_format_check.py`` flags it on sight. But this module holds no deck, reads no card,
 counts no copies and imports nothing from ``src.logic``; it bounds a list on a wire. The rule lives
-in
-``src.logic.deck_validator`` and is not restated, referenced or derived from here — see that scan's
-narrowed exemption, which keeps every other AD-1 family live in this file.
+in ``src.logic.deck_validator`` and is not restated, referenced or derived from here — see that
+scan's narrowed exemption, which keeps every other AD-1 family live in this file.
 """
 
 _MAX_BUCKETS = 12
@@ -432,26 +400,25 @@ at all.
 """
 
 _MAX_CARD_ID_LENGTH = 128
-"""The cap on any single card id on this wire (c5-1 review, Brad 2026-08-07).
+"""The cap on any single card id on this wire.
 
 A bound, **not a shape**: AD-7's "not validated for shape" stands — an unknown id still resolves to
-the unknown-card placeholder rather than a rejected push. Capped because, before c5-5 enforced
-:data:`_MAX_ENVELOPE_BYTES`, an unbounded id string was the one field family through which a fully
-validating envelope could carry megabytes; the length was capped then, while the contract was still
-free to change. A Scryfall printing uuid is 36 characters; 128 is headroom, not a format claim.
+the unknown-card placeholder rather than a rejected push. Capped because an unbounded id string
+would be the one field family through which a fully validating envelope could carry megabytes. A
+Scryfall printing uuid is 36 characters; 128 is headroom, not a format claim.
 
-**Worth keeping now that both caps are enforced**: they are *not* nested. Measured at c5-5, a
-``groups`` envelope with every string at its limit and every list at its length is **104,067
-bytes** — 1.6x the 64 KB ceiling — and violates no field cap at all. So this bound narrows what one
-id may carry; it does not make the envelope cap unreachable by well-formed content.
+**The field caps and the envelope cap are *not* nested.** A ``groups`` envelope with every string
+at its limit and every list at its length is **104,067 bytes** (measured) — 1.6x the 64 KB ceiling
+— and violates no field cap at all. So this bound narrows what one id may carry; it does not make
+the envelope cap unreachable by well-formed content.
 """
 
 _MAX_EVENT_ID_LENGTH = 128
-"""The cap on an envelope ``id`` (c5-1 review, Brad 2026-08-07).
+"""The cap on an envelope ``id``.
 
 The id is opaque and exists for identity and dedupe — a UUID4 fits three times over. The same
-bound-not-shape stance as :data:`_MAX_CARD_ID_LENGTH`, and the same reason: no unbounded string may
-ride a wire whose byte ceiling is not yet enforced.
+bound-not-shape stance as :data:`_MAX_CARD_ID_LENGTH`, and the same reason: no unbounded string
+rides this wire.
 """
 
 _MAX_REASON_LENGTH = 200
@@ -468,7 +435,7 @@ _MAX_TITLE_LENGTH = 80
 """The cap on an agent-authored ``title``, both the per-payload header and a group's own (AD-7)."""
 
 _MAX_CATEGORY_LENGTH = 80
-"""The cap on a suggestion's ``category`` (Q4, Brad 2026-08-07).
+"""The cap on a suggestion's ``category``.
 
 AD-7's cap list covers ``reason``, ``rationale`` and ``title`` only, leaving three fields bounded
 by nothing but the envelope byte cap. ``category`` renders inside a badge, so it is capped at what
@@ -476,33 +443,31 @@ a badge can hold rather than at 64 KB.
 """
 
 _MAX_TIER_NAME_LENGTH = 40
-"""The cap on a tier's ``name`` (Q4, Brad 2026-08-07) — it renders inside a 132px chip."""
+"""The cap on a tier's ``name`` — it renders inside a 132px chip."""
 
 _MAX_TIER_NOTE_LENGTH = 200
-"""The cap on a tier's ``note`` (Q4, Brad 2026-08-07) — the same one-line budget as ``reason``."""
+"""The cap on a tier's ``note`` — the same one-line budget as ``reason``."""
 
 _MAX_ENVELOPE_BYTES = 64 * 1024
 """The ceiling on one serialised envelope, in bytes (AD-7).
 
-**Declared here at c5-1, ENFORCED SINCE c5-5** (Q9, Brad 2026-08-07; mechanism ruled at c5-5's Q2,
-Brad 2026-08-08). This is a bound on the *request*, not on any field, and the property that matters
-is how much an unauthenticated caller can make the process buffer. A pydantic model validator runs
-*after* parsing, so it could reject an oversized envelope but could not stop it from being read
-into memory — which is the whole point of the cap. The pre-parse mechanism therefore lives with
-``payload_too_large`` in :mod:`src.companion.app.body_cap`, as one middleware covering both body
-endpoints rather than two per-route checks.
+**Declared here, enforced in** :mod:`src.companion.app.body_cap`. This is a bound on the
+*request*, not on any field, and the property that matters is how much an unauthenticated caller
+can make the process buffer. A pydantic model validator runs *after* parsing, so it could reject an
+oversized envelope but could not stop it from being read into memory — which is the whole point of
+the cap. The pre-parse mechanism therefore lives with ``payload_too_large`` in that module, as one
+middleware covering both body endpoints rather than two per-route checks.
 
-**Not nested with the field caps above.** Measured at c5-5: a ``groups`` envelope at every field
-limit serialises to 104,067 bytes, so this ceiling can refuse a payload pydantic would accept. The
-two rejection classes overlap rather than partitioning the input — a field violation answers
+**Not nested with the field caps above.** A ``groups`` envelope at every field limit serialises to
+104,067 bytes (measured), so this ceiling can refuse a payload pydantic would accept. The two
+rejection classes overlap rather than partitioning the input — a field violation answers
 ``400 invalid_request`` (the AD-16 handler), a byte violation answers ``413`` here, and a body can
 qualify for both, in which case the byte cap wins because it runs first.
 
 Over-cap is **rejected, never truncated**: a truncated payload is a payload that renders wrong
-without saying so. The answer is **413** ``payload_too_large``, not 422 — AD-16 superseded AD-7's
-422 by the c1-4 review ruling, and a 422 answer would also contradict a shipped pin, since
-``test_committed_schema.py`` asserts FastAPI's auto-422 components are stripped. The token already
-exists in :data:`ErrorReason`, added early and deliberately so this story adds none.
+without saying so. The answer is **413** ``payload_too_large``, not 422 — AD-16 supersedes AD-7's
+422, and a 422 answer would also contradict a shipped pin, since ``test_committed_schema.py``
+asserts FastAPI's auto-422 components are stripped.
 """
 
 
@@ -513,7 +478,7 @@ def _refuse_blank_text(value: str) -> str:
     Applied to the fields whose docstrings promise non-blankness (a tier's ``name``, a group's
     ``title``, the envelope ``id``) and to every optional ``title``: an empty title is not ``None``,
     so without this it would defeat the :data:`DEFAULT_TITLE_BY_KIND` fallback and leave a
-    ``role="dialog"`` labelled by an empty string (c5-1 review, Brad 2026-08-07).
+    ``role="dialog"`` labelled by an empty string.
     """
     if not value.strip():
         raise ValueError("must not be empty or only whitespace")
@@ -533,7 +498,7 @@ _NonBlankTitle = Annotated[
 _NonBlankReason = Annotated[
     str, Field(max_length=_MAX_REASON_LENGTH), AfterValidator(_refuse_blank_text)
 ]
-"""A suggestion's ``reason``: capped, and refused when blank (c5-1 review round 2, Brad 2026-08-07).
+"""A suggestion's ``reason``: capped, and refused when blank.
 
 ``reason`` is required, one-line explanatory text with no fallback — unlike an optional title, an
 empty or whitespace-only value here has no ``DEFAULT_TITLE_BY_KIND``-style substitute, so it would
@@ -543,7 +508,7 @@ ship a row with no stated reason at all.
 _NonBlankRationale = Annotated[
     str, Field(max_length=_MAX_RATIONALE_LENGTH), AfterValidator(_refuse_blank_text)
 ]
-"""A swap's or group's ``rationale``: capped, and refused when blank (c5-1 review round 2).
+"""A swap's or group's ``rationale``: capped, and refused when blank.
 
 Same stance as :data:`_NonBlankReason` — required explanatory text, no fallback."""
 
@@ -551,14 +516,14 @@ _NullableDeckId = (
     Annotated[str, Field(max_length=_MAX_DECK_ID_LENGTH), AfterValidator(_refuse_blank_text)] | None
 )
 """A signal payload's ``deck_id``: ``None`` means "refetch whatever is active"; a present value is
-capped and refused when blank (c5-1 review round 2, Brad 2026-08-07) — an empty string is a third
-state that is neither a real id nor the documented ``None`` sentinel.
+capped and refused when blank — an empty string is a third state that is neither a real id nor the
+documented ``None`` sentinel.
 """
 
 
 # NOT PUBLISHED. Same mechanism as `ErrorReason` above: an attribute docstring on a module-level
 # assignment is a `__doc__` that `app.openapi()` never reads, so editing the prose below is free of
-# wire consequences. MEASURED at c3-8 (2026-08-02); the convention is c3-9's (Q9).
+# wire consequences.
 EventKind = Literal[
     "suggestions",
     "swaps",
@@ -569,15 +534,9 @@ EventKind = Literal[
 ]
 """The closed set of things the agent or the backend may push to the glass (AD-6).
 
-**Six, not five.** AD-6 and the epic's own Contracts section both still enumerate five, naming only
-``deck_changed``; Story 5.1's acceptance criteria add ``active_deck_changed`` with its
-justification, and being both later and more specific it wins. **The spine amendment was made by
-story 15.3 on 2026-08-18**: ``ARCHITECTURE-SPINE.md``'s AD-6 now enumerates all six. This is a
-recorded supersession, not a drift to be "restored". (This note said the amendment was "owed at
-Epic 8" — a mis-mapping: the story was ``c8-3`` and ``c8`` renumbered to **Epic 15**.)
-
-The first four are **agent pushes**, each carrying a rendered view. The last two are **system
-signals**: no view, no items, just "something changed, refetch" (NFR-04).
+**Six kinds**, as AD-6 enumerates them. The first four are **agent pushes**, each carrying a
+rendered view. The last two are **system signals**: no view, no items, just "something changed,
+refetch" (NFR-04).
 
 ``deck_changed`` and ``active_deck_changed`` are distinct on purpose, and conflating them is a real
 bug rather than a tidiness matter: ``active_deck_changed`` says *the companion is now showing a
@@ -591,7 +550,7 @@ A ``Literal`` rather than a ``StrEnum`` to match :data:`ErrorReason` and
 """
 
 
-# NOT PUBLISHED. An attribute docstring on a module-level assignment (c3-8/c3-9, Q9).
+# NOT PUBLISHED. An attribute docstring on a module-level assignment.
 TierLetter = Literal["S", "A", "B", "C", "D"]
 """The closed five-value tier vocabulary (AD-7, UX-DR26/41).
 
@@ -604,14 +563,13 @@ that field is ``min_length=1``.
 """
 
 
-# NOT PUBLISHED. An attribute docstring on a module-level assignment (c3-8/c3-9, Q9).
+# NOT PUBLISHED. An attribute docstring on a module-level assignment.
 Confidence = Literal["low", "medium", "high"]
-"""How sure the agent is about one suggestion or one swap (Q2, Brad 2026-08-07).
+"""How sure the agent is about one suggestion or one swap.
 
-Added here rather than discovered in Epic 6: the design asks for a confidence indicator on both the
-suggestion row and the swap row, and a P0 Epic 6 acceptance criterion depends on it, yet it existed
-in neither item shape. It cannot be derived on the receiving side — the push path never reads the
-database — so if it is not carried it does not exist.
+The design asks for a confidence indicator on both the suggestion row and the swap row. It cannot
+be derived on the receiving side — the push path never reads the database — so if it is not
+carried it does not exist.
 
 Three tokens rather than a 0–1 float, to match the vocabulary ``assess_deck_power`` already uses.
 A float would oblige every consumer to invent its own bucketing, and two consumers would invent
@@ -621,8 +579,8 @@ two.
 
 # WIRE-VISIBLE, IN FULL. This class docstring crosses the wire as the schema `description`, uncut —
 # it carries no Google-style header above the `Attributes:` block, so every paragraph before that
-# header reaches `openapi.json`, `types.d.ts` and `/docs`. c5-5 put the union on a route, so this
-# is no longer conditional: editing it IS a wire change and costs a regeneration (Q9, c3-9).
+# header reaches `openapi.json`, `types.d.ts` and `/docs`. Editing it IS a wire change and costs a
+# regeneration.
 class SuggestionItem(BaseModel):
     """One card the agent thinks is worth adding, and why (AD-7).
 
@@ -675,7 +633,7 @@ class SuggestionItem(BaseModel):
 
 
 # WIRE-VISIBLE, IN FULL. As above — the prose before `Attributes:` is the schema description and
-# the generated JSDoc, live since c5-5 put the union on a route (Q9, c3-9).
+# the generated JSDoc.
 class SwapItem(BaseModel):
     """One card out, one card in, and the reasoning for the trade (AD-7).
 
@@ -687,12 +645,9 @@ class SwapItem(BaseModel):
     and is a designed case, not a malformed one, so neither quantity may be constrained to be
     positive. A ``ge=1`` here would reject a payload the experience specification asks for.
 
-    There is deliberately **no price field.** The design asks for a price chip and Epic 9 inherited
-    the ask, but no price data exists anywhere in this system — the card table carries no price
-    column and the Scryfall importer never reads the ``prices`` object — so the field could never be
-    populated. Four earlier amendments already stripped price from the deck row and the detail
-    panel; this is the one they missed, struck here so Epic 9 does not rediscover it as a bug
-    (Q3, Brad 2026-08-07). Nothing is lost that could have been shown.
+    There is deliberately **no price field.** No price data exists anywhere in this system — the
+    card table carries no price column and the Scryfall importer never reads the ``prices`` object
+    — so the field could never be populated. Nothing is lost that could have been shown.
 
     Attributes:
         out_card_id: The Scryfall printing uuid leaving the deck. Not validated for shape (AD-7).
@@ -737,7 +692,7 @@ class SwapItem(BaseModel):
     confidence: Confidence | None = None
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class TierItem(BaseModel):
     """One tier of a tier list — a letter, the name that gives it meaning, and its cards (AD-7).
 
@@ -788,7 +743,7 @@ class TierItem(BaseModel):
     card_ids: list[_CardId] = Field(default_factory=list, max_length=_MAX_ITEMS)
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class GroupItem(BaseModel):
     """One named group of cards and the paragraph explaining it (AD-7).
 
@@ -835,7 +790,7 @@ class GroupItem(BaseModel):
     card_ids: list[_CardId] = Field(default_factory=list, max_length=_MAX_ITEMS)
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class SuggestionsPayload(BaseModel):
     """A flat list of cards the agent suggests adding (AD-7).
 
@@ -862,7 +817,7 @@ class SuggestionsPayload(BaseModel):
     items: list[SuggestionItem] = Field(default_factory=list, max_length=_MAX_ITEMS)
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class SwapsPayload(BaseModel):
     """A list of one-for-one card trades, each with its own reasoning (AD-7).
 
@@ -884,7 +839,7 @@ class SwapsPayload(BaseModel):
     items: list[SwapItem] = Field(default_factory=list, max_length=_MAX_ITEMS)
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class TierListPayload(BaseModel):
     """Cards ranked into named tiers, in the order the agent put them (AD-7).
 
@@ -910,7 +865,7 @@ class TierListPayload(BaseModel):
     items: list[TierItem] = Field(default_factory=list, max_length=_MAX_BUCKETS)
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class GroupsPayload(BaseModel):
     """Cards gathered into named groups, each with a paragraph of reasoning (AD-7).
 
@@ -932,18 +887,17 @@ class GroupsPayload(BaseModel):
     items: list[GroupItem] = Field(default_factory=list, max_length=_MAX_BUCKETS)
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class DeckChangedPayload(BaseModel):
     """The contents of a deck were edited — refetch it (FR-11).
 
     A system signal, not a view: it carries no items and renders nothing. NFR-04's model is
     "something changed, refetch", so this says which deck and stops.
 
-    ``deck_id`` is **nullable, and that is deliberate today rather than lax**. A later phase emits a
-    deck-agnostic version of this same signal — "some deck you may be showing changed" — and if the
-    field shipped required, that phase would have to break a contract already committed into a
-    ``.d.ts`` and two mirrored plugin bundles. Which is the exact ripple this whole story exists to
-    prevent, so the nullability is bought now, for free (Q5, Brad 2026-08-07).
+    ``deck_id`` is **nullable, and that is deliberate rather than lax**. A deck-agnostic version of
+    this same signal — "some deck you may be showing changed" — is anticipated, and if the field
+    shipped required, adding it would break a contract already committed into a ``.d.ts`` and two
+    mirrored plugin bundles. The nullability is bought now, for free.
 
     Attributes:
         deck_id: The deck that changed, or ``None`` meaning **refetch whatever is active**. Bounded
@@ -959,7 +913,7 @@ class DeckChangedPayload(BaseModel):
     deck_id: _NullableDeckId = None
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class ActiveDeckChangedPayload(BaseModel):
     """The companion is now displaying a different deck — switch to it (FR-07, FR-11).
 
@@ -972,7 +926,7 @@ class ActiveDeckChangedPayload(BaseModel):
     redundant broadcast sounds like a free optimisation and is not: the active-deck slot needs no
     lock precisely because writing it is a single assignment that never consults the old value, and
     "only broadcast if it changed" is exactly a read-modify-write. A duplicate signal costs one
-    idempotent refetch; the alternative costs a lock (Q10, Brad 2026-08-07).
+    idempotent refetch; the alternative costs a lock.
 
     Attributes:
         deck_id: The deck now being displayed, or ``None`` for the cleared case — the slot was
@@ -989,8 +943,7 @@ class ActiveDeckChangedPayload(BaseModel):
 
 
 # NOT PUBLISHED. Private and never referenced by a route, so it never reaches
-# `components.schemas` — the AC 18 marker convention applies to it in this form, not as
-# WIRE-VISIBLE, which would be false (c5-1 review).
+# `components.schemas`.
 class _EventEnvelope(BaseModel):
     """The two fields every event carries, whatever its kind (AD-6) — ``kind`` and ``payload``
     live on each concrete subclass, which is what completes AD-6's ``{kind, id, ts, payload}``.
@@ -1011,7 +964,7 @@ class _EventEnvelope(BaseModel):
     ts: AwareDatetime
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class SuggestionsEvent(_EventEnvelope):
     """An agent push of suggested cards (AD-6).
 
@@ -1047,7 +1000,7 @@ class SuggestionsEvent(_EventEnvelope):
                 {
                     "kind": "suggestions",
                     "id": "0f6e2a11-9c3d-4b7e-8a52-1d4f6c8b0e33",
-                    "ts": "2026-08-07T09:15:00Z",
+                    "ts": "2025-01-01T09:15:00Z",
                     "payload": {
                         "title": "Resilience options",
                         "items": [
@@ -1068,7 +1021,7 @@ class SuggestionsEvent(_EventEnvelope):
     payload: SuggestionsPayload
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class SwapsEvent(_EventEnvelope):
     """An agent push of one-for-one card trades (AD-6).
 
@@ -1094,7 +1047,7 @@ class SwapsEvent(_EventEnvelope):
                 {
                     "kind": "swaps",
                     "id": "1a7c4b98-2e5f-4c10-9d3a-7b2e5f8c1a04",
-                    "ts": "2026-08-07T09:16:00Z",
+                    "ts": "2025-01-01T09:16:00Z",
                     "payload": {
                         "title": "Cheaper removal",
                         "items": [
@@ -1116,7 +1069,7 @@ class SwapsEvent(_EventEnvelope):
     payload: SwapsPayload
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class TierListEvent(_EventEnvelope):
     """An agent push ranking cards into named tiers (AD-6).
 
@@ -1143,7 +1096,7 @@ class TierListEvent(_EventEnvelope):
                 {
                     "kind": "tier_list",
                     "id": "2b8d5ca9-3f60-4d21-ae4b-8c3f6a9d2b15",
-                    "ts": "2026-08-07T09:17:00Z",
+                    "ts": "2025-01-01T09:17:00Z",
                     "payload": {
                         "title": "How this deck's creatures rank",
                         "items": [
@@ -1163,7 +1116,7 @@ class TierListEvent(_EventEnvelope):
     payload: TierListPayload
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class GroupsEvent(_EventEnvelope):
     """An agent push gathering cards into named groups (AD-6).
 
@@ -1190,7 +1143,7 @@ class GroupsEvent(_EventEnvelope):
                 {
                     "kind": "groups",
                     "id": "3c9e6db0-4071-4e32-bf5c-9d407bae3c26",
-                    "ts": "2026-08-07T09:18:00Z",
+                    "ts": "2025-01-01T09:18:00Z",
                     "payload": {
                         "title": "What this deck is doing",
                         "items": [
@@ -1210,7 +1163,7 @@ class GroupsEvent(_EventEnvelope):
     payload: GroupsPayload
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class DeckChangedEvent(_EventEnvelope):
     """A system signal that a deck's contents were edited (AD-6, FR-11).
 
@@ -1236,7 +1189,7 @@ class DeckChangedEvent(_EventEnvelope):
                 {
                     "kind": "deck_changed",
                     "id": "4d0f7ec1-5182-4f43-a06d-ae518cbf4d37",
-                    "ts": "2026-08-07T09:19:00Z",
+                    "ts": "2025-01-01T09:19:00Z",
                     "payload": {"deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"},
                 }
             ]
@@ -1247,7 +1200,7 @@ class DeckChangedEvent(_EventEnvelope):
     payload: DeckChangedPayload
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
 class ActiveDeckChangedEvent(_EventEnvelope):
     """A system signal that the companion is now displaying a different deck (AD-6, FR-07).
 
@@ -1274,7 +1227,7 @@ class ActiveDeckChangedEvent(_EventEnvelope):
                 {
                     "kind": "active_deck_changed",
                     "id": "5e1a8fd2-6293-4a54-b17e-bf629dca5e48",
-                    "ts": "2026-08-07T09:20:00Z",
+                    "ts": "2025-01-01T09:20:00Z",
                     "payload": {"deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"},
                 }
             ]
@@ -1287,7 +1240,7 @@ class ActiveDeckChangedEvent(_EventEnvelope):
 
 # NOT PUBLISHED. This is a module-level assignment with an attribute docstring, so the prose below
 # never reaches the wire — but the six classes it names do, each as its own `$ref`. That is the
-# point of the shape (c3-8/c3-9, Q9).
+# point of the shape.
 AgentEvent = Annotated[
     SuggestionsEvent
     | SwapsEvent
@@ -1299,20 +1252,17 @@ AgentEvent = Annotated[
 ]
 """Everything the agent or the backend may push to the glass, as one tagged union (AD-6, NFR-03).
 
-**A union of six envelope classes, not one envelope over a payload union** (Q1, Brad 2026-08-07).
-Both satisfy AD-6's ``{kind, id, ts, payload}``, but putting the discriminator on the envelope makes
-narrowing a single step in the generated TypeScript — ``if (event.kind === "swaps")`` narrows
-``event.payload`` too. The alternative puts ``kind`` one level above the union it selects, so a
-consumer narrows twice or casts once, in every view, forever.
+**A union of six envelope classes, not one envelope over a payload union.** Both satisfy AD-6's
+``{kind, id, ts, payload}``, but putting the discriminator on the envelope makes narrowing a single
+step in the generated TypeScript — ``if (event.kind === "swaps")`` narrows ``event.payload`` too.
+The alternative puts ``kind`` one level above the union it selects, so a consumer narrows twice or
+casts once, in every view, forever.
 
 **Every member is its own named model, never an inline object.** That is what makes each branch a
-``$ref`` in the generated schema, which is the shape ``test_errors.py``'s ``_is_ref_rooted`` union
-arm admits. That guard did **not** run at c5-1 and — **confirmed at c5-5, which put the union on a
-route** — still does not: it walks the 2xx *response* bodies of existing routes, and this union is
-a *request* body. The prediction held. What changed is that the union is now in the document, so
+``$ref`` in the generated schema. ``test_errors.py``'s ``_is_ref_rooted`` guard walks only the 2xx
+*response* bodies of existing routes, and this union is a *request* body, so
 ``test_routes_agent_events.py`` asserts the six ``$ref`` arms by name against the committed
-artifact; that is the gate this paragraph said did not exist, and it is a hand-written one on the
-request body rather than the general response-shape family.
+artifact instead.
 
 Validate with ``TypeAdapter(AgentEvent)``: the alias is an ``Annotated`` union rather than a
 ``BaseModel``, so it has no ``model_validate`` of its own. **Not needed in the route** — FastAPI
@@ -1327,7 +1277,7 @@ DEFAULT_TITLE_BY_KIND: dict[EventKind, str] = {
     "tier_list": "Tier list",
     "groups": "Groups",
 }
-"""What a view calls itself when the agent supplied no ``title`` (Q6, Brad 2026-08-07).
+"""What a view calls itself when the agent supplied no ``title``.
 
 The agent-authored ``title`` is optional, but the view heading is the ``aria-labelledby`` target of
 a ``role="dialog"`` — so an absent title does not merely look plain, it leaves a dialog unlabelled
@@ -1336,20 +1286,20 @@ for a screen reader. The fallback is therefore decided at the contract rather th
 An agent-supplied title always wins, and is expected to be more useful than these: the worked
 example in the design notes reads "Resilience options", not "Suggestions".
 
-**Four entries, not six.** The two system signals are absent on purpose (confirmed by Brad at the
-c5-1 review): they render no view and open no dialog, so there is no heading for them to label and
-a string here would be UI copy invented for something that never draws.
+**Four entries, not six.** The two system signals are absent on purpose: they render no view and
+open no dialog, so there is no heading for them to label and a string here would be UI copy
+invented for something that never draws.
 
 **The annotation does not police coverage.** ``dict[EventKind, str]`` constrains key *type*, and
 mypy accepts a partial dict silently — a signal kind is a legal :data:`EventKind` with no entry
-here, so a consumer indexes with ``.get`` or narrows to a view kind first. What actually pins the
-four-entry decision is ``test_contracts.py``'s hand-written view-kind table: a seventh push kind
-reddens there, not here (c5-1 review).
+here, so a consumer indexes with ``.get`` or narrows to a view kind first. What pins the four-entry
+decision is ``test_contracts.py``'s hand-written view-kind table: a seventh push kind reddens
+there, not here.
 
-**Now also pinned at import time** (c5-1 review round 2, Brad 2026-08-07): the assertion below
-fails at module load if this dict's keys drift from exactly the four view kinds, so the moment a
-seventh push kind is added and forgotten here, every process that imports this module refuses to
-start — a stronger guarantee than a test that must be run to catch it.
+**Also pinned at import time**: the assertion below fails at module load if this dict's keys drift
+from exactly the four view kinds, so the moment a seventh push kind is added and forgotten here,
+every process that imports this module refuses to start — a stronger guarantee than a test that
+must be run to catch it.
 """
 
 assert set(DEFAULT_TITLE_BY_KIND) == set(get_args(EventKind)) - {
@@ -1363,17 +1313,15 @@ assert set(DEFAULT_TITLE_BY_KIND) == set(get_args(EventKind)) - {
 
 
 # ---------------------------------------------------------------------------------------------
-# The ingest receipt (c5-5, FR-06, AD-8)
+# The ingest receipt (FR-06, AD-8)
 #
-# END OF THE c5-1 BLOCK. The section header above says "everything below this line is declared in
-# one story (c5-1) on purpose", and that claim is about the envelope and its payloads — this
-# divider is where it stops. What follows is the *answer* to a push of that union rather than a
-# member of it, which is why it is a sibling of the block rather than an addition inside it.
+# The *answer* to a push of the union above rather than a member of it, which is why it is a
+# sibling of the envelope block rather than an addition inside it.
 # ---------------------------------------------------------------------------------------------
 
 
-# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9),
-# so it is written for the agent author reading `/docs`, not for a maintainer reading this file.
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description, so it is
+# written for the agent author reading `/docs`, not for a maintainer reading this file.
 class EventIngestReceipt(BaseModel):
     """The body of ``POST /agent/events`` — how many connected clients received the push (FR-06).
 
@@ -1390,7 +1338,7 @@ class EventIngestReceipt(BaseModel):
     Attributes:
         clients: How many clients the event was written to, never negative.
 
-            **Delivered, not registered** (Q1, Brad 2026-08-08). This is
+            **Delivered, not registered.** This is
             :func:`~src.companion.app.ws.broadcast`'s return value: clients that took the frame,
             with any that failed mid-fan-out dropped from the count and from the registry. The
             alternative — sampling

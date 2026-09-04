@@ -47,11 +47,11 @@ class ScryfallImportError(Exception):
 #: Metadata keys carrying the bulk file's URL, newest spelling first.
 #:
 #: Scryfall replaced ``download_uri`` (a JSON array, ``.json``) with ``jsonl_download_uri``
-#: (gzip'd JSONL, ``.jsonl.gz``) — measured 2026-08-02, when the old key vanished from **every**
-#: entry on both the list and per-entry endpoints and every import path in this product broke at
-#: once. Both spellings are accepted so a fixture written against either shape still runs and so a
-#: restored ``download_uri`` would not break us a second time; :func:`stream_cards` decides the
-#: payload format by reading the bytes, so the key that supplied the URL does not constrain it.
+#: (gzip'd JSONL, ``.jsonl.gz``); the old key vanished from **every** entry on both the list and
+#: per-entry endpoints at once and every import path in this product broke with it. Both
+#: spellings are accepted so a fixture written against either shape still runs and so a restored
+#: ``download_uri`` would not break us a second time; :func:`stream_cards` decides the payload
+#: format by reading the bytes, so the key that supplied the URL does not constrain it.
 #:
 #: This is an **allowlist of known-good spellings, deliberately enumerated** — the inverse of the
 #: "ban the family" rule, and for its stated reason: a missing entry here is a loud failure with a
@@ -78,7 +78,7 @@ def _first_present(entry: dict[str, Any], keys: tuple[str, ...]) -> Any | None:
 def _resolve_download_uri(entry: dict[str, Any], bulk_type: str) -> str:
     """Return the bulk file's URL, or raise naming exactly what went wrong.
 
-    The pre-2026-08-02 code indexed ``entry["download_uri"]`` directly, so an upstream key rename
+    Earlier code indexed ``entry["download_uri"]`` directly, so an upstream key rename
     surfaced as a bare ``KeyError: 'download_uri'`` wrapped in a generic import failure — an error
     that names the key we wanted and nothing about what arrived. Listing the keys the entry
     *actually* carries turns the next such change from a debugging session into a diagnosis.

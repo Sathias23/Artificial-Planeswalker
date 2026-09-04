@@ -1,11 +1,11 @@
-"""Structured find-similar logic for the ``find_similar_cards`` MCP tool (Story 2.5).
+"""Structured find-similar logic for the ``find_similar_cards`` MCP tool.
 
-The **second sync search tool** and the final Epic-2 search surface. Unlike
+The **second sync search tool**. Unlike
 ``semantic_search_cards`` it **never embeds** — it takes a *seed card* (by ``card_name`` or
 ``card_id``), resolves it in raw SQL on ``cards`` (the async ``CardRepository`` is unreachable on
 the sync sqlite-vec connection), reads that card's **already-stored** vector back via
 :func:`~src.search.query.get_card_vector` (a primary-key point lookup, not an ``encode``), and
-seeds the Story 2.4 :func:`~src.search.query.hybrid_search` with it. The seed's **whole Oracle
+seeds :func:`~src.search.query.hybrid_search` with it. The seed's **whole Oracle
 identity** is excluded (``exclude_oracle_id``) so the results are genuine alternatives — never the
 seed plus its reprints. Optional relational filters (``format``/``colors``/``mana_value_*``/
 ``games``) compose into the same hybrid path. Each surviving :class:`~src.search.query.CardHit` is
@@ -44,12 +44,12 @@ from src.search.query import (
 logger = logging.getLogger(__name__)
 
 # Validation vocabularies (replicated from ``semantic_search.py`` so the modules stay decoupled —
-# the colour / games codes are stable domain constants, the same precedent Story 2.4 set).
+# the colour / games codes are stable domain constants).
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
 
 # Upper bound on ``limit``: kept well under ``hybrid_search``'s ``over_fetch_k`` (200) so the
-# over-fetch can never be starved by the requested ``limit`` (Pre-Epic-3 Targeted Gate G2). This
+# over-fetch can never be starved by the requested ``limit``. This
 # also bounds the seed-printing exclusion, which consumes KNN slots before the limit is filled.
 _MAX_LIMIT = 50
 
@@ -119,7 +119,7 @@ class _SeedResolution:
 def _decode_colors(raw: str | None) -> list[str]:
     """Decode the nullable ``cards.colors`` JSON-text column to a ``list[str]``.
 
-    ``None`` / empty / a JSON ``null`` all coerce to ``[]`` (Story 2.3 lesson).
+    ``None`` / empty / a JSON ``null`` all coerce to ``[]``.
     """
     if not raw:
         return []
@@ -249,7 +249,7 @@ def _resolve_seed(
             status="found", card_id=exact[0], oracle_id=exact[1], summary=_summary_from_row(exact)
         )
 
-    like = f"%{card_name}%"  # accepted LIKE-wildcard risk, mirroring CardRepository (deferred-work)
+    like = f"%{card_name}%"  # accepted LIKE-wildcard risk, mirroring CardRepository
     rows = conn.execute(
         f"SELECT {_SEED_COLUMNS} FROM cards "
         "WHERE lower(name) LIKE lower(?) OR lower(printed_name) LIKE lower(?) "

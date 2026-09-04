@@ -22,7 +22,7 @@ export interface paths {
          *     ``status="ok"``. The lifespan is a real precondition: served without one (no supported path
          *     does), the missing ``instance_id`` is an unhandled error, not a modelled state.
          *
-         *     ``clients`` is the connection registry's live count (17.4) — how many tabs hold a WebSocket at
+         *     ``clients`` is the connection registry's live count — how many tabs hold a WebSocket at
          *     this instant, read through ``connection_registry`` in ``src.companion.app.state`` like every
          *     other reader of that state. ``None`` when the registry does not exist — a constructed but
          *     never-started app, which no supported serving path produces but a test can — and the optional
@@ -281,9 +281,8 @@ export interface paths {
          *     call issues a **new** ticket — there is no session to resume and nothing is reused — so a client
          *     that reconnects asks again rather than holding one.
          *
-         *     Requires **no credential**: the browser holds none and never will (AD-5), the same ruling
-         *     ``GET /api/active-deck`` already answers under. There is no failure path to model, so under a
-         *     running lifespan the response is always ``200``.
+         *     Requires **no credential**: the browser holds none and never will (AD-5). There is no failure
+         *     path to model, so under a running lifespan the response is always ``200``.
          */
         get: operations["mint_session_ticket_api_session_get"];
         put?: never;
@@ -364,7 +363,7 @@ export interface components {
          *       "payload": {
          *         "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
          *       },
-         *       "ts": "2026-08-07T09:20:00Z"
+         *       "ts": "2025-01-01T09:20:00Z"
          *     }
          */
         ActiveDeckChangedEvent: {
@@ -395,7 +394,7 @@ export interface components {
          *     redundant broadcast sounds like a free optimisation and is not: the active-deck slot needs no
          *     lock precisely because writing it is a single assignment that never consults the old value, and
          *     "only broadcast if it changed" is exactly a read-modify-write. A duplicate signal costs one
-         *     idempotent refetch; the alternative costs a lock (Q10, Brad 2026-08-07).
+         *     idempotent refetch; the alternative costs a lock.
          */
         ActiveDeckChangedPayload: {
             /** Deck Id */
@@ -407,13 +406,13 @@ export interface components {
          *
          *     Carries the deck id and nothing else — **enforced**, not aspirational: an unknown field is
          *     refused (``extra="forbid"``), because silently dropping it would answer ``200`` to an agent
-         *     whose mental model of this body is wrong and leave nothing to correct it (c3-4 review, Brad
-         *     2026-08-01). The id must be a non-empty string, and *non-empty means non-blank*: a
-         *     whitespace-only id is refused with the same reasoning as ``""`` — the alternative is storing a
-         *     value that would be reported as the active deck forever while resolving to no deck at all, just
-         *     spelled with characters ``min_length`` cannot see (same review). Beyond non-blankness and an
-         *     upper length bound nothing about the id is constrained — a deck id has **no declared shape** in
-         *     this system (Q4), so an id that names no deck is accepted here and simply not found later.
+         *     whose mental model of this body is wrong and leave nothing to correct it. The id must be a
+         *     non-empty string, and *non-empty means non-blank*: a whitespace-only id is refused with the
+         *     same reasoning as ``""`` — the alternative is storing a value that would be reported as the
+         *     active deck forever while resolving to no deck at all, just spelled with characters
+         *     ``min_length`` cannot see. Beyond non-blankness and an upper length bound nothing about the id
+         *     is constrained — a deck id has **no declared shape** in this system, so an id that names no
+         *     deck is accepted here and simply not found later.
          *
          *     There is deliberately **no way to clear the active deck** over the wire: the field is required
          *     and does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a
@@ -595,7 +594,7 @@ export interface components {
          *       "payload": {
          *         "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
          *       },
-         *       "ts": "2026-08-07T09:19:00Z"
+         *       "ts": "2025-01-01T09:19:00Z"
          *     }
          */
         DeckChangedEvent: {
@@ -620,11 +619,10 @@ export interface components {
          *     A system signal, not a view: it carries no items and renders nothing. NFR-04's model is
          *     "something changed, refetch", so this says which deck and stops.
          *
-         *     ``deck_id`` is **nullable, and that is deliberate today rather than lax**. A later phase emits a
-         *     deck-agnostic version of this same signal — "some deck you may be showing changed" — and if the
-         *     field shipped required, that phase would have to break a contract already committed into a
-         *     ``.d.ts`` and two mirrored plugin bundles. Which is the exact ripple this whole story exists to
-         *     prevent, so the nullability is bought now, for free (Q5, Brad 2026-08-07).
+         *     ``deck_id`` is **nullable, and that is deliberate rather than lax**. A deck-agnostic version of
+         *     this same signal — "some deck you may be showing changed" — is anticipated, and if the field
+         *     shipped required, adding it would break a contract already committed into a ``.d.ts`` and two
+         *     mirrored plugin bundles. The nullability is bought now, for free.
          */
         DeckChangedPayload: {
             /** Deck Id */
@@ -748,8 +746,8 @@ export interface components {
          *     * **prose would leak input back.** FastAPI's validation detail echoes the offending value, and
          *       the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.
          *     * **the token is the contract.** Anything a human needs beyond it belongs in the log. If a
-         *       later story genuinely needs machine-readable specifics, it adds a *typed* optional field with
-         *       a named UX consumer — not a free-text bucket.
+         *       later change genuinely needs machine-readable specifics, it adds a *typed* optional field
+         *       with a named UX consumer — not a free-text bucket.
          *
          *     What each token means on the glass, which is why the set is closed:
          *
@@ -758,8 +756,7 @@ export interface components {
          *     * ``card_not_found`` — no card in the local database carries that printing id. The **only**
          *       token whose destination is not a panel: the view that referenced the card renders normally
          *       and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
-         *       (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
-         *       built in c4-3.
+         *       (FR-13). One unknown card must never fail a whole view or a whole push.
          *     * ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:
          *       either the printing carries no image data at all (79 cards in the shipped corpus), or the
          *       requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
@@ -771,7 +768,7 @@ export interface components {
          *       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
          *       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
          *       reason it is a separate token from ``no_image_data`` — the pixels are identical (the same
-         *       named Card placeholder) but only this one may ever be retried. Since c3-8 a failure is
+         *       named Card placeholder) but only this one may ever be retried. A failure is
          *       **negative-cached with an exponential backoff**, so a repeat request inside the window is
          *       answered from memory with this same token and no CDN request at all; the window starts at 30
          *       seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh
@@ -785,16 +782,16 @@ export interface components {
          *     * ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``
          *       the companion does not serve. No panel of its own: the SPA never generates one, so it means
          *       a client bug or a stray caller, and the log is where it is diagnosed.
-         *     * ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like
+         *     * ``forbidden`` — an agent-only endpoint was called without a valid credential. Like
          *       ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds
          *       the credential and never calls a route that wants one, so a panel here would report a
          *       failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome
          *       vocabulary, where AD-8's re-read-discovery-and-retry-once lives.
-         *     * ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*
+         *     * ``payload_too_large`` — an agent push exceeded the ingest cap. Surfaced to the *agent*
          *       through the MCP tool's outcome vocabulary, not to the glass.
          *     * ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the
-         *       SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel
-         *       is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token.
+         *       SPA must **not** quietly retry it the way ``database_unavailable`` retries; it has a state
+         *       panel of its own. The log carries the traceback; the wire carries the token.
          */
         ErrorResponse: {
             /**
@@ -927,7 +924,7 @@ export interface components {
          *         ],
          *         "title": "What this deck is doing"
          *       },
-         *       "ts": "2026-08-07T09:18:00Z"
+         *       "ts": "2025-01-01T09:18:00Z"
          *     }
          */
         GroupsEvent: {
@@ -1059,7 +1056,7 @@ export interface components {
          *         ],
          *         "title": "Resilience options"
          *       },
-         *       "ts": "2026-08-07T09:15:00Z"
+         *       "ts": "2025-01-01T09:15:00Z"
          *     }
          */
         SuggestionsEvent: {
@@ -1106,12 +1103,9 @@ export interface components {
          *     and is a designed case, not a malformed one, so neither quantity may be constrained to be
          *     positive. A ``ge=1`` here would reject a payload the experience specification asks for.
          *
-         *     There is deliberately **no price field.** The design asks for a price chip and Epic 9 inherited
-         *     the ask, but no price data exists anywhere in this system — the card table carries no price
-         *     column and the Scryfall importer never reads the ``prices`` object — so the field could never be
-         *     populated. Four earlier amendments already stripped price from the deck row and the detail
-         *     panel; this is the one they missed, struck here so Epic 9 does not rediscover it as a bug
-         *     (Q3, Brad 2026-08-07). Nothing is lost that could have been shown.
+         *     There is deliberately **no price field.** No price data exists anywhere in this system — the
+         *     card table carries no price column and the Scryfall importer never reads the ``prices`` object
+         *     — so the field could never be populated. Nothing is lost that could have been shown.
          * @example {
          *       "confidence": "medium",
          *       "in_card_id": "9f2b1c44-0d3e-4a77-8f21-6b0a5d3e2c19",
@@ -1156,7 +1150,7 @@ export interface components {
          *         ],
          *         "title": "Cheaper removal"
          *       },
-         *       "ts": "2026-08-07T09:16:00Z"
+         *       "ts": "2025-01-01T09:16:00Z"
          *     }
          */
         SwapsEvent: {
@@ -1244,7 +1238,7 @@ export interface components {
          *         ],
          *         "title": "How this deck's creatures rank"
          *       },
-         *       "ts": "2026-08-07T09:17:00Z"
+         *       "ts": "2025-01-01T09:17:00Z"
          *     }
          */
         TierListEvent: {

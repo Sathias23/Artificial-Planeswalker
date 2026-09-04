@@ -1,6 +1,6 @@
-"""For-format aggregate score, descriptive tier label & AD-6 confidence vocabulary (5.8).
+"""For-format aggregate score, descriptive tier label & AD-6 confidence vocabulary.
 
-The first consumer of the Story 5.7 dimension vector: collapses it into the **for-format
+The first consumer of the dimension vector: collapses it into the **for-format
 0-100 integer score** (FR19) via the profile's ``weights``, attaches the **FR24 tier
 label** from the profile's ``tier_thresholds``, and defines the **closed AD-6
 confidence-reason vocabulary** (FR21's vocabulary half). Pure and deterministic (AD-2):
@@ -8,7 +8,7 @@ no network, no DB, no clock, no randomness, no logging — inputs are the alread
 ``DimensionVector`` and a ``FormatProfile``; this module consumes the VECTOR, never raw
 signals.
 
-**Decide-once policies (restated here, pinned by tests):**
+**Policies (restated here, pinned by tests):**
 
 - *Rounding:* clamp to ``[0.0, 100.0]`` then round half-up — the same policy as
   :func:`src.logic.assessment.dimensions._to_score`, restated locally in
@@ -19,7 +19,7 @@ signals.
   (aggregate) / ``tier_thresholds`` (label). The FR20 "Standard fork" is the ABSENCE of
   a fork here: the Commander and Standard paths are the same code.
 
-**Composition contract (Story 5.9 / Epic 7):** 5.9's ``score()`` composes matcher →
+**Composition contract:** :func:`~src.logic.assessment.scorer.score` composes matcher →
 ``dimension_vector`` / ``bracket_floor`` → :func:`aggregate_score` + :func:`tier_label`.
 Under a ``heuristic_only`` profile the composer never consults ``bracket_floor`` and the
 edge emits ``bracket: null`` (AD-7 fixed shape) — the fork lives in what is COMPOSED,
@@ -27,9 +27,9 @@ never inside this module. No 1-10 projection, no absolute cross-format score, no
 percentile, and no meta-tier exist anywhere here (FR19/FR20).
 
 **Vocabulary, not policy (FR21/AD-6):** this module ships the closed confidence-reason
-tokens and level vocabulary only — exactly like 5.5's ``STRUCTURAL_GAP_TOKENS``. The
+tokens and level vocabulary only — exactly like ``STRUCTURAL_GAP_TOKENS``. The
 degradation ladder that maps run-context facts to a level and assembles ``reasons[]`` is
-Epic 7 edge code; the Commander profile's multiplayer-variance caveat is ``summary`` text
+edge code; the Commander profile's multiplayer-variance caveat is ``summary`` text
 driven by ``FormatProfile.multiplayer_variance_caveat``, NEVER a member of this enum.
 """
 
@@ -41,7 +41,7 @@ from src.logic.assessment.dimensions import DimensionVector
 from src.logic.assessment.profiles import DIMENSIONS, TIER_LABELS, FormatProfile, TierLabel
 
 # ---------------------------------------------------------------------------
-# AD-6 confidence vocabulary (AC6) — tokens only, no assignment policy
+# AD-6 confidence vocabulary — tokens only, no assignment policy
 # ---------------------------------------------------------------------------
 
 #: AD-6 reason token: one or more decklist entries did not resolve to known cards.
@@ -75,17 +75,16 @@ CONFIDENCE_LEVELS: Final[tuple[ConfidenceLevel, ...]] = ("low", "medium", "high"
 
 
 # ---------------------------------------------------------------------------
-# The for-format aggregate (AC2)
+# The for-format aggregate
 # ---------------------------------------------------------------------------
 
 
 def _to_score(value: float) -> int:
-    """Clamp to ``[0.0, 100.0]`` then round half-up — the shared decide-once policy.
+    """Clamp to ``[0.0, 100.0]`` then round half-up — the shared rounding policy.
 
     Restates :func:`src.logic.assessment.dimensions._to_score` verbatim: the sibling
-    helper is private by convention and this story's diff stays additive-only, so the
-    documented 2-line policy is copied rather than imported or promoted (if a third
-    copy ever threatens, hoisting to one public home is Story 5.9's call).
+    helper is private by convention, so the documented 2-line policy is copied rather
+    than imported (if a third copy ever threatens, hoist it to one public home).
     ``int(x + 0.5)`` rather than ``round()``: banker's rounding sends ``.5`` to the
     nearest EVEN integer. The clamp is float-dust defense only for the aggregate:
     weights are non-negative and sum to 1.0 (pinned by the profile tests), so the true
@@ -108,12 +107,12 @@ def aggregate_score(vector: DimensionVector, *, profile: FormatProfile) -> int:
     absolute cross-format scale.
 
     Args:
-        vector: The Story 5.7 ``DimensionVector`` (seven ints in ``[0, 100]``).
+        vector: The ``DimensionVector`` (seven ints in ``[0, 100]``).
         profile: The format's frozen constants; only ``weights`` is read.
 
     Raises:
-        ValueError: If any weight is negative or non-finite — the 5.9 guard (the 5.6
-            lesson: malformed input must not masquerade as signal; a negative weight
+        ValueError: If any weight is negative or non-finite (malformed input must not
+            masquerade as signal; a negative weight
             silently inverts a dimension's monotone direction). The shipped profiles
             are pinned valid by test; this protects hand-tuning workflows.
 
@@ -131,7 +130,7 @@ def aggregate_score(vector: DimensionVector, *, profile: FormatProfile) -> int:
 
 
 # ---------------------------------------------------------------------------
-# The FR24 tier label (AC3)
+# The FR24 tier label
 # ---------------------------------------------------------------------------
 
 
@@ -152,10 +151,9 @@ def tier_label(score: int, *, profile: FormatProfile) -> TierLabel:
         profile: The format's frozen constants; only ``tier_thresholds`` is read.
 
     Raises:
-        ValueError: If the cuts are not strictly ascending within ``(0, 100)`` — the
-            5.9 guard: a cut at 0 shadows band 1 entirely and a cut at 100 makes its
-            band a single-score degenerate sliver (the 5.8-deferred domain item); both
-            are tuning mistakes, not meaningful configurations.
+        ValueError: If the cuts are not strictly ascending within ``(0, 100)``: a cut
+            at 0 shadows band 1 entirely and a cut at 100 makes its band a single-score
+            degenerate sliver; both are tuning mistakes, not meaningful configurations.
 
     Returns:
         The band's :data:`~src.logic.assessment.profiles.TierLabel` word.

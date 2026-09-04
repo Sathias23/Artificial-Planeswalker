@@ -1,10 +1,10 @@
 """The held OS advisory lock that makes "exactly one companion" true, not nearly true (FR-01).
 
-**What it is for.** c1-8's identity probe closed the steady-state duplicate: a launch that finds a
-verified-live companion refuses. It could not close the *startup* window, because two launches that
-both probe before either publishes both see an empty rendezvous and both proceed. Measured at
-``8bfc909``, two launches spawned 6 ms apart produced two live companions sharing one discovery
-file, leaving the loser reachable by nothing. An OS advisory lock is the only primitive that answers
+**What it is for.** The identity probe closes the steady-state duplicate: a launch that finds a
+verified-live companion refuses. It cannot close the *startup* window, because two launches that
+both probe before either publishes both see an empty rendezvous and both proceed. Measured: two
+launches spawned 6 ms apart produced two live companions sharing one discovery file, leaving the
+loser reachable by nothing. An OS advisory lock is the only primitive that answers
 "am I first?" atomically across processes, so this module supplies the atomic *whether* while the
 probe keeps supplying the informative *who and where*.
 
@@ -20,8 +20,8 @@ descriptor. Unlink-and-recreate would hand the next launch a *different* inode t
 processes would believe they own the machine. A zero-byte file that outlives every run is therefore
 the correct artifact, not untidiness.
 
-**Why it is a separate file from ``companion.json``.** The rendezvous is c1-7's atomically published
-data (port, token, identity) and is read for its contents; this file is never read, never parsed and
+**Why it is a separate file from ``companion.json``.** The rendezvous is atomically published data
+(port, token, identity) and is read for its contents; this file is never read, never parsed and
 carries nothing. Overloading one file with both roles would put a lock on the very inode the atomic
 ``os.replace`` is designed to swap out from under readers. Both live under
 :func:`src.paths.data_dir`, so ``PLANESWALKER_DATA_DIR`` isolates the lock exactly as it does the
@@ -71,12 +71,12 @@ _LOCK_BYTES = 1
 _CONTENTION_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK})
 """The errnos that mean "someone else holds the lock" — the only failures acquire swallows.
 
-Windows ``msvcrt.locking(LK_NBLCK)`` reports contention as ``EACCES`` (measured, AC 11) and can
-report ``EDEADLK``; POSIX ``flock(LOCK_NB)`` reports ``EWOULDBLOCK`` (``EAGAIN`` on Linux). Any
-other failure of the lock call — ``ENOLCK``/``ENOTSUP`` on a filesystem that cannot lock at all,
-such as NFS without lockd or some SMB/FUSE mounts — propagates loudly instead (c1-9 review
-ruling): reporting it as contention would print "another companion is already starting up" on
-every launch, forever, pointing at a companion that does not exist."""
+Windows ``msvcrt.locking(LK_NBLCK)`` reports contention as ``EACCES`` (measured) and can report
+``EDEADLK``; POSIX ``flock(LOCK_NB)`` reports ``EWOULDBLOCK`` (``EAGAIN`` on Linux). Any other
+failure of the lock call — ``ENOLCK``/``ENOTSUP`` on a filesystem that cannot lock at all, such as
+NFS without lockd or some SMB/FUSE mounts — propagates loudly instead: reporting it as contention
+would print "another companion is already starting up" on every launch, forever, pointing at a
+companion that does not exist."""
 
 
 def lock_path() -> Path:
@@ -101,8 +101,8 @@ def acquire_instance_lock() -> int | None:
     deliberate: contention reports as ``PermissionError`` (``EACCES``) on Windows, which is
     indistinguishable from a genuine permission problem, so a guard wrapped around both calls would
     quietly report "someone else has it" for a data directory this process simply cannot write. A
-    launch that cannot open a file there will fail c1-7's discovery publish moments later anyway,
-    and c1-7's Decide-once #3 already rules such a launch should fail loudly rather than half-start.
+    launch that cannot open a file there will fail the discovery publish moments later anyway, and
+    such a launch should fail loudly rather than half-start.
 
     The lock is **not** released here on success — that is the whole design. Hold the returned
     descriptor for the process's lifetime and pass it to :func:`release_instance_lock` from a
@@ -150,9 +150,9 @@ def release_instance_lock(fd: int) -> None:
     Closing the descriptor is what releases the lock on both platforms — but on Windows the byte
     is explicitly unlocked first, because Microsoft documents locks still pending at close as
     released by the OS only "depending on available system resources": relying on the close alone
-    could leave a stop-then-immediate-relaunch spuriously refused under load (c1-9 review ruling).
-    On POSIX ``flock`` drops synchronously with the open-file description. The file itself is
-    deliberately left in place — see the module docstring; deleting it is a correctness bug.
+    could leave a stop-then-immediate-relaunch spuriously refused under load. On POSIX ``flock``
+    drops synchronously with the open-file description. The file itself is deliberately left in
+    place — see the module docstring; deleting it is a correctness bug.
 
     **Never raises.** This runs inside :func:`src.companion.app.server.run`'s outermost ``finally``,
     where a raise would replace whatever error was already propagating. A close that fails has left
