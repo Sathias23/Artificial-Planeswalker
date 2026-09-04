@@ -2,15 +2,13 @@ import { useCallback, useState } from 'react'
 
 /**
  * Whether a card's picture has arrived, failed, or is still in flight — and the two `<img>`
- * traps that make knowing it harder than it looks (stories c4-4, c4-5).
+ * traps that make knowing it harder than it looks.
  *
  * ================= WHY THIS IS A MODULE OF ITS OWN, AND NOT A COPY =====================
  *
- * c4-4 wrote this logic inside `CardTile`, correctly, because there was one consumer. **c4-5 is
- * the second**: the detail panel draws the same card face at `size=large`, and it needs exactly
- * the same three states and exactly the same two race repairs. Two copies of a subtle race fix
- * is one copy that will be repaired and one that will not — and this particular fix has ALREADY
- * been repaired once, at c4-4's review, in the one place it then existed. So it moves here.
+ * Two consumers draw the same card face: the grid tile, and the detail panel at `size=large`.
+ * Both need exactly the same three states and exactly the same two race repairs. Two copies of a
+ * subtle race fix is one copy that will be repaired and one that will not. So it lives here.
  *
  * The precedent for a shared helper living at the ROOT of a tree rather than inside one member
  * is `src/components/filled.ts`, whose own header states the rule: *"a helper shared by two
@@ -30,25 +28,26 @@ import { useCallback, useState } from 'react'
  * the standard mitigation and is why a `ref` is needed at all — one of the four independent
  * reasons a card tile cannot be a listed primitive.
  *
- * **Both arms, not one** (c4-4 review, 2026-08-04). The mirror of a cached success is a cached
- * FAILURE: a refusal answered instantly — the backend's negative cache holds one in memory for
- * up to 300 s (c3-8) — can dispatch `error` before React is listening, exactly as a warm hit can
+ * **Both arms, not one.** The mirror of a cached success is a cached FAILURE: a refusal answered
+ * instantly — the backend's negative cache holds one in memory for up to 300 s — can dispatch
+ * `error` before React is listening, exactly as a warm hit can
  * dispatch `load`. A settle that only knew the success half would leave that element on the
  * silent well forever, with the named placeholder AD-11 promises unreachable. `complete` is true
  * for a broken image too; `naturalWidth` is what says which kind of settled this is.
  *
- * **c4-5 inherits both arms at a DIFFERENT CACHE KEY, and the balance inverts.** `?size=large`
+ * **The detail panel inherits both arms at a DIFFERENT CACHE KEY, and the balance inverts.**
+ * `?size=large`
  * is a different URL and therefore a different cache entry, so the detail art is **cold on first
  * inspection even when the grid is fully warm**. In the panel the cold path is the common one
  * and the warm path is the second look at the same card; in the grid it is the other way round.
  * Same code, opposite weighting — stated because it changes what a reader should expect to see.
  *
- * ================= AND c4-6 MAKES THE KEY TWO VALUES, WHICH IS A DEFECT REPAIRED (Q7) ==
+ * ================= AND A FLIP MAKES THE KEY TWO VALUES ==================================
  *
- * This hook keyed on `cardId` alone, and the day a face could change that stopped being enough.
- * `?face=1` is a **different URL and therefore a different browser-cache entry**, so the first
- * flip of any card is always a cold fetch — while `cardId` had not changed, so the state machine
- * did not re-arm. Two failures followed from one line, and both are the kind a screenshot passes:
+ * Keying on `cardId` alone stops being enough the day a face can change. `?face=1` is a
+ * **different URL and therefore a different browser-cache entry**, so the first flip of any card
+ * is always a cold fetch — while `cardId` has not changed, so a `cardId`-keyed state machine
+ * would not re-arm. Two failures follow from one line, and both are the kind a screenshot passes:
  *
  *   A flipped tile would sit at `'shown'` over an `<img>` whose new `src` had not arrived — the
  *   OLD face at full opacity, with no silent well, until the new bytes landed and swapped under
@@ -69,7 +68,7 @@ import { useCallback, useState } from 'react'
  * settle is INERT there in both directions, which is what lets the well assertions in the two
  * component suites mean anything. Events are DISPATCHED (`fireEvent.load(img)`), never awaited.
  * The claim this module actually makes is UNPROVABLE in the suite and is checked by eye against
- * a warm browser cache in each story's Task 7.
+ * a warm browser cache.
  */
 
 /**
@@ -104,7 +103,7 @@ export interface CardArt {
 /**
  * Track one card's picture.
  *
- * **The verdict belongs to the CARD, not to the slot** (c4-4 review, 2026-08-04). A consumer
+ * **The verdict belongs to the CARD, not to the slot.** A consumer
  * handed a different `cardId` on the same mount would otherwise keep the old card's `'failed'`
  * (a placeholder for a card whose picture is fine) or its `'shown'` (opacity 1 over pixels that
  * have not arrived). That is the ordinary case in the detail panel, where ONE mounted component
@@ -117,7 +116,7 @@ export interface CardArt {
  *
  * Args:
  *   cardId: The Scryfall printing uuid whose picture is being drawn. Changing it re-arms.
- *   face: Which of that card's IMAGES is being drawn, zero-based (story c4-6, Q7). Changing it
+ *   face: Which of that card's IMAGES is being drawn, zero-based. Changing it
  *     re-arms too, because `?face=1` is a different URL and therefore a different cache entry —
  *     see the header. Defaults to `0`, so every caller that draws one face only is unchanged and
  *     needs no edit.
@@ -130,12 +129,10 @@ export interface CardArt {
 export const useCardArt = (cardId: string, face = 0): CardArt => {
   // ONE STRING RATHER THAN TWO STATES, so the reset below stays a single comparison and cannot
   // half-fire. The `cardId` here is the RAW store id — encoding happens later, in `cardImageUrl`,
-  // and c4-1's record gives ids "no shape constraint" — so a `#` in an id is expressible and the
-  // separator does not pretend otherwise (review 2026-08-06 corrected this comment's first
-  // spelling, which claimed a `#` "would have been percent-encoded before it ever reached a
-  // URL"). What actually bounds the risk: `face` is a small integer, so two keys collide only if
-  // one id textually ends in the other plus `#<digit>` — and the key never reaches a URL at all,
-  // so even that collision would only cost a missed re-arm rather than a wrong request.
+  // and ids carry no shape constraint — so a `#` in an id is expressible and the separator does
+  // not pretend otherwise. What bounds the risk: `face` is a small integer, so two keys collide
+  // only if one id textually ends in the other plus `#<digit>` — and the key never reaches a URL
+  // at all, so even that collision would only cost a missed re-arm rather than a wrong request.
   const key = `${cardId}#${face}`
   const [state, setState] = useState<ArtState>('loading')
   const [artFor, setArtFor] = useState(key)
@@ -157,7 +154,7 @@ export const useCardArt = (cardId: string, face = 0): CardArt => {
   const onLoad = useCallback(() => setState('shown'), [])
   // `onError` fires once per `src`. A re-render with the same `src` does not re-arm it — and
   // that is correct here, because the backend answers a remembered failure from memory for up to
-  // 300 seconds (c3-8): "a tile that retries in a loop will be answered from memory and change
+  // 300 seconds: "a tile that retries in a loop will be answered from memory and change
   // nothing". What it means mechanically is that the failure must live in STATE rather than be
   // recomputed, which is what this hook is.
   const onError = useCallback(() => setState('failed'), [])

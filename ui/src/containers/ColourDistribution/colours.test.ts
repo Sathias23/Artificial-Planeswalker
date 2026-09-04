@@ -1,24 +1,23 @@
 /**
- * The colour distribution derivation (story c4-9, AC 6–14, AC 21, Q1, Q4, Q6, Q14).
+ * The colour distribution derivation.
  *
  * ================= A `.ts`, AND THAT IS THE GATE RATHER THAN A PREFERENCE ==============
  *
  * No JSX anywhere below, so this is a `.ts` — `gate-geometry.test.ts:53` forbids `.tsx` under
- * `tests/`, and c4-8's review renamed `curve.test.tsx` for exactly this reason and rejected an
- * incoherent stated justification for the deviation. The rendered half lives in
+ * `tests/`, and `curve.test.ts` is a `.ts` for the same reason. The rendered half lives in
  * `ColourDistribution.test.tsx`.
  *
- * ================= EVERY FIXTURE CARD IS A REAL CORPUS ROW (AC 14) ====================
+ * ================= EVERY FIXTURE CARD IS A REAL CORPUS ROW ============================
  *
  * `name`, `mana_cost`, `type_line`, `cmc` and `colors` are copied verbatim from the shipped
- * database at `1ed2e83`, re-measured read-only with `json_type(card_faces)='array'` — never
- * `card_faces IS NOT NULL`, which matches all 38,261 rows because the column is NOT NULL and a
- * non-faced card stores the JSON *string* `'null'`.
+ * database, measured with `json_type(card_faces)='array'` — never `card_faces IS NOT NULL`,
+ * which matches all 38,261 rows because the column is NOT NULL and a non-faced card stores the
+ * JSON *string* `'null'`.
  *
- * This is c4-8's High, not repeated: that story's split-card "pin" gave `Cramped Vents // Access
- * Maze` the invented type line `'Land // Land'`, under which `isLand` excluded the row before the
- * derivation ever saw it — leaving tautological assertions that would have stayed green through
- * the very fix the pin existed to catch.
+ * An invented fixture can be vacuous: a split-card "pin" giving `Cramped Vents // Access Maze` the
+ * invented type line `'Land // Land'` has `isLand` exclude the row before the derivation ever sees
+ * it — leaving tautological assertions that would stay green through the very fix the pin exists
+ * to catch.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -105,7 +104,7 @@ const countsOf = (rows: DeckCardSummary[], cards = COLD): Partial<Record<ManaCol
   Object.fromEntries(distributionOf(rows, cards).segments.map((s) => [s.colour, s.count]))
 
 // ---------------------------------------------------------------------------------------
-// Q1 — the front face, and the deck it changes
+// The front face, and the deck it changes
 // ---------------------------------------------------------------------------------------
 
 /**
@@ -211,7 +210,7 @@ const PRISMATIC_OMENS: DeckCardSummary[] = [
   ),
 ]
 
-/** The same tokeniser over the WHOLE string — the reading this story declined, computed here so
+/** The same tokeniser over the WHOLE string — the reading that was declined, computed here so
  *  the comparison is a measurement in the suite rather than a claim in a comment. */
 const wholeStringPips = (rows: DeckCardSummary[]): Partial<Record<ManaColour, number>> => {
   const counts: Partial<Record<ManaColour, number>> = {}
@@ -226,7 +225,7 @@ const wholeStringPips = (rows: DeckCardSummary[]): Partial<Record<ManaColour, nu
   return counts
 }
 
-describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the deck it moves', () => {
+describe('pips come from the FRONT FACE, and `Prismatic Dragon` is the deck it moves', () => {
   it('counts only the front half of the ten Omen rows, and the back half is 26 pips it drops', () => {
     // FRONT: W 2, U 8, B 6, R 4, G 6 — 26 pips.
     expect(countsOf(PRISMATIC_OMENS)).toEqual({ w: 2, u: 8, b: 6, r: 4, g: 6 })
@@ -237,12 +236,12 @@ describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the de
     expect(wholeStringPips(PRISMATIC_OMENS)).toEqual({ w: 4, u: 13, b: 16, r: 8, g: 11 })
   })
 
-  it('reproduces the deck-level 71-versus-45 measurement (AC 6)', () => {
-    // The whole deck, measured read-only at `1ed2e83`: whole string 71 pips ordered
+  it('reproduces the deck-level 71-versus-45 measurement', () => {
+    // The whole deck, measured against the shipped database: whole string 71 pips ordered
     // B > U > G > R > W; front face 45 pips ordered U > B ≈ G > R > W.
     //
-    // ⚠️ PROVENANCE, DECLARED (review 2026-08-06, ruled): `OTHER_ROWS = 19` is a RECORDED
-    // MEASUREMENT, not a suite-derived number — the remaining 28 rows carry no `//` at all, so
+    // ⚠️ `OTHER_ROWS = 19` is a RECORDED MEASUREMENT, not a suite-derived number — the
+    // remaining 28 rows carry no `//` at all, so
     // they contribute 19 pips identically under both readings, but this test cannot re-derive
     // that premise and would not notice if it drifted. What the suite genuinely re-derives is
     // the ten pinned Omen rows (26 vs 52 above), which is the entire policy difference; the
@@ -253,7 +252,7 @@ describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the de
       Object.values(wholeStringPips(PRISMATIC_OMENS)).reduce((a, b) => a + b, 0) + OTHER_ROWS
     expect(front).toBe(45)
     expect(whole).toBe(71)
-    // The number the story is about: 37% of the bar.
+    // The headline number: 37% of the bar.
     expect(Math.round(((whole - front) / whole) * 100)).toBe(37)
   })
 
@@ -270,26 +269,26 @@ describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the de
 
   it('applies the front-face rule to a TRUE split card too, where either half is a real cast', () => {
     // `Heaven // Earth` — `Instant // Sorcery`, `'{X}{G} // {X}{R}{R}'`, verbatim from the DB.
-    // The ruling's rationale (b) ("the back half of an Omen is a cost you pay separately or
-    // never") does NOT hold for the 137 true split cards, where either half is a first-class
-    // cast — but the RULE still does, uniformly (review 2026-08-06): every other surface splits
-    // the same way, and a policy fork by subclass would make the bar disagree with the deck row.
+    // The front-face rationale about Omens ("the back half of an Omen is a cost you pay
+    // separately or never") does NOT hold for the 137 true split cards, where either half is a
+    // first-class cast — but the RULE still applies, uniformly: every other surface splits the
+    // same way, and a policy fork by subclass would make the bar disagree with the deck row.
     // 0 live rows today; this is the subclass every other `' // '` fixture in this file misses.
     const HEAVEN_EARTH = card('Heaven // Earth', '{X}{G} // {X}{R}{R}', 'Instant // Sorcery', 3, [
       'G',
       'R',
     ])
     // Front half only: one green. The back half's `{R}{R}` — a fully castable half — is the
-    // documented cost of the ruling, invisible on this panel.
+    // documented cost of the front-face rule, invisible on this panel.
     expect(countsOf([row(HEAVEN_EARTH)])).toEqual({ g: 1 })
   })
 })
 
 // ---------------------------------------------------------------------------------------
-// Q2 — hydration
+// Hydration
 // ---------------------------------------------------------------------------------------
 
-describe('Q2 — the blank-cost faced cards contribute their real pips once hydrated (AC 7)', () => {
+describe('the blank-cost faced cards contribute their real pips once hydrated', () => {
   // `Ayara, Widow of the Realm // Ayara, Furnace Queen` — the deck's own namesake in
   // `Ayara Black Devotion`, blank at the top level, `{1}{B}{B}` on its front face.
   const AYARA = card(
@@ -312,9 +311,7 @@ describe('Q2 — the blank-cost faced cards contribute their real pips once hydr
   it('reads the FRONT face only when the hydrated back face carries a cost too', () => {
     // `Birgi, God of Storytelling // Harnfel, Horn of Bounty` — a real corpus MDFC whose faces
     // BOTH carry a cost (`{2}{R}` / `{4}{R}`, verbatim from the DB), which is the only shape
-    // this rule is visible on. (Review 2026-08-06: the previous fixture was Sephiroth with an
-    // invented `{4}{B}{B}` back face — the real card's back face is costless, so the scenario
-    // existed in no corpus row. AC 14.)
+    // this rule is visible on.
     const BIRGI = card(
       'Birgi, God of Storytelling // Harnfel, Horn of Bounty',
       '',
@@ -335,10 +332,10 @@ describe('Q2 — the blank-cost faced cards contribute their real pips once hydr
 })
 
 // ---------------------------------------------------------------------------------------
-// Q4 — what one symbol contributes
+// What one symbol contributes
 // ---------------------------------------------------------------------------------------
 
-describe('Q4(a) — a hybrid pip credits EVERY colour it can be paid with', () => {
+describe('a hybrid pip credits EVERY colour it can be paid with', () => {
   it('gives `{W/U}` one white and one blue, so the total exceeds the symbol count', () => {
     // `Sokka, Lateral Strategist` — `{1}{W/U}{W/U}`, live in `Aanging Loose`.
     const SOKKA = card(
@@ -368,7 +365,7 @@ describe('Q4(a) — a hybrid pip credits EVERY colour it can be paid with', () =
   })
 })
 
-describe('Q4(b) — Phyrexian is a MODIFIER, never a third colour', () => {
+describe('Phyrexian is a MODIFIER, never a third colour', () => {
   it('counts `{U/P}` as one blue pip and nothing else', () => {
     // `Tezzeret's Gambit` — `{3}{U/P}`, live in `Dragon-God Superfriends`. Life is not a colour.
     const GAMBIT = card("Tezzeret's Gambit", '{3}{U/P}', 'Sorcery', 4, ['U'])
@@ -376,16 +373,16 @@ describe('Q4(b) — Phyrexian is a MODIFIER, never a third colour', () => {
   })
 })
 
-describe('Q4(c) — a generic-hybrid credits its COLOUR only', () => {
+describe('a generic-hybrid credits its COLOUR only', () => {
   it('counts `{2/W}{2/B}{2/G}` as one pip each and the generic halves as none', () => {
-    // `Kin-Tree Severance` — the corpus's generic-hybrid shape. ZERO live copies (§E), so this
+    // `Kin-Tree Severance` — the corpus's generic-hybrid shape. ZERO live copies, so this
     // is a corpus card exercising a rule no real deck reaches today, and the test says so.
     const SEVERANCE = card('Kin-Tree Severance', '{2/W}{2/B}{2/G}', 'Instant', 6, ['B', 'G', 'W'])
     expect(countsOf([row(SEVERANCE)])).toEqual({ w: 1, b: 1, g: 1 })
   })
 })
 
-describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless segment', () => {
+describe('generic and `{X}` count for nobody, and invent no colourless segment', () => {
   it('gives a colourless artifact no segment at all', () => {
     // A generic cost is `colours: []` in the tokeniser, which is the whole test — no `unknown`
     // special case is needed either, because an `unknown` token has no `colours` field.
@@ -397,15 +394,14 @@ describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless
   it('drops `{X}` and keeps the coloured pips beside it', () => {
     // `Black Sun's Zenith` — a real corpus row with exactly the `{X}{B}{B}` shape that is live
     // today as `Exude Toxin`, the back half of `Scavenger Regent // Exude Toxin` in `Prismatic
-    // Dragon`. (Review 2026-08-06: the fixture was previously that back half spelled as a
-    // standalone card, which exists in no corpus row — AC 14.)
+    // Dragon`.
     const XSPELL = card("Black Sun's Zenith", '{X}{B}{B}', 'Sorcery', 2, ['B'])
     expect(countsOf([row(XSPELL)])).toEqual({ b: 2 })
   })
 
   it('DOES count `{C}` as colourless — a real colour in this vocabulary', () => {
     // `Eldrazi Confluence` — `{2}{C}{C}`. ⚠️ ZERO `{C}` symbols appear in ANY of the 40 real
-    // decks (§E), so the colourless segment ships untested against real data and this test is
+    // decks, so the colourless segment ships untested against real data and this test is
     // its only witness. Stated rather than left as a silent gap.
     const CONFLUENCE = card('Eldrazi Confluence', '{2}{C}{C}', 'Instant', 4)
     expect(countsOf([row(CONFLUENCE)])).toEqual({ c: 2 })
@@ -414,7 +410,7 @@ describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless
     expect(distributionOf(mixed).segments.map((s) => s.colour)).toEqual(['b', 'c'])
   })
 
-  it('drops `{S}` snow — an `unknown` token contributes nothing, pinned (review 2026-08-06)', () => {
+  it('drops `{S}` snow — an `unknown` token contributes nothing, pinned', () => {
     // `parse.ts` classifies `{S}` as `unknown`, so a snow pip renders in a deck row (unknown
     // tokens draw) yet is silently absent from this bar. Zero `{S}` symbols in any real deck;
     // this pins the CURRENT behaviour so a `classify` change surfaces here rather than as a
@@ -435,7 +431,7 @@ describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless
   })
 })
 
-describe('Q4(e) — lands are excluded, by the FRONT-FACE WHOLE-WORD test (AC 10)', () => {
+describe('lands are excluded, by the FRONT-FACE WHOLE-WORD test', () => {
   it('drops a land that carries a real coloured cost', () => {
     // `Glade of the Pump Spells` — `Land`, `{2}{G}`. A land that taps for mana is a SOURCE, not
     // a demand, and the panel's question is "does my mana base match my SPELLS".
@@ -458,10 +454,9 @@ describe('Q4(e) — lands are excluded, by the FRONT-FACE WHOLE-WORD test (AC 10
   })
 
   it('is the WHOLE-WORD test, so `Lander Rizzi` is not a land', () => {
-    // c4-8's Q4 deviation, inherited rather than re-derived: a substring test drops this card
-    // (and the `Lander` token) out of the panel. 0 live rows either way; the word test removes
-    // a way to be wrong later. (Review 2026-08-06: real row is `{X}{G}{G}`, cmc 2, `["G"]` —
-    // the fixture previously carried an invented cost, AC 14.)
+    // A substring test would drop this card (and the `Lander` token) out of the panel. 0 live
+    // rows either way; the word test removes a way to be wrong later. The real row is
+    // `{X}{G}{G}`, cmc 2, `["G"]`.
     const LANDER = card(
       'Lander Rizzi',
       '{X}{G}{G}',
@@ -477,13 +472,12 @@ describe('Q4(e) — lands are excluded, by the FRONT-FACE WHOLE-WORD test (AC 10
     // `'Artifact'` (first-match-wins over TYPE_GROUPS), which would count 25 corpus lands as
     // spells. Zero live, so no fixture stumbles into it and no eye-check can see it.
     //
-    // ⚠️ THE FIRST FIXTURE IS SYNTHETIC, DECLARED AND RULED (review 2026-08-06) — the ONLY
-    // deliberate deviation from AC 14 in this file. Every one of the corpus's 25 Artifact Lands
-    // is costless (verified: 0 rows with `type_line LIKE '%Artifact Land%'` carry a cost), so a
-    // real fixture contributes zero pips under EITHER policy and the guard would stay green
-    // through the exact defect it names — the c4-8 vacuous-pin class, which this test shipped as
-    // before the review caught it. A coloured cost is the tooth: under `isLand` (correct) the
-    // row is excluded and counts nothing; under `groupOf` (the mistake) it would leak `{ g: 1 }`.
+    // ⚠️ THE FIRST FIXTURE IS SYNTHETIC, deliberately — the ONLY non-corpus fixture in this
+    // file. Every one of the corpus's 25 Artifact Lands is costless (verified: 0 rows with
+    // `type_line LIKE '%Artifact Land%'` carry a cost), so a real fixture contributes zero pips
+    // under EITHER policy and the guard would stay green through the exact defect it names. A
+    // coloured cost is the tooth: under `isLand` (correct) the row is excluded and counts
+    // nothing; under `groupOf` (the mistake) it would leak `{ g: 1 }`.
     const SYNTHETIC_ARTIFACT_LAND = card(
       'Synthetic Artifact Land (no corpus card has this shape)',
       '{G}',
@@ -493,21 +487,20 @@ describe('Q4(e) — lands are excluded, by the FRONT-FACE WHOLE-WORD test (AC 10
     )
     expect(countsOf([row(SYNTHETIC_ARTIFACT_LAND)])).toEqual({})
     // …and one that genuinely IS an artifact still counts — a real corpus row with a coloured
-    // cost, so THIS half has teeth too (the previous `{5}` fixture asserted `{}` either way,
-    // under a comment claiming the opposite).
+    // cost, so THIS half has teeth too (a generic-cost fixture would assert `{}` either way).
     const SENTINEL = card('Esper Sentinel', '{W}', 'Artifact Creature — Human Soldier', 1, ['W'])
     expect(countsOf([row(SENTINEL)])).toEqual({ w: 1 })
   })
 })
 
 // ---------------------------------------------------------------------------------------
-// Q6 / AC 11 / AC 12 — which rows, and how many of each
+// Which rows, and how many of each
 // ---------------------------------------------------------------------------------------
 
-describe('the board policy: commander + mainboard, sideboard excluded (AC 11, Q6)', () => {
+describe('the board policy: commander + mainboard, sideboard excluded', () => {
   const MAIN = card('Doom Blade', '{1}{B}', 'Instant', 2, ['B'])
   const COMMANDER = card(
-    // Straight apostrophe and real `colors`, both verbatim from the DB (review 2026-08-06).
+    // Straight apostrophe and real `colors`, both verbatim from the DB.
     "Atraxa, Praetors' Voice",
     '{G}{W}{U}{B}',
     'Legendary Creature — Phyrexian Angel Horror',
@@ -530,7 +523,7 @@ describe('the board policy: commander + mainboard, sideboard excluded (AC 11, Q6
   })
 })
 
-describe('counts are SUMMED QUANTITIES, never row counts (AC 12)', () => {
+describe('counts are SUMMED QUANTITIES, never row counts', () => {
   it('multiplies a ×4 row by four', () => {
     // `Pond Prophet` — `{G/U}{G/U}`, live at ×4 in `Astonishing Ant-Man`. Four copies, two
     // hybrid symbols each, both colours credited: 8 green and 8 blue from ONE row.
@@ -541,13 +534,13 @@ describe('counts are SUMMED QUANTITIES, never row counts (AC 12)', () => {
 })
 
 // ---------------------------------------------------------------------------------------
-// Q14 — the percentages
+// The percentages
 // ---------------------------------------------------------------------------------------
 
-describe('Q14 — the displayed percentage is rounded and NEED NOT sum to 100 (AC 21)', () => {
-  // A HAND-ASSEMBLED set of real corpus rows, not a corpus deck — declared (review 2026-08-06,
-  // ruled): no real deck lands on three exactly-equal colours, and the 33/33/33 rounding edge is
-  // the whole point of this pin. AC 38's eye-check is where real corpus decks render.
+describe('the displayed percentage is rounded and NEED NOT sum to 100', () => {
+  // A HAND-ASSEMBLED set of real corpus rows, not a corpus deck, deliberately: no real deck
+  // lands on three exactly-equal colours, and the 33/33/33 rounding edge is the whole point of
+  // this pin. The eye-check is where real corpus decks render.
   const evenThree = [
     row(card('Doom Blade', '{1}{B}', 'Instant', 2, ['B'])),
     row(card('Lightning Bolt', '{R}', 'Instant', 1, ['R'])),
@@ -571,7 +564,7 @@ describe('Q14 — the displayed percentage is rounded and NEED NOT sum to 100 (A
   })
 
   it('prints a rounded 0% honestly rather than flooring a non-zero count to 1%', () => {
-    // RULED (Q14): the count beside it is the un-rounded truth, and a floor would make the
+    // Deliberate: the count beside it is the un-rounded truth, and a floor would make the
     // printed percentage disagree with its own arithmetic in the one case anyone would check.
     // NOT producible from live data — the thinnest live share is 1 of 26 (3.8%) — so this
     // fixture is synthetic ON PURPOSE and says so.
@@ -588,10 +581,10 @@ describe('Q14 — the displayed percentage is rounded and NEED NOT sum to 100 (A
 })
 
 // ---------------------------------------------------------------------------------------
-// AC 32 — the empty case, asserted against the DERIVATION
+// The empty case, asserted against the DERIVATION
 // ---------------------------------------------------------------------------------------
 
-describe('the zero-pip case (AC 32, Q10)', () => {
+describe('the zero-pip case', () => {
   it('is EMPTY, not a bar of zeroes, for a deck with no cards', () => {
     const { segments, total } = distributionOf([])
     expect(segments).toEqual([])
@@ -600,8 +593,7 @@ describe('the zero-pip case (AC 32, Q10)', () => {
 
   it('is empty for a land-only deck — cards, but nothing for a colour bar to describe', () => {
     // NO DECK IN THE CORPUS REACHES THIS STATE — all 40 have at least 2 pips — so it is
-    // asserted against the derivation rather than against a hand-built deck (AC 32, and the
-    // c4-8 High that made this rule).
+    // asserted against the derivation rather than against a hand-built deck.
     const lands = [
       row(card('Forest', '', 'Basic Land — Forest', 0), { quantity: 24 }),
       row(card('Glade of the Pump Spells', '{2}{G}', 'Land', 3, ['G']), { quantity: 4 }),
@@ -625,10 +617,10 @@ describe('the zero-pip case (AC 32, Q10)', () => {
 })
 
 // ---------------------------------------------------------------------------------------
-// AC 13 — purity
+// Purity
 // ---------------------------------------------------------------------------------------
 
-describe('the derivation is pure and copies nothing (AC 13, AD-12, don’t-break 5)', () => {
+describe('the derivation is pure and copies nothing (AD-12)', () => {
   it('returns the same answer twice and mutates neither argument', () => {
     const rows = [...PRISMATIC_OMENS]
     const boards = boardsOf(rows)

@@ -7,13 +7,13 @@ import { Fragment, isValidElement, type ReactNode } from 'react'
  * in `ui/tests/shell.test.ts` asserts it, which is what closes the hook-aliasing evasion
  * (`import { useState as s }` never matches a name-keyed regex). Deciding whether a Fragment is
  * empty needs `Fragment` and `isValidElement`, which are VALUE imports. Rather than carve an
- * exception into a guard that was made blunt on purpose — this epic's standing lesson is that
- * the one exempted thing is where the next evasion lives — the logic moves here, and the
+ * exception into a guard that was made blunt on purpose — the one exempted thing is where the
+ * next evasion lives — the logic lives here, and the
  * shell's import list grows by one explicit entry that the same guard still pins exhaustively.
  *
- * WHERE IT LIVES, and why it moved (story c2-7, Q3). It started inside `AppShell/`, with one
- * consumer. Panel is the second: its header slots take arbitrary nodes and face the identical
- * `<></>` / `[]` / `' '` / `false` question, and re-deriving that here would be exactly the
+ * WHERE IT LIVES. `AppShell` is one consumer; `Panel` is the second: its header slots take
+ * arbitrary nodes and face the identical
+ * `<></>` / `[]` / `' '` / `false` question, and re-deriving that there would be exactly the
  * reinvention this module exists to prevent. So it sits in `src/components/` — a helper shared
  * by two components does not live inside one of them, and `../AppShell/filled` would have made
  * every primitive depend on the shell's directory. `src/lib/` was declined: a new top-level
@@ -26,7 +26,7 @@ import { Fragment, isValidElement, type ReactNode } from 'react'
  *
  *   The empty string, and whitespace-only strings — `deckName=" "` renders an `h1` that is
  *   present in the DOM, invisible on screen, and announced as an empty heading: precisely the
- *   heading-less state Q3 exists to prevent, wearing a shape a `!== ''` check waves through.
+ *   heading-less state this exists to prevent, wearing a shape a `!== ''` check waves through.
  *
  *   An empty array, or one whose every element is itself empty — `left={cards.map(...)}` over
  *   an empty list. Empty of OUTPUT, not necessarily of elements.
@@ -38,7 +38,7 @@ import { Fragment, isValidElement, type ReactNode } from 'react'
  *   the module exists: an empty Fragment is a React ELEMENT, so every check above says
  *   "filled" while the browser paints nothing.
  *
- * THE LIMIT, stated rather than discovered (the c2-4 ruling: a guard shipped without its limit
+ * THE LIMIT, stated rather than discovered (a guard shipped without its limit
  * is worse than one shipped with it). `filled(<SomeComponent />)` is `true`, and
  * `SomeComponent` may still `return null`. Whether an arbitrary component renders anything is
  * not decidable without rendering it, so this function answers for the shapes where the
@@ -62,7 +62,7 @@ export const filled = (content: ReactNode): boolean => {
     // an array, a Set or a Map returns a FRESH cursor each time. That identity check is the
     // whole discriminator, and asking for the iterator does not advance either kind.
     //
-    // Measured (Greptile, PR #23): spreading a generator here rendered the region EMPTY and
+    // Measured: spreading a generator here rendered the region EMPTY and
     // dropped its placeholder too — strictly worse than not looking. React already warns that
     // iterators are unsupported as children for exactly this reason, so the honest answer is
     // "assume filled": it preserves whatever the caller passed, and if the generator does turn

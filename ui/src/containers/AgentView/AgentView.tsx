@@ -6,47 +6,46 @@ import './AgentView.css'
 
 /**
  * The agent view shell — the app's FIRST modal, first focus trap and first `role="dialog"`
- * (story c6-5, UX-DR23, UX-DR34, UX-DR38, UX-DR39, UX-DR42, UX-DR44, UX-DR46).
+ * (UX-DR23, UX-DR34, UX-DR38, UX-DR39, UX-DR42, UX-DR44, UX-DR46).
  *
  * ================= IT IS A SHELL, AND IT KNOWS NOTHING ABOUT SUGGESTIONS ===============
  *
- * Every agent view in Epic 6 lives inside this component, so it takes a `title`, a `count`, a
- * `pushId` and `children` and nothing else: no envelope, no wire type, no `kind`. c6-7 rendered
- * suggestion rows INTO it — with **no edit to this file or its stylesheet**, which is the
- * prediction discharged rather than restated — and c6-8 added nav pills BESIDE it, in `containers/AgentViewsNav`. That is the
- * property that makes "content-agnostic" a testable claim rather than a hope
- * (`AgentView.test.tsx` mounts it over an arbitrary fixture child).
+ * Every agent view lives inside this component, so it takes a `title`, a `count`, a `pushId`
+ * and `children` and nothing else: no envelope, no wire type, no `kind`. `SuggestionsView`
+ * renders suggestion rows INTO it with **no edit to this file or its stylesheet**, and the nav
+ * pills sit BESIDE it in `containers/AgentViewsNav`. That is the property that makes
+ * "content-agnostic" a testable claim rather than a hope (`AgentView.test.tsx` mounts it over
+ * an arbitrary fixture child).
  *
- * `pushId` joined that list at **c6-6** and is the one prop worth defending, because it looks
+ * `pushId` is the one prop worth defending, because it looks
  * like the envelope leaking in. It is not: it is an OPAQUE STRING this component never parses,
  * compares to a literal or shows to anybody. All the shell knows is that a different one means a
  * different push — which is exactly the amount of knowledge the replace contract needs, and
  * strictly less than knowing what a suggestion is.
  *
  * It is a CONTAINER rather than a component: `src/components/` is closed by a set-equality
- * guard (`shell.test.ts:1257`) and `ui/README.md:567-571` homes c6-5..c6-8 here. It also does
- * NOT compose `Panel`, whose header (label + count + right-aligned extras) is structurally
- * identical and therefore tempting: `Panel` is presentation-only by guard — a `<section
- * aria-label>` with no `role`, no `aria-modal`, no refs and no hooks — and this shell needs all
- * four. The visual kinship comes from sharing tokens, not markup.
+ * guard (`shell.test.ts:1257`) and `ui/README.md:567-571` homes the agent-view surfaces here.
+ * It also does NOT compose `Panel`, whose header (label + count + right-aligned extras) is
+ * structurally identical and therefore tempting: `Panel` is presentation-only by guard — a
+ * `<section aria-label>` with no `role`, no `aria-modal`, no refs and no hooks — and this shell
+ * needs all four. The visual kinship comes from sharing tokens, not markup.
  *
  * ================= WHERE IT SITS, AND WHAT IT MUST NOT DO ABOUT THAT ===================
  *
  * `App` passes it to `AppShell`'s `overlay` slot, which is a `position: fixed; inset:
- * var(--space-gutter); z-index: 20` layer that has been reserved and guarded since c2-1
- * (`AppShell.css:223-271`). **This component does not position itself.** The slot is the only
+ * var(--space-gutter); z-index: 20` layer reserved and guarded by `AppShell.css:223-271`.
+ * **This component does not position itself.** The slot is the only
  * full-window fixed layer the app permits — `shell.test.ts:952-957` fails the suite on a second
  * one — so `AgentView.css` sets no `position: fixed` and no `z-index` at all, and fills the box
  * it is handed. The scrim is therefore the inset box rather than the whole window, which is the
- * shipped reading of *"inset {spacing.6}"* that `AppShell.css:240-245` recorded for this story
- * by name.
+ * reading of *"inset {spacing.6}"* that `AppShell.css:240-245` records.
  *
  * It also mounts ONLY while a view is open. `App` passes an absent `overlay` when the store is
  * closed (`AppShell.tsx:134-139`'s click-swallower warning), so "on open" is this component's
  * mount and "on close" is its unmount. Every effect below reads that way, and it is what makes
  * the Esc listener exist only while there is something for Esc to close.
  *
- * ================= THE THREE DISMISSALS ALL END IN ONE PLACE (AC 4, AC 5) ==============
+ * ================= THE THREE DISMISSALS ALL END IN ONE PLACE ===========================
  *
  * The close pill, Esc, and a click on the scrim outside the panel each call `onClose` — which
  * `App` binds to `closeAgentView`, the verb that writes `status` and provably not `content`
@@ -56,7 +55,7 @@ import './AgentView.css'
 export interface AgentViewProps {
   /**
    * WHICH PUSH IS SHOWING — the envelope's opaque `id`, and the whole of how this shell knows a
-   * REPLACE from a re-render (story c6-6, AC 2).
+   * REPLACE from a re-render.
    *
    * A `title` change cannot serve: the common case is an agent that omits `payload.title`, so
    * two consecutive pushes carry the same fallback word and are byte-identical in every prop a
@@ -75,7 +74,7 @@ export interface AgentViewProps {
   /**
    * The summary count beside the title. `Number.isFinite`-gated exactly as `Panel` gates its
    * own (`Panel.tsx:73-80`): `0` is REAL CONTENT and renders, and `count && …` would put a bare
-   * `0` in the DOM — the c2-6 falsy-value family arriving in a numeric prop.
+   * `0` in the DOM — the falsy-value family arriving in a numeric prop.
    */
   readonly count: number | null
   /** Dismissal. Bound to `closeAgentView` by `App`; called by all three gestures. */
@@ -103,7 +102,7 @@ export interface AgentViewProps {
  * the tests that check it and another way in the browser that matters. `[hidden]` and
  * `aria-hidden` are excluded because those are declared in MARKUP, which is the half a source
  * reader can honestly know about. The residue is a shell that hides a control with CSS alone,
- * which nothing in Epic 6 does.
+ * which no agent view does.
  */
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -141,7 +140,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
   const headingId = useId()
 
   /**
-   * THE BLOOM'S STARTING STATE (AC 7, `DESIGN.md:471`, UX-DR23).
+   * THE BLOOM'S STARTING STATE (`DESIGN.md:471`, UX-DR23).
    *
    * The view enters as a fade plus an 8px rise over `--motion-bloom`. That is expressed as a
    * TRANSITION out of a starting state carried by this attribute, rather than as a
@@ -162,7 +161,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
    * them. (It also keeps `react-hooks/set-state-in-effect` satisfied, which is the same rule
    * pointing at the same hazard from the other side.)
    *
-   * **Nothing waits on this either way** (EXPERIENCE.md:165, and Ruled #3): the DOM is complete
+   * **Nothing waits on this either way** (EXPERIENCE.md:165): the DOM is complete
    * and interactive at the first render, and the bloom is presentation laid on top of it. If the
    * frame never came, the cost is a view that appears instantly — which is exactly the
    * reduced-motion fallback, and not a defect anything downstream can observe.
@@ -205,16 +204,16 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
     onCloseRef.current = onClose
   })
 
-  // FOCUS ON OPEN, AND FOCUS BACK ON CLOSE (AC 3, AC 4, UX-DR39, UX-DR46).
+  // FOCUS ON OPEN, AND FOCUS BACK ON CLOSE (UX-DR39, UX-DR46).
   useEffect(() => {
     const previous = document.activeElement
-    // `<body>` is not a restore target — it is the ABSENCE of one, and AC 4 says focus must
-    // never return there. Recording `null` for it is what makes the "never held" arm below a
-    // real arm rather than an accident.
+    // `<body>` is not a restore target — it is the ABSENCE of one, and focus must never return
+    // there. Recording `null` for it is what makes the "never held" arm below a real arm rather
+    // than an accident.
     restoreTargetRef.current =
       previous instanceof HTMLElement && previous !== document.body ? previous : null
 
-    // AC 3: focus moves to the view's HEADING. `focusHome` is the shipped hand-off — it does the
+    // Focus moves to the view's HEADING. `focusHome` is the shipped hand-off — it does the
     // `tabIndex = -1` plus once-blur-cleanup dance, so the heading at rest carries no
     // `[tabindex]` and never becomes a Tab stop of its own.
     focusHome(headingRef.current)
@@ -228,9 +227,9 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
       // ARM 2 — something else already took focus. `SkipLink.tsx:110-112`'s guard verbatim:
       // overriding that would be this component reversing a decision it did not make.
       if (document.activeElement !== null && document.activeElement !== document.body) return
-      // ARM 3 — the remembered element is GONE (Brad's Q5 rulings, 2026-08-10 and 2026-08-11).
-      // A row that was re-rendered away, or a control that only exists on a surface that has
-      // since changed. There are two destinations and the order between them is the ruling:
+      // ARM 3 — the remembered element is GONE. A row that was re-rendered away, or a control
+      // that only exists on a surface that has since changed. There are two destinations, in
+      // this order:
       //
       //   - A STATE PANEL, if one is showing. EXPERIENCE.md:122 — *"a state panel takes the left
       //     column while an agent view is open … on close, the user lands on the state panel"*.
@@ -238,9 +237,8 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
       //     grid the remembered control lived on is gone with it, which is exactly why this arm
       //     is running. `StatePanel.tsx:115-126` renders one `<h2 class="state-panel-headline">`
       //     per panel and the app shows at most one panel at a time.
-      //   - The `<h1>` deck name otherwise, as since c6-5. `AppShell.test.tsx:66` pins that
-      //     there is exactly one `h1` in the document, which is what makes a document-wide query
-      //     precise here.
+      //   - The `<h1>` deck name otherwise. `AppShell.test.tsx:66` pins that there is exactly
+      //     one `h1` in the document, which is what makes a document-wide query precise here.
       //
       // ⚠️ THIS ARM ONLY RUNS FOR A DISCONNECTED TARGET, AND THAT IS THE WHOLE OF WHY IT DOES
       // NOT CONTRADICT UX-DR46. A restore target that is still connected wins at the bottom of
@@ -262,21 +260,20 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
   }, [])
 
   /**
-   * A SECOND PUSH ARRIVED WHILE THIS VIEW WAS OPEN (story c6-6, AC 2, FR-08, UX-DR34/45/46).
+   * A SECOND PUSH ARRIVED WHILE THIS VIEW WAS OPEN (FR-08, UX-DR34/45/46).
    *
    * ==== WHY THIS IS AN EFFECT AND NOT A `key` ON `<AgentView>` ============================
-   * The c6-5 review recorded that a content swap reconciles as a prop update, so the mount-only
-   * effects above do not re-fire, and called the missing mechanics *"owed to c6-6"*. The owed
-   * mechanics are the RE-FIRES. A `key={pushId}` in `App.tsx` would be wrong three ways, all
-   * load-bearing:
+   * A content swap reconciles as a prop update, so the mount-only effects above do not re-fire,
+   * and the RE-FIRES have to come from somewhere. A `key={pushId}` in `App.tsx` would be wrong
+   * three ways, all load-bearing:
    *
    *   1. It plays the WRONG ANIMATION. A remount re-runs the entry bloom — 480 ms, fade plus an
-   *      8px rise. AC 2 specifies a crossfade over the GLIDE duration, opacity only: a different
-   *      motion with its own line in UX-DR42's inventory.
+   *      8px rise. A replace is specified as a crossfade over the GLIDE duration, opacity only:
+   *      a different motion with its own line in UX-DR42's inventory.
    *   2. It CORRUPTS THE RETURN-FOCUS CONTRACT. The mount effect captures `document.activeElement`
    *      as the restore target, and at replace time focus is INSIDE this view — usually on the
    *      heading, because the line below just put it there. A remount would capture the heading,
-   *      and c6-5's AC 4 (*"focus returns to the element focused before the view took it"*) would
+   *      and UX-DR46 (*"focus returns to the element focused before the view took it"*) would
    *      silently return focus to this view's own corpse.
    *   3. It RUNS THE RESTORE CLEANUP MID-OPEN — the unmount handler firing, and trying to restore
    *      focus, while the view is conceptually still open.
@@ -306,14 +303,14 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
    * this a `MOTION_PROPERTIES` member and demand a reduced-motion registration in `tokens.css`;
    * opacity over a TOKENISED duration self-neutralises instead, because the reduced-motion block
    * zeroes `--motion-glide` (`tokens.css:323`). That is UX-DR42's *"instant content swap"*
-   * satisfied mechanically, which is why the inventory line for this story needs no new entry.
+   * satisfied mechanically, which is why the motion inventory needs no new entry for it.
    */
   const [replacing, setReplacing] = useState(false)
   useEffect(() => {
     if (showingPushRef.current === pushId) return
     showingPushRef.current = pushId
 
-    // AC 2, focus half: *"focus moves to the heading, whose live region announces the new push"*.
+    // The focus half: *"focus moves to the heading, whose live region announces the new push"*.
     // The same hand-off the mount uses, so a replaced view and a freshly-opened one leave focus
     // in the same place — and `focusHome`'s once-blur cleanup means the heading still never
     // becomes a Tab stop of its own.
@@ -322,25 +319,24 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
     // The flip is in a FRAME CALLBACK for the bloom's reason: two style changes inside one frame
     // are coalesced and the transition never runs. Nothing waits on it either way — the content
     // is already committed and interactive, and EXPERIENCE.md:165 keeps presentation out of every
-    // latency budget — c6-9 measured that budget with this excluded, and its observed figures live
-    // in that story's Dev Agent Record.
+    // latency budget.
     setReplacing(true)
     const frame = requestAnimationFrame(() => setReplacing(false))
     return () => cancelAnimationFrame(frame)
   }, [pushId])
 
-  // ESC CLOSES THE VIEW, AND THE PIN SURVIVES (AC 4, UX-DR39, EXPERIENCE.md:141).
+  // ESC CLOSES THE VIEW, AND THE PIN SURVIVES (UX-DR39, EXPERIENCE.md:141).
   //
   // On `document`, in the CAPTURE phase, registered only while a view is open — the contract
-  // `CardDetail.tsx:89-101` and `inspection.ts:55-67` have both stated verbatim since c4-5 and
-  // which this story is the first to be able to honour. Capture at the document runs before
+  // `CardDetail.tsx:89-101` and `inspection.ts:55-67` both state verbatim, and which only an
+  // overlay can honour. Capture at the document runs before
   // CardDetail's document BUBBLE listener for EVERY target, so `stopPropagation()` here means a
   // single Esc closes this view and leaves an active pin alone even when focus sits on `<body>`
   // rather than inside this subtree. An element-scoped handler could not hold that: a `keydown`
   // targeting `<body>` never passes through this overlay at all.
   //
   // `keyboard-floor.test.ts:507-633` pins the listener set and the phase of each entry, and this
-  // is the exemption it was written to admit (dw:4766-4773).
+  // is the exemption it was written to admit.
   useEffect(() => {
     const dismiss = (event: globalThis.KeyboardEvent) => {
       // Both guards are `CardDetail.tsx:371-375`'s, for its reasons: an Esc that cancels an IME
@@ -359,7 +355,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
   }, [])
 
   /**
-   * TAB CYCLES WITHIN THE VIEW (AC 2, UX-DR44, EXPERIENCE.md:142).
+   * TAB CYCLES WITHIN THE VIEW (UX-DR44, EXPERIENCE.md:142).
    *
    * The app's first focus trap, and it is deliberately the small kind: it wraps at the two ends
    * and does nothing else. Nothing is made `inert`, and no listener watches for focus escaping —
@@ -373,8 +369,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
    */
   /**
    * Whether the mousedown and the mouseup that bracket the current click BOTH landed on the
-   * SCRIM itself (Brad's Q3 ruling, 2026-08-10; symmetric mouseup check added at code review,
-   * 2026-08-10).
+   * SCRIM itself.
    *
    * A bare `click` handler is not enough, and the failure is ordinary rather than exotic: when
    * mousedown and mouseup target different elements, `click` fires on their common ancestor —
@@ -408,7 +403,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
     const scrim = scrimRef.current
     if (dialog === null || scrim === null) return
 
-    // TAB CYCLES WITHIN THE VIEW (AC 2, UX-DR44, EXPERIENCE.md:142).
+    // TAB CYCLES WITHIN THE VIEW (UX-DR44, EXPERIENCE.md:142).
     //
     // The app's first focus trap, and deliberately the small kind: it wraps at the two ends and
     // does nothing else. Nothing is made `inert` and no listener watches for focus escaping — a
@@ -448,7 +443,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
       const onScrim = event.target === scrim
       scrimMouseDownOnScrimRef.current = onScrim
       // A mousedown on a non-focusable element blurs whatever currently holds focus by
-      // default (found at code review, 2026-08-10) — which would put the trap's forward-Tab
+      // default — which would put the trap's forward-Tab
       // branch in the one state it doesn't recognize as "inside." Suppressed only when the
       // press is on the scrim itself, so a real control elsewhere in the panel still takes
       // focus on click exactly as a `<button>` should.
@@ -506,20 +501,17 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
           {/* `aria-live="polite"` on the HEADING — one of exactly four live regions in the app
               (`EXPERIENCE.md`, Accessibility Floor → Live regions; the other three are
               CardDetail's pin announcement, the connection pill's, and DeckAnnouncer's
-              deck-refetch announcement). THE COUNT WAS THREE UNTIL c7-5 added the fourth; the
-              guard was updated then and this sentence was not (C7 retro R5, corrected
-              2026-08-17). The authority is the guard, not this comment: `App.test.tsx`'s
-              live-region census enumerates every region visible with no view open, by class,
-              and pins the count — so a new undeclared region fails there, and a stale sentence
-              here cannot make it pass.
+              deck-refetch announcement). The authority is the guard, not this comment:
+              `App.test.tsx`'s live-region census enumerates every region visible with no view
+              open, by class, and pins the count — so a new undeclared region fails there, and a
+              stale sentence here cannot make it pass.
 
-              Nothing announces on FIRST open: no announcement is specified
-              anywhere for it, and focus moving here is the open-time signal (AC 3). What the
-              region is for is c6-6's replacement — one view swapped for another under a reader
-              who is already inside it — and that is now wired.
+              Nothing announces on FIRST open: no announcement is specified anywhere for it, and
+              focus moving here is the open-time signal. What the region is for is a REPLACE —
+              one view swapped for another under a reader who is already inside it.
 
-              THE KEYED FRAGMENT IS THE ANNOUNCEMENT, AND IT IS NOT A TIDINESS PROBLEM (Q4's
-              ruling, 2026-08-11). A live region announces on DOM MUTATION; re-rendering the same
+              THE KEYED FRAGMENT IS THE ANNOUNCEMENT, AND IT IS NOT A TIDINESS PROBLEM. A live
+              region announces on DOM MUTATION; re-rendering the same
               string mutates nothing, and the COMMON case is exactly that — an agent that omits
               `payload.title` gets the fallback word, so two consecutive pushes carry
               byte-identical text. Keying on `pushId` makes React drop the old text node and
@@ -543,7 +535,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
             {CLOSE_PILL_LABEL}
           </button>
         </header>
-        {/* THE ONE SCROLL CONTAINER (AC 1 — *"the body scrolls while the shell does not"*).
+        {/* THE ONE SCROLL CONTAINER (*"the body scrolls while the shell does not"*).
             The overflow lives here rather than on `.agent-view`, so the header row stays put
             while a long list moves under it. */}
         <div className="agent-view-body">{children}</div>

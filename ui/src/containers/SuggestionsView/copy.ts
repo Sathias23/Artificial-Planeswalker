@@ -1,12 +1,11 @@
 /**
- * The one sentence this container authors (story c6-6, AC 4, UX-DR33, UX-DR30, AD-7; template
- * amended at the epic-16 retro, item 4).
+ * The one sentence this container authors (UX-DR33, UX-DR30, AD-7).
  *
  * **NO IMPORTS, and that is load-bearing rather than incidental.** `tests/` belongs to the
  * `nodenext` TypeScript project and `src/` to the `bundler` one, so a `ui/tests` file may import
- * an app module only if that module is itself import-free — measured at c3-9, where importing one
- * with extensionless relative imports produced twelve `TS2835` errors with `npm test` green
- * throughout. The same shape as every other `copy.ts` in the app, and the reason
+ * an app module only if that module is itself import-free — importing one with extensionless
+ * relative imports produces twelve `TS2835` errors with `npm test` green throughout. The same
+ * shape as every other `copy.ts` in the app, and the reason
  * `tests/empty-push-copy.test.ts` can read these constants at all.
  *
  * It is also why {@link EMPTY_PUSH_NOUNS} is declared HERE rather than derived from the store's
@@ -19,17 +18,15 @@
  * The empty-push line, EXACTLY as `EXPERIENCE.md`'s *Voice and Tone* table writes it — including
  * the `{noun}` placeholder, which is why this is a template rather than a sentence.
  *
- * ==== IT IS TRANSCRIBED, NOT AUTHORED — AND THE LEDGER ENTRY IS NOW DISCHARGED ====
+ * ==== IT IS TRANSCRIBED, NOT AUTHORED ====
  * The string ships **byte for byte**: em dash **U+2014** (not a hyphen, not an en dash), one
  * trailing period, sentence case. `tests/empty-push-copy.test.ts` parses that table cell and
  * compares, so a later tidy-up cannot drift it.
  *
- * The c6-6 ledger entry this module carried ("substituting the WIRE kind produces *'The agent
- * sent an empty suggestions.'* — grammatically wrong, and worse for `tier_list`") accumulated
- * four data points across c6-6/16.1/16.2/16.3 and was RULED release-gating at the epic-16 retro
- * (item 4). The repair kept the module's own discipline: the artefact's cell moved FIRST — it
- * now writes `{noun}` and names the four display nouns — and this module transcribes it. The
- * sentence restructures around a possessive because "an empty {noun}" fails on the plural nouns
+ * Substituting the raw WIRE kind into a sentence produces *'The agent sent an empty
+ * suggestions.'* — grammatically wrong, and worse for `tier_list` — so the artefact's cell
+ * writes `{noun}` and names the four display nouns, and this module transcribes it. The
+ * sentence is built around a possessive because "an empty {noun}" fails on the plural nouns
  * ("an empty card groups"); the possessive reads correctly for all four.
  */
 export const EMPTY_PUSH_TEMPLATE =
@@ -44,11 +41,11 @@ export const NOUN_PLACEHOLDER = '{noun}'
 /**
  * The display noun per wire kind — the artefact's own list, and the nav's labels lowercased.
  *
- * EXPERIENCE.md's amended cell enumerates exactly these four ("suggestions", "swaps",
- * "tier list", "card groups"), and `tests/empty-push-copy.test.ts` gates this table against that
- * enumeration. Each value is also `AGENT_VIEW_LABELS[kind].toLowerCase()` — the retro item's own
- * prescription — and `agentView.test.ts` pins THAT identity from the store's side, so a fifth
- * kind or a renamed pill cannot leave this table behind. Declared here rather than derived
+ * EXPERIENCE.md's cell enumerates exactly these four ("suggestions", "swaps", "tier list",
+ * "card groups"), and `tests/empty-push-copy.test.ts` gates this table against that
+ * enumeration. Each value is also `AGENT_VIEW_LABELS[kind].toLowerCase()`, and
+ * `agentView.test.ts` pins THAT identity from the store's side, so a fifth kind or a renamed
+ * pill cannot leave this table behind. Declared here rather than derived
  * because this module must stay import-free (see the header).
  */
 export const EMPTY_PUSH_NOUNS: Record<string, string> = {
@@ -78,7 +75,7 @@ export const EMPTY_PUSH_NOUNS: Record<string, string> = {
  *   kind: The envelope's own `kind` — a closed wire literal, never user data. It selects the
  *     display noun from {@link EMPTY_PUSH_NOUNS}; a kind the table does not know (impossible
  *     while the dispatch switch is total, but this function refuses to render a hole) falls back
- *     to the wire literal itself — the pre-amendment behaviour, degraded rather than thrown.
+ *     to the wire literal itself — degraded rather than thrown.
  *
  * Returns:
  *   The artefact's sentence with the placeholder filled.

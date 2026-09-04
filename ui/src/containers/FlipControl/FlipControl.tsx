@@ -5,26 +5,26 @@ import { FLIP_LABEL } from './copy'
 
 /**
  * The control that turns a double-faced card over — *"the densest single component in the
- * feature"* (story c4-6, FR-04, FR-19, UX-DR7, UX-DR15, UX-DR40, UX-DR41, UX-DR45, UX-DR47).
+ * feature"* (FR-04, FR-19, UX-DR7, UX-DR15, UX-DR40, UX-DR41, UX-DR45, UX-DR47).
  *
- * ================= ONE COMPONENT, MOUNTED TWICE (Q5, AC 12) ============================
+ * ================= ONE COMPONENT, MOUNTED TWICE ========================================
  *
  * UX-DR15 requires the detail panel to carry *"its own copy of the control at the same spec"*.
  * Two components would be two chances to drift on a spec with a dozen rules, so this is ONE — and
  * the *"does this card get a control?"* question is asked in exactly one place, here, by returning
  * `null`. Both mounts pass a `cardId` and nothing else; neither is told where it is, which is what
- * lets Epic 6's agent-view thumbnails mount a third without an API change.
+ * lets any further mount — an agent-view thumbnail, say — happen without an API change.
  *
- * ================= IT IS A CONTAINER, AND IT IS ALSO A SIBLING (Q2) ====================
+ * ================= IT IS A CONTAINER, AND IT IS ALSO A SIBLING =========================
  *
  * A container because it attaches a handler and reads two stores, every one of which is banned
- * outright under `src/components/` (c4-4's Q1 ruling, `shell.test.ts`'s per-primitive posture).
+ * outright under `src/components/` (`shell.test.ts`'s per-primitive posture).
  *
- * A **sibling** of the tile's `<button>` rather than a child of it, and that is this story's
- * sharpest ruling. Four shipped comments reserved this control's home INSIDE that button, because
- * `mouseenter`/`mouseleave` do not fire between an element and its descendants — so a control
- * inside the button could never read as leaving the tile. But `<button>`'s content model bans
- * interactive descendants outright, and the measurement Task 0 ran says what actually happens:
+ * A **sibling** of the tile's `<button>` rather than a child of it, and that is deliberate. The
+ * tempting home is INSIDE that button, because `mouseenter`/`mouseleave` do not fire between an
+ * element and its descendants — so a control inside the button could never read as leaving the
+ * tile. But `<button>`'s content model bans interactive descendants outright, and measurement says
+ * what actually happens:
  *
  *   React 19.2 emits `"In HTML, <button> cannot be a descendant of <button>."` — **in the
  *   development build only** (`grep -c` over `react-dom-client.{development,production}.js`
@@ -34,28 +34,28 @@ import { FLIP_LABEL } from './copy'
  *   assistive technology.
  *
  * That is what decides it. An inner button would satisfy every jsdom assertion in this file and
- * could still be unreachable by a real screen reader — breaking AC 7 (Enter and Space) and AC 8
- * (its Tab stop) on the only hardware that matters, in the one direction no gate here can see. So
+ * could still be unreachable by a real screen reader — breaking Enter, Space and its Tab stop on
+ * the only hardware that matters, in the one direction no gate here can see. So
  * `CardTile` renders a positioned `.card-tile-frame` holding the button and this control as
  * siblings, and moves its POINTER and FOCUS handlers to that frame — which restores the
  * containment property the original design was reaching for, one element further out. See
  * `CardTile.tsx` for the cascade repair that goes with it.
  *
- * ================= A FLIP IS NOT AN INSPECTION (decide-once rule 15, AC 6) =============
+ * ================= A FLIP IS NOT AN INSPECTION =========================================
  *
- * Stated twice in shipped source before this story existed (`inspection.ts:43-54`,
- * `CardTile.tsx:86-92`): this control touches **none** of `setHovered` / `clearHovered` /
+ * Stated twice elsewhere (`inspection.ts:43-54`, `CardTile.tsx:86-92`): this control touches
+ * **none** of `setHovered` / `clearHovered` /
  * `setFocused` / `clearFocused` / `togglePin` / `clearPin`. It imports the inspection slice not at
  * all, which is the strongest available form of that claim — there is no verb in scope to call by
  * accident. `FlipControl.test.tsx` asserts it against the SLICE's whole state rather than against
  * a spy, because a spy only proves that the function somebody thought to watch went uncalled.
  *
  * The `stopPropagation()` below is the second half. Under the sibling shape nothing bubbles to the
- * tile's button anyway — but the control is mounted inside `.card-detail-art` today and will be
- * mounted inside a clickable thumbnail in c6-5, and AC 6 asks for the guarantee rather than for
- * the current geometry's accident.
+ * tile's button anyway — but the control is mounted inside `.card-detail-art` today and may be
+ * mounted inside a clickable thumbnail later, and a guarantee is worth more than the current
+ * geometry's accident.
  *
- * ================= NO `onKeyDown`, AND ITS ABSENCE IS TESTED (AC 7) ====================
+ * ================= NO `onKeyDown`, AND ITS ABSENCE IS TESTED ===========================
  *
  * This is a real `<button>` (UX-DR47, unconditional), so the browser already turns Enter and Space
  * into a `click`. A `keydown` handler beside that is not a belt-and-braces addition — it fires the
@@ -65,8 +65,8 @@ import { FLIP_LABEL } from './copy'
  *
  * **No live region and no announcement.** UX-DR45 enumerates them — the connection pill, the
  * agent-view heading, the detail panel's separate polite pin region — and a flip is not among
- * them; c4-5's H4/C1 finding is that transient changes must not flood the queue. `aria-pressed`
- * gives a keyboard user the state with no region and no second string (Q11).
+ * them; transient changes must not flood the queue. `aria-pressed` gives a keyboard user the state
+ * with no region and no second string.
  *
  * **No fetch, and no URL.** It writes a face index; `cardImageUrl` is where that becomes a
  * request, in the two components that draw a picture. The one door is still `src/api/client.ts`.
@@ -94,7 +94,7 @@ export function FlipControl({ cardId }: FlipControlProps) {
   const imagedFaces = useImagedFaceCount(cardId)
   const faceIndex = useFaceIndex(cardId)
 
-  // THE ONE PLACE THE QUESTION IS ASKED (Q5, AC 2). `> 1` rather than `> 0`: a card with exactly
+  // THE ONE PLACE THE QUESTION IS ASKED. `> 1` rather than `> 0`: a card with exactly
   // one picture has nothing to flip TO, which is 35,483 of the corpus's 38,261 rows — every
   // ordinary card, every split and adventure card, and the whole 79-row placeholder population.
   if (imagedFaces < 2) return null
@@ -105,20 +105,20 @@ export function FlipControl({ cardId }: FlipControlProps) {
       className="flip-control"
       /* The accessible name, from `./copy` and therefore from `COPY_MODULES`. STATIC: a name
          that named the target face would put card DATA into a read-aloud attribute, which is
-         `copy-rules.test.ts`'s attribute half and decide-once rule 16. The state travels on
+         exactly what `copy-rules.test.ts`'s attribute half collects. The state travels on
          `aria-pressed` instead. */
       aria-label={FLIP_LABEL}
-      /* A TOGGLE BUTTON (Q11, AC 11). `aria-pressed` is what tells a keyboard user which face is
+      /* A TOGGLE BUTTON. `aria-pressed` is what tells a keyboard user which face is
          showing without a live region and without a second announcement — UX-DR45's regions are
          enumerated and a flip is not one of them. `!== 0` rather than a boolean in the store,
-         because the store holds an INDEX (Q3) and the pressed state is a projection of it: for
+         because the store holds an INDEX and the pressed state is a projection of it: for
          every printing that exists today the two coincide, and the day one does not, "not the
          front face" is still the honest thing to say. */
       aria-pressed={faceIndex !== 0}
       onClick={(event) => {
-        // AC 6, and see the header: under the sibling shape nothing bubbles to the tile's button,
-        // so this is the guarantee for the ancestors that DO exist (the panel's art box) and the
-        // ones that will (c6-5's thumbnails) rather than a description of today's geometry.
+        // See the header: under the sibling shape nothing bubbles to the tile's button, so this
+        // is the guarantee for the ancestors that DO exist (the panel's art box) and any that
+        // may (a clickable thumbnail) rather than a description of today's geometry.
         event.stopPropagation()
         // The count is passed rather than looked up, so the `resolve_face_images` mirror has one
         // home. The slice does the modulo, which is also what makes two rapid clicks advance twice
@@ -126,7 +126,7 @@ export function FlipControl({ cardId }: FlipControlProps) {
         flipCard(cardId, imagedFaces)
       }}
     >
-      {/* THE FIRST INLINE `<svg>` IN `ui/src`, AND ITS CONVENTIONS ARE SET HERE (Q6, AC 4).
+      {/* THE FIRST INLINE `<svg>` IN `ui/src`, AND ITS CONVENTIONS ARE SET HERE.
           DESIGN.md asks for "a stroke-based two-arrow rotate glyph … a plain UI glyph, never
           anything that could read as a mana or set symbol" (UX-DR7) and specifies nothing else —
           no viewBox, no stroke width, no size. So each of those is a decision, recorded:
@@ -148,9 +148,9 @@ export function FlipControl({ cardId }: FlipControlProps) {
           text node here, which `FlipControl.test.tsx` asserts.
 
           The two shipped "no `<svg>` in this subtree" assertions (`StatePanel.test.tsx:61`,
-          `CardPlaceholder.test.tsx:81`) are about OTHER components and stay green. Ruled and
-          recorded: no tree-wide ban joins them — a rule against `<svg>` in `src/components/` would
-          fall hardest on the one category that could legitimately own an icon later. */}
+          `CardPlaceholder.test.tsx:81`) are about OTHER components and stay green. No tree-wide
+          ban joins them, deliberately: a rule against `<svg>` in `src/components/` would fall
+          hardest on the one category that could legitimately own an icon later. */}
       <svg
         aria-hidden="true"
         viewBox="0 0 24 24"

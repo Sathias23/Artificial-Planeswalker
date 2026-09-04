@@ -1,5 +1,5 @@
 /* CardDetail — THE CHROME: the pinned ring, the unpin control, the text, and the live region
-   (story c4-5, UX-DR6, UX-DR20, UX-DR33, UX-DR45, UX-DR46, UX-DR47, DESIGN.md:387).
+   (UX-DR6, UX-DR20, UX-DR33, UX-DR45, UX-DR46, UX-DR47, DESIGN.md:387).
 
    ==== WHY THIS IS A SECOND STYLESHEET =================================================
    ./CardDetail.css is in `tests/token-usage.test.ts`'s CARD_SHAPED allowlist, which declares
@@ -12,17 +12,18 @@
    ==== ONE px LITERAL, AND IT IS THE LIVE REGION'S ======================================
    `1px` — DESIGN.md specifies no visually-hidden treatment anywhere, for any component, so there
    is no artefact value to cite and this is the standard WCAG clip-rect idiom instead. It is
-   declared here because a geometry literal must name its source (the c2-6 AC 18 ruling), and its
-   source is "the platform, not the design system". Not `0`: a zero-sized element is dropped from
-   the accessibility tree by some engines, and a live region that is not in the tree announces
-   nothing at all — which would fail AC 23 silently, in the one direction no jsdom test can see.
+   declared here because a geometry literal must name its source, and its source is "the
+   platform, not the design system". Not `0`: a zero-sized element is dropped from the
+   accessibility tree by some engines, and a live region that is not in the tree announces
+   nothing at all — which would fail the announcement silently, in the one direction no jsdom
+   test can see.
 
    ==== NO MOTION, DELIBERATELY (UX-DR42) ===============================================
    Nothing in this file transitions or animates. The pinned ring appears and disappears with the
    pin, and the content it frames swaps on every hover — `tokens.css`'s reduced-motion inventory
    gives this panel "instant, no crossfade", and shipping no motion at any setting is the
-   strongest form of that. Consequently this story adds NO row to that block's registrations, and
-   the enumerated shipped-motion pin in `token-usage.test.ts` needs no edit. */
+   strongest form of that. Consequently this panel has NO row in that block's registrations and
+   no entry in the enumerated shipped-motion pin in `token-usage.test.ts`. */
 
 /* THE FRAME, WHICH EXISTS ONLY TO CARRY THE RING. `Panel` is a primitive a consumer may not
    restyle and it takes no `className`, so the ring goes on a wrapper — and a wrapper with no
@@ -33,14 +34,13 @@
   border-radius: var(--radius-lg);
 }
 
-/* THE PINNED RING (AC 19, AC 31, Q2). DESIGN.md `components.card-detail.pinned-ring`, via
+/* THE PINNED RING. DESIGN.md `components.card-detail.pinned-ring`, via
    `--shadow-pinned-ring` — a 1px `--accent` edge.
 
-   `--accent` AND NOT `--accent-dim`, and this is the M4/C3 correction finally carried across:
-   this panel's own background is `--surface-overlay` (Panel at `level="overlay"`), where
-   `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. DESIGN.md declared the ring
-   `accent-dim` three sections after banning that exact pairing by name; the artefact was amended
-   in the same commit that added the token, with the reason inline so it is not "corrected" back.
+   `--accent` AND NOT `--accent-dim`, deliberately: this panel's own background is
+   `--surface-overlay` (Panel at `level="overlay"`), where `--accent-dim` is 2.70:1 and fails the
+   3:1 non-text floor. DESIGN.md carries that reason inline beside the token so it is not
+   "corrected" back to `accent-dim`.
 
    NOTE WHAT NO GUARD COULD HAVE CAUGHT: `findAccentDimOnOverlay` is same-block only and
    `findAccentDimInOverlayFile` is same-file only, and here the background is painted by
@@ -95,12 +95,12 @@
 
 /* "note/oracle text in {typography.body} {colors.text-secondary}".
 
-   ==== THE ONE CLAMP, AND WHY IT IS 21em (Q10, and the disposition for a ledgered deferral) ====
+   ==== THE ONE CLAMP, AND WHY IT IS 21em ================================================
    MEASURED on the shipped corpus: the longest `oracle_text` is 1,489 characters (`Baldur's Gate
    Wilderness`), only 5 cards exceed 700 and only 63 exceed 500 — while in the largest real deck
    the median is ~150 and the maximum is 530. So the tail is real but rare, and without a bound a
-   single card would push c4-7's deck list and c4-10's format check off the screen on a hover
-   that the reader did not commit to.
+   single card would push the deck list and the format check off the screen on a hover that the
+   reader did not commit to.
 
    `21em`, expressed from the role rather than as a magic number: `{typography.body}` is
    `14px/1.5`, so one line is `1.5em` and this is FOURTEEN LINES. `em` and not `px` because there
@@ -109,9 +109,9 @@
    fails open is worse than no cap.
 
    `overflow-y: auto` rather than a fade or an ellipsis: rules text is the card, and truncating
-   it invisibly is the failure `deferred-work.md:3685` records against the named placeholder's
-   undeclared vertical edge. This is that entry's disposition, at the size where a clamp is
-   actually visible. `.app-shell-columns` remains the app's single WINDOW-level scroller; this is
+   it invisibly is the same failure as the named placeholder's undeclared vertical edge — here
+   the clamp is at a size where it is actually visible, so it must be honest about what it hides.
+   `.app-shell-columns` remains the app's single WINDOW-level scroller; this is
    a nested box scrolling its own content, which `shell.test.ts`'s clip ban explicitly leaves
    alone. */
 .card-detail-oracle {
@@ -123,8 +123,7 @@
 
   /* Oracle text separates abilities with `\n`, and the wire value is rendered VERBATIM into one
      element — so without this, every multi-ability card in the corpus reads as one run-together
-     sentence (found at review, 2026-08-05; the eye-check's clamp measurement never looked at a
-     paragraph break). `pre-line` keeps the breaks and still wraps; `pre-wrap` would also keep
+     sentence. `pre-line` keeps the breaks and still wraps; `pre-wrap` would also keep
      leading spaces the wire never carries meaning in. */
   white-space: pre-line;
 
@@ -134,7 +133,7 @@
   overflow-wrap: break-word;
 }
 
-/* THE UNPIN CONTROL (AC 21, Q3, UX-DR46, UX-DR47).
+/* THE UNPIN CONTROL (UX-DR46, UX-DR47).
 
    ==== THE HIT BOX IS ≥ 24 × 24 BY ARITHMETIC, NOT BY A LITERAL =========================
    UX-DR47 requires a ≥ 24 × 24px hit box and says padding counts. `--type-label` is
@@ -179,9 +178,9 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* THE SCROLLER'S RING (c4-11, AC 21, Q8, WCAG 2.1.1).
+/* THE SCROLLER'S RING (WCAG 2.1.1).
 
-   `.card-detail-oracle` carries `tabindex="0"` as of c4-11, so it is a real Tab stop and needs a
+   `.card-detail-oracle` carries `tabindex="0"`, so it is a real Tab stop and needs a
    real indicator — a focusable element with no visible focus is UX-DR46's whole subject. It sits
    on `--surface-panel`, a known surface, so it takes the KNOWN-SURFACE tier verbatim: the same two
    declarations `.card-detail-unpin` above, `.deck-row` and `.footer-attribution-link` all carry.
@@ -199,20 +198,19 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* THE PIN ANNOUNCEMENT REGION (AC 23, AC 24, UX-DR45).
+/* THE PIN ANNOUNCEMENT REGION (UX-DR45).
 
    Visually hidden and NOT `display: none` / `visibility: hidden` — both of those remove an
    element from the accessibility tree, so the region would exist and never speak. The clip-rect
    idiom keeps it in the tree at a size no reader sees. `pointer-events: none` because an
    absolutely-positioned 1px box that swallowed a click would be indistinguishable from a bug.
 
-   ==== THE CLIP-RECT MOVED OUT AT c4-11, AND ONLY THE DIFFERENCE STAYED ================
-   The seven geometry declarations that used to sit here are now `.visually-hidden` in
-   `src/styles/visually-hidden.css`, and the element carries BOTH classes. c4-11's skip link was
-   the third copy, which is the exact trigger `ManaCurve.css:141-165` wrote down when it declined
-   to promote at the second. Nothing about this element's rendering changed.
+   ==== THE CLIP-RECT IS SHARED, AND ONLY THE DIFFERENCE LIVES HERE =====================
+   The seven geometry declarations are `.visually-hidden` in `src/styles/visually-hidden.css`,
+   and the element carries BOTH classes. Three consumers (this region, the mana curve's table,
+   the skip link) is the trigger `ManaCurve.css` names for promoting a shared idiom.
 
-   `pointer-events: none` did NOT move, and that is the decision rather than an oversight: only
+   `pointer-events: none` is NOT in the shared class, and that is deliberate: only
    this consumer wants it. An absolutely-positioned 1px box that swallowed a click would be
    indistinguishable from a bug — but a static table intercepts nothing, and a skip link MUST take
    pointer events the moment it is revealed. A shared default two of three consumers had to undo

@@ -1,5 +1,5 @@
 /**
- * Badge — the pill label in five tones (story c2-7, UX-DR10, AC 2 / 5 / 6 / 8 / 14).
+ * Badge — the pill label in five tones (UX-DR10).
  *
  * THE TONE IS THE WHOLE COMPONENT, and jsdom can see NONE of it: it applies no stylesheet, so
  * "positive tints its background from --positive" is not observable here at any level of
@@ -7,7 +7,7 @@
  * element as a class, every tone is distinct, and an unknown or missing tone lands on neutral
  * rather than on nothing. The colour claims are read from the CSS SOURCE in
  * ui/tests/token-usage.test.ts (no literal, no colour function, no --accent-dim) and the
- * appearance is on the epic manual-testing checklist (AC 21).
+ * appearance is on the epic manual-testing checklist.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { Badge } from './Badge'
 import { BADGE_TONES } from './tones'
 
-describe('Badge tones (AC 2, AC 6)', () => {
+describe('Badge tones', () => {
   it('names exactly the five tones DESIGN.md declares', () => {
     // The non-vacuity anchor for the loop below: a BADGE_TONES that silently lost a member
     // would make every per-tone assertion pass by iterating over four things, or zero.
@@ -49,10 +49,9 @@ describe('Badge tones (AC 2, AC 6)', () => {
   })
 
   it('clamps a runtime-UNKNOWN tone to neutral rather than rendering an unstyled pill', () => {
-    // The header's claim, made true by review (2026-07-29): the type admits only the five
-    // tones, but a tone will eventually arrive as SERVER DATA (c4-10 format legality, c9
-    // tiers), and an unchecked `badge-${tone}` renders `badge-bogus` — no wash, no tone
-    // colour, a pill styled by nothing. The cast below is the untyped caller a TS signature
+    // The type admits only the five tones, but a tone can arrive as SERVER DATA (format
+    // legality, tiers), and an unchecked `badge-${tone}` renders `badge-bogus` — no wash, no
+    // tone colour, a pill styled by nothing. The cast below is the untyped caller a TS signature
     // cannot rule out.
     const { container } = render(<Badge tone={'bogus' as never}>standard</Badge>)
 
@@ -64,9 +63,9 @@ describe('Badge tones (AC 2, AC 6)', () => {
 
 describe('Badge content', () => {
   it('renders NOTHING for empty children — an empty pill is chrome announcing nothing', () => {
-    // `filled()` (AC 17), by review ruling 2026-07-29: without content a Badge is a bordered,
-    // washed, visibly EMPTY pill. The shapes below are the c2-6 family — every one looks
-    // filled to a naive truthiness check while rendering nothing.
+    // `filled()`, not truthiness: without content a Badge is a bordered, washed, visibly EMPTY
+    // pill. The shapes below are the `filled()` family — every one looks filled to a naive
+    // truthiness check while rendering nothing.
     for (const empty of [undefined, '', ' ', false, <></>, []] as const) {
       const { container } = render(<Badge tone="positive">{empty}</Badge>)
       expect(container.querySelector('span')).toBeNull()
@@ -83,7 +82,7 @@ describe('Badge content', () => {
     expect(screen.getByText('60')).toBeInTheDocument()
   })
 
-  it('is a plain span with no role and no interaction (AC 5)', () => {
+  it('is a plain span with no role and no interaction', () => {
     // A badge is a chip on a line of text, not a control. If this ever starts failing because
     // something gave it a role, that is a behavioural contract arriving in a component whose
     // entire specification is that it has none.

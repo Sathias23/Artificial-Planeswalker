@@ -9,13 +9,13 @@ import { TierListView } from './TierListView'
 import { emptyPushLine } from '../SuggestionsView/copy'
 
 /**
- * The tier-list view's body (story 16.2) — `SwapsView.test.tsx`'s harness, on the third view
- * kind. The same disclaimers apply: jsdom evaluates no stylesheet (the letter ramp, the chip
- * surface and the micro role are read as SOURCE by `token-usage.test.ts` and the shell guards)
- * and loads no images (art states are driven manually). What this file proves is the BRANCH and
- * the WIRING — which element renders for which input, which handler reaches which store verb,
- * that an empty or malformed tier is skipped while its neighbours render, and that one bad card
- * id costs exactly one thumbnail of one tier.
+ * The tier-list view's body — `SwapsView.test.tsx`'s harness, on the third view kind. The same
+ * disclaimers apply: jsdom evaluates no stylesheet (the letter ramp, the chip surface and the
+ * micro role are read as SOURCE by `token-usage.test.ts` and the shell guards) and loads no
+ * images (art states are driven manually). What this file proves is the BRANCH and the WIRING —
+ * which element renders for which input, which handler reaches which store verb, that an empty
+ * or malformed tier is skipped while its neighbours render, and that one bad card id costs
+ * exactly one thumbnail of one tier.
  */
 
 // Typed through the ALIAS (`schema.ts` is the one home for a wire-derived shape — declaring a
@@ -115,8 +115,8 @@ describe('an empty push renders the SHARED artefact line (AD-7, UX-DR33)', () =>
     render(<TierListView kind="tier_list" items={[]} />)
 
     expect(screen.getByText(emptyPushLine('tier_list'))).toBeInTheDocument()
-    // The epic-16 retro item-4 repair, asserted at THIS kind because it was the defect's worst
-    // data point: the glass shows the display noun, never the wire literal's underscore.
+    // Asserted at THIS kind because its wire literal carries an underscore: the glass shows the
+    // display noun, never the wire literal.
     expect(document.body.textContent).toContain('tier list')
     expect(document.body.textContent).not.toContain('tier_list')
     expect(document.body.textContent).not.toContain('{noun}')
@@ -303,9 +303,9 @@ describe('empty and malformed tiers are skipped; neighbours render (DESIGN.md:59
   })
 
   it('filters a NON-STRING id inside a tier — the good neighbour renders alone, no crash', () => {
-    // E16-91: `cardIdsOf` now FILTERS per id (GroupsView's gate) rather than coercing to `''`,
-    // so a number never spends a permanently-dead placeholder slot — the tier renders exactly
-    // the ids the app could ever render.
+    // `cardIdsOf` FILTERS per id (GroupsView's gate) rather than coercing to `''`, so a number
+    // never spends a permanently-dead placeholder slot — the tier renders exactly the ids the
+    // app could ever render.
     seedAll()
     const withBadId = {
       letter: 'B',
@@ -323,10 +323,10 @@ describe('empty and malformed tiers are skipped; neighbours render (DESIGN.md:59
   })
 
   it('filters an empty or whitespace-only id — it never renders, never counts, never hydrates', () => {
-    // E16-91, `GroupsView.test.tsx`'s pin cloned: a blank id names nothing the app could ever
-    // render, and a whitespace-only one would even commit a real `/api/card-image/%20` request
-    // before hydration settled. `cardIdsOf` drops both, so the strip and the hydration effect
-    // read the same one-entry list.
+    // `GroupsView.test.tsx`'s pin, cloned: a blank id names nothing the app could ever render,
+    // and a whitespace-only one would even commit a real `/api/card-image/%20` request before
+    // hydration settled. `cardIdsOf` drops both, so the strip and the hydration effect read the
+    // same one-entry list.
     seedAll()
     const withBlankIds = {
       letter: 'B',
@@ -397,7 +397,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(screen.getByRole('button', { name: 'Card c-tier-1' })).toBe(tiles[0])
   })
 
-  it('REFUSES every verb on an unknown tile through the store, and stays a button (Q3)', () => {
+  it('REFUSES every verb on an unknown tile through the store, and stays a button', () => {
     seedUnknown('c-tier-1')
     seedHydrated('c-tier-2')
     const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
@@ -413,14 +413,14 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(deadTile.tagName).toBe('BUTTON')
     expect(deadTile).not.toBeDisabled()
 
-    // The non-vacuity control (the plant-3 lesson): the same tile, re-armed, proves the
-    // handlers were wired all along and the STORE did the refusing.
+    // The non-vacuity control: the same tile, re-armed, proves the handlers were wired all
+    // along and the STORE did the refusing.
     act(() => seedHydrated('c-tier-1'))
     fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
     expect(useInspectionStore.getState().hoveredId).toBe('c-tier-1')
   })
 
-  it('releases a stale hover, focus AND pin when an entry settles to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when an entry settles to unknown', () => {
     const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
     const [first] = tilesOf(rowAt(container, 0))
 
@@ -450,7 +450,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
   })
 })
 
-describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-23)', () => {
+describe('the in-view preview (DESIGN.md components.tier-preview)', () => {
   // jsdom's usual disclaimers apply one more time: the two-column grid, the 176px/300px tracks,
   // the sticky positioning and the ≤1100px collapse are all stylesheet claims. The load-bearing
   // rules — the thumb's real width, unshrinkable tiles, scroll-not-wrap, the preview's media
@@ -611,15 +611,15 @@ describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-
 
     act(() => seedUnknown('c-tier-1'))
 
-    // The existing per-tile release valve (Greptile P1) cleared the target, so the preview is
-    // back on the silent well — it never renders the unknown-card variant of its own.
+    // The per-tile release valve cleared the target, so the preview is back on the silent
+    // well — it never renders the unknown-card variant of its own.
     expect(useInspectionStore.getState().hoveredId).toBeNull()
     const preview = previewOf(container)!
     expect(preview.querySelector('.card-placeholder-well')).not.toBeNull()
     expect(preview.textContent).toBe('')
   })
 
-  it('releases a TILELESS pin that settles unknown, so tier hover is never outranked forever (Greptile P1, PR #103)', () => {
+  it('releases a TILELESS pin that settles unknown, so tier hover is never outranked forever', () => {
     seedAll()
     // A pin retained from ANOTHER surface (FR-17's survival) naming a card with NO tile in this
     // push: no per-tile release valve exists for it, so the preview's own must fire.
@@ -718,7 +718,7 @@ describe('hydration is this view’s own, across every tier (AD-12)', () => {
     )
 
     // The malformed slot cost no request (`cardIdsOf` filters it before the effect ever sees
-    // it — E16-91); the good id was still asked for — one bad entry, zero traffic.
+    // it); the good id was still asked for — one bad entry, zero traffic.
     expect(cardCalls()).toEqual(['/api/cards/c-tier-2'])
   })
 })

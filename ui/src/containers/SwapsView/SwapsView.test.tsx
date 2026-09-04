@@ -9,7 +9,7 @@ import { SwapsView } from './SwapsView'
 import { emptyPushLine } from '../SuggestionsView/copy'
 
 /**
- * The swaps view's body (story 16.1) — `SuggestionsView.test.tsx`'s harness, on the second
+ * The swaps view's body — `SuggestionsView.test.tsx`'s harness, on the second
  * view kind. The same disclaimers apply: jsdom evaluates no stylesheet (the tints, the arrow's
  * colour and the micro role are read as SOURCE by `token-usage.test.ts`) and loads no images
  * (art states are driven manually). What this file proves is the BRANCH and the WIRING — which
@@ -169,7 +169,7 @@ describe('the rows, and their anatomy (DESIGN.md swap-row)', () => {
 
     expect(row.querySelector('.swap-row-rationale')).toHaveTextContent(TRADE.rationale)
     // The confidence is a real StatChip beneath the rationale — label authored, value the wire
-    // token — and price/curve chips do NOT ship (the wire carries no price by ruling).
+    // token — and price/curve chips do NOT ship (the wire carries no price).
     const chip = row.querySelector('.stat-chip')
     expect(chip?.querySelector('.stat-chip-label')).toHaveTextContent('Confidence')
     expect(chip?.querySelector('.stat-chip-value')).toHaveTextContent('medium')
@@ -357,7 +357,7 @@ describe('the inspection contract on BOTH tiles (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(screen.getByRole('button', { name: /Out · 2 copies/ })).toBe(tiles[0])
   })
 
-  it('REFUSES every verb on an unknown tile through the store, and stays a button (Q3)', () => {
+  it('REFUSES every verb on an unknown tile through the store, and stays a button', () => {
     seedUnknown('c-out')
     seedHydrated('c-in')
     const { container } = render(<SwapsView kind="swaps" items={[TRADE]} />)
@@ -373,14 +373,14 @@ describe('the inspection contract on BOTH tiles (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(outTile.tagName).toBe('BUTTON')
     expect(outTile).not.toBeDisabled()
 
-    // The non-vacuity control (the plant-3 lesson): the same tile, re-armed, proves the
+    // The non-vacuity control: the same tile, re-armed, proves the
     // handlers were wired all along and the STORE did the refusing.
     act(() => seedHydrated('c-out'))
     fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
     expect(useInspectionStore.getState().hoveredId).toBe('c-out')
   })
 
-  it('releases a stale hover, focus AND pin when an entry settles to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when an entry settles to unknown', () => {
     const { container } = render(<SwapsView kind="swaps" items={[TRADE]} />)
     const [outTile] = tilesOf(rowAt(container, 0))
 
@@ -457,7 +457,7 @@ describe('hydration is this view’s own, both sides of every trade (AD-12)', ()
   })
 
   it('never hydrates a WHITESPACE-ONLY id — it folds to the unknown arm before any request', () => {
-    // E16-91, `GroupsView`'s gate in the single-id shape: `'  '` is not `''`, so without the
+    // `GroupsView`'s gate in the single-id shape: `'  '` is not `''`, so without the
     // trim fold the synchronous unknown guard would miss it and the first paint would commit a
     // real `/api/cards/%20` + `/api/card-image/%20` pair for an id that names nothing.
     render(<SwapsView kind="swaps" items={[{ ...TRADE, out_card_id: '  ' }]} />)

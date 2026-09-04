@@ -1,5 +1,5 @@
 /* CardPlaceholder — the named and unknown stand-ins, and the silent loading well
-   (story c4-3, FR-19, UX-DR4, UX-DR22, UX-DR36, UX-DR41).
+   (FR-19, UX-DR4, UX-DR22, UX-DR36, UX-DR41).
 
    WHAT THIS FILE DOES NOT OWN: the card shape. `aspect-ratio` and `border-radius` are written
    exactly once, in src/styles/card-geometry.css, and every element below carries `card-shape`
@@ -12,7 +12,7 @@
 
    IT ALSO DOES NOT OWN: the grid, the tile, any `<img>`, the quantity badge, the flip control,
    hover, focus or MOTION. UX-DR36's "images fade in over the pulse duration" is about an `<img>`
-   this story does not draw, so a `transition` here would be pre-empting c4-4.
+   this stylesheet does not draw, so a `transition` here would be pre-empting the tile.
 
    ==== THE BORDER IS INSIDE THE FOOTPRINT, WHICH IS WHY UX-DR36 HOLDS ===================
    `src/index.css` sets `box-sizing: border-box` universally, so the 1px hairline below is drawn
@@ -26,9 +26,9 @@
   /* DESIGN.md's `components.card-placeholder` block, verbatim: overlay background, the card
      radius (which arrives from `card-shape`, not from here), and a border DESIGN.md writes as
      `1px solid {colors.border-strong}`. The 1px is a GEOMETRY LITERAL with no token family to
-     point at — there is no `--border-width-*` — so it is cited here rather than tokenised, which
-     is the decide-once ruling c2-7 set and `shell.test.ts` enforces on every component
-     stylesheet. It is `border-strong`, not `border-hairline`: a placeholder has no art to hold
+     point at — there is no `--border-width-*` — so it is cited here rather than tokenised, the
+     geometry-literal rule `shell.test.ts` enforces on every component stylesheet. It is
+     `border-strong`, not `border-hairline`: a placeholder has no art to hold
      its own edge, so the box IS the card. */
   background: var(--surface-overlay);
   border: 1px solid var(--border-strong);
@@ -51,7 +51,7 @@
      `overflow-wrap` it would paint straight through the card edge; `hidden` is what stops a name
      longer than the box from spilling over the tile beneath it. Clipping deliberately lives HERE
      rather than in `card-shape`: whether content clips is a statement about content, and a
-     shared class that silently clipped would surprise c4-4's `<img>`. */
+     shared class that silently clipped would surprise the tile's `<img>`. */
   overflow: hidden;
   overflow-wrap: anywhere;
 }
@@ -64,7 +64,7 @@
   font: var(--type-body-strong);
 }
 
-/* THE TYPE LINE. `--type-micro` at `--text-secondary`, per DESIGN.md:389.
+/* THE TYPE LINE. `--type-micro` at `--text-secondary`, per DESIGN.md.
 
    BOTH COMPANIONS, IN THIS BLOCK. The `font` shorthand cannot carry letter-spacing and cannot
    carry text-transform, so `font: var(--type-micro)` written alone renders 10px lowercase text at
@@ -83,15 +83,15 @@
   color: var(--text-secondary);
 }
 
-/* THE TRUNCATED ID — and the type role is RULED, not defaulted (c4-3 Q4, AC 20).
+/* THE TRUNCATED ID — and the type role is deliberate, not defaulted.
 
-   NOT `--type-micro`, and the reason is in the backend. `cards.py:67` is
-   `_CARD_ID_PATTERN = r"^[0-9a-f]{8}-…$"` — LOWERCASE-ONLY BY AN EXPLICIT RULING ("Nothing is
+   NOT `--type-micro`, and the reason is in the backend. `cards.py`'s
+   `_CARD_ID_PATTERN = r"^[0-9a-f]{8}-…$"` is LOWERCASE-ONLY, deliberately ("Nothing is
    reachable by normalising an uppercase id"). The micro role is uppercase by contract, so a
    truncated uuid rendered in it would put on screen an id THE ROUTE WOULD REFUSE IF IT WERE TYPED
    BACK — and this is the one identifying thing the unknown variant has. DESIGN.md says the same
-   in its own words: "the ID is the only identifying information — load-bearing". That is the c2-10
-   "the legal sentence renders all-caps" finding with a sharper edge, because the value is
+   in its own words: "the ID is the only identifying information — load-bearing". That is the
+   footer's "the legal sentence renders all-caps" defect with a sharper edge, because the value is
    actionable data rather than prose.
 
    `--type-numeric` is the honest role: 13px, NO tracking sibling, NO uppercase, and tabular
@@ -100,7 +100,7 @@
    under, so the id stays subordinate to the label. (It never shares a card with the 10px type
    line: the type line belongs to the named variant, the id to the unknown one.)
 
-   BOTH DECLARATIONS, TOGETHER (UX-DR3, AC 21). The `font` shorthand resets font-variant-numeric
+   BOTH DECLARATIONS, TOGETHER (UX-DR3). The `font` shorthand resets font-variant-numeric
    to `normal`, so `font: var(--type-numeric)` alone renders exactly the proportional digits it
    was written to fix. `findUnpairedNumericRole` fails that split, in this block, by name.
 
@@ -115,8 +115,8 @@
 
 /* THE LOADING WELL — the same shape, the bottom of the ramp, and nothing else.
 
-   NO TEXT, NO SPINNER, NO BORDER (DESIGN.md:389 — "Image-loading wells use the same shape on
-   {colors.surface-well} with no text"; EXPERIENCE.md:72 — "No copy. Wells stay silent"). The
+   NO TEXT, NO SPINNER, NO BORDER (DESIGN.md — "Image-loading wells use the same shape on
+   {colors.surface-well} with no text"; EXPERIENCE.md — "No copy. Wells stay silent"). The
    component gives this variant no prop to say anything with, so the silence is structural.
 
    ==== A DELIBERATE HOLE IN THE SURFACE RAMP, DECLARED SO IT IS NOT "FIXED" ============

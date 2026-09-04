@@ -1,11 +1,10 @@
 /**
- * The analysis pair row (story c4-8, Q6, AC 3).
+ * The analysis pair row.
  *
  * **The arity is the acceptance criterion**, and it is the one thing this component exists to
- * get right twice: one child today, two the day c4-9 lands, with no edit here. jsdom has no
+ * get right twice: one child or two, with no edit here. jsdom has no
  * layout engine, so what is asserted below is the CONTRACT that produces the ratio — the flex
- * rule in `AnalysisRow.css` — rather than two rendered widths. The pixels are AC 33's
- * eye-check.
+ * rule in `AnalysisRow.css` — rather than two rendered widths. The pixels are checked by eye.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -13,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 
 import { AnalysisRow } from './AnalysisRow'
 
-describe('the arity, both ways (AC 3)', () => {
+describe('the arity, both ways', () => {
   it('renders ONE child, and it is the only thing in the row', () => {
     const { container } = render(
       <AnalysisRow>
@@ -26,7 +25,7 @@ describe('the arity, both ways (AC 3)', () => {
     expect(screen.getByText('Mana curve')).toBeTruthy()
   })
 
-  it('renders TWO children as siblings — the shape c4-9 lands by adding one', () => {
+  it('renders TWO children as siblings — a second panel lands by adding one', () => {
     const { container } = render(
       <AnalysisRow>
         <section>Mana curve</section>
@@ -48,7 +47,7 @@ describe('the arity, both ways (AC 3)', () => {
 })
 
 /*
- * THE OTHER HALF OF AC 3 IS IN `ui/tests/shell.test.ts`, DELIBERATELY.
+ * THE OTHER HALF OF THE 1:1 CONTRACT IS IN `ui/tests/shell.test.ts`, DELIBERATELY.
  *
  * The 1:1 split is a property of the STYLESHEET, and jsdom has no layout engine to observe it
  * with: with `flex-basis: auto` the wider panel's content would decide the split and every

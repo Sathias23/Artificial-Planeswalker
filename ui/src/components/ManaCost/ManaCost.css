@@ -1,15 +1,15 @@
-/* ManaCost — a row of pips and separators (story c2-8, UX-DR13, UX-DR5).
+/* ManaCost — a row of pips and separators (UX-DR13, UX-DR5).
 
    NO px LITERAL, and nothing to cite even if there were one: DESIGN.md's `components.*`
-   frontmatter declares no mana entry at all (see ManaPip.css's header for the full ruling).
+   frontmatter declares no mana entry at all (see ManaPip.css's header for the full reasoning).
 
-   NO MOTION (AC 19): no transition, no animation, nothing to register in the reduced-motion
+   NO MOTION: no transition, no animation, nothing to register in the reduced-motion
    block in tokens.css.
 
-   APPEARANCE IS NOT DEV-VERIFIED (AC 21). jsdom applies no stylesheet and nothing imports this
-   component yet; the row's look is checked by eye at c4-3 / c4-7 / c4-9. */
+   APPEARANCE IS NOT DEV-VERIFIED. jsdom applies no stylesheet; the row's look is checked by eye
+   on the consuming surfaces. */
 
-/* ==== IT WRAPS, AND THAT IS A DECISION (AC 17) ==========================================
+/* ==== IT WRAPS, AND THAT IS A DECISION =================================================
    B.F.M. is FIFTEEN pips in one cost (`{B}` × 15, measured in the shipped database), and the
    right-hand column of the two-column shell is 452px. `flex-wrap: wrap` is the choice, not the
    default — `display: inline-flex` alone is `nowrap`, which would push a long cost out of its

@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { flipCard, resetFaces, useFaceIndex, useFaceStore } from './faces'
 
 /**
- * The face slice (story c4-6, AC 9, AC 10, AC 13, AC 20).
+ * The face slice.
  *
- * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST (AC 26) ====================
+ * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
  * Nothing here renders a tile, a panel or a control, so nothing here proves that CLICKING the
  * flip control advances a face — that is `FlipControl.test.tsx`'s wiring claim — and nothing here
@@ -27,11 +27,11 @@ afterEach(resetFaces)
 
 const PATHWAY = 'clearwater-pathway'
 
-describe('an unflipped card reads as its front face (AC 13)', () => {
+describe('an unflipped card reads as its front face', () => {
   it('answers 0 for an id it has never seen — absence IS the front face', () => {
     // `?? 0` and never `||`: the stored value 0 and the absent value must resolve identically,
     // because "flipped back to the front" and "never flipped" are the same face and the URL they
-    // build must be the same byte string (AC 13 — `face=0` is never spelled).
+    // build must be the same byte string (`face=0` is never spelled).
     expect(useFaceStore.getState().faces[PATHWAY]).toBeUndefined()
     const { result } = renderHook(() => useFaceIndex(PATHWAY))
     expect(result.current).toBe(0)
@@ -42,13 +42,13 @@ describe('an unflipped card reads as its front face (AC 13)', () => {
   })
 })
 
-describe('flipping advances the index modulo the IMAGED-face count (AC 13, Q3)', () => {
+describe('flipping advances the index modulo the IMAGED-face count', () => {
   it('goes front → back → front for the only shape that exists (2,778 of 2,778)', () => {
-    // MEASURED at Task 0: every one of the 2,778 cards that gets a control has exactly TWO imaged
-    // faces, so the modulo is a two-state toggle for every printing in the corpus. The index is
-    // still the honest spelling — the route's `face` is an unbounded integer and the resolved list
-    // is IMAGES, not faces — and the boundary below is what makes the toggle a consequence of the
-    // rule rather than the rule itself.
+    // MEASURED against the corpus: every one of the 2,778 cards that gets a control has exactly
+    // TWO imaged faces, so the modulo is a two-state toggle for every printing in the corpus. The
+    // index is still the honest spelling — the route's `face` is an unbounded integer and the
+    // resolved list is IMAGES, not faces — and the boundary below is what makes the toggle a
+    // consequence of the rule rather than the rule itself.
     flipCard(PATHWAY, 2)
     expect(useFaceStore.getState().faces[PATHWAY]).toBe(1)
 
@@ -88,8 +88,8 @@ describe('a count that cannot support a flip does nothing (rule 10)', () => {
     ['NaN', Number.NaN],
     ['Infinity', Number.POSITIVE_INFINITY],
   ])('refuses %s, and writes nothing at all', (_label, count) => {
-    // `Number.isInteger` and an explicit `<= 1` refusal, never `count &&` — the c2-7 decide-once
-    // ruling's family, one member stricter, because 1.5 is finite and a modulo by it is not.
+    // `Number.isInteger` and an explicit `<= 1` refusal, never `count &&` — one member stricter
+    // than a plain finiteness check, because 1.5 is finite and a modulo by it is not.
     // `count && …` treats 0 as absent AND lets `NaN` through as falsy-but-not-absent, and a
     // modulo by 0, by NaN or by a fraction produces `NaN` or a fractional index, either of which
     // would reach a URL as `?face=NaN`. Writing NOTHING (rather than writing 0) is what keeps
@@ -109,14 +109,13 @@ describe('a count that cannot support a flip does nothing (rule 10)', () => {
   })
 })
 
-describe('the state survives what it must and is forgettable when it must be (AC 9)', () => {
+describe('the state survives what it must and is forgettable when it must be', () => {
   it('keeps every entry when `resetFaces` has NOT been called — including across re-reads', () => {
     // The store is the thing a `deck_changed` re-render does not touch: nothing in this module
     // subscribes to a deck, so there is no path by which a new deck could clear it. See the
     // module header for why that is the OPPOSITE of `deckMemory`'s rule for inspection, and why
-    // both are right. The rendered half of AC 9 — a re-render over new boards, and an unmount —
-    // is `CardTile.test.tsx`'s "survives a re-render over NEW BOARDS" test (this line first named
-    // `FlipControl.test.tsx`, where no such test existed — review 2026-08-06).
+    // both are right. The rendered half — a re-render over new boards, and an unmount — is
+    // `CardTile.test.tsx`'s "survives a re-render over NEW BOARDS" test.
     flipCard(PATHWAY, 2)
     expect(useFaceStore.getState().faces[PATHWAY]).toBe(1)
     expect(useFaceStore.getState().faces[PATHWAY]).toBe(1)

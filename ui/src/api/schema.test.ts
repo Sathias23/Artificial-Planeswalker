@@ -1,5 +1,5 @@
 /**
- * The generated wire types, pinned by shape (AC 9).
+ * The generated wire types, pinned by shape.
  *
  * ⚠️ **`npm test` passing proves NOTHING about this file. `npm run typecheck` is the gate.**
  *
@@ -35,7 +35,7 @@ describe('generated wire types (AD-12)', () => {
   // `status` must stay the 'ok' literal, not widen to string: it is the closed token the
   // backend's Literal["ok"] declares, and the identity probe's whole value is that a caller can
   // tell this companion from an unrelated server holding the same port (AD-4).
-  // `clients` (17.4) is optional AND nullable on the wire: optional so a reader built against the
+  // `clients` is optional AND nullable on the wire: optional so a reader built against the
   // older two-field body still parses, nullable because the backend declares `int | None`.
   it('pins HealthResponse to the backend shape', () => {
     expectTypeOf<HealthResponse>().toEqualTypeOf<{
@@ -52,16 +52,15 @@ describe('generated wire types (AD-12)', () => {
 
   // All ten named explicitly. This is the one assertion that cannot be derived from the
   // generated file, and that is the point: it is a second, independent statement of AD-16's closed
-  // set, so a token dropped on the Python side reddens here instead of quietly deleting a c2-9
-  // state panel.
+  // set, so a token dropped on the Python side reddens here instead of quietly deleting a state
+  // panel.
   //
-  // c3-2 edited this line to add `card_not_found`, c3-4 to add `forbidden`, and c3-5 to add BOTH
-  // of `no_image_data` and `image_fetch_failed` — the first story to add a pair, because AD-11
-  // requires a card with no artwork and a failed CDN fetch to be distinguishable and this codebase
-  // derives the status from the token. The rule stands unchanged for an eleventh: adding a token
-  // is a deliberate act that edits this line — and `npm test` will NOT tell you that you forgot,
-  // because this file's assertions erase to nothing at runtime (see the header). The failure
-  // arrives from `npm run typecheck`, here and in `components/StatePanel/states.ts`.
+  // `no_image_data` and `image_fetch_failed` are a pair because AD-11 requires a card with no
+  // artwork and a failed CDN fetch to be distinguishable and this codebase derives the status from
+  // the token. Adding a token is a deliberate act that edits this line — and `npm test` will NOT
+  // tell you that you forgot, because this file's assertions erase to nothing at runtime (see the
+  // header). The failure arrives from `npm run typecheck`, here and in
+  // `components/StatePanel/states.ts`.
   it('pins the closed ten-token reason set', () => {
     expectTypeOf<ErrorReason>().toEqualTypeOf<
       | 'deck_not_found'
@@ -78,8 +77,7 @@ describe('generated wire types (AD-12)', () => {
   })
 
   /**
-   * `CardFace`, added by story c4-5 (Q1) — and pinned in the two directions that actually bite
-   * the detail panel.
+   * `CardFace`, pinned in the two directions that actually bite the detail panel.
    *
    * The panel narrows every face field before drawing it, and the reason that is REQUIRED rather
    * than careful is here in the type: each one is optional AND nullable, so `face.name` is
@@ -102,8 +100,8 @@ describe('generated wire types (AD-12)', () => {
   })
 
   /**
-   * The format-check pair, added by story c4-10 — and pinned on the two properties the panel is
-   * BUILT on rather than on "the alias exists".
+   * The format-check pair, pinned on the two properties the panel is BUILT on rather than on "the
+   * alias exists".
    *
    * `CHECK_ORDER` and the three-outcome vocabulary are declared constants on the Python side with
    * tests of their own; what a TypeScript consumer needs is that both arrive as **closed
@@ -135,10 +133,9 @@ describe('generated wire types (AD-12)', () => {
   })
 
   it('pins `format` as a non-nullable string — the reason there is no `=== null` branch', () => {
-    // `deferred-work.md:1972-1981` warned that a "no format" branch keyed on `format === null`
-    // would be dead code. It is stronger than that and this is where it is written down: the
-    // generated type is `string`, so that branch would not COMPILE. An absent format is `''`,
-    // and the field that answers the question is `format_recognized`.
+    // A "no format" branch keyed on `format === null` would not merely be dead code; it would not
+    // COMPILE, because the generated type is `string`. An absent format is `''`, and the field
+    // that answers the question is `format_recognized`.
     expectTypeOf<FormatCheckReport['format']>().toEqualTypeOf<string>()
     expectTypeOf<FormatCheckReport['format_recognized']>().toEqualTypeOf<boolean>()
     // …and every field is REQUIRED — no `?`, no `| null` — which is why the narrower in

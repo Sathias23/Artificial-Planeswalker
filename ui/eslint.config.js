@@ -42,7 +42,7 @@ const INLINE_STYLE_BANS = [
       'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
       'guard in tests/token-usage.test.ts can see it. A style attribute that is not a ' +
       'literal object (or a literal directly under one `as` cast) hides its keys from ' +
-      'every static reader, so it cannot be the named-channel form c4-8 opened. Put the ' +
+      'every static reader, so it cannot be the named-channel form. Put the ' +
       'rule in a .css file and reach values through var(--…). See ui/README.md, ' +
       '"The token layer".',
   },
@@ -63,8 +63,8 @@ const INLINE_STYLE_BANS = [
       'whose keys are all DECLARED runtime channels (today: --curve-bar-height, ' +
       '--colour-bar-share, --history-popover-top, --history-popover-right), with no ' +
       'spread — a bare `--` prefix is not enough, because a ' +
-      'custom property can override a real design token for every descendant (c4-8, ' +
-      'AC 17; c4-9, AC 19). See ui/README.md, "The token layer".',
+      'custom property can override a real design token for every descendant. ' +
+      'See ui/README.md, "The token layer".',
   },
 ]
 
@@ -100,7 +100,7 @@ const COPY_BANS = [
 
 export default tseslint.config(
   {
-    // `dist` is the build output (c2-2 redirects it into src/companion/app/static/).
+    // `dist` is the build output (vite.config.ts redirects it into src/companion/app/static/).
     // `tests/fixtures` holds deliberately-broken files that exist to be linted BY A TEST —
     // linting them here would make `npm run lint` permanently red. tests/lint-gates.test.ts
     // lints them through the ESLint Node API with ignores disabled.
@@ -135,7 +135,7 @@ export default tseslint.config(
     // The hooks rules must cover `.ts` as well as `.tsx`. A custom hook lives in a plain
     // `.ts` file more often than not (`src/hooks/useDeck.ts`), and scoping this to `.tsx`
     // would let `rules-of-hooks` and `exhaustive-deps` — the two rules most likely to catch
-    // a real bug in c4-1's store work — silently skip exactly those files.
+    // a real bug in the store hooks — silently skip exactly those files.
     files: ['**/*.{ts,tsx}'],
     // `reactHooks.configs.flat[...]`, NOT `reactHooks.configs[...]`: eslint-plugin-react-hooks@7
     // exports BOTH shapes under near-identical names, and the top-level one is the legacy
@@ -160,7 +160,7 @@ export default tseslint.config(
       // no warning tier.
       //
       // THE HANDLER LIST IS NARROWED, IN THE OPEN, AND THIS IS A RULE CHANGE RATHER THAN A
-      // LOCAL EXCEPTION (story c4-4). Both rules default to
+      // LOCAL EXCEPTION. Both rules default to
       // `['onClick', 'onError', 'onLoad', 'onMouseDown', 'onMouseUp', 'onKeyPress',
       // 'onKeyDown', 'onKeyUp']`, and `onLoad` / `onError` are not interactions at all: they
       // are RESOURCE-LIFECYCLE events, fired by the browser when a subresource finishes or
@@ -168,12 +168,12 @@ export default tseslint.config(
       // add and no role to promote — the whole premise of both rules ("this element looks
       // clickable to a mouse and is invisible to a keyboard") does not apply.
       //
-      // MEASURED, not anticipated: c4-4's card tile is the first component in the codebase to
-      // render an `<img>`, and `<img onLoad onError>` is the ONLY way a component can know
-      // whether the pixels arrived — which is the whole of that story's placeholder-then-fill
-      // contract (UX-DR36). The alternatives were an inline `eslint-disable` on the one line
-      // that matters, or dropping the rule; narrowing the list keeps the rules total over every
-      // interaction spelling while removing two names that were never interactions.
+      // The card tile renders an `<img>`, and `<img onLoad onError>` is the ONLY way a
+      // component can know whether the pixels arrived — which is the whole of the
+      // placeholder-then-fill contract (UX-DR36). The alternatives were an inline
+      // `eslint-disable` on the one line that matters, or dropping the rule; narrowing the list
+      // keeps the rules total over every interaction spelling while removing two names that
+      // were never interactions.
       //
       // The six that remain are the interaction handlers, and `tests/lint-gates.test.ts` both
       // pins this list against drift and proves the pair still fires on `onClick` while staying
@@ -184,37 +184,28 @@ export default tseslint.config(
         { handlers: A11Y_INTERACTION_HANDLERS },
       ],
 
-      // THE TOKEN LAYER'S BLIND SPOT, CLOSED BEFORE THE FIRST COMPONENT EXISTS.
+      // THE TOKEN LAYER'S BLIND SPOT.
       //
-      // Every gate story c2-4 shipped stops at `*.css`: stylelint bans hard-coded colours,
-      // shadows, radii, spacing and durations, and tests/token-usage.test.ts covers what
-      // stylelint cannot express. None of them can see a single character of
+      // Every other gate stops at `*.css`: stylelint bans hard-coded colours, shadows, radii,
+      // spacing and durations, and tests/token-usage.test.ts covers what stylelint cannot
+      // express. None of them can see a single character of
       // `style={{ padding: '18px', boxShadow: '0 12px 32px rgba(0,0,0,.5)' }}` in a `.tsx`
       // file — which is the most convenient way to write a style and therefore the way a
-      // component author reaches for under time pressure. The gate had to exist BEFORE the
-      // first component, or the exception becomes the convention.
-      //
-      // It held: c2-6 wrote the application shell — the first component in the codebase, and
-      // the one whose whole job is geometry — with no inline style anywhere, and needed no
-      // escape hatch to do it. That is the datum this rule was betting on. If a later story
-      // reaches for a dynamic value, the shell is the precedent to look at first: c2-6 found
-      // that wanting one was a signal the layout was being done in JS that belonged in CSS.
+      // component author reaches for under time pressure. Wanting an inline style is usually
+      // a signal that layout is being done in JS that belongs in CSS; the application shell,
+      // whose whole job is geometry, needed none.
       //
       // `no-restricted-syntax` rather than `react/forbid-dom-props`: the latter needs
       // eslint-plugin-react, which this project does not install and which AD-12's
       // one-tool-per-job discipline would make us justify. A selector on the JSX attribute
       // name costs no dependency and says exactly what it means.
       //
-      // Escape hatch, deliberately narrow: none. A genuinely dynamic value (a computed bar
-      // height in c4-8; "a grid template in c6-6" was predicted here and DID NOT HAPPEN —
-      // that story expresses its crossfade through a `[data-replacing]` attribute and a
-      // duration token, and sets no inline style at all, corrected 2026-08-11) sets a CSS
-      // CUSTOM PROPERTY through the style attribute's own typing — but that is still this
-      // attribute, so a story needing it
-      // changes this rule and says why, in the open, rather than discovering the gate does
-      // not apply to it. (Brad's ruling 2026-07-27.)
+      // Escape hatch, deliberately narrow. A genuinely dynamic value sets a CSS CUSTOM PROPERTY
+      // through the style attribute's own typing — but that is still this attribute, so a
+      // component needing it changes this rule and says why, in the open, rather than
+      // discovering the gate does not apply to it.
       //
-      // ==== AND THAT STORY IS HERE. THE HATCH IS TAKEN, IN THE OPEN (c4-8, Q10, AC 17) =====
+      // ==== THE HATCH, TAKEN IN THE OPEN ======================================================
       //
       // A mana curve's bar height IS the data. There is no class-based spelling of "this bar is
       // 62% as tall as the tallest one" — the value is a number computed from the deck at
@@ -231,42 +222,33 @@ export default tseslint.config(
       // `style={{ '--h': x, color: 'red' }}` — one non-permitted property re-opens the whole
       // hole — and so is `style={{ '--surface-well': x }}`: a `--`-prefixed key can name a REAL
       // design token and re-theme every descendant consuming it, which no stylelint rule and no
-      // stylesheet scan would ever see (review finding, c4-8). The hatch is therefore an exact
-      // NAME allowlist, not a prefix test — the same protocol RUNTIME_CUSTOM_PROPERTIES uses in
-      // tests/token-usage.test.ts, and the two lists move together: a story adding a channel
-      // adds it in both places, in the open, or one of the two gates goes red (Brad's ruling
-      // 2026-08-06).
+      // stylesheet scan would ever see. The hatch is therefore an exact NAME allowlist, not a
+      // prefix test — the same protocol RUNTIME_CUSTOM_PROPERTIES uses in
+      // tests/token-usage.test.ts, and the two lists move together: adding a channel adds it
+      // in both places, in the open, or one of the two gates goes red.
       //
-      // ==== THE SECOND CHANNEL JOINS, IN THE OPEN (c4-9, Q13, AC 19) =====================
-      //
-      // --colour-bar-share is c4-9's segment width, and it is the first test of whether the
-      // "exact NAME allowlist" protocol survives a second entry rather than quietly becoming a
-      // prefix again. It does not: the list below is two literal strings, and a third story
-      // adds a third the same way.
-      //
-      // It carries a RAW PIP COUNT, not a percentage, which is worth noting because it makes
-      // this channel narrower than c4-8's rather than wider: `flex-grow` performs the division
-      // in the browser, so no percentage is computed in TSX at all, nothing can divide by zero
-      // at the call site, and the value crossing the attribute is an integer. The consuming
+      // --colour-bar-share carries a RAW PIP COUNT, not a percentage, which makes that channel
+      // narrower than the bar height's rather than wider: `flex-grow` performs the division in
+      // the browser, so no percentage is computed in TSX at all, nothing can divide by zero at
+      // the call site, and the value crossing the attribute is an integer. The consuming
       // declaration is `flex-grow: var(--colour-bar-share, 0)` in ColourDistribution.css, where
       // stylelint and tests/token-usage.test.ts can both see the rule around it.
       //
-      // Today the list is four names: --curve-bar-height (c4-8's bar height),
-      // --colour-bar-share (c4-9's segment width), and 17.2's pair --history-popover-top /
-      // --history-popover-right (the popover's clamp anchor terms: its measured distances from
-      // the viewport top and to its right-anchored edge, which no stylesheet can know because
-      // the header above it is content-sized and its pill row wraps — Greptile PR #97, rounds
-      // 2 and 4).
+      // Today the list is four names: --curve-bar-height (the mana curve's bar height),
+      // --colour-bar-share (the colour distribution's segment width), and the history
+      // popover's pair --history-popover-top / --history-popover-right (the popover's clamp
+      // anchor terms: its measured distances from the viewport top and to its right-anchored
+      // edge, which no stylesheet can know because the header above it is content-sized and
+      // its pill row wraps).
       //
-      // DIRECT-CHILD PATHS, NOT DESCENDANT :has, in both selectors — the c4-8 review's
-      // correction of its own first amendment. The shipped draft tested
-      // `:has(ObjectExpression …)` over the attribute's whole subtree, which read "contains a
+      // DIRECT-CHILD PATHS, NOT DESCENDANT :has, in both selectors. Testing
+      // `:has(ObjectExpression …)` over the attribute's whole subtree reads "contains a
       // literal somewhere" as "IS a literal": `style={fn({ '--h': x })}` and
       // `style={cond ? { '--h': x } : hiddenObj}` both contain a compliant literal and both
       // smuggle arbitrary properties past every static reader — the exact shape the first
       // selector's own message claims to close. The anchor is `JSXExpressionContainer`, which
       // can only ever be the attribute's own value wrapper, so a literal nested inside a
-      // property's VALUE (`fmt({ pad: 1 })`) no longer false-positives either. (esquery does
+      // property's VALUE (`fmt({ pad: 1 })`) does not false-positive either. (esquery does
       // not support a leading combinator inside :has — `:has(> X)` matches NOTHING, silently —
       // which is why the anchor is a named parent rather than a child combinator.)
       //

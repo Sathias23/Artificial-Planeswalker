@@ -1,14 +1,14 @@
 /**
- * The SEMANTIC pins for `states.ts` (review 2026-07-29).
+ * The SEMANTIC pins for `states.ts`.
  *
- * `satisfies` proves the maps are TOTAL; nothing proved their VALUES. The review measured that
- * swapping the two database panels, or flipping `internal-error`'s load-bearing `false`, kept
- * every test and `npm run typecheck` green — c2-8's "proven exhaustively, never proven
- * forwarded" defect in map form. These assertions pin the anchors the wire contract states in
- * prose (`types.d.ts:67-69`), so a flipped value is a deliberate contract change made against a
- * red test, not a drift c3-9 inherits silently.
+ * `satisfies` proves the maps are TOTAL; nothing else proves their VALUES. Measured: swapping
+ * the two database panels, or flipping `internal-error`'s load-bearing `false`, kept every test
+ * and `npm run typecheck` green — "proven exhaustively, never proven forwarded" in map form.
+ * These assertions pin the anchors the wire contract states in prose (`types.d.ts`), so a
+ * flipped value is a deliberate contract change made against a red test, not a drift the wiring
+ * inherits silently.
  *
- * This does NOT replace `typecheck` as the totality gate — `schema.test.ts:4` explains why a
+ * This does NOT replace `typecheck` as the totality gate — `schema.test.ts` explains why a
  * runtime enumeration cannot. It pins MEANINGS, which is the half the type cannot hold.
  */
 
@@ -22,7 +22,7 @@ import {
   RETRIES_QUIETLY,
 } from './states'
 
-describe('the state maps mean what the wire contract says (review 2026-07-29)', () => {
+describe('the state maps mean what the wire contract says', () => {
   it('routes each token to its own panel — the values, not merely the totality', () => {
     expect(PANEL_FOR_REASON.deck_not_found).toBe('no-active-deck')
     expect(PANEL_FOR_REASON.database_not_initialized).toBe('database-not-initialized')
@@ -31,11 +31,11 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
   })
 
   it('keeps the three designed silences silent', () => {
-    // `null` is a NAMED answer (AC 12): the SPA never generates an invalid_request, and an
+    // `null` is a NAMED answer: the SPA never generates an invalid_request, and an
     // over-cap push is surfaced to the agent, never the glass.
     expect(PANEL_FOR_REASON.invalid_request).toBeNull()
     expect(PANEL_FOR_REASON.payload_too_large).toBeNull()
-    // c3-4's `forbidden`, and the value matters rather than merely the totality: the browser never
+    // `forbidden`, and the value matters rather than merely the totality: the browser never
     // holds the agent credential (AD-5), so a panel here would report a failure the reader neither
     // caused nor can fix. Pinned by value because the `satisfies` clause would accept a panel key
     // here just as happily as `null`.
@@ -46,33 +46,33 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
   })
 
   // ------------------------------------------------------------------------------------------
-  // c3-2: the THIRD meaning of `null`, pinned by value the way the four panels above are.
+  // The THIRD meaning of `null`, pinned by value the way the four panels above are.
   //
   // The three type-level asserts in `states.ts` prove every panel-less token is classified as
   // exactly one of {placeholder, nothing}. They do NOT prove WHICH — swapping `card_not_found`
   // into `NO_UI_RESPONSE` and dropping `PLACEHOLDER_FOR_REASON` to `{}` type-checks perfectly
-  // and silently deletes c4-3's destination. That is this file's whole reason for existing
-  // (review 2026-07-29), so the seventh token gets the same treatment as the other six.
+  // and silently deletes the unknown-card destination. That is this file's whole reason for
+  // existing, so the placeholder tokens get the same treatment as the panel tokens.
   // ------------------------------------------------------------------------------------------
 
   it('gives card_not_found no panel but a NAMED non-panel destination', () => {
     // No panel — one unresolvable card must never take a whole view down (FR-13).
     expect(PANEL_FOR_REASON.card_not_found).toBeNull()
-    // …but not nothing: the placeholder c4-3 renders.
+    // …but not nothing: the placeholder CardPlaceholder renders.
     expect(PLACEHOLDER_FOR_REASON.card_not_found).toBe('unknown-card')
   })
 
-  it('sends both of c3-5 image failures to the NAMED-CARD placeholder, not the unknown one', () => {
-    // Same treatment as the seventh and eighth tokens, for the same reason: the type-level
+  it('sends both image failures to the NAMED-CARD placeholder, not the unknown one', () => {
+    // Same treatment as `card_not_found`, for the same reason: the type-level
     // asserts prove these two are classified, never WHICH WAY. Swapping either into
-    // `NO_UI_RESPONSE` type-checks perfectly and silently deletes the tile c4-3 renders.
+    // `NO_UI_RESPONSE` type-checks perfectly and silently deletes the tile CardPlaceholder renders.
     expect(PANEL_FOR_REASON.no_image_data).toBeNull()
     expect(PANEL_FOR_REASON.image_fetch_failed).toBeNull()
 
     // …and specifically NOT `unknown-card`. That is the assertion with teeth here: the two
     // placeholders look similar and mean opposite things. `unknown-card` says the app does not
     // know what this card is; `named-card` says it knows exactly, and only lacks the picture — so
-    // it can draw the real name, cost and type line. Copy-pasting the c3-2 line above would pass
+    // it can draw the real name, cost and type line. Copy-pasting the line above would pass
     // every type-level assert in `states.ts` and put "Unknown card" under a card the app can name.
     expect(PLACEHOLDER_FOR_REASON.no_image_data).toBe('named-card')
     expect(PLACEHOLDER_FOR_REASON.image_fetch_failed).toBe('named-card')
@@ -80,11 +80,11 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
   })
 
   it('does not confuse "no panel" with "no UI response at all"', () => {
-    // The distinction retro R1 exists to force, asserted in both directions so neither list can
-    // quietly absorb the other's members.
+    // The distinction the classification exists to force, asserted in both directions so
+    // neither list can quietly absorb the other's members.
     expect([...NO_UI_RESPONSE]).toEqual(['invalid_request', 'forbidden', 'payload_too_large'])
     expect([...NO_UI_RESPONSE]).not.toContain('card_not_found')
-    // c3-5's two are panel-less and are NOT silences — the exact confusion this test names.
+    // The two image tokens are panel-less and are NOT silences — the exact confusion this test names.
     expect([...NO_UI_RESPONSE]).not.toContain('no_image_data')
     expect([...NO_UI_RESPONSE]).not.toContain('image_fetch_failed')
     expect(Object.keys(PLACEHOLDER_FOR_REASON)).toEqual([
@@ -95,16 +95,16 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
   })
 
   it('never lets the two deterministic states quietly retry — the load-bearing falses', () => {
-    // types.d.ts:67-69: a deterministic bug re-hit by every identical request. A quiet retry
+    // types.d.ts: a deterministic bug re-hit by every identical request. A quiet retry
     // loop would hammer a broken backend under a calm panel that never changes.
     expect(RETRIES_QUIETLY['internal-error']).toBe(false)
-    // The ESCALATION state exists because the quiet retry has already failed (Q5).
+    // The ESCALATION state exists because the quiet retry has already failed.
     expect(RETRIES_QUIETLY['database-updating-stalled']).toBe(false)
   })
 
   it('promises the self-transitions the copy promises', () => {
     // "this page will come alive on its own" / "Reads will resume automatically" — the copy
-    // says it, so the contract c3-9 reads must too.
+    // says it, so the contract the wiring reads must too.
     expect(RETRIES_QUIETLY['database-not-initialized']).toBe(true)
     expect(RETRIES_QUIETLY['database-updating']).toBe(true)
     expect(RETRIES_QUIETLY.disconnected).toBe(true)

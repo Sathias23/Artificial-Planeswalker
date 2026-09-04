@@ -5,9 +5,9 @@ import './Badge.css'
 import { BADGE_TONES, type BadgeTone } from './tones'
 
 /**
- * Badge — the pill label, in five tones (story c2-7, UX-DR10).
+ * Badge — the pill label, in five tones (UX-DR10).
  *
- * PRESENTATION-ONLY (AC 5): no state, no hook, no fetch, no store, no event handler. Its
+ * PRESENTATION-ONLY: no state, no hook, no fetch, no store, no event handler. Its
  * entire contract is "render these children in this tone", and `ui/tests/shell.test.ts`
  * asserts that with an exhaustive import list rather than leaving it to inspection.
  *
@@ -28,10 +28,10 @@ import { BADGE_TONES, type BadgeTone } from './tones'
 export interface BadgeProps {
   /**
    * One of DESIGN.md's five tones. Defaults to `neutral` — and an UNKNOWN tone lands on
-   * neutral too (review ruling 2026-07-29): the type admits only the five, but tones will
-   * eventually arrive as server data (c4-10's format legality, c9's tiers), and an unchecked
-   * `badge-${tone}` would render an unstyled `badge-bogus` pill. Clamping to the same list the
-   * per-tone tests anchor on keeps the failure mode "wrong tone" rather than "no tone".
+   * neutral too: the type admits only the five, but tones can arrive as server data (format
+   * legality, tiers), and an unchecked `badge-${tone}` would render an unstyled `badge-bogus`
+   * pill. Clamping to the same list the per-tone tests anchor on keeps the failure mode "wrong
+   * tone" rather than "no tone".
    */
   tone?: BadgeTone
   /** The pill's content. An EMPTY shape renders nothing — see the `filled()` note below. */
@@ -39,7 +39,7 @@ export interface BadgeProps {
 }
 
 export function Badge({ tone = 'neutral', children }: BadgeProps) {
-  // `filled()`, not truthiness (AC 17, review ruling 2026-07-29): a Badge with no content is a
+  // `filled()`, not truthiness: a Badge with no content is a
   // bordered, washed, empty pill — visible chrome announcing nothing. `<></>`, `[]` and `' '`
   // all look filled to a naive check while rendering nothing inside it.
   if (!filled(children)) return null

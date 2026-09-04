@@ -2,8 +2,7 @@ import type { CardSummary } from '../api/schema'
 import type { CardEntry } from '../state/cards'
 
 /**
- * The front face of a double-faced card, as a deck row must show it (story c4-7, Q2, AC 23,
- * UX-DR19, FR-05).
+ * The front face of a double-faced card, as a deck row must show it (UX-DR19, FR-05).
  *
  * UX-DR19 and `EXPERIENCE.md:87` both say a deck row shows *"the front face's name and cost"*.
  * That is one clause, and it resolves **three different ways** depending on the card — which is
@@ -13,18 +12,16 @@ import type { CardEntry } from '../state/cards'
  *
  * `react-refresh/only-export-components` is an ESLint **error**: a non-component value exported
  * from a component file breaks fast refresh. `imageUrl.ts`, `deckMemory.ts`, `imagedFaces.ts` and
- * `useCardArt.ts` are the four precedents, and this is the fifth — its own module, its own
- * `CONTAINERS` entry (decide-once ruling 3).
+ * `useCardArt.ts` are the precedents — its own module, its own `CONTAINERS` entry.
  *
- * ================= AND IT MOVED UP ONE LEVEL AT c4-9, WHICH IS THE SHIPPED RULE ========
+ * ================= WHY IT SITS AT THE TREE ROOT RATHER THAN IN `DeckList/` =============
  *
- * It lived at `src/containers/DeckList/frontFaceCost.ts` for exactly as long as it had one
- * consumer. c4-9's colour bar needs the same three-shape resolution — a pip count is a count of
- * the FRONT FACE's pips, and 87.8% of faced cards carry a blank top-level cost — so there are now
- * two, in two different container directories.
+ * It has two consumers in two different container directories: the deck row, and the colour bar,
+ * which needs the same three-shape resolution — a pip count is a count of the FRONT FACE's pips,
+ * and 87.8% of faced cards carry a blank top-level cost.
  *
  * The alternative was a cross-tree import (`../DeckList/frontFaceCost` from
- * `ColourDistribution/`), and it was declined rather than merely not chosen: `filled.ts`'s header
+ * `ColourDistribution/`), and it is declined rather than merely not chosen: `filled.ts`'s header
  * already states the rule in words — *"a helper shared by two components does not live inside one
  * of them"* — and `imagedFaces.ts` and `useCardArt.ts` sit at this tree's root for precisely this
  * reason. `imageUrl.ts` stays inside `CardTile/` because it still has one consumer, which is the
@@ -34,11 +31,10 @@ import type { CardEntry } from '../state/cards'
  *
  * ================= WHY THE NAME HALF LIVES HERE TOO, DESPITE THE FILENAME =============
  *
- * The story's source tree named this module for the cost, because the cost is the hard half. The
- * NAME split landed here anyway rather than reusing `deckGroups.ts`'s exported {@link frontFace},
- * and the reason is a measured defect rather than tidiness — see {@link frontFaceName}. Both
- * halves answer one question ("what does the front face of this card show?"), so they share a
- * module and the filename is the one the story wrote down.
+ * The module is named for the cost, because the cost is the hard half. The NAME split lives here
+ * anyway rather than reusing `deckGroups.ts`'s exported {@link frontFace}, and the reason is a
+ * measured defect rather than tidiness — see {@link frontFaceName}. Both halves answer one
+ * question ("what does the front face of this card show?"), so they share a module.
  */
 
 /**
@@ -54,7 +50,7 @@ import type { CardEntry } from '../state/cards'
  *   lands silently in `Other`. Loose is safer: it fails toward the right answer.
  *
  *   For a NAME there is no matching step to fail. A loose split simply truncates, and the
- *   truncated string is rendered. Measured against the shipped database at `d51b467`: exactly one
+ *   truncated string is rendered. Measured against the shipped database: exactly one
  *   card in 38,261 carries an **unspaced** `//` in its `name` — `'SP//dr, Piloted by Peni'`, a
  *   SINGLE-faced Legendary Artifact Creature — and the loose pattern renders it as **`'SP'`**. A
  *   wrong card name on the glass, from a card that needs no splitting at all.
@@ -66,7 +62,7 @@ import type { CardEntry } from '../state/cards'
  */
 const FACE_SEPARATOR = ' // '
 
-/** Trimmed, or `null` — the emptiness spelling of decide-once rule 16, never truthiness. */
+/** Trimmed, or `null` — emptiness is trimmed-empty, never truthiness. */
 const trimmedOrNull = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -78,14 +74,14 @@ const beforeSeparator = (cost: string): string | null =>
   trimmedOrNull(cost.slice(0, cost.indexOf(FACE_SEPARATOR)))
 
 /**
- * The front face's NAME, from the deck payload alone — no hydration, no fetch (AC 23).
+ * The front face's NAME, from the deck payload alone — no hydration, no fetch.
  *
  * **This half is free**, and that is the measurement that separates it from the cost: 3,194 of
  * the 3,225 faced cards (99.0%) store the combined `'A // B'` string in the top-level `name`, and
  * **0 store a blank one**. So one split off `DeckCardSummary.card.name` answers UX-DR19 for every
  * double-faced card in every real deck, at first paint, with nothing in flight.
  *
- * It is also a layout argument independent of the AC: the worst front-face name in a live deck is
+ * It is also a layout argument in its own right: the worst front-face name in a live deck is
  * 33 characters (`Captain Marvel, Earth's Protector`), where the worst UNSPLIT name is 56
  * (`Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel`) — a 41% reduction in the worst
  * case the 1fr track has to hold before its ellipsis fires.
@@ -107,9 +103,9 @@ export const frontFaceName = (name: string): string => {
 }
 
 /**
- * The front face's COST — the clause that resolves three ways (Q2, AC 23).
+ * The front face's COST — the clause that resolves three ways.
  *
- * ================= THE THREE SHAPES, MEASURED AT `d51b467` ============================
+ * ================= THE THREE SHAPES, MEASURED IN THE SHIPPED DATABASE =================
  *
  * Of the 3,225 cards carrying `card_faces`, **2,830 (87.8%) have a BLANK top-level `mana_cost`**
  * whose real value lives only in `card_faces[0].mana_cost` — which `CardSummary` does not carry.
@@ -125,26 +121,24 @@ export const frontFaceName = (name: string): string => {
  * The split branch comes FIRST and that ordering is load-bearing: an Adventure card's cost is
  * non-blank, so a "non-blank means use it verbatim" test placed first would render
  * `'{1}{B}{B} // {1}{B}{B}'` — both halves, with the separator spoken aloud as "slash slash" by
- * `describeManaCost` (the ledger entry at `deferred-work.md:1429-1445`, re-homed to this story).
- * Splitting first is what closes that deferral **by construction on this surface**: a `' // '`
- * never reaches `ManaCost` from a deck row.
+ * `describeManaCost`. Splitting first is what rules that out **by construction on this
+ * surface**: a `' // '` never reaches `ManaCost` from a deck row.
  *
  * ================= THE FIRST-PAINT CONSEQUENCE, STATED PLAINLY ========================
  *
  * The hydration branch is the only one that is not free, and 26 live rows across 18 distinct
  * cards depend on it (plus `Pym Particles`, whose `type_line` is literally `'Card'`). Those rows
- * draw **no pips until the deck-wide sweep reaches them** — c4-6 measured that tail at ~1.2 s on
- * the 99-card deck, with first paint untouched.
+ * draw **no pips until the deck-wide sweep reaches them** — a tail measured at ~1.2 s on the
+ * 99-card deck, with first paint untouched.
  *
- * **c4-6's accepted no-re-drive window applies here and is cited, not re-opened.** c4-2's
- * edge-triggered recovery only re-boots from `refused`/`none`, so a backend blip *during* the
- * sweep, while deck state is already `deck`, leaves those rows permanently pip-less until a
- * reload — with no error state to explain it, while their single-faced neighbours look fine
- * because they never needed the fetch. That is the documented posture (c4-6 review ruling 1); it
- * is not papered over with a retry this story does not own.
+ * **The no-re-drive window is accepted here, not re-opened.** The edge-triggered recovery only
+ * re-boots from `refused`/`none`, so a backend blip *during* the sweep, while deck state is
+ * already `deck`, leaves those rows permanently pip-less until a reload — with no error state to
+ * explain it, while their single-faced neighbours look fine because they never needed the fetch.
+ * That is the documented posture; it is not papered over with a retry this module does not own.
  *
  * Args:
- *   summary: The row's `DeckCardSummary.card` — always present, never absent (see AC 15/Q11).
+ *   summary: The row's `DeckCardSummary.card` — always present, never absent.
  *   entry: The hydration cache's answer for this id, or `undefined` when it has never been seen.
  *     Read from `useCardEntry`, which starts nothing.
  *
@@ -171,8 +165,8 @@ export const frontFaceCost = (
   //    function already looked. Optional-chained because `card_faces` is optional on the wire and
   //    a single-faced card's is absent rather than empty. Routed through the SAME split as
   //    branch 1: `card_faces` is untyped on the wire, so a face-level cost carrying `' // '`
-  //    would otherwise reach `ManaCost` verbatim and reopen the spoken-separator deferral this
-  //    module closes by construction. Measured 0 in the corpus today; the guard costs one branch.
+  //    would otherwise reach `ManaCost` verbatim and be spoken aloud as "slash slash". Measured 0
+  //    in the corpus today; the guard costs one branch.
   if (entry?.status === 'hydrated') {
     const face = trimmedOrNull(entry.card.card_faces?.[0]?.mana_cost)
     if (face !== null && face.includes(FACE_SEPARATOR)) return beforeSeparator(face)

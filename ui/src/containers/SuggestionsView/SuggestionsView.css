@@ -1,21 +1,10 @@
-/* ==== THE SUGGESTIONS VIEW'S BODY (stories c6-6 and c6-7) ===============================
+/* ==== THE SUGGESTIONS VIEW'S BODY ========================================================
 
-   c6-6 shipped the empty-push line and declared the artefact gap it was writing against; c6-7
-   filled that gap and then wrote the rows. Both halves are here, and the ORDER those two things
-   happened in is the point: `DESIGN.md`'s `components.suggestion-row` block carried four values
-   and none of them was a padding, a gap, a row height or a live marker, while the component
-   description below its frontmatter already promised all of them. The block was amended FIRST,
-   in this story's own commit, and every value below cites the amended artefact — the other
-   order produces either a red `shell.test.ts` px-citation guard or an invented citation
-   (c4-12's ruling, applied to the second surface that hit it).
+   Written against `DESIGN.md`'s `components.suggestion-row` block, and every value below cites
+   it: an uncited value produces either a red `shell.test.ts` px-citation guard or an invented
+   citation. The empty line's own block is `components.empty-push-line`.
 
-   The empty line's own block — `components.empty-push-line` — was added in the same amendment,
-   which discharges the ledger entry (`deferred-work.md:22`) that homed it on this story BY NAME.
-   c6-6 shipped this line against the empty-DECK block's values, cited, and correctly declined to
-   amend an artefact nobody had asked it to amend; the sibling block is one entry of the
-   amendment this story was making anyway.
-
-   NO `px` LITERAL ANYWHERE IN THIS FILE, which is what the amendment's shape bought: the row's
+   NO `px` LITERAL ANYWHERE IN THIS FILE, which is what the artefact's shape bought: the row's
    padding and gap are scale tokens, and its HEIGHT is content-driven — two text lines plus that
    padding, with the thumbnail spanning the row and its width following from 63:88. A fixed row
    height would have had to either crop the card or compute a thumbnail width in a stylesheet.
@@ -39,11 +28,10 @@
 
    `token-usage.test.ts:170-174` declares that `findAccentDimOnOverlay` is per-RULE, so a parent
    setting `--surface-overlay` while a CHILD file sets an `--accent-dim` border is not caught —
-   and it names *"the NORMAL shape of c6-7's suggestion rows"* as the case. This file spends
+   and it names the normal shape of these suggestion rows as the case. This file spends
    `--accent-dim` NOWHERE, in any spelling: the row's live marker is `--accent` (5.5:1 on this
    surface) through `--shadow-suggestion-row-live`, and `--accent-dim` would be 2.70:1 and fail
-   the 3:1 non-text floor outright. `AgentView.css:29` promised the tile-level assertion would
-   land with this stylesheet; it is in `SuggestionsView.test.tsx`.
+   the 3:1 non-text floor outright. The tile-level assertion lives in `SuggestionsView.test.tsx`.
 
    NO NESTING ANYWHERE, for `AgentView.css`'s reason — `token-usage.test.ts`'s CSS reader matches
    innermost brace pairs, so a declaration inside a nesting parent is invisible to the contrast,
@@ -78,7 +66,7 @@
   list-style: none;
 }
 
-/* THE ROW (AC 1). DESIGN.md `components.suggestion-row`, amended by this story:
+/* THE ROW. DESIGN.md `components.suggestion-row`:
    `background: '{colors.surface-overlay}'`, `border: '1px solid {colors.border-hairline}'`,
    `radius: '{rounded.md}'`, `padding: '{spacing.2} {spacing.3}'`, `gap: '{spacing.3}'`, and a
    `height` that is content-driven by specification.
@@ -149,9 +137,9 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* THE LIVE ROW — THE CARD CURRENTLY UNDER INSPECTION (AC 3, UX-DR24, UX-DR6).
+/* THE LIVE ROW — THE CARD CURRENTLY UNDER INSPECTION (UX-DR24, UX-DR6).
    DESIGN.md `components.suggestion-row`: `live-background: '{colors.accent-glow}'` and
-   `live-rule: 'inset 2px 0 0 {colors.accent}'`, both added by this story's amendment.
+   `live-rule: 'inset 2px 0 0 {colors.accent}'`.
 
    `--accent`, NEVER `--accent-dim`, and on this surface that is a hard failure rather than a
    weakness: the row's own background is `--surface-overlay`, where `accent-dim` measures
@@ -170,7 +158,7 @@
   box-shadow: var(--shadow-suggestion-row-live);
 }
 
-/* THE THUMBNAIL SLOT (AC 1, AC 7, UX-DR36).
+/* THE THUMBNAIL SLOT (UX-DR36).
    It spans both text rows — "full row height" — and takes its WIDTH from its child's 63:88,
    which is the whole reason the row height is content-driven rather than a number.
 
@@ -215,13 +203,13 @@
   opacity: 1;
 }
 
-/* THE HEAD LINE (AC 1): badge · name · cost · confidence.
+/* THE HEAD LINE: badge · name · cost · confidence.
    `baseline` alignment so the badge, the name and the confidence sit on one optical line despite
    three different type roles; `{spacing.2}` between them, from the scale's "internal clusters"
    band. `flex-wrap` is deliberately absent — the reason line below is where a row's length is
    spent, and a head that wrapped would change the row's height as data arrived.
 
-   `font` + `min-height: 1lh` (code review, 2026-08-11: Greptile P1). Every child here renders
+   `font` + `min-height: 1lh`, against a collapse to nothing. Every child here renders
    NOTHING when its data is absent — `Badge` returns `null` for a blank category, an unhydrated
    name is `''`, `ManaCost` renders nothing for a `null` cost, confidence is absent by default —
    so a maximally malformed or not-yet-hydrated item leaves this flex container with zero
@@ -240,7 +228,7 @@
   min-height: 1lh;
 }
 
-/* THE NAME (AC 1). DESIGN.md: "name in `{typography.body-strong}`". `body-strong` travels alone
+/* THE NAME. DESIGN.md: "name in `{typography.body-strong}`". `body-strong` travels alone
    — it has no companion declaration, unlike micro and numeric.
 
    It ellipsizes rather than wrapping, for the row-height reason above: `min-width: 0` is what
@@ -254,7 +242,7 @@
   white-space: nowrap;
 }
 
-/* THE COST (AC 1). No colour and no type role of its own: `ManaCost` renders pips, which carry
+/* THE COST. No colour and no type role of its own: `ManaCost` renders pips, which carry
    their own data-ink tokens, and an empty cost renders nothing at all. `flex-shrink: 0` keeps
    the pips whole while the name is the thing that gives way. */
 .suggestion-row-cost {
@@ -262,7 +250,7 @@
   flex-shrink: 0;
 }
 
-/* THE CONFIDENCE (AC 1). DESIGN.md: "optional confidence in `{typography.micro}`
+/* THE CONFIDENCE. DESIGN.md: "optional confidence in `{typography.micro}`
    `{colors.text-tertiary}` right-aligned".
 
    BOTH MICRO COMPANIONS IN THIS ONE BLOCK — `findRoleWithoutCompanions` fails a split by name,
@@ -283,7 +271,7 @@
   text-transform: uppercase;
 }
 
-/* THE REASON (AC 1, AC 4). DESIGN.md: "a one-line reason in `{typography.body}`
+/* THE REASON. DESIGN.md: "a one-line reason in `{typography.body}`
    `{colors.text-secondary}` beneath".
 
    ONE LINE, ENFORCED (the artefact says "one-line", and `contracts.py` caps `reason` at 200
@@ -291,10 +279,9 @@
    reason costs the row no extra height and the thumbnail's derived width stays stable across
    the list.
 
-   THE TRUNCATION IS FINAL, DELIBERATELY (code review, 2026-08-11). This comment previously
-   claimed the row is "one hover away from the detail panel" for the full sentence — false:
+   THE TRUNCATION IS FINAL, DELIBERATELY. The row is NOT one hover away from the full sentence:
    `CardDetail.tsx` shows the CARD's own fields (name, cost, type line, oracle text), never a
-   suggestion item's `reason`, so nothing currently recovers a truncated reason. The 200-char cap
+   suggestion item's `reason`, so nothing recovers a truncated reason. The 200-char cap
    is the agent's own budget for staying legible at one line; a reason that overruns it is
    accepted as the agent's problem to write shorter, not this row's problem to make readable. */
 .suggestion-row-reason {
@@ -307,7 +294,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 
-  /* Same collapse as the head line above (Greptile P1): a malformed item with no `reason` at
+  /* Same collapse as the head line above: a malformed item with no `reason` at
      all renders this span empty, and an empty grid item with no padding is 0px tall. */
   min-height: 1lh;
 }

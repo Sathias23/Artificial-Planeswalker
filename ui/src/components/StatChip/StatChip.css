@@ -1,18 +1,17 @@
-/* StatChip — label over value, with an optional delta (story c2-7, UX-DR11, DESIGN.md
+/* StatChip — label over value, with an optional delta (UX-DR11, DESIGN.md
    "Containers & chrome").
 
    DESIGN.md: "label in {typography.micro} {colors.text-tertiary} over a 17px
    {typography.numeric} value in {colors.text-primary}, on {components.stat-chip.background}.
    Optional delta in {typography.micro}, tinted {colors.positive} / {colors.negative} by sign."
 
-   THE MOCK'S `minWidth: 76` IS NOT REPRODUCED (AC 11). `components.stat-chip` in DESIGN.md's
+   THE MOCK'S `minWidth: 76` IS NOT REPRODUCED. `components.stat-chip` in DESIGN.md's
    frontmatter declares no min-width at all, so a `76px` literal here would meet the citation
    gate with nothing truthful to cite — unsatisfiable by construction, and the wrong repair
    would be to write a citation that is not true. The chip sizes to its content.
 
-   Appearance is NOT dev-verified in this story: nothing imports this component yet, and jsdom
-   applies no stylesheet. It is checked at the first consuming story and on the epic
-   manual-testing checklist (AC 21). */
+   Appearance is NOT dev-verified: jsdom applies no stylesheet. It is checked by eye on the
+   consuming surfaces. */
 
 /* `padding: var(--space-2) var(--space-3)` is the mock's `8px 12px` unchanged — that pair is
    already on the 4/8/12/16/24/32/48 scale, which is worth noting precisely because the other
@@ -32,7 +31,7 @@
   background: var(--surface-well);
 }
 
-/* AC 13 — the micro role NEVER travels without `--tracking-micro` and `text-transform:
+/* The micro role NEVER travels without `--tracking-micro` and `text-transform:
    uppercase`, in this same rule block. The `font` shorthand carries neither, so the role
    applied bare renders 10px lowercase text at default tracking: legible, plausible, wrong, and
    invisible in review because it still looks like text. `findRoleWithoutCompanions` in
@@ -52,21 +51,20 @@
   gap: var(--space-1);
 }
 
-/* ==== THE 17px VALUE, WITHOUT A font-size (AC 7, Q1) ==================================
-   THE DECIDE-ONCE RULING FOR "a size the token layer does not carry": a ROLE TOKEN plus its
+/* ==== THE 17px VALUE, WITHOUT A font-size ==============================================
+   THE RULE FOR "a size the token layer does not carry": a ROLE TOKEN plus its
    companion — never a `font-size`, never a new token, never a stylelint exception.
 
    DESIGN.md asks for a 17px numeric value. `font-size: 17px` is a lint ERROR (measured on a
    probe under the real config: the `font-*` allowed-list admits only CSS-wide keywords), and
    the only other route — a `--type-stat-value` token — would break BOTH
-   `declaredTokens.size` (**69** as of c4-7; this read `64`, its c2-7 value — corrected at c4-12's
-   conformance sweep) and tests/tokens.test.ts's byte-for-byte name contract against
+   `declaredTokens.size` and tests/tokens.test.ts's byte-for-byte name contract against
    DESIGN.md's frontmatter, which makes it a UX-artefact change rather than a frontend one.
 
    `--type-heading` IS `500 17px/1.3` and `--type-numeric` is `500 13px/1.4`: the same weight,
    at exactly the size asked for. The companion is what makes it numeric — the `font` shorthand
    resets `font-variant-numeric`, so without it the digits render PROPORTIONAL and a row of
-   chips stops lining up (UX-DR3, AC 12; `findUnpairedNumericRole` requires the pair in this
+   chips stops lining up (UX-DR3; `findUnpairedNumericRole` requires the pair in this
    same block, and this is one of its first real consumers).
 
    THE CONSEQUENCE, ACCEPTED RATHER THAN HIDDEN: the value's line-height becomes 1.3 instead of
@@ -81,7 +79,7 @@
 /* The delta shares the micro role, so it carries the same two companions — and its own numeric
    companion, because it is a number too.
 
-   A DECLARED LIMIT OF THE AC 13 GUARD (review 2026-07-29): `text-transform: uppercase` is a
+   A DECLARED LIMIT OF THE GUARD: `text-transform: uppercase` is a
    NO-OP here — the delta renders only digits and a sign. The guard derives the uppercase
    requirement from DESIGN.md's `textTransform:` keys and cannot see that an element's content
    is numeric, so every micro-role block pays the companion whether or not it has letters. The

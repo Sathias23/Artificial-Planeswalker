@@ -1,5 +1,5 @@
 /**
- * The poll's schedule, its retry contract and its elapsed clock (story c3-9, AC 3, AC 6, AC 7).
+ * The poll's schedule, its retry contract and its elapsed clock.
  *
  * EVERY assertion runs on fake timers and nothing sleeps for real time — a suite that waited out
  * a 60-second threshold would take a minute per case and would be deleted by the third person to
@@ -74,7 +74,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('the backoff grows and then STOPS growing (AC 3)', () => {
+describe('the backoff grows and then STOPS growing', () => {
   it('polls immediately, then on 2 s, 4 s, 8 s, 16 s and 30 s — and never longer', async () => {
     const { at, read } = always(NOT_INITIALIZED)
     const { poller } = drive(read)
@@ -96,7 +96,7 @@ describe('the backoff grows and then STOPS growing (AC 3)', () => {
     await vi.advanceTimersByTimeAsync(16_000)
     expect(at).toEqual([0, 2_000, 6_000, 14_000, 30_000])
 
-    // THE CLAMP HALF, from the same schedule (AC 26). 16 s × 2 is 32 s, and the next gap is 30 s;
+    // THE CLAMP HALF, from the same schedule. 16 s × 2 is 32 s, and the next gap is 30 s;
     // an unclamped backoff would have been silent here and for the two hours after it, while
     // every "it retries" assertion above stayed green. This is probe (a)'s target.
     await vi.advanceTimersByTimeAsync(POLL_CEILING_MS)
@@ -160,7 +160,7 @@ describe('the backoff grows and then STOPS growing (AC 3)', () => {
   })
 })
 
-describe('RETRIES_QUIETLY is the retry contract, and it is READ (AC 7)', () => {
+describe('RETRIES_QUIETLY is the retry contract, and it is READ', () => {
   it('does not poll again after a state the map says never retries itself', async () => {
     const { at, read } = always(BROKEN)
     const { poller, panel } = drive(read)
@@ -222,7 +222,7 @@ describe('RETRIES_QUIETLY is the retry contract, and it is READ (AC 7)', () => {
     expect(RETRIES_QUIETLY['internal-error']).toBe(false)
   })
 
-  it('keeps polling the states the map says DO retry — the silent half (AC 26)', async () => {
+  it('keeps polling the states the map says DO retry — the silent half', async () => {
     for (const [outcome, expected] of [
       [NOT_INITIALIZED, 'database-not-initialized'],
       [UNAVAILABLE, 'database-updating'],
@@ -244,7 +244,7 @@ describe('RETRIES_QUIETLY is the retry contract, and it is READ (AC 7)', () => {
   })
 })
 
-describe('the stalled escalation fires on ONE token only (AC 6, Q3)', () => {
+describe('the stalled escalation fires on ONE token only', () => {
   it('escalates after 60 s of continuous database_unavailable, and then stops retrying', async () => {
     const { at, read } = always(UNAVAILABLE)
     const { poller, panel } = drive(read)
@@ -301,7 +301,7 @@ describe('the stalled escalation fires on ONE token only (AC 6, Q3)', () => {
     poller.stop()
   })
 
-  it('lets one good answer reset the clock, so the next outage starts from zero (AC 6)', async () => {
+  it('lets one good answer reset the clock, so the next outage starts from zero', async () => {
     // 30 s of `database_unavailable`, then a 200 at the 60 s mark — the exact tick that WOULD
     // have escalated had it refused again. The 200 ends the poll on its own (`no-active-deck`
     // never retries itself), and restarting the SAME poller is the realistic shape of "reads
@@ -381,10 +381,9 @@ describe('an unreachable backend claims no state and keeps trying', () => {
     await vi.advanceTimersByTimeAsync(POLL_BASE_MS + 4_000)
 
     // No update at all: `fetch` rejecting produced no response, so no state was decided.
-    // `disconnected` — the panel that describes a lost backend — is c5-6's by
-    // `CLIENT_ONLY_STATES`, and this story must not claim it. **It still does not, after c5-6**:
-    // the socket writes a different field and `surfaceOf` composes the two, which is exactly the
-    // two-writers race that ruling was chosen to avoid.
+    // `disconnected` — the panel that describes a lost backend — belongs to the socket loop by
+    // `CLIENT_ONLY_STATES`, and the poller must not claim it: the socket writes a different field
+    // and `surfaceOf` composes the two, which is what keeps two writers from racing for one slot.
     expect(updates).toEqual([])
     expect(at).toEqual([0, 2_000, 6_000])
 
@@ -504,7 +503,7 @@ describe('stopping is real, not advisory', () => {
 })
 
 describe('the stalled clock needs OBSERVATIONS, not just elapsed wall time', () => {
-  it('does not escalate off two refusals bracketing a suspend, then does off real ones (AC 26)', async () => {
+  it('does not escalate off two refusals bracketing a suspend, then does off real ones', async () => {
     // Wall time advances through a laptop sleep or a throttled background tab; the schedule
     // does not. Two busy blips separated by a ten-minute nap satisfy "60 s elapsed" — and
     // because the stalled panel never retries itself, escalating here would be terminal.

@@ -5,10 +5,9 @@ import type { CardEntry } from '../state/cards'
 import { frontFaceCost, frontFaceName } from './frontFaceCost'
 
 /**
- * The front-face resolution, held to the three shapes measured in the shipped database
- * (story c4-7, Q2, AC 23).
+ * The front-face resolution, held to the three shapes measured in the shipped database.
  *
- * Every card named below is a REAL row from the corpus at `d51b467`, with its real field values —
+ * Every card named below is a REAL row from the corpus, with its real field values —
  * not a hand-invented fixture. That matters for this module specifically: the whole reason it
  * exists is that the obvious one-line implementation is right for one shape and wrong for two.
  */
@@ -33,7 +32,7 @@ const hydrated = (faces: { mana_cost?: string | null }[]): CardEntry =>
     card: { ...summaryOf({}), card_faces: faces },
   }) as unknown as CardEntry
 
-describe('frontFaceName — the free half (AC 23)', () => {
+describe('frontFaceName — the free half', () => {
   it('splits the combined name 99.0% of faced cards store', () => {
     // Real row: the worst front-face name in any live deck once split (33 chars), and the worst
     // UNSPLIT name in any live deck (56) before it.
@@ -58,14 +57,14 @@ describe('frontFaceName — the free half (AC 23)', () => {
   })
 
   it('falls back to the raw name when the front segment trims to nothing — never empty', () => {
-    // The "Never empty" contract, held at its own boundary (c4-7 review): a name beginning with
+    // The "Never empty" contract, held at its own boundary: a name beginning with
     // the separator would otherwise slice+trim to `''` and render an empty name cell. Measured
     // 0 such rows in the corpus; the guard is one branch.
     expect(frontFaceName(' // Backface')).toBe(' // Backface')
   })
 })
 
-describe('frontFaceCost — shape 1: the split cost, resolved with NO fetch (AC 23)', () => {
+describe('frontFaceCost — shape 1: the split cost, resolved with NO fetch', () => {
   it('splits an Adventure card and never lets a separator reach ManaCost', () => {
     // Real row: `Murderous Rider // Swift End`, 27 live rows carry this shape.
     const summary = summaryOf({
@@ -77,7 +76,7 @@ describe('frontFaceCost — shape 1: the split cost, resolved with NO fetch (AC 
 
   it('splits BEFORE testing non-blankness — the ordering that closes the spoken-separator deferral', () => {
     // If the "non-blank means verbatim" branch ran first, this would return the whole string and
-    // `describeManaCost` would speak "slash slash" (deferred-work.md:1429-1445).
+    // `describeManaCost` would speak "slash slash".
     const summary = summaryOf({ mana_cost: '{2}{R} // {3}{G}' })
     expect(frontFaceCost(summary, undefined)).not.toContain('//')
   })
@@ -88,7 +87,7 @@ describe('frontFaceCost — shape 1: the split cost, resolved with NO fetch (AC 
   })
 })
 
-describe('frontFaceCost — shape 2: a real top-level cost, verbatim (AC 23)', () => {
+describe('frontFaceCost — shape 2: a real top-level cost, verbatim', () => {
   it('returns a single-faced cost unchanged', () => {
     // Real row: the widest single-faced live cost, 5 pips.
     expect(frontFaceCost(summaryOf({ mana_cost: '{W}{U}{B}{R}{G}' }), undefined)).toBe(
@@ -101,7 +100,7 @@ describe('frontFaceCost — shape 2: a real top-level cost, verbatim (AC 23)', (
   })
 })
 
-describe('frontFaceCost — shape 3: the blank cost that only hydration can answer (AC 23, Q2)', () => {
+describe('frontFaceCost — shape 3: the blank cost that only hydration can answer', () => {
   it('reads card_faces[0] when the summary cost is blank — 26 live rows / 18 cards', () => {
     // Real row: `Agadeem's Awakening // Agadeem, the Undercrypt`, blank top-level cost.
     const summary = summaryOf({
@@ -111,7 +110,7 @@ describe('frontFaceCost — shape 3: the blank cost that only hydration can answ
     expect(frontFaceCost(summary, hydrated([{ mana_cost: '{X}{B}{B}{B}' }]))).toBe('{X}{B}{B}{B}')
   })
 
-  it('re-splits a hydrated face cost that itself carries the separator (c4-7 review)', () => {
+  it('re-splits a hydrated face cost that itself carries the separator', () => {
     // `card_faces` is untyped on the wire, so a face-level `' // '` is not impossible — merely
     // unmeasured-zero today. Without the re-check, branch 3 would hand the separator to
     // `ManaCost` verbatim and reopen the spoken-separator deferral this module closes.
@@ -136,7 +135,7 @@ describe('frontFaceCost — shape 3: the blank cost that only hydration can answ
   })
 })
 
-describe('frontFaceCost — shape 4: genuinely costless, and it stays that way (AC 23)', () => {
+describe('frontFaceCost — shape 4: genuinely costless, and it stays that way', () => {
   it('returns null for a Pathway whose front face has no cost even AFTER hydration', () => {
     // Real row: `Clearwater Pathway // Murkwater Pathway`, `Land // Land`. 12 live rows / 6 cards.
     const summary = summaryOf({

@@ -2,28 +2,28 @@ import './Footer.css'
 import { ATTRIBUTION } from './copy'
 
 /**
- * The Scryfall and Wizards Fan Content attribution (story c2-10, UX-DR32, NFR-08).
+ * The Scryfall and Wizards Fan Content attribution (UX-DR32, NFR-08).
  *
- * THE ONLY COMPONENT IN THIS EPIC WHOSE DELIVERABLE IS A CONDITION OF PUBLIC RELEASE.
- * `DESIGN.md:375` says so in bold. Every other C2 component could ship slightly wrong and be
- * corrected in Epic 4; this one shipping wrong is a licensing defect. That is why the words are
+ * THE ONE COMPONENT WHOSE DELIVERABLE IS A CONDITION OF PUBLIC RELEASE.
+ * `DESIGN.md:375` says so in bold. Every other component could ship slightly wrong and be
+ * corrected later; this one shipping wrong is a licensing defect. That is why the words are
  * gated byte-for-byte against the artefact (`tests/attribution.test.ts`) rather than reviewed by
  * eye, and why `App.test.tsx` asserts the component reaches the real screen rather than trusting
  * that it was wired.
  *
- * IT FILLS A SLOT; IT DOES NOT BUILD ONE. `AppShell` has held a `<footer>` open since c2-6 —
+ * IT FILLS A SLOT; IT DOES NOT BUILD ONE. `AppShell` holds the `<footer>` —
  * the element, the `contentinfo` landmark and the pinning mechanism (`height: 100dvh`,
  * `flex-shrink: 0`, one scroll container) all already exist and are already pinned by three
  * guards in `tests/shell.test.ts`. This component adds NO landmark role of its own: a nested
- * `contentinfo` would be two landmarks where `AppShell.test.tsx` asserts exactly one (AC 13,
- * UX-DR44). "Always visible" is likewise inherited rather than re-implemented — a second height
+ * `contentinfo` would be two landmarks where `AppShell.test.tsx` asserts exactly one
+ * (UX-DR44). "Always visible" is likewise inherited rather than re-implemented — a second height
  * mechanism or a `position: sticky` here would be a regression against those guards, not a
  * belt-and-braces improvement.
  *
- * NO PROPS AT ALL (Q4, Brad 2026-07-30). The copy is fixed and both links are fixed, so a
+ * NO PROPS AT ALL. The copy is fixed and both links are fixed, so a
  * `className` or a slot prop would be speculative generality. It is also the strongest available
- * form of AC 17's "presentation-only": a component with no props cannot have the defect c2-9's
- * Greptile round found, where a prop shape admitted a combination the prose forbids. No state,
+ * form of "presentation-only": a component with no props cannot have a prop shape that admits
+ * a combination the prose forbids. No state,
  * no hook, no fetch, no store, no subscription, no `on*` handler, no `ref`.
  *
  * NO `react` IMPORT, DELIBERATELY. The automatic JSX runtime means a component with no
@@ -39,7 +39,7 @@ export function Footer() {
           part.text
         ) : (
           <a
-            // The index is a correct key here and nowhere near c2-9's duplicate-name problem:
+            // The index is a correct key here, and nowhere near the duplicate-name problem:
             // ATTRIBUTION is a module constant that never reorders, never grows and never
             // filters, so position IS identity.
             key={index}

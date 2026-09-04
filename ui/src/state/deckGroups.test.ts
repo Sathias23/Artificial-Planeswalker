@@ -1,8 +1,8 @@
 /**
- * The type-group derivation, against the type lines real decks actually contain (story c4-2,
- * AC 13, AC 14, AC 15, AC 16; FR-05, UX-DR17).
+ * The type-group derivation, against the type lines real decks actually contain (FR-05,
+ * UX-DR17).
  *
- * **Every fixture below is a REAL card with its REAL `type_line`**, measured at `2095050` against
+ * **Every fixture below is a REAL card with its REAL `type_line`**, measured against
  * the live database at `%LOCALAPPDATA%\artificial-planeswalker\cards.db`. Invented uuids and
  * invented type lines would prove the function does what it does; these prove it does what the
  * corpus needs, and the four double-faced cards in particular are the exact four the repo's own
@@ -63,7 +63,7 @@ const row = (
   card: summary(name, typeLine, cmc),
 })
 
-describe('the front face is the whole rule (AC 14, FR-05, UX-DR17)', () => {
+describe('the front face is the whole rule (FR-05, UX-DR17)', () => {
   it('takes the segment before the first separator', () => {
     expect(frontFace('Creature — Elephant // Land')).toBe('Creature — Elephant')
   })
@@ -82,7 +82,7 @@ describe('the front face is the whole rule (AC 14, FR-05, UX-DR17)', () => {
   })
 })
 
-describe('the four cards the repo’s two land policies disagree about (AC 14)', () => {
+describe('the four cards the repo’s two land policies disagree about', () => {
   // src/viewer/view_model.py::is_land splits on the front face; src/logic/mana_curve.py and
   // src/logic/assessment/mana_base.py test the WHOLE string for "land". FR-05 and UX-DR17 both
   // say front face, so all four of these are NOT lands — and all four are in real decks.
@@ -130,7 +130,7 @@ describe('the four cards the repo’s two land policies disagree about (AC 14)',
  *
  * A type line discriminates only when the front face has NO em-dash (so the subtype strip cannot
  * remove the back face) AND the back face's group PRECEDES the front's. Measured across the
- * corpus at `2095050`: **29 distinct type lines**, and **0 of them in any live deck** — so the
+ * corpus: **29 distinct type lines**, and **0 of them in any live deck** — so the
  * rule is latent for the discriminating shapes, exactly as `'Card // Card'` is. Latent is not
  * untestable, and these are real printings by name.
  */
@@ -186,7 +186,7 @@ describe('the front face decides, even when the back face outranks it — probe 
   })
 })
 
-describe('a multi-type front face lands in exactly one group, by the declared order (AC 15)', () => {
+describe('a multi-type front face lands in exactly one group, by the declared order', () => {
   it.each([
     ['Artifact Creature — Golem', 'Creature'],
     ['Enchantment Creature — Spirit', 'Creature'],
@@ -200,8 +200,9 @@ describe('a multi-type front face lands in exactly one group, by the declared or
   })
 
   it('reads the ONE list for both order and precedence, so they cannot drift', () => {
-    // The order is asserted by value, not merely by membership: c4-7 renders these headers and
-    // c4-5's "the first card of the first type group" depends on it being deterministic.
+    // The order is asserted by value, not merely by membership: the deck grid renders these
+    // headers and the cold-open inspection target ("the first card of the first type group")
+    // depends on it being deterministic.
     expect([...TYPE_GROUPS]).toEqual([
       'Creature',
       'Planeswalker',
@@ -229,7 +230,7 @@ describe('a multi-type front face lands in exactly one group, by the declared or
   })
 })
 
-describe('a type the scheme does not name is CARRIED, never dropped (AC 16)', () => {
+describe('a type the scheme does not name is CARRIED, never dropped', () => {
   it('files the corpus’s literal "Card" type line under the residual group', () => {
     // "Pym Particles" — 2 live deck rows, and the only rows outside the eight primary types.
     expect(groupOf('Card')).toBe('Other')
@@ -363,7 +364,7 @@ describe('each board arrives sorted — cmc ascending, ties alphabetical', () =>
   })
 })
 
-describe('the three boards, and what each one holds (Q4)', () => {
+describe('the three boards, and what each one holds', () => {
   const cards = [
     row('Atraxa, Grand Unifier', 'Legendary Creature — Phyrexian Angel', { commander: true }),
     row('Llanowar Elves', 'Creature — Elf Druid', { quantity: 4 }),
@@ -418,7 +419,7 @@ describe('the three boards, and what each one holds (Q4)', () => {
   })
 })
 
-describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', () => {
+describe('CONSERVATION — nothing is lost and the counts still sum', () => {
   const cards = [
     row('Atraxa, Grand Unifier', 'Legendary Creature — Phyrexian Angel', { commander: true }),
     row('Llanowar Elves', 'Creature — Elf Druid', { quantity: 4 }),
@@ -445,8 +446,8 @@ describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', ()
     mainboard_count: 1 + 4 + 2 + 1 + 2 + 1 + 1 + 10,
     sideboard_count: 2 + 1,
     distinct_cards: 10,
-    created_at: '2026-08-02T00:00:00Z',
-    updated_at: '2026-08-02T00:00:00Z',
+    created_at: '2025-08-02T00:00:00Z',
+    updated_at: '2025-08-02T00:00:00Z',
     cards,
   }
 
@@ -494,7 +495,7 @@ describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', ()
     expect(other?.quantity).toBe(3)
   })
 
-  it('holds for the empty deck, which is c4-12’s state and must not be a special case', () => {
+  it('holds for the empty deck, which must not be a special case', () => {
     const boards = boardsOf([])
 
     expect(boards.mainboard).toEqual([])

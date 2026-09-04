@@ -1,16 +1,15 @@
 /**
- * Footer — the rendered half (story c2-10).
+ * Footer — the rendered half.
  *
  * `tests/attribution.test.ts` proves the copy module IS `DESIGN.md`'s sentence. This file proves
  * the component puts that sentence on the screen, whole, with the two runs that are links being
- * links. The two have to meet in the middle for the same reason c2-9's suite says so: c2-8's
- * headline review defect was precisely the gap between an exhaustively-gated data module and a
- * component that silently failed to forward what it returned. The identical exposure here is a
- * footer that renders the text runs and drops the link runs — or renders the link labels and
- * drops the connecting prose — with the verbatim gate still green. `renders the whole sentence`
- * below is the assertion that closes it.
+ * links. The two have to meet in the middle because an exhaustively-gated data module beside a
+ * component that silently fails to forward what it returns is a real gap. The identical exposure
+ * here is a footer that renders the text runs and drops the link runs — or renders the link
+ * labels and drops the connecting prose — with the verbatim gate still green. `renders the whole
+ * sentence` below is the assertion that closes it.
  *
- * WHAT jsdom CANNOT PROVE, stated rather than faked (AC 22). No stylesheet is applied and there
+ * WHAT jsdom CANNOT PROVE, stated rather than faked. No stylesheet is applied and there
  * is no layout engine, so the persistent underline, the hover brightening, the focus ring, the
  * 24px hit box AS LAID OUT and the uppercase render are NOT proven here. There is no
  * `getComputedStyle` assertion in this file for that reason — it would report the jsdom defaults
@@ -25,14 +24,14 @@ import { describe, expect, it } from 'vitest'
 import { ATTRIBUTION, sentenceOf } from './copy'
 import { Footer } from './Footer'
 
-describe('the attribution reaches the screen intact (AC 1)', () => {
+describe('the attribution reaches the screen intact', () => {
   it('renders the whole sentence, byte for byte, across its five parts', () => {
     const { container } = render(<Footer />)
 
     // `.textContent` compared with `toBe`, not a substring matcher: a footer that dropped a
     // link run, or one that appended anything of its own, must fail. `text-transform` is a
-    // RENDER property and does not touch the DOM text, so this stays exact under Q1's
-    // uppercase ruling — which is the whole reason that ruling was safe to take.
+    // RENDER property and does not touch the DOM text, so this stays exact under the uppercase
+    // render.
     expect(container.textContent).toBe(sentenceOf())
   })
 
@@ -49,7 +48,7 @@ describe('the attribution reaches the screen intact (AC 1)', () => {
   })
 })
 
-describe('the links (AC 5)', () => {
+describe('the links', () => {
   it('marks exactly the two runs the copy module marks, by accessible name and href', () => {
     render(<Footer />)
 
@@ -61,7 +60,7 @@ describe('the links (AC 5)', () => {
     // Asserted through the rendered text — which, for a plain-text link, is exactly the
     // accessible name a screen-reader announces ("Scryfall, link") — rather than by class or
     // position. `textContent`, not an accessible-name query: the two coincide here, and the
-    // comment says which one the code actually reads (review find, 2026-07-30).
+    // comment says which one the code actually reads.
     expect(links.map((link) => link.textContent)).toEqual(expected.map((part) => part.text))
     expect(links.map((link) => link.getAttribute('href'))).toEqual(
       expected.map((part) => part.href),
@@ -92,7 +91,7 @@ describe('the links (AC 5)', () => {
   })
 })
 
-describe('the semantics (AC 13, AC 17, UX-DR44)', () => {
+describe('the semantics (UX-DR44)', () => {
   it('declares no landmark role of its own — the shell owns contentinfo', () => {
     render(<Footer />)
 
@@ -107,7 +106,7 @@ describe('the semantics (AC 13, AC 17, UX-DR44)', () => {
     expect(screen.queryByRole('region')).toBeNull()
   })
 
-  it('takes no props at all (Q4)', () => {
+  it('takes no props at all', () => {
     // The type-level half is `tsc`'s and the source half is shell.test.ts's; this is the
     // runtime floor. `Footer.length` is the declared parameter count of the function, so a
     // props object added later fails HERE as well as in review.
@@ -115,8 +114,9 @@ describe('the semantics (AC 13, AC 17, UX-DR44)', () => {
   })
 
   it('renders identically on every render — nothing about it is stateful', () => {
-    // AC 17's observable consequence. A component holding state, reading a store or subscribing
-    // to anything could differ between two independent mounts; this one cannot.
+    // The observable consequence of presentation-only. A component holding state, reading a
+    // store or subscribing to anything could differ between two independent mounts; this one
+    // cannot.
     const first = render(<Footer />).container.innerHTML
     const second = render(<Footer />).container.innerHTML
     expect(first).toBe(second)

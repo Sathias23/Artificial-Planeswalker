@@ -1,23 +1,22 @@
 /**
- * The colour distribution panel, rendered (story c4-9, AC 1–5, AC 15–33).
+ * The colour distribution panel, rendered.
  *
  * ================= WHAT jsdom CANNOT DECIDE HERE, DECLARED FIRST =======================
  *
  * **jsdom has no layout engine**, so `getBoundingClientRect()` is zeroes and a `flex-grow` factor
  * never resolves to a pixel. **Every width assertion below is about the CUSTOM PROPERTY or the
- * class**, never about a rendered band — and the division is sharper here than in c4-8, because
- * this panel's widths are not even percentages: the value crossing the style attribute is a raw
- * pip count and the BROWSER does the division. The pixels, the hairline and the thinnest live
- * segment are AC 38's eye-check, over CDP, against a real engine.
+ * class**, never about a rendered band — and the division is sharper here than for the mana
+ * curve, because this panel's widths are not even percentages: the value crossing the style
+ * attribute is a raw pip count and the BROWSER does the division. The pixels, the hairline and
+ * the thinnest live segment are the eye-check, over CDP, against a real engine.
  *
  * **jsdom applies no stylesheet**, so the hairline, the 14px track, the pill radius and every
  * `--mana-*` fill are read as CSS SOURCE by `tests/token-usage.test.ts` and by eye. Nothing below
  * claims otherwise.
  *
  * **`aria-query` maps `<header>` to `banner` unconditionally**, so every titled `Panel` is a
- * phantom `banner` in jsdom and none in a browser — c4-7 measured Chrome reporting exactly one
- * where jsdom said three, c4-8 took jsdom to four, and **this panel takes it to five** (AC 28).
- * Nothing below queries `getByRole('banner')`.
+ * phantom `banner` in jsdom and none in a browser, and this panel adds one more. Nothing below
+ * queries `getByRole('banner')`.
  */
 
 import { act, render, screen, within } from '@testing-library/react'
@@ -36,7 +35,7 @@ interface RowOptions {
   commander?: boolean
 }
 
-/** A real corpus card, spelled as the wire spells it (AC 14) — `colors` included, verbatim. */
+/** A real corpus card, spelled as the wire spells it — `colors` included, verbatim. */
 const card = (
   name: string,
   manaCost: string,
@@ -114,7 +113,7 @@ afterEach(() => {
   resetCardCache()
 })
 
-describe('the panel and the figure (AC 4, AC 5)', () => {
+describe('the panel and the figure', () => {
   it('renders a titled Panel whose title is the section name', () => {
     renderBar()
     const panel = screen.getByRole('region', { name: COLOUR_DISTRIBUTION_TITLE })
@@ -139,7 +138,7 @@ describe('the panel and the figure (AC 4, AC 5)', () => {
   })
 })
 
-describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () => {
+describe('the bar: one segment per colour, in WUBRG order', () => {
   it('draws one segment per colour the deck actually has, and none for the rest', () => {
     const { container } = renderBar()
     expect(segmentsIn(container).map((s) => s.className)).toEqual([
@@ -149,7 +148,7 @@ describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () =>
     ])
   })
 
-  it('carries the RAW PIP COUNT on the named channel — not a percentage (Q13, AC 19)', () => {
+  it('carries the RAW PIP COUNT on the named channel — not a percentage', () => {
     // The whole of "no division by zero is possible": there is no division at this call site at
     // all. `flex-grow` distributes the track's free space in the browser, so the geometry is
     // exact whatever the printed percentages round to.
@@ -172,18 +171,19 @@ describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () =>
     }
   })
 
-  it('names no --mana-* token in markup — the class is the only way in (AC 16)', () => {
+  it('names no --mana-* token in markup — the class is the only way in', () => {
     const { container } = renderBar()
     expect(container.innerHTML).not.toContain('--mana-')
     expect(container.querySelectorAll('[fill]')).toHaveLength(0)
   })
 })
 
-describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)', () => {
+describe('the legend is the accessible data path (UX-DR18)', () => {
   it('hides the BAR from the accessibility tree, and names nothing inside it', () => {
-    // THE EXACT INVERSE OF c4-8, where every bar carried `role="img"` and a name. UX-DR18 says
-    // the bar is `aria-hidden` and the legend is the data path, and the reason is measurable:
-    // all 15 adjacent `--mana-*` pairs are under the 3:1 non-text floor, the worst at 1.03:1.
+    // THE EXACT INVERSE OF THE MANA CURVE, where every bar carries `role="img"` and a name.
+    // UX-DR18 says the bar is `aria-hidden` and the legend is the data path, and the reason is
+    // measurable: all 15 adjacent `--mana-*` pairs are under the 3:1 non-text floor, the worst
+    // at 1.03:1.
     const { container } = renderBar()
     const bar = container.querySelector('.colour-bar')
     expect(bar).not.toBeNull()
@@ -200,8 +200,7 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
   })
 
   it('reads EVERY entry — colour, count and percentage — not only the first', () => {
-    // The c4-7 one-pip-run finding, not repeated: a loop asserted on `[0]` proves the first
-    // element and nothing about the others.
+    // A loop asserted on `[0]` proves the first element and nothing about the others.
     const { container } = renderBar()
     const entries = [...container.querySelectorAll('.colour-legend-entry')].map((entry) =>
       [...entry.querySelectorAll('span:not(.mana-pip)')].map((n) => n.textContent),
@@ -223,11 +222,10 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
     expect(within(container).getAllByRole('listitem')).toHaveLength(3)
   })
 
-  it('keeps the legend PIP decorative — no label, no doubled announcement (Q9 iv, AC 25)', () => {
-    // `ManaPip`'s `label` prop was written "for c4-9's legend" and this story does not use it:
-    // the entry already reads its colour, count and percentage as text, and a labelled pip
-    // beside its own text count is the doubled announcement that docstring warns about. The
-    // prediction in `ManaPip.tsx` is corrected in this commit rather than left standing.
+  it('keeps the legend PIP decorative — no label, no doubled announcement', () => {
+    // `ManaPip`'s `label` prop is not used here: the entry already reads its colour, count and
+    // percentage as text, and a labelled pip beside its own text count is the doubled
+    // announcement that prop's docstring warns about.
     const { container } = renderBar()
     const pips = [...container.querySelectorAll('.mana-pip')]
     expect(pips).toHaveLength(3)
@@ -245,9 +243,9 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
     ])
   })
 
-  it('ships NO visually-hidden block — the third-instance trigger does not fire (AC 29)', () => {
-    // c4-8 recorded a third-instance promotion trigger for the clip-rect idiom: whoever writes
-    // the third block promotes it to `src/styles/`. This story writes none — the legend is
+  it('ships NO visually-hidden block — the third-instance trigger does not fire', () => {
+    // The clip-rect idiom carries a third-instance promotion trigger: whoever writes the third
+    // visually-hidden block promotes it to `src/styles/`. This panel writes none — the legend is
     // VISIBLE text, which is what UX-DR18's "the legend is the accessible data path" means — so
     // the trigger does not fire, and that is asserted rather than left as an absence.
     const { container } = renderBar()
@@ -256,7 +254,7 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
     expect(container.querySelectorAll('[hidden]')).toHaveLength(0)
   })
 
-  it('is NOT a live region and adds no aria-live anywhere (AC 26)', () => {
+  it('is NOT a live region and adds no aria-live anywhere', () => {
     // LOAD-BEARING HERE in a way it was not for the curve: this panel's numbers MOVE during the
     // hydration sweep, so a live region would announce a changing percentage ~99 times.
     const { container } = renderBar()
@@ -265,13 +263,13 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
   })
 })
 
-describe('the panel is display-only (AC 27, UX-DR40, UX-DR47)', () => {
+describe('the panel is display-only (UX-DR40, UX-DR47)', () => {
   it('adds ZERO Tab stops and carries no role anywhere', () => {
     const { container } = renderBar()
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(0)
     expect(container.querySelectorAll('button, a, input, select, textarea')).toHaveLength(0)
-    // The inverse of c4-8's seven `role="img"` bars: nothing in this subtree carries a role at
-    // all, so an eighth — or an interactive one — is loud.
+    // The inverse of the mana curve's seven `role="img"` bars: nothing in this subtree carries a
+    // role at all, so an eighth — or an interactive one — is loud.
     expect(container.querySelectorAll('[role]')).toHaveLength(0)
   })
 
@@ -285,7 +283,7 @@ describe('the panel is display-only (AC 27, UX-DR40, UX-DR47)', () => {
   })
 })
 
-describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q2, Q3)', () => {
+describe('the panel reads the hydration cache, and starts nothing', () => {
   // `Ayara, Widow of the Realm // Ayara, Furnace Queen` — blank at the top level, `{1}{B}{B}` on
   // its front face, and the namesake of the deck with the largest bar in the corpus.
   const AYARA_DFC = card(
@@ -301,9 +299,8 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
   })
 
   it('RE-RENDERS with the real pips when the cache fills — the numbers move after first paint', () => {
-    // The whole of Q2, and the reason "no `aria-live`" is load-bearing: this panel is the epic's
-    // first whose PERCENTAGES change after the deck has painted. Live that is +48 pips across 16
-    // of 40 decks.
+    // The reason "no `aria-live`" is load-bearing: this panel's PERCENTAGES change after the deck
+    // has painted. Live that is +48 pips across 16 of 40 decks.
     const rows = [row(AYARA_DFC), row(card('Lightning Bolt', '{R}', 'Instant', 1, ['R']))]
     const { container } = renderBar(rows)
 
@@ -320,8 +317,7 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
       // `hydrated` helper narrows the same way, and for the same reason: `card_faces` is
       // untyped on the wire so the face literal must widen, but `status` and the shape of the
       // `cards` record stay checked against the union, so a `CardEntry` drift fails `tsc` here
-      // instead of leaving this fixture writing a state the store could never contain
-      // (review 2026-08-06 — the previous spelling was `as never` on everything).
+      // instead of leaving this fixture writing a state the store could never contain.
       useCardStore.setState({
         cards: {
           [AYARA_DFC.id]: {
@@ -344,7 +340,7 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
     ).toEqual(['2', '1'])
   })
 
-  it('leaves the cache untouched — it reads, and starts no fetch (AC 8, don’t-break 10)', () => {
+  it('leaves the cache untouched — it reads, and starts no fetch', () => {
     // `hydrateCard`/`hydrateDeckCards` are `App.tsx`'s alone. If this panel ever called one, the
     // cache would gain a `loading` entry on render.
     expect(useCardStore.getState().cards).toEqual({})
@@ -353,7 +349,7 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
   })
 })
 
-describe('the empty case (AC 32, Q10)', () => {
+describe('the empty case', () => {
   it('renders NOTHING when the deck has no cards', () => {
     const { container } = renderBar([])
     expect(container.innerHTML).toBe('')
@@ -384,7 +380,7 @@ describe('the empty case (AC 32, Q10)', () => {
   })
 })
 
-describe('the panel draws no card (AC 22, UX-DR4)', () => {
+describe('the panel draws no card (UX-DR4)', () => {
   it('puts no card-shaped class anywhere in its markup', () => {
     const { container } = renderBar()
     expect(container.querySelectorAll('.card-shape')).toHaveLength(0)

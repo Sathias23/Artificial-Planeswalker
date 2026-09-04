@@ -1,18 +1,18 @@
 /**
- * The pins that keep `formatCheck.fixtures.ts` honest (story c4-10, AC 26, AC 27, AC 28).
+ * The pins that keep `formatCheck.fixtures.ts` honest.
  *
  * ================= WHY THE PINS LIVE APART FROM THE DATA ===============================
  *
- * The first shipped shape held the fixtures and these nine pins in ONE `.test.ts`, imported by
- * `FormatCheck.test.tsx` and `formatCheck.test.ts` — and importing a test file registers its
- * describes in every importer's collection, so every pin ran THREE times and the suite's pass
- * count was silently inflated with duplicates (c4-10 review, decision 2a). The data now lives in
- * `./formatCheck.fixtures` (a plain module, registered by name in the two source gates that scan
- * it — see its header), and this file is the ONE place the pins register.
+ * Holding the fixtures and these nine pins in ONE `.test.ts`, imported by `FormatCheck.test.tsx`
+ * and `formatCheck.test.ts`, would register the describes in every importer's collection —
+ * importing a test file does that — so every pin would run THREE times and the suite's pass count
+ * would be silently inflated with duplicates. The data therefore lives in `./formatCheck.fixtures`
+ * (a plain module, registered by name in the two source gates that scan it — see its header), and
+ * this file is the ONE place the pins register.
  *
- * The pins themselves are unchanged: a fixture set is only as honest as the assertions holding it
- * to the shipped contract, and these hold shape (six rows in `CHECK_ORDER`), vocabulary, the
- * corpus census, and the three measured defects this story chose to pin rather than fix.
+ * A fixture set is only as honest as the assertions holding it to the shipped contract, and these
+ * hold shape (six rows in `CHECK_ORDER`), vocabulary, the corpus census, and the three measured
+ * defects pinned rather than fixed.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -30,7 +30,7 @@ import {
 /** `CHECK_ORDER`, as `deck_validator.py:487-494` declares it. */
 const CHECK_ORDER = ['legality', 'size', 'copy_limit', 'sideboard', 'banned', 'rotation'] as const
 
-describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
+describe('the fixtures model the shipped contract', () => {
   it.each(ALL_FIXTURES)('$name is six rows in CHECK_ORDER', ({ report }) => {
     // Six rows always, in a declared order, is a BACKEND guarantee — pinned on both sides there
     // (`test_routes_format_check.py:208-219`, `test_format_check.py:116`). Pinning it on the
@@ -54,7 +54,7 @@ describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
     // a full re-import of 38,261 cards AND a rotation-schedule source Scryfall does not publish.
     // Measured over the 240 real rows: every single advisory in the corpus is this one sentence.
     // So a caution badge in this panel is FURNITURE rather than a signal — which is a design fact
-    // this assertion keeps in the suite rather than only in the story record.
+    // this assertion keeps in the suite.
     for (const { name, report } of ALL_FIXTURES) {
       const rotation = report.rows.find((row) => row.check === 'rotation')
       expect(rotation, name).toEqual(ROTATION_ADVISORY)
@@ -62,10 +62,9 @@ describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
   })
 
   it('pins the 195 / 40 / 5 census the corpus actually produced', () => {
-    // NOT derived from the fixtures — these are RECORDED MEASUREMENTS the suite cannot re-derive
-    // (the c4-9 ruling on deck-level provenance, applied). Measured read-only at `4e31ea7` over
-    // all 40 decks through the real ASGI app: 240 rows, 195 pass, 40 advisory, 5 violation, and
-    // every one of the 40 advisories is the rotation row.
+    // NOT derived from the fixtures — these are RECORDED MEASUREMENTS the suite cannot re-derive.
+    // Measured read-only over all 40 decks through the real ASGI app: 240 rows, 195 pass,
+    // 40 advisory, 5 violation, and every one of the 40 advisories is the rotation row.
     const CENSUS = { decks: 40, rows: 240, pass: 195, advisory: 40, violation: 5 } as const
     expect(CENSUS.decks * CHECK_ORDER.length).toBe(CENSUS.rows)
     expect(CENSUS.pass + CENSUS.advisory + CENSUS.violation).toBe(CENSUS.rows)
@@ -74,8 +73,8 @@ describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
     expect(CENSUS.advisory).toBe(CENSUS.decks)
   })
 
-  it('pins the size sentence a brawl deck sees — a minimum 40 BELOW its format’s (AC 28)', () => {
-    // §2's whole finding, kept in the suite rather than only in the record. All 18 `brawl` decks
+  it('pins the size sentence a brawl deck sees — a minimum 40 BELOW its format’s', () => {
+    // Kept in the suite rather than only in the record. All 18 `brawl` decks
     // have a mainboard of EXACTLY 100 (min 100 / max 100, measured on deck ids), and Brawl
     // (Historic) is an exact-100 format per this repo's own shipped skill
     // (`plugin/skills/format-legality/SKILL.md:77`) — while `_MIN_MAINBOARD = 60` applies
@@ -84,8 +83,8 @@ describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
     //
     // No badge flips today, because every one of the 18 is at exactly 100 — the defect is in the
     // SENTENCE, not the verdict. A 61-card Brawl deck would be told `pass`; a 99-card one would
-    // be told the minimum is 60. Q13 DECLINES the Python fix (a per-format minimum is a rule
-    // change in `src/logic` with MCP blast radius) and corrects the record instead.
+    // be told the minimum is 60. Declining the Python fix is deliberate: a per-format minimum is
+    // a rule change in `src/logic` with MCP blast radius, so the record is corrected instead.
     const size = BRAWL_VIOLATION_REPORT.rows.find((row) => row.check === 'size')
     expect(size).toEqual({
       check: 'size',
@@ -97,16 +96,16 @@ describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
 
   it('pins `Mainboard has 1 cards` — a live plural defect, now in front of a person', () => {
     // `deck_validator.py:693` interpolates a count into a fixed plural. One real deck reaches it
-    // (`Iron Man, Modern Marvel — reminder`), and this story is the first thing that renders it.
-    // Pinned rather than fixed: Python is untouched (AC 46), and the ledger carries the entry.
+    // (`Iron Man, Modern Marvel — reminder`), and this panel is the first thing that renders it.
+    // Pinned rather than fixed: Python is deliberately untouched.
     const size = ONE_CARD_REPORT.rows.find((row) => row.check === 'size')
     expect(size?.detail).toBe('Mainboard has 1 cards; the minimum is 60.')
   })
 
   it('pins the trap: `is_legal: false` with NOT ONE violation row', () => {
-    // `deferred-work.md:2430-2437` homes this on c4-10 by name, and its live exposure is ZERO —
-    // the trap needs an unrecognised format and all 40 decks have one, which is exactly the
-    // condition under which a wrong binding ships green. Both formatless spellings produce it.
+    // Its live exposure is ZERO — the trap needs an unrecognised format and all 40 decks have
+    // one, which is exactly the condition under which a wrong binding ships green. Both
+    // formatless spellings produce it.
     for (const report of [FORMATLESS_REPORT, NO_FORMAT_REPORT]) {
       expect(report.is_legal).toBe(false)
       expect(report.format_recognized).toBe(false)

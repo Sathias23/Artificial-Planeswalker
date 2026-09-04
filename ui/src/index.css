@@ -13,26 +13,23 @@
    the template's demo stylesheet it replaces is gone with the demo. Per-element type comes
    from the seven role tokens (--type-body and friends), not from this file. */
 
-/* FOUR imports, ALL above every rule below (three until c4-11 added the visually-hidden utility). A CSS @import that follows any rule is dropped by
+/* FOUR imports, ALL above every rule below. A CSS @import that follows any rule is dropped by
    the browser and by the build, so this group has to stay at the top of the file. Their order
    relative to EACH OTHER is immaterial — @font-face registration is not order-sensitive, and a
    `var()` resolves where it is USED rather than where it is declared, so card-geometry.css may
    reference `--radius-card` from above tokens.css. `url(…)` notation, not a bare string:
-   stylelint-config-standard's `import-notation` rule requires it. Vite inlines all three into
+   stylelint-config-standard's `import-notation` rule requires it. Vite inlines all four into
    the single emitted stylesheet either way.
 
-   The third joined in story c4-3 and it is the same category as the box-sizing reset below: a
-   rule several components inherit, so it is declared once globally rather than owned by the
-   first component that happened to need it. `.card-shape` is the 63:88 + `--radius-card` pair
-   that c4-3's placeholder, c4-4's tile, c4-5's detail art and c4-6's flipped face all consume
-   BY CLASS NAME — none of them imports a stylesheet, and none of them writes the geometry
-   again. See src/styles/card-geometry.css for the argument and the gate that holds it.
+   The third is the same category as the box-sizing reset below: a rule several components
+   inherit, so it is declared once globally rather than owned by the first component that
+   happened to need it. `.card-shape` is the 63:88 + `--radius-card` pair that the placeholder,
+   the tile, the detail art and the flipped face all consume BY CLASS NAME — none of them
+   imports a stylesheet, and none of them writes the geometry again. See
+   src/styles/card-geometry.css for the argument and the gate that holds it.
 
-   The FOURTH joined in story c4-11, on the same argument as the third and under a trigger the
-   second instance wrote down for it: `ManaCurve.css:141-165` declined to promote at two copies
-   and named the condition — *"whoever writes the third visually-hidden block promotes it to
-   `src/styles/`"*. The skip link is the third. `.visually-hidden` is consumed BY CLASS NAME by
-   `CardDetail`'s announcement region, `ManaCurve`'s alternative table and `SkipLink`, none of
+   The FOURTH is on the same argument as the third: `.visually-hidden` is consumed BY CLASS NAME
+   by `CardDetail`'s announcement region, `ManaCurve`'s alternative table and `SkipLink`, none of
    which imports a stylesheet. */
 @import url('./styles/fonts.css');
 @import url('./styles/tokens.css');
@@ -53,19 +50,16 @@
   background-color: var(--surface-base);
 }
 
-/* THE BOX-SIZING RESET (story c2-6, AC 13). There was none anywhere in ui/ before this
-   line — `git grep box-sizing` returned nothing — so every sized element inherited CSS's
-   `content-box` default, under which padding is added to a declared height rather than
-   living inside it.
+/* THE BOX-SIZING RESET. Without it every sized element inherits CSS's `content-box` default,
+   under which padding is added to a declared height rather than living inside it.
 
    That is not a tidiness issue. The application shell is `height: 100dvh` with
    `padding: var(--space-gutter)`, and under `content-box` it is a 100dvh + 64px element: the
    window scrolls, the footer leaves the window, and UX-DR32's release-condition attribution
    silently stops being visible. The symptom presents as a footer bug and is not one.
 
-   Every component from c2-7 onwards inherits the same hazard the moment it sizes and pads
-   itself, which is why the reset is global and lives here rather than in the shell's own
-   stylesheet. The composition reference's answer to the same problem — `box-sizing:border-box`
+   Every component inherits the same hazard the moment it sizes and pads itself, which is why
+   the reset is global and lives here rather than in the shell's own stylesheet. The composition reference's answer to the same problem — `box-sizing:border-box`
    written INLINE on every sized element — is banned outright by the inline-style rule in
    eslint.config.js, so this is the only shape available and it is also the right one.
 
@@ -78,7 +72,7 @@
   box-sizing: border-box;
 }
 
-/* No `min-height: 100vh` here any more (story c2-6). The shell owns the window height at
+/* No `min-height: 100vh` here. The shell owns the window height at
    `100dvh`, and `vh` is the LARGE viewport height — on a mobile browser with retracting
    chrome the two disagree, `body` ends up taller than the window, the page scrolls, and the
    footer the shell just pinned leaves the window. Two height mechanisms fighting is worse

@@ -1,6 +1,5 @@
 /**
- * The agent view shell's words, and the ONLY place they live (story c6-5, AC 1; the mechanism
- * is decide-once ruling #1 of story c2-9).
+ * The agent view shell's words, and the ONLY place they live.
  *
  * Two strings, both of them CHROME rather than prose: they name the surface and its dismissal
  * gesture, and neither is a sentence the app composes. They are here rather than inline for the

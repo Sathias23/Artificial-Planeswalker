@@ -4,43 +4,41 @@ import './CardPlaceholder.css'
 import { UNKNOWN_CARD_LABEL } from './copy'
 
 /**
- * The card-shaped stand-in for art that has not arrived or does not exist (story c4-3, FR-13,
- * FR-19, UX-DR4, UX-DR22, UX-DR36).
+ * The card-shaped stand-in for art that has not arrived or does not exist (FR-13, FR-19,
+ * UX-DR4, UX-DR22, UX-DR36).
  *
  * PRESENTATION-ONLY (the `shell.test.ts` posture every primitive in `src/components/` inherits):
  * no state, no hook of any family, no fetch, no store, no handler, no ref, no spread, and no
  * `react` import at all — none of its props is a `ReactNode`, which is the stronger claim.
  *
- * ================= THE SHAPE IS NOT WRITTEN HERE, AND THAT IS THE POINT (Q2) ============
+ * ================= THE SHAPE IS NOT WRITTEN HERE, AND THAT IS THE POINT =================
  *
  * Every variant carries `card-shape`, whose two declarations — `aspect-ratio: 63 / 88` and
  * `border-radius: var(--radius-card)` — live in `src/styles/card-geometry.css` and nowhere else.
- * c4-4's tile, c4-5's detail art and c4-6's flipped face consume the same class, so UX-DR36's
+ * The tile, the detail art and the flipped face consume the same class, so UX-DR36's
  * *"it occupies exactly the same footprint, so layout never reflows when art arrives"* is
  * structurally true rather than asserted three times. **This component never writes
  * `aspect-ratio` or `border-radius`**, and neither may they.
  *
- * ================= THE VARIANT VOCABULARY IS `states.ts`'s (AC 8) ======================
+ * ================= THE VARIANT VOCABULARY IS `states.ts`'s ==============================
  *
- * {@link CardPlaceholderVariant} is built FROM `PlaceholderKey`, not beside it. `states.ts:144`
+ * {@link CardPlaceholderVariant} is built FROM `PlaceholderKey`, not beside it. `PlaceholderKey`
  * is `'unknown-card' | 'named-card'`, with `PLACEHOLDER_FOR_REASON` mapping `card_not_found` to
  * the first and both image tokens to the second, and four type-level asserts holding that
  * classification total and disjoint. A third vocabulary invented here ("missing / absent /
- * pending") is precisely the failure c3-2 built that file to prevent.
+ * pending") is precisely the failure that file exists to prevent.
  *
- * **This is the consumption `deferred-work.md:2014` made conditional** — *"if c4-3 does not
- * consume the classification, delete it"*. It is consumed, and the coupling is enforced in both
- * directions by the two asserts at the bottom of this file: a third key added to `states.ts`
- * fails {@link EveryPlaceholderKeyHasProps}, and a variant union widened to a bare `string` fails
- * {@link NoVariantIsUnknownToStates}. Both are `tsc` failures with `npm test` staying green —
- * the c4-1 asymmetry, which is why `npx tsc -b --force` is a gate of its own.
+ * The coupling is enforced in both directions by the two asserts at the bottom of this file: a
+ * third key added to `states.ts` fails {@link EveryPlaceholderKeyHasProps}, and a variant union
+ * widened to a bare `string` fails {@link NoVariantIsUnknownToStates}. Both are `tsc` failures
+ * with `npm test` staying green, which is why `npx tsc -b --force` is a gate of its own.
  *
- * ================= WHICH VARIANT A CARD GETS IS ALREADY DECIDED (AC 16) ================
+ * ================= WHICH VARIANT A CARD GETS IS ALREADY DECIDED =========================
  *
  * Nowhere in this file is a placeholder derived from a wire token. `cards.ts`'s `entryFor`
- * already wrote `placeholder: PlaceholderKey | null` once, per entry, and `cards.ts:151` says why:
- * *"that distinction is what lets c4-3 draw the right thing without re-deriving it from tokens"*.
- * A `switch (entry.reason)` in a component is the drift that field exists to prevent.
+ * already wrote `placeholder: PlaceholderKey | null` once, per entry, so this component draws
+ * the right thing without re-deriving it from tokens. A `switch (entry.reason)` in a component
+ * is the drift that field exists to prevent.
  *
  * ================= WHAT THE CALLER PASSES, AND WHY THE PROPS ARE A UNION ===============
  *
@@ -49,23 +47,22 @@ import { UNKNOWN_CARD_LABEL } from './copy'
  *
  *   **The unknown variant cannot be given a card's real name.** `<CardPlaceholder
  *   variant="unknown-card" name="Black Lotus" />` is a type error, not a plausible-looking
- *   render. That is the copy-paste this epic's own probe list calls "the one that type-checks",
- *   and here it does not.
+ *   render. That is the copy-paste that would otherwise type-check, and here it does not.
  *
  *   **The loading well cannot be given text of any kind.** Its member of the union has ONE
- *   property. `EXPERIENCE.md:72` is *"No copy. Wells stay silent"*, and the strongest available
+ *   property. `EXPERIENCE.md` is *"No copy. Wells stay silent"*, and the strongest available
  *   form of that is an API with nothing to say it with.
  *
- * ================= INSPECTABILITY IS A CONTRACT THIS STORY CANNOT IMPLEMENT (Q6) =======
+ * ================= INSPECTABILITY IS A CONTRACT THIS COMPONENT CANNOT IMPLEMENT =========
  *
- * `EXPERIENCE.md:99`: *"Placeholder tiles behave like normal tiles (inspection contract) except
- * the unknown-card variant, which cannot be inspected — there is nothing to show."* The tile is
- * **c4-4's** and the inspection contract is **c4-5's**, and a listed primitive takes no handlers
- * at all (`shell.test.ts` bans `on*` in both positions), so this component structurally cannot
- * make anything inspectable. What it CAN do is give c4-4 no accidental path to violating the
- * rule: the variant is a value at the call site, so the tile branches on it rather than
- * re-deriving it, and there is no `inspectable` prop for a caller to pass `true` to. **c4-5's
- * tests prove the refusal; this file's API is what makes it easy to obey.**
+ * `EXPERIENCE.md`: *"Placeholder tiles behave like normal tiles (inspection contract) except
+ * the unknown-card variant, which cannot be inspected — there is nothing to show."* The tile
+ * and the inspection contract live in CardTile and the detail panel, and a listed primitive
+ * takes no handlers at all (`shell.test.ts` bans `on*` in both positions), so this component
+ * structurally cannot make anything inspectable. What it CAN do is give the tile no accidental
+ * path to violating the rule: the variant is a value at the call site, so the tile branches on
+ * it rather than re-deriving it, and there is no `inspectable` prop for a caller to pass `true`
+ * to. The tile's tests prove the refusal; this file's API is what makes it easy to obey.
  */
 
 /**
@@ -90,7 +87,7 @@ export type CardPlaceholderVariant = PlaceholderKey | 'loading'
  * without counting characters. The full id is 36 characters and does not fit a 176px tile (the
  * grid's floor, UX-DR4) at any legible size.
  *
- * ONE LIMIT, DECLARED (review finding): the measurement is over the corpus, and the unknown
+ * ONE LIMIT, DECLARED: the measurement is over the corpus, and the unknown
  * variant renders precisely ids that are NOT in it — `card_not_found` and malformed ids. For
  * that population no uniqueness claim is possible from here; the prefix's job there is weaker
  * and still real (match the same eight characters in a log line), and the full uuid's recovery
@@ -108,21 +105,21 @@ export type CardPlaceholderProps =
   | {
       /** The app knows exactly what this card is and only lacks its picture (`no_image_data`, `image_fetch_failed`). */
       variant: 'named-card'
-      /** `CardSummary.name`, verbatim and UNSPLIT — see the `named` branch for why (Q5). */
+      /** `CardSummary.name`, verbatim and UNSPLIT — see the `named` branch for why. */
       name?: string | null
       /** `CardSummary.mana_cost`. Blank for all 79 cards that permanently need this variant. */
       cost?: string | null
-      /** `CardSummary.type_line`, verbatim — `'Card // Card'` included (Q9). */
+      /** `CardSummary.type_line`, verbatim — `'Card // Card'` included. */
       typeLine?: string | null
     }
   | {
-      /** The app does not know what this card is at all (`card_not_found`, and c4-1's Q5 `invalid_request`). */
+      /** The app does not know what this card is at all (`card_not_found`, or a malformed id's `invalid_request`). */
       variant: 'unknown-card'
       /** The Scryfall printing uuid that could not be resolved. Truncated to {@link CARD_ID_PREFIX_LENGTH}. */
       cardId?: string | null
     }
   | {
-      /** An `<img>` is in flight. **c4-4 mounts this**; c4-3 ships it. No text, ever. */
+      /** An `<img>` is in flight. The tile mounts this. No text, ever. */
       variant: 'loading'
     }
 
@@ -135,18 +132,18 @@ export type CardPlaceholderProps =
  * `DeckBadges` and `ManaCost` both use, written once because this component asks it of three
  * props rather than three times in a row.
  *
- * **The `typeof` is a measured repair, not belt-and-braces.** c4-2's review found `DeckBadges`
- * calling `format.trim()` behind a `!== null` check and throwing `Cannot read properties of
- * undefined` on a partial deck: *"a presentation primitive that crashes the whole app on one
- * absent prop is the FR-13 posture inverted, and totality here costs one keyword."* The wire
- * types cannot produce that today; a test, a future caller or an untyped runtime object can.
+ * **The `typeof` is a measured repair, not belt-and-braces.** `DeckBadges` once called
+ * `format.trim()` behind a `!== null` check and threw `Cannot read properties of undefined` on a
+ * partial deck: a presentation primitive that crashes the whole app on one absent prop is the
+ * FR-13 posture inverted, and totality here costs one keyword. The wire types cannot produce
+ * that today; a test, a future caller or an untyped runtime object can.
  *
  * Truthiness is banned outright and the reason is in `AppShell`: a `??` default fires only on
  * `undefined`, so a whitespace-only name would render a present, invisible, announced-as-empty
  * element — which is the exact shape a placeholder exists to prevent.
  *
- * **It returns the TRIMMED value, and that is load-bearing rather than cosmetic** (review
- * finding): the guard inspects the trimmed string, so returning the padded original would render
+ * **It returns the TRIMMED value, and that is load-bearing rather than cosmetic**: the guard
+ * inspects the trimmed string, so returning the padded original would render
  * what the check never looked at — and on the id it is not cosmetic at all, because
  * `'  b3a40e8e…'.slice(0, 8)` is six real characters, quietly defeating the measured
  * 8-character uniqueness above.
@@ -158,14 +155,14 @@ const given = (value: string | null | undefined): string | null => {
 }
 
 export function CardPlaceholder(props: CardPlaceholderProps) {
-  // THE WELL, FIRST AND WITHOUT READING ANYTHING ELSE (AC 10). Branching on the variant before
+  // THE WELL, FIRST AND WITHOUT READING ANYTHING ELSE. Branching on the variant before
   // any text is touched is what makes "wells stay silent" a property of the control flow rather
   // than a promise: there is no path from here to a rendered character.
   //
   // `aria-hidden` on an element that is already empty and unnamed is deliberate rather than
   // redundant — it is the DECLARATION that the silence is intended, and it is safe here in a way
   // it would not be in a component that took children: this one has no `ReactNode` prop at all,
-  // so it can never hide a caller's content. c4-4's `<img>` and its alt text sit BESIDE the
+  // so it can never hide a caller's content. The tile's `<img>` and its alt text sit BESIDE the
   // well, never inside it.
   if (props.variant === 'loading') {
     return <div className="card-shape card-placeholder-well" aria-hidden="true" />
@@ -184,28 +181,28 @@ export function CardPlaceholder(props: CardPlaceholderProps) {
     )
   }
 
-  // THE NAMED VARIANT — pips above, name centred, type line below (UX-DR22, DESIGN.md:389).
+  // THE NAMED VARIANT — pips above, name centred, type line below (UX-DR22, DESIGN.md).
   //
-  // THE NAME IS RENDERED AS THE PAYLOAD CARRIES IT, `X // Y` INCLUDED (Q5). `frontFace()` exists
+  // THE NAME IS RENDERED AS THE PAYLOAD CARRIES IT, `X // Y` INCLUDED. `frontFace()` exists
   // in `deckGroups.ts` and splitting would be one line, but `CardSummary` carries one `name` and
   // no `card_faces`, and UX-DR22 asks for *"the card name"* — which is what the client holds.
   // Splitting here would render `Memory Lapse` for a card the deck list, the detail panel and the
   // alt text all call `Memory Lapse // Memory Lapse`: four surfaces, two names. Face-specific
-  // rendering is **c4-6's**, where `CardFace` is already typed.
+  // rendering belongs to the flip, where `CardFace` is already typed.
   //
   // Note what the fixtures cannot tell you, and why the tests use an `X // Y` card: all 79
   // permanent-population cards are `X // X`, so a split and a non-split produce IDENTICAL output
-  // for 2,246 of the 3,194 split-named cards in the corpus. c4-2's probe (b) is the same lesson —
-  // the obvious fixtures do not discriminate the rule they appear to test.
+  // for 2,246 of the 3,194 split-named cards in the corpus — the obvious fixtures do not
+  // discriminate the rule they appear to test.
   const name = given(props.name)
   const typeLine = given(props.typeLine)
   return (
     <div className="card-shape card-placeholder">
-      {/* NO WRAPPER (AC 7). `ManaCost` returns `null` for an absent, empty or whitespace-only
+      {/* NO WRAPPER. `ManaCost` returns `null` for an absent, empty or whitespace-only
           cost — which is how ALL 79 cards that permanently need this variant arrive — so an
           element around it would survive its absence as a collapsed box and a stray gap. It also
           builds its own `role="img"` accessible name from `describeManaCost`, so the cost is
-          announced exactly once and this component adds no second label for it (AC 13). */}
+          announced exactly once and this component adds no second label for it. */}
       <ManaCost cost={props.cost} />
       {name === null ? null : <span className="card-placeholder-name">{name}</span>}
       {typeLine === null ? null : <span className="card-placeholder-type">{typeLine}</span>}
@@ -214,7 +211,7 @@ export function CardPlaceholder(props: CardPlaceholderProps) {
 }
 
 /**
- * The variant union and `states.ts` cannot drift apart (AC 8) — type-level, erased at build.
+ * The variant union and `states.ts` cannot drift apart — type-level, erased at build.
  *
  * Two asserts because there are two directions and each catches what the other cannot:
  *

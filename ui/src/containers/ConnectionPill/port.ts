@@ -1,5 +1,5 @@
 /**
- * The page's own port, as a string a sentence can carry (story 17.1).
+ * The page's own port, as a string a sentence can carry.
  *
  * A module of its own rather than an export from `ConnectionPill.tsx`, for the mechanical
  * reason the lint rule states: a component file that also exports a helper breaks Fast

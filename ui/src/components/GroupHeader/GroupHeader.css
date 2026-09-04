@@ -1,14 +1,12 @@
-/* Group header — the type-group divider over a hairline rule (story c2-7, UX-DR12, DESIGN.md
+/* Group header — the type-group divider over a hairline rule (UX-DR12, DESIGN.md
    "Deck data").
 
    DESIGN.md: "type-group dividers ("CREATURES") in {typography.label}
    {components.group-header.foreground} with the count right-aligned in {typography.numeric}
    {colors.text-tertiary}, over {components.group-header.rule}."
 
-   Appearance is NOT dev-verified in this story: nothing imports this component yet, and jsdom
-   applies no stylesheet. It is checked at c4-7, the first story to put real group headers
-   inside a real deck list, and it carries an entry on the epic manual-testing checklist
-   (AC 21). */
+   Appearance is NOT dev-verified: jsdom applies no stylesheet. It is checked by eye in the
+   deck list. */
 
 /* `padding-bottom: var(--space-1)` lifts the label off its own rule; the rule is the divider,
    so the two must not touch. No horizontal padding — a group header aligns with the rows it
@@ -23,7 +21,7 @@
   border-bottom: 1px solid var(--border-hairline);
 }
 
-/* AC 13 — the label role with BOTH its companions in this block. `margin: 0` because this is
+/* The label role with BOTH its companions in this block. `margin: 0` because this is
    an `<h2>`: the UA stylesheet's block margin would push the rule away from the text and break
    the baseline alignment above. */
 .group-header-label {
@@ -34,7 +32,7 @@
   text-transform: uppercase;
 }
 
-/* AC 12 — the numeric role and its companion in the SAME rule block; the `font` shorthand
+/* The numeric role and its companion in the SAME rule block; the `font` shorthand
    resets `font-variant-numeric`, so the role alone renders proportional digits and a stack of
    group counts down a deck list stops lining up (UX-DR3).
 

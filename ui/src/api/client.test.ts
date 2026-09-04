@@ -1,23 +1,18 @@
 /**
- * The wire boundary's malformed-input half (story c3-9, AC 9, AC 10; extended by c4-1).
+ * The wire boundary's malformed-input half.
  *
  * Every assertion here feeds a reader something the contract does not promise and asserts it
  * came back as a VALUE rather than as a thrown exception. That matters because of where the
  * result goes: `panelFor` turns it into a `StateKey` and `StatePanel` indexes `STATE_COPY` with
  * no fallback branch, so a rejection escaping this module lands as an unhandled render exception
- * — the error screen this whole story exists to ban.
+ * — the error screen the readers exist to ban.
  *
- * **c4-1 renamed the module under this file (`decks.ts` → `client.ts`, Q1) and added `readCard`.**
- * The deck half below is UNCHANGED and that is deliberate: c4-1 refactored both readers onto one
- * shared `request()` helper, and a green run of assertions written before that helper existed is
- * the regression proof that the refactor changed no behaviour.
- *
- * The four AC 9 inputs are four separate `it`s on purpose: they fail in three different layers
- * (`fetch` itself, `.json()`, and the body's shape), and collapsing them would let a fix for one
- * hide a regression in another.
+ * The four malformed inputs are four separate `it`s on purpose: they fail in three different
+ * layers (`fetch` itself, `.json()`, and the body's shape), and collapsing them would let a fix
+ * for one hide a regression in another.
  *
  * jsdom, the jest-dom matchers and afterEach(cleanup) come from the `dom` vitest project; this
- * file needs none of them, but it lives beside the module it tests per AC 25b.
+ * file needs none of them, but it lives beside the module it tests.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -79,22 +74,20 @@ describe('readDecks reads the route the artefact names', () => {
     expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
   })
 
-  it('has no path parameter, which is WHY retrying it is safe (AC 10)', () => {
-    // Measured at c3-2 and pinned in `test_routes_cards.py`: a malformed id sent to a backend
-    // with no database answers `database_not_initialized`, NOT `invalid_request`, because
-    // FastAPI solves dependencies before it collects validation errors. So a client that treats
-    // both database tokens as "retry quietly" retries a request whose id can never succeed.
+  it('has no path parameter, which is WHY retrying it is safe', () => {
+    // Pinned in `test_routes_cards.py`: a malformed id sent to a backend with no database answers
+    // `database_not_initialized`, NOT `invalid_request`, because FastAPI solves dependencies
+    // before it collects validation errors. So a client that treats both database tokens as
+    // "retry quietly" retries a request whose id can never succeed.
     //
     // This poll cannot hit that, and the reason is structural rather than careful: there is no
     // id in the path to be malformed. Asserted rather than merely written down, because the
     // safety argument evaporates the moment somebody parameterises this constant.
-    //
-    // **c4-1 arrived and did NOT parameterise it** — `CARD_PATH_PREFIX` is a separate constant,
-    // and the assertion below is its opposite number.
+    // `CARD_PATH_PREFIX` is a separate constant, and the assertion below is its opposite number.
     expect(DECKS_PATH).not.toMatch(/[{}:]/)
   })
 
-  it('keeps the card route a SEPARATE constant, so the two are not confusable (c4-1 Q1)', () => {
+  it('keeps the card route a SEPARATE constant, so the two are not confusable', () => {
     // The card route takes an id and is therefore NOT retry-safe on the token alone. Two
     // constants rather than one templated helper means the difference is visible at every call
     // site instead of buried in an argument.
@@ -171,7 +164,7 @@ describe('a request cannot hang forever', () => {
   })
 
   it('degrades to NO timeout where the API is absent — never to permanently unreachable', async () => {
-    // Greptile PR #37 P2, confirmed: without the guard, `AbortSignal.timeout` throwing INSIDE
+    // Without the guard, `AbortSignal.timeout` throwing INSIDE
     // the try would classify every poll as `unreachable` before `fetch` ever ran — the app
     // would retry forever without contacting a healthy backend. In a runtime without the API
     // the request must still go out (with no signal), and the answer must still be read.
@@ -187,7 +180,7 @@ describe('a request cannot hang forever', () => {
   })
 })
 
-describe('a refusal carries its token through unvalidated (AC 2)', () => {
+describe('a refusal carries its token through unvalidated', () => {
   it.each([
     ['database_not_initialized', 503],
     ['database_unavailable', 503],
@@ -199,7 +192,7 @@ describe('a refusal carries its token through unvalidated (AC 2)', () => {
     expect(await readDecks()).toEqual({ kind: 'error', reason })
   })
 
-  it('passes a token this build has never heard of through UNCHANGED (AC 8)', async () => {
+  it('passes a token this build has never heard of through UNCHANGED', async () => {
     // Delivered as untyped JSON, which is the only way it can arrive: `ErrorReason` is erased at
     // runtime. This module deliberately does NOT clamp — clamping is `panelFor`'s single job,
     // and doing it in two places would mean two places to get it wrong.
@@ -209,7 +202,7 @@ describe('a refusal carries its token through unvalidated (AC 2)', () => {
   })
 })
 
-describe('the four malformed inputs of AC 9, none of which may reject', () => {
+describe('the four malformed inputs, none of which may reject', () => {
   it('a 503 with no body at all', async () => {
     responding(null, 503)
 
@@ -232,9 +225,9 @@ describe('the four malformed inputs of AC 9, none of which may reject', () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
 
     // NOT `{kind:'error', reason:null}`. No response arrived, so no state was decided, and the
-    // poller treats the two differently: see its header on why `disconnected` is c5-6's. That
-    // panel now ships, from the SOCKET's threshold rather than from this reader — so an
-    // `unreachable` here still decides nothing, which is what lets the two compose.
+    // poller treats the two differently: the `disconnected` panel is decided from the SOCKET's
+    // threshold rather than from this reader, so an `unreachable` here decides nothing, which is
+    // what lets the two compose.
     await expect(readDecks()).resolves.toEqual({ kind: 'unreachable' })
   })
 
@@ -263,7 +256,7 @@ describe('the four malformed inputs of AC 9, none of which may reject', () => {
   })
 })
 
-// ===================== c4-1: the card read ==============================================
+// ===================== the card read ====================================================
 
 /** A real id from the shipped corpus, in the canonical spelling the route's pattern demands. */
 const SOL_RING = '0d7ac8e1-2ea4-4b6c-9b6a-06bd4bd90ba1'
@@ -278,7 +271,7 @@ const solRingBody = JSON.stringify({
   oracle_text: '{T}: Add {C}{C}.',
 })
 
-describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
+describe('readCard addresses one card, safely', () => {
   it('asks for /api/cards/<id>, uncached', async () => {
     const fetchMock = responding(solRingBody, 200)
 
@@ -286,7 +279,7 @@ describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe(`${CARD_PATH_PREFIX}${SOL_RING}`)
-    // Not tidiness: the route sets NO cache headers (ledgered, c4-1 Q7), so a browser is free to
+    // Not tidiness: the route sets NO cache headers, so a browser is free to
     // apply heuristic freshness and serve a row from before a database refresh. The app's own
     // cache is the caching layer; `no-store` removes the only staleness that is not ours.
     expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
@@ -311,7 +304,7 @@ describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
     // engine (measured: 0 of 2,027 rows are non-canonical today, so this is latent, not live).
     // Unencoded, an id like these would address a different endpoint entirely; encoded, it stays
     // one path segment, the route's uuid pattern refuses it, and the answer is `400
-    // invalid_request` — which `src/state/cards.ts` turns into the unknown-card placeholder (Q5).
+    // invalid_request` — which `src/state/cards.ts` turns into the unknown-card placeholder.
     const path = cardPath(hostile)
 
     expect(path.startsWith(CARD_PATH_PREFIX)).toBe(true)
@@ -325,7 +318,7 @@ describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
   })
 })
 
-describe('a card read is a total outcome union, exactly like the deck poll (c4-1 AC 2)', () => {
+describe('a card read is a total outcome union, exactly like the deck poll', () => {
   it('reads a 200 as the card', async () => {
     responding(solRingBody, 200)
 
@@ -372,7 +365,7 @@ describe('a card read is a total outcome union, exactly like the deck poll (c4-1
     ['missing id', '{"name": "Sol Ring"}'],
     ['missing name', `{"id": "${SOL_RING}"}`],
     ['an id that is not a string', '{"id": 7, "name": "Sol Ring"}'],
-    // Blank counts as absent, the same ruling `namesOf` applies to the deck list (FR-13): a
+    // Blank counts as absent, the same rule `namesOf` applies to the deck list (FR-13): a
     // blank name cannot label a tile and a blank id cannot key the cache, so neither is this
     // contract whatever its field TYPES say.
     ['a name that is blank', `{"id": "${SOL_RING}", "name": "   "}`],
@@ -393,9 +386,9 @@ describe('a card read is a total outcome union, exactly like the deck poll (c4-1
   })
 })
 
-describe('readCard issues ONE request and never retries (c4-1 AC 12, AC 25)', () => {
+describe('readCard issues ONE request and never retries', () => {
   it('makes exactly one request for a 503 — the bound lives in the cache, not here', async () => {
-    // The trap c3-9 wrote down for this story: a malformed id sent to a backend with no database
+    // The trap: a malformed id sent to a backend with no database
     // answers `database_not_initialized`, a token `RETRIES_QUIETLY` says to retry quietly, and
     // the request can never succeed. A retry loop HERE would be invisible to the cache that
     // counts requests, so there is none: `MAX_ATTEMPTS_PER_CARD` is the bound and it is one
@@ -416,12 +409,9 @@ describe('readCard issues ONE request and never retries (c4-1 AC 12, AC 25)', ()
   })
 })
 
-// ===================== c4-2: the two boot reads =========================================
+// ===================== the two boot reads ===============================================
 
-/**
- * The deck the epic describes and this machine actually holds: "Atraxa Counter Cabinet v2
- * (owned)", 99 distinct cards, 100 total, measured at `2095050`.
- */
+/** A real deck: "Atraxa Counter Cabinet v2 (owned)", 99 distinct cards, 100 total. */
 const ATRAXA_DECK_ID = '813d0434-1bed-4419-bf9d-d9e4070704c4'
 
 /** The three fields `deckOf` reads, plus enough to be recognisably a deck. */
@@ -436,13 +426,13 @@ const deckBody = (overrides: Record<string, unknown> = {}) =>
     mainboard_count: 100,
     sideboard_count: 0,
     distinct_cards: 99,
-    created_at: '2026-07-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
+    created_at: '2025-07-01T00:00:00Z',
+    updated_at: '2025-08-01T00:00:00Z',
     cards: [],
     ...overrides,
   })
 
-describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
+describe('the two boot routes are addressed correctly', () => {
   it('asks for /api/active-deck, uncached, with no path parameter to be malformed', async () => {
     const fetchMock = responding('{"deck_id": null}', 200)
 
@@ -467,7 +457,8 @@ describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
   it('keeps the deck route a SEPARATE constant that visibly DOES take an id', () => {
     // The opposite number of the `DECKS_PATH` assertion above, and the reason the retry argument
     // does not transfer between them: this one carries a path parameter, so a `503` it sees may
-    // be masking a `400` about an id that can never succeed (the c3-2 measurement).
+    // be masking a `400` about an id that can never succeed (the measurement in `client.ts`'s
+    // header).
     expect(DECK_PATH_PREFIX).not.toBe(DECKS_PATH)
     expect(DECK_PATH_PREFIX).not.toBe(CARD_PATH_PREFIX)
     // …and `/api/decks` is not a prefix of `/api/deck/`, so the two cannot be confused by a
@@ -482,7 +473,7 @@ describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
     ['a traversal', '../decks'],
     ['a space', 'my deck'],
     ['a percent', '100%'],
-  ])('encodes %s so the id stays ONE path segment (AC 3)', (_label, deckId) => {
+  ])('encodes %s so the id stays ONE path segment', (_label, deckId) => {
     const path = deckPath(deckId)
 
     expect(path.startsWith(DECK_PATH_PREFIX)).toBe(true)
@@ -499,7 +490,7 @@ describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
   })
 })
 
-describe('a 200 from /api/active-deck: null is an ANSWER, not an absence (AC 1)', () => {
+describe('a 200 from /api/active-deck: null is an ANSWER, not an absence', () => {
   it('reads a real id', async () => {
     responding(`{"deck_id": "${ATRAXA_DECK_ID}"}`, 200)
 
@@ -572,7 +563,7 @@ describe('a 200 from /api/deck/<id>: three fields, and cards is one of them', ()
     expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
   })
 
-  it('still accepts a GENUINELY empty deck — the non-vacuity half (c4-12)', async () => {
+  it('still accepts a GENUINELY empty deck — the non-vacuity half', async () => {
     responding(deckBody({ cards: [], mainboard_count: 0 }), 200)
 
     const outcome = await readDeck(ATRAXA_DECK_ID)
@@ -636,16 +627,16 @@ describe('the two routes refuse in DIFFERENT vocabularies, and both stay values'
 })
 
 /**
- * The caller-signal merge (story c7-3): a superseded refetch aborts its OWN request.
+ * The caller-signal merge: a superseded refetch aborts its OWN request.
  *
- * These are the assertions the c7-3 review found missing: reverting `request()`'s merge to
- * timeout-only — dropping the caller's signal on the floor — passed the entire suite green,
- * because everything upstream (`deck.ts`'s abort-on-supersede) is proven against INJECTED
- * readers and nothing observed the wire. The fetch stubs here react to their signal the way the
- * real `fetch` does — reject with an `AbortError` on abort, immediately when the signal arrives
- * already aborted — because the property under test is exactly that the abort REACHES the wire.
+ * These assertions observe the wire directly: reverting `request()`'s merge to timeout-only —
+ * dropping the caller's signal on the floor — would leave everything upstream green, because
+ * `deck.ts`'s abort-on-supersede is proven against INJECTED readers. The fetch stubs here react
+ * to their signal the way the real `fetch` does — reject with an `AbortError` on abort,
+ * immediately when the signal arrives already aborted — because the property under test is
+ * exactly that the abort REACHES the wire.
  */
-describe('a caller can abandon a deck read mid-flight (c7-3)', () => {
+describe('a caller can abandon a deck read mid-flight', () => {
   /** A fetch that never answers on its own and honours its signal exactly as the real one does. */
   const hangingFetch = () => {
     const fetchMock = vi.fn<typeof fetch>(
@@ -683,7 +674,7 @@ describe('a caller can abandon a deck read mid-flight (c7-3)', () => {
     // browsers (Chrome 116 / Firefox 124 / Safari 17.4 against 103/100/15.4), so a browser
     // inside the bundle's floor can hold the clock and still lack the merge. Without the
     // fallback this run would be dead code in every test — node 24 and jsdom 29 both ship
-    // `any` — which is the review's second finding.
+    // `any`.
     const timeout = AbortSignal.timeout.bind(AbortSignal)
     vi.stubGlobal('AbortSignal', { timeout })
     const fetchMock = hangingFetch()
@@ -730,12 +721,12 @@ describe('a caller can abandon a deck read mid-flight (c7-3)', () => {
   })
 })
 
-describe('neither boot reader retries (AC 12, Q6)', () => {
+describe('neither boot reader retries', () => {
   it.each([
     ['a 503 on the deck read', () => responding('{"reason": "database_not_initialized"}', 503)],
     ['a network rejection', () => stubFetch(() => Promise.reject(new TypeError('nope')))],
   ])('makes exactly ONE request for %s', async (_label, arrange) => {
-    // The c3-2 trap applies to `/api/deck/{deck_id}` exactly as it did to `/api/cards/{card_id}`:
+    // The header's trap applies to `/api/deck/{deck_id}` exactly as it does to `/api/cards/{card_id}`:
     // a backend with no database answers `database_not_initialized` to an id that could never
     // succeed. `readCard` needed `MAX_ATTEMPTS_PER_CARD` because RENDERS call it in a loop.
     // Nothing loops here — so the bound is replaced by there being no "again" at all.
@@ -755,15 +746,12 @@ describe('neither boot reader retries (AC 12, Q6)', () => {
   })
 })
 
-// ===================== c4-10: the format check ==========================================
+// ===================== the format check =================================================
 
 /**
- * A REAL report, copied out of the running backend rather than composed (c4-10 AC 26).
- *
- * Measured read-only at `4e31ea7` by driving the real ASGI app against the shipped database:
- * this is `GET /api/deck/{id}/format-check` for a real all-pass Standard deck, verbatim — six
- * rows in `CHECK_ORDER`, five passes and the permanent rotation advisory. Nothing here is
- * invented, which is what AC 26 asks for and what c4-8's High cost when it was not true.
+ * A REAL report, copied out of the running backend rather than composed: this is
+ * `GET /api/deck/{id}/format-check` for a real all-pass Standard deck, verbatim — six rows in
+ * `CHECK_ORDER`, five passes and the permanent rotation advisory. Nothing here is invented.
  */
 const formatCheckBody = (overrides: Record<string, unknown> = {}) =>
   JSON.stringify({
@@ -792,7 +780,7 @@ const formatCheckBody = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   })
 
-describe('readFormatCheck addresses the deck route it hangs off (c4-10 AC 7)', () => {
+describe('readFormatCheck addresses the deck route it hangs off', () => {
   it('asks for /api/deck/<id>/format-check, uncached, with the shared clock', async () => {
     const fetchMock = responding(formatCheckBody(), 200)
 
@@ -806,7 +794,7 @@ describe('readFormatCheck addresses the deck route it hangs off (c4-10 AC 7)', (
   })
 
   it('is built ON deckPath, so the encoding argument holds rather than being restated', () => {
-    // MEASURED at c4-2 against the running backend, not argued: a RAW `../decks` id answers
+    // MEASURED against the running backend, not argued: a RAW `../decks` id answers
     // `200` carrying the DECK LIST. This route inherits that hazard, and inherits the fix by
     // construction rather than by a second `encodeURIComponent` call that could be forgotten.
     expect(formatCheckPath('../decks')).toBe('/api/deck/..%2Fdecks/format-check')
@@ -824,7 +812,7 @@ describe('readFormatCheck addresses the deck route it hangs off (c4-10 AC 7)', (
   })
 })
 
-describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', () => {
+describe('a 200 from the format check: the rows are the contract', () => {
   it('returns the promised record, six rows in CHECK_ORDER', async () => {
     responding(formatCheckBody(), 200)
 
@@ -847,11 +835,10 @@ describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', 
     ['a scalar body', '"format-check"'],
     ['a body that is not JSON', '<!doctype html><title>proxy</title>'],
     ['a null body', 'null'],
-    // The next three are c4-10 review decision 1a. EMPTY rows drew the exact panel the
-    // missing-rows case above refuses — a titled "Format check" over nothing — and the first
-    // draft's own docstring made the argument while the code accepted it, untested. A NULL or
-    // SCALAR element is worse than empty: the container dereferences `row.check` during render
-    // with no error boundary, so one bad element took down the whole deck view (FR-13 inverted).
+    // EMPTY rows would draw the exact panel the missing-rows case above refuses — a titled
+    // "Format check" over nothing. A NULL or SCALAR element is worse than empty: the container
+    // dereferences `row.check` during render with no error boundary, so one bad element would
+    // take down the whole deck view (FR-13 inverted).
     ['an empty rows array', formatCheckBody({ rows: [] })],
     ['a null row element', formatCheckBody({ rows: [{ check: 'legality' }, null] })],
     ['a scalar row element', formatCheckBody({ rows: ['legality'] })],
@@ -863,10 +850,10 @@ describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', 
     expect(await readFormatCheck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
   })
 
-  it('accepts the FORMATLESS report unchanged — it is a 200, never an error (Q8)', async () => {
+  it('accepts the FORMATLESS report unchanged — it is a 200, never an error', async () => {
     // DECLARED SYNTHETIC, and measured rather than composed: produced by overriding a real
     // deck's format to `'potato'` and running the real `format_check`. `deck_validator.py`'s own
-    // docstring rules it — *"never a different body and never an error"* — so a reader that
+    // docstring says so — *"never a different body and never an error"* — so a reader that
     // routed this to the `error` arm would be inventing a shape the contract deliberately
     // does not have.
     responding(
@@ -915,10 +902,8 @@ describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', 
   })
 
   it('accepts a single off-vocabulary row object — the non-vacuity half', async () => {
-    // (The c4-10 review retitled this: the first draft's title claimed "rows are all violations"
-    // over a fixture that was one nonsense row — the body was right and the caption was not.)
     // Otherwise every refusal above would pass for a narrower that refused anything unusual.
-    // Row FIELDS are deliberately not validated (see `formatCheckOf`, decision 1a): only the
+    // Row FIELDS are deliberately not validated (see `formatCheckOf`): only the
     // shape the renderer cannot survive — a non-object element, an empty array — is refused, so
     // an off-vocabulary row still reaches the report arm and renders degraded-but-standing.
     responding(
@@ -965,9 +950,9 @@ describe('the format check refuses in the deck vocabulary, and stays a value', (
   it.each([
     ['a 503', () => responding('{"reason": "database_not_initialized"}', 503)],
     ['a network rejection', () => stubFetch(() => Promise.reject(new TypeError('nope')))],
-  ])('makes exactly ONE request for %s — no retry, no timer (AC 11)', async (_label, arrange) => {
-    // The c3-2 trap applies here as it does to every path-parameter route, and this route has a
-    // second reason of its own: the panel draws NOTHING on a refusal (Q6), so a retry would be
+  ])('makes exactly ONE request for %s — no retry, no timer', async (_label, arrange) => {
+    // The header's trap applies here as it does to every path-parameter route, and this route has
+    // a second reason of its own: the panel draws NOTHING on a refusal, so a retry would be
     // spending requests to fix a screen nobody can see is broken.
     const fetchMock = arrange()
 
@@ -978,14 +963,14 @@ describe('the format check refuses in the deck vocabulary, and stays a value', (
 })
 
 /**
- * The socket half of the one door (story c5-6, AC 1, AC 3, AC 13; Q1).
+ * The socket half of the one door.
  *
  * `posture.test.ts` asserts the network-door list is exactly this module, and its family regex
- * includes the socket constructor's name — so Q1 ruled the construction stays HERE and the loop
- * takes a factory. These blocks are that ruling's tests: everything DOM-shaped about a socket
- * stops in this file, and `src/state/socket.test.ts` never touches a constructor at all.
+ * includes the socket constructor's name — so the construction stays HERE and the loop takes a
+ * factory. These blocks test that: everything DOM-shaped about a socket stops in this file, and
+ * `src/state/socket.test.ts` never touches a constructor at all.
  */
-describe('readSessionTicket mints one ticket, and never twice (AC 3)', () => {
+describe('readSessionTicket mints one ticket, and never twice', () => {
   it('asks for /api/session, uncached, and says so', async () => {
     const fetchMock = responding('{"ticket": "abc"}', 200)
 
@@ -1039,7 +1024,7 @@ describe('readSessionTicket mints one ticket, and never twice (AC 3)', () => {
     await expect(readSessionTicket()).resolves.toEqual({ kind: 'error', reason: 'internal_error' })
   })
 
-  it('reports a lost backend as unreachable — the ordinary case this whole story is about', async () => {
+  it('reports a lost backend as unreachable — the ordinary case', async () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
 
     await expect(readSessionTicket()).resolves.toEqual({ kind: 'unreachable' })
@@ -1062,7 +1047,7 @@ describe('readInstanceId reads the health probe once, and folds every failure to
   it('asks the route the BACKEND declares — the constant is pinned, not self-compared', () => {
     // Every other assertion in this describe compares the fetch call against HEALTH_PATH, so a
     // typo'd constant would ship as a permanently "not yet confirmed" tooltip with every test
-    // green (review finding). A LITERAL pin rather than a type-level one against the generated
+    // green. A LITERAL pin rather than a type-level one against the generated
     // `paths`: `wire-contract.test.ts` allows the generated file to be imported through
     // `src/api/schema.ts` alone, and the backend's own `openapi.json` (which the drift gate
     // holds this repo to) declares `/health` — so the literal is the same authority, one hop
@@ -1096,7 +1081,7 @@ describe('readInstanceId reads the health probe once, and folds every failure to
   it('TRIMS a padded id — the fold must not be weaker than the equality it feeds', async () => {
     // The stored id feeds `applyInstanceId`'s same-value guard and the "did the process change"
     // reading, so a padded copy of the same id passed through raw would compare as a different
-    // backend — `connection.ts`'s deck_id trim, for the same reason (review finding).
+    // backend — `connection.ts`'s deck_id trim, for the same reason.
     responding('{"status": "ok", "instance_id": "  abc  "}', 200)
 
     await expect(readInstanceId()).resolves.toBe('abc')
@@ -1132,7 +1117,7 @@ describe('readInstanceId reads the health probe once, and folds every failure to
   })
 })
 
-describe('agentSocketUrl is built entirely from window.location (AC 1)', () => {
+describe('agentSocketUrl is built entirely from window.location', () => {
   it('never names a port, and never switches the host spelling', () => {
     const url = new URL(agentSocketUrl('abc'))
 
@@ -1171,9 +1156,9 @@ describe('agentSocketUrl is built entirely from window.location (AC 1)', () => {
   })
 })
 
-describe('agentEventOf narrows one frame, or refuses it (AC 13)', () => {
+describe('agentEventOf narrows one frame, or refuses it', () => {
   const envelope = (kind: string) =>
-    JSON.stringify({ kind, id: 'x', ts: '2026-08-08T00:00:00Z', payload: {} })
+    JSON.stringify({ kind, id: 'x', ts: '2025-08-08T00:00:00Z', payload: {} })
 
   it.each(['suggestions', 'swaps', 'tier_list', 'groups', 'deck_changed', 'active_deck_changed'])(
     'accepts a %s frame',
@@ -1208,7 +1193,7 @@ describe('agentEventOf narrows one frame, or refuses it (AC 13)', () => {
   })
 })
 
-describe('openAgentSocket wires one socket, and collapses four outcomes into one (Q1)', () => {
+describe('openAgentSocket wires one socket, and collapses four outcomes into one', () => {
   /** A scriptable stand-in for the platform constructor. jsdom HAS one; we never want to use it. */
   class FakeSocket {
     static built: FakeSocket[] = []
@@ -1309,7 +1294,7 @@ describe('openAgentSocket wires one socket, and collapses four outcomes into one
   })
 
   it('opens the socket the LOOP would open — the two are not two spellings of the URL', () => {
-    // The non-vacuity half of Q1's ruling: this module is the only place a socket URL is built,
+    // The non-vacuity half: this module is the only place a socket URL is built,
     // so `createAgentSocket`'s default factory and this test dial the identical string. A second
     // builder in `state/socket.ts` would be a second network door AND a second spelling.
     const Fake = install()

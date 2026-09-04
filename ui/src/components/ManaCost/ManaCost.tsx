@@ -3,12 +3,12 @@ import './ManaCost.css'
 import { describeManaCost, displayGlyph, parseManaCost } from './parse'
 
 /**
- * ManaCost — a whole Scryfall cost string, rendered symbol by symbol (story c2-8, UX-DR13).
+ * ManaCost — a whole Scryfall cost string, rendered symbol by symbol (UX-DR13).
  *
- * PRESENTATION-ONLY (AC 18): no state, no hook of any kind, no fetch, no store, no event
+ * PRESENTATION-ONLY: no state, no hook of any kind, no fetch, no store, no event
  * handler, no ref. It parses a string and arranges pips.
  *
- * ==== IT NEVER SILENTLY DROPS ANYTHING (AC 2, 3, 7) =====================================
+ * ==== IT NEVER SILENTLY DROPS ANYTHING ==================================================
  * That property is inherited from `./parse`, not implemented here, and the distinction is the
  * whole design: the scanner is TOTAL, so this component's job is only to give each of the three
  * token kinds somewhere to go. A recognised symbol becomes a pip; an unrecognised one becomes a
@@ -20,7 +20,7 @@ import { describeManaCost, displayGlyph, parseManaCost } from './parse'
  * one, up to FIVE parts deep (`{X}{W} // {2}{R} // {2}{U} // {3}{B} // {1}{G}`), and a
  * tokeniser written as `cost.match(/\{[^}]*\}/g)` renders all five as one run-on cost.
  *
- * ==== HOW IT IS ANNOUNCED (AC 15, Q4) ===================================================
+ * ==== HOW IT IS ANNOUNCED ===============================================================
  * `role="img"` with an `aria-label` on THIS wrapper, its pips left decorative inside it. That
  * is required rather than stylistic: an `aria-label` on a bare `<span>` is name-PROHIBITED on
  * `role="generic"`, and screen readers are permitted to ignore it — several do. A `role="img"`
@@ -28,26 +28,23 @@ import { describeManaCost, displayGlyph, parseManaCost } from './parse'
  * by default anyway.
  *
  * The name is built by `describeManaCost` beside the parser and unit-tested with it:
- * `{2}{W/U}` reads "2 generic, white or blue". This is UX-DR18's already-ruled "colour is never
- * the sole carrier", applied to the component that is nothing but colour — and it is the ruling
- * c4-8's curve and c4-9's colour bar reuse rather than each inventing one.
+ * `{2}{W/U}` reads "2 generic, white or blue". This is UX-DR18's "colour is never the sole
+ * carrier", applied to the component that is nothing but colour — and it is the mechanism the
+ * curve and the colour bar reuse rather than each inventing one.
  *
- * APPEARANCE IS NOT DEV-VERIFIED IN THIS STORY (AC 21): nothing imports this component yet and
- * jsdom applies no stylesheet. The look is checked at c4-3 / c4-7 / c4-9.
+ * APPEARANCE IS NOT TEST-VERIFIED: jsdom applies no stylesheet. The look is checked by eye on
+ * the card placeholders, the deck row and the colour legend.
  */
 
 export interface ManaCostProps {
   /**
    * A Scryfall cost string. `undefined`, `null`, `''` and a whitespace-only string all render
-   * NOTHING, without error (AC 4) — a land's absent cost arrives as `''` from this repo's own
+   * NOTHING, without error — a land's absent cost arrives as `''` from this repo's own
    * data (5,943 rows; `mana_cost` is never NULL).
    *
-   * THE WIRE TYPE IS NOT NULLABLE, MEASURED — and it never was. This comment used to predict
-   * that "the wire type c3-2 generates may still be nullable"; c3-2 measured it false, and it
-   * was already false one story earlier: `Card` and `CardSummary` both coerce a NULL
-   * `mana_cost` to `''` in a validator, so `types.d.ts` declares `mana_cost: string` on both
-   * (`CardSummary` since c3-1). The four-spelling totality STAYS anyway, and the reason is the
-   * honest one rather than the predicted one: this is a prop on a public component, so the
+   * THE WIRE TYPE IS NOT NULLABLE, MEASURED: `Card` and `CardSummary` both coerce a NULL
+   * `mana_cost` to `''` in a validator, so `types.d.ts` declares `mana_cost: string` on both.
+   * The four-spelling totality STAYS anyway: this is a prop on a public component, so the
    * value can arrive from a test, a future caller, or an untyped runtime object — the wire type
    * constrains only the wire.
    */
@@ -61,7 +58,7 @@ export function ManaCost({ cost }: ManaCostProps) {
   // whitespace token the total scanner correctly produces never reaches the DOM as an empty
   // wrapper with an accessible name attached to it. The `typeof` spelling also keeps the
   // totality contract against an UNTYPED wire value — a number reaching `.trim()` would throw,
-  // and a blank screen is the one failure worse than a wrong cost (review 2026-07-29).
+  // and a blank screen is the one failure worse than a wrong cost.
   if (typeof cost !== 'string' || cost.trim() === '') return null
 
   const tokens = parseManaCost(cost)

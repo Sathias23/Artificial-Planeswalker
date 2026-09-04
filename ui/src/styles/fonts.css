@@ -1,8 +1,8 @@
 /* The one @font-face in the application, and the only file allowed to declare one.
 
-   WHY THIS FILE EXISTS SEPARATELY FROM tokens.css. `--font-sans` names 'Space Grotesk'; until
-   this file landed, nothing in the repository made that name resolve to anything, so every
-   surface rendered in `system-ui` and looked correct-ish while being the fallback. A token is a
+   WHY THIS FILE EXISTS SEPARATELY FROM tokens.css. `--font-sans` names 'Space Grotesk'; without
+   this file nothing in the repository makes that name resolve to anything, so every surface
+   would render in `system-ui` and look correct-ish while being the fallback. A token is a
    promise; an @font-face is the thing that keeps it. They are separate files because tokens.css
    is exempt from the COLOUR literal bans and this file needs exemption from the TYPOGRAPHY ones
    — two different exemptions, and merging them would make one path exempt from both.
@@ -20,7 +20,7 @@
    `font-weight: 300 700` below is what makes all seven resolvable from one request.
 
    THE LICENCE ships beside the binary as src/assets/fonts/LICENSE-OFL-1.1.txt, which OFL-1.1
-   section 2 requires. Attribution in the UI is c2-10's footer; this file owes it the fact:
+   section 2 requires. Attribution in the UI is the footer's; this file owes it the fact:
    Copyright 2020 The Space Grotesk Project Authors
    (https://github.com/floriankarsten/space-grotesk).
 

@@ -1,5 +1,5 @@
 /**
- * The deck announcer's modal gate, at component level (story c7-6, UX-DR45).
+ * The deck announcer's modal gate, at component level (UX-DR45).
  *
  * WHAT IS HERE AND WHAT IS IN `App.test.tsx`. This file drives the two slices directly — the
  * refetch-settle counter and the agent-view status — and asserts what the component makes of
@@ -48,8 +48,8 @@ const detail = (mainboard: number, sideboard: number, id = 'deck-a'): DeckDetail
   mainboard_count: mainboard,
   sideboard_count: sideboard,
   distinct_cards: 2,
-  created_at: '2026-07-01T00:00:00Z',
-  updated_at: '2026-08-01T00:00:00Z',
+  created_at: '2025-07-01T00:00:00Z',
+  updated_at: '2025-08-01T00:00:00Z',
   cards: [],
 })
 
@@ -81,7 +81,7 @@ const settleRefetch = (mainboard: number, sideboard: number, id = 'deck-a') =>
 
 const VIEW: AgentViewContent = {
   id: 'push-1',
-  ts: '2026-08-15T09:15:00Z',
+  ts: '2025-08-15T09:15:00Z',
   kind: 'suggestions',
   title: 'Resilience options',
   count: 2,
@@ -96,7 +96,7 @@ beforeEach(() => {
   resetAgentView()
 })
 
-describe('a settle behind an OPEN agent view is DROPPED, not deferred (c7-6, UX-DR45)', () => {
+describe('a settle behind an OPEN agent view is DROPPED, not deferred (UX-DR45)', () => {
   it('writes no text when the settle lands while a view is showing', () => {
     loadDeck(100, 0)
     render(<DeckAnnouncer />)
@@ -107,7 +107,7 @@ describe('a settle behind an OPEN agent view is DROPPED, not deferred (c7-6, UX-
     act(() => openAgentView(VIEW))
     settleRefetch(101, 1)
 
-    // THE STORY'S HEADLINE. The counter moved — this is a real settle, not a skipped one — and
+    // THE HEADLINE CLAIM. The counter moved — this is a real settle, not a skipped one — and
     // the region stayed empty behind the dialog.
     expect(seenNow()).toBe(1)
     expect(region()!.textContent).toBe('')
@@ -164,7 +164,7 @@ describe('a settle behind an OPEN agent view is DROPPED, not deferred (c7-6, UX-
 })
 
 describe('the gate changes nothing about the closed-view paths (non-vacuity)', () => {
-  it('still announces a settle with no view open — the c7-5 behaviour, unmoved', () => {
+  it('still announces a settle with no view open — the closed-view behaviour, unmoved', () => {
     loadDeck(100, 0)
     render(<DeckAnnouncer />)
 

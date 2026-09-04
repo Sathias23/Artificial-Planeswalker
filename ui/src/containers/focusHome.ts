@@ -1,33 +1,30 @@
 /**
  * The one focus hand-off in the app: give an element focus without leaving a Tab stop behind.
  *
- * ================= WHY THIS IS A MODULE AND NOT A SECOND COPY (c4-11 Q2, AC 6) =========
+ * ================= WHY THIS IS A MODULE AND NOT A SECOND COPY ==========================
  *
  * Two callers need the identical four lines, and they were written for each other:
  *
- *   1. `CardDetail`'s unpin control (c4-5, review 2026-08-05). Activating it DESTROYS the
- *      activated element — the button renders only while pinned — and a removed `activeElement`
- *      drops keyboard focus to `<body>`, restarting Tab from the top of the page.
- *   2. `SkipLink` (c4-11). Its whole purpose is to move focus past the grid, to the same `<h2>`.
+ *   1. `CardDetail`'s unpin control. Activating it DESTROYS the activated element — the button
+ *      renders only while pinned — and a removed `activeElement` drops keyboard focus to
+ *      `<body>`, restarting Tab from the top of the page.
+ *   2. `SkipLink`. Its whole purpose is to move focus past the grid, to the same `<h2>`.
  *
- * `CardDetail.tsx:388` already said so before this module existed — *"the one element c4-11's
- * skip link already targets, so the two stories converge on a single focus home"* — and AC 6
- * makes it a requirement rather than a nicety: **there is exactly one focus home and one
- * implementation of it.** Two copies of this would be one that gets the blur cleanup repaired and
- * one that does not.
+ * Both converge on a single focus home, and that is a requirement rather than a nicety: **there
+ * is exactly one focus home and one implementation of it.** Two copies of this would be one that
+ * gets the blur cleanup repaired and one that does not.
  *
  * It lives at the ROOT of `src/containers/` rather than inside either caller, under the rule
  * `src/components/filled.ts` states and `imagedFaces.ts`, `useCardArt.ts` and `frontFaceCost.ts`
  * already follow: *"a helper shared by two components does not live inside one of them"*. It is
  * its own module rather than an export beside a component because
- * `react-refresh/only-export-components` is an ESLint **error** — the eighth application of that
- * split.
+ * `react-refresh/only-export-components` is an ESLint **error**.
  *
  * ================= WHY `tabIndex` IS SET IMPERATIVELY AND REMOVED ON BLUR ==============
  *
  * A heading is not focusable, so `.focus()` alone does nothing. `tabIndex = -1` makes it
  * programmatically focusable **without** adding a Tab stop — but if it were left behind, the panel
- * at rest would carry a `[tabindex]`, and that attribute's ABSENCE is what `CardDetail`'s AC 25
+ * at rest would carry a `[tabindex]`, and that attribute's ABSENCE is what `CardDetail`'s
  * not-a-modal assertion checks. So it is added on the way in and removed on the way out, and the
  * element at rest is exactly what it was before.
  *
@@ -43,7 +40,7 @@
  * without showing it would satisfy WCAG 2.4.1 and fail the reader.
  *
  * **No focus trap, no return-focus contract.** `CardDetail` *"neither stacks nor traps"*
- * (UX-DR38); this moves focus once and forgets. c6-5's agent view is the app's only modal and
+ * (UX-DR38); this moves focus once and forgets. The agent view is the app's only modal and
  * builds both of those FOR ITSELF, in `AgentView.tsx`, without changing anything here — it
  * calls this helper for the two hand-offs that are hand-offs (focus to its heading on open, and
  * the `<h1>` fallback when the element it remembered has left the document) and keeps its trap
@@ -56,9 +53,8 @@
  * The `id` on `CardDetail`'s frame — the skip link's target, and the only AUTHORED DOM id in
  * `ui/src`.
  *
- * *"The only DOM id"* until c6-5, which gives the agent view's `<h2>` one for `aria-labelledby`
- * — from `useId()` rather than from a constant, which is the distinction this line now draws
- * rather than a hole in it. The two cases are genuinely different: that id is minted and
+ * The agent view's `<h2>` also carries an id for `aria-labelledby`, but from `useId()` rather
+ * than from a constant, and the two cases are genuinely different: that id is minted and
  * consumed inside ONE element tree and cannot collide with anything, while this one is a
  * handle two modules in different directories have to agree on, which is exactly why it is
  * written down. A second hand-written id would be a second thing to keep unique; a `useId` is
@@ -93,7 +89,7 @@ export const SKIP_TARGET_ID = 'card-detail'
  *   Neither current caller branches on it (there is nothing more either could do on `false`; the
  *   `SkipLink` withdrawal hand-off's fallback IS this call), but the refusal path cleans up after
  *   itself: a failed `focus()` must not strand `tabindex="-1"` on the element, because that
- *   attribute's absence at rest is what `CardDetail`'s AC 25 not-a-modal assertion checks.
+ *   attribute's absence at rest is what `CardDetail`'s not-a-modal assertion checks.
  *
  * Example:
  *   focusHome(document.getElementById(SKIP_TARGET_ID)?.querySelector('h2'))

@@ -22,9 +22,9 @@ import { emptyPushLine } from '../SuggestionsView/copy'
 import './TierListView.css'
 
 /**
- * What a `tier_list` push puts INSIDE the agent view shell (story 16.2) — the third view body,
- * built as `SwapsView.tsx`'s structural sibling, and every ruling that file carries applies
- * here unless a line below says otherwise.
+ * What a `tier_list` push puts INSIDE the agent view shell — the third view body, built as
+ * `SwapsView.tsx`'s structural sibling, and every invariant that file carries applies here
+ * unless a line below says otherwise.
  *
  * ================= WHAT IS DIFFERENT, AND WHY (DESIGN.md's tier-row) =====================
  *
@@ -131,9 +131,9 @@ const noteOf = (item: UntrustedTier): string | null => {
 }
 
 /**
- * The tier's card ids, FILTERED per id rather than coerced — `GroupsView.cardIdsOf`'s gate,
- * ported (E16-91): a non-string, empty or whitespace-only entry is dropped — there is no honest
- * tile for a number, and a blank id names nothing the app could ever render, so keeping it
+ * The tier's card ids, FILTERED per id rather than coerced — `GroupsView.cardIdsOf`'s gate: a
+ * non-string, empty or whitespace-only entry is dropped — there is no honest tile for a
+ * number, and a blank id names nothing the app could ever render, so keeping it
  * would spend a permanently-dead placeholder slot AND a real image request (a whitespace id is
  * not `''`, so the synchronous unknown guard cannot catch it before the first paint commits
  * `/api/card-image/%20`). A NON-blank id is NOT trimmed, for `SuggestionsView`'s recorded
@@ -172,11 +172,11 @@ const isUnknownCard = (entry: CardEntry | undefined): boolean =>
  * an authored word, so no `COPY_MODULES` entry is owed; before hydration lands the span is
  * empty, exactly as the suggestion row's name column is.
  *
- * The unknown-row rulings carry over verbatim from `SwapTile`: every tile is the same button
+ * The unknown-row invariants carry over verbatim from `SwapTile`: every tile is the same button
  * (an entry moves `undefined → loading → unknown` while rendered, and a vanishing button would
  * drop focus to `<body>` inside the shell's focus trap), the store's `inspectable()` is what
  * refuses the verbs on a dead id, and the stale-target release effect below is the same
- * Greptile-P1 valve, per tile because targets are per card.
+ * valve, per tile because targets are per card.
  */
 function TierTile({ cardId }: { cardId: string }) {
   const entry = useCardEntry(cardId)
@@ -241,7 +241,7 @@ function TierTile({ cardId }: { cardId: string }) {
               className="card-shape tier-tile-image"
               data-loaded={art === 'shown' ? 'true' : 'false'}
               /* AD-11: the backend proxy, never a CDN host; rendition UNSPELLED so the bytes
-                 share the grid's browser-cache key (SuggestionsView's Q4). */
+                 share the grid's browser-cache key. */
               src={cardImageUrl(cardId, undefined, face)}
               /* `alt=""`, EXACTLY (UX-DR48): the tile's accessible name is the hidden span
                  above, and the card's name is the detail panel's to speak. */
@@ -258,10 +258,10 @@ function TierTile({ cardId }: { cardId: string }) {
 }
 
 /**
- * The in-view card preview (DESIGN.md `components.tier-preview`, added 2026-08-23) — why it
- * exists: hovering a tile sets the inspection target, but the persistent `CardDetail` panel
- * sits BEHIND the agent view's scrim, so inside this view the target was invisible. This
- * column renders it in-view instead.
+ * The in-view card preview (DESIGN.md `components.tier-preview`) — why it exists: hovering a
+ * tile sets the inspection target, but the persistent `CardDetail` panel sits BEHIND the agent
+ * view's scrim, so inside this view the target was invisible. This column renders it in-view
+ * instead.
  *
  * DELIBERATELY DUMBER THAN `CardDetail`, WHICH IT MUST NEVER BE A SECOND COPY OF: no duplicate
  * `id="card-detail"` skip target, no fourth live region (`App.test.tsx` pins the census at
@@ -289,22 +289,22 @@ function TierPreview() {
   const face = useFaceIndex(cardId)
   const { state: art, settleIfCached, onLoad, onError } = useCardArt(cardId, face)
 
-  // HYDRATION SELF-SUFFICIENCY (review 2026-08-23): the target is not always an id a mounted
-  // tile is hydrating — a pin set on another surface survives into this view (that survival is
-  // FR-17's own requirement), and against a cold cache entry the art would render while the
-  // name/cost/type never arrived. `hydrateCard` dedupes an in-flight id, so on the common path
-  // (a tier's own card, already swept by the view effect) this costs no request; `''` is
-  // guarded here AND terminally refused there.
+  // HYDRATION SELF-SUFFICIENCY: the target is not always an id a mounted tile is hydrating — a
+  // pin set on another surface survives into this view (that survival is FR-17's own
+  // requirement), and against a cold cache entry the art would render while the name/cost/type
+  // never arrived. `hydrateCard` dedupes an in-flight id, so on the common path (a tier's own
+  // card, already swept by the view effect) this costs no request; `''` is guarded here AND
+  // terminally refused there.
   useEffect(() => {
     if (cardId !== '') void hydrateCard(cardId)
   }, [cardId])
 
-  // THE RELEASE VALVE, FOR THE TILELESS TARGET (Greptile P1 on PR #103): `TierTile` clears a
-  // target that settles terminally unknown, but only for ids it renders — a pin retained from
-  // ANOTHER surface (FR-17's survival) whose card has no tile in this push settles unknown with
-  // nobody to release it, and because the store resolves `pinnedId` over every transient, the
-  // stuck pin would outrank all tier hover/focus forever. Same effect as the tile's, keyed on
-  // the resolved target; the self-hydration above is what guarantees the settle ever happens.
+  // THE RELEASE VALVE, FOR THE TILELESS TARGET: `TierTile` clears a target that settles
+  // terminally unknown, but only for ids it renders — a pin retained from ANOTHER surface
+  // (FR-17's survival) whose card has no tile in this push settles unknown with nobody to
+  // release it, and because the store resolves `pinnedId` over every transient, the stuck pin
+  // would outrank all tier hover/focus forever. Same effect as the tile's, keyed on the
+  // resolved target; the self-hydration above is what guarantees the settle ever happens.
   const unknown = isUnknownCard(entry)
   const pinnedId = usePinnedId()
   useEffect(() => {
@@ -403,7 +403,7 @@ function TierRow({
             REQUIRED field arriving malformed, which this is not). */}
         {note === null ? null : <span className="tier-row-note">{note}</span>}
         {/* THE STRIP — payload order, scrolling horizontally rather than wrapping (DESIGN.md
-            `components.tier-row`, amended 2026-08-23: tiles keep full size at any count).
+            `components.tier-row`: tiles keep full size at any count).
             Keyed by id AND position for the suggestion list's duplicate-tolerance reason:
             nothing constrains an agent against ranking the same printing twice. */}
         <span className="tier-row-thumbs">
@@ -472,9 +472,9 @@ export function TierListView({ kind, items }: TierListViewProps) {
   // would announce "list, 0 items" with nothing to explain why, and the sentence is the closest
   // honest description of a glass with nothing on it — no second sentence is authored.
   // In the all-skipped case the shell header keeps showing the RAW store count beside this line
-  // (e.g. "5" over "came back empty") — decided at the epic-16 retro (item 4, in passing): the
-  // count states what the agent SENT and the sentence states what RENDERS, and
-  // count-stays-raw-while-render-skips is a pinned epic invariant (App.test.tsx's "count still
-  // says 2" against 1 rendered row), not a contradiction to smooth over.
+  // (e.g. "5" over "came back empty"), deliberately: the count states what the agent SENT and
+  // the sentence states what RENDERS, and count-stays-raw-while-render-skips is a pinned
+  // invariant (App.test.tsx's "count still says 2" against 1 rendered row), not a contradiction
+  // to smooth over.
   return <p className="tier-list-view-empty">{emptyPushLine(kind)}</p>
 }

@@ -11,14 +11,14 @@ import { GroupsView } from './GroupsView'
 import { emptyPushLine } from '../SuggestionsView/copy'
 
 /**
- * The groups view's body (story 16.3) — `TierListView.test.tsx`'s harness, on the fourth and
- * last view kind. The same disclaimers apply: jsdom evaluates no stylesheet (the divider, the
- * measure and the badge chrome are read as SOURCE by `token-usage.test.ts` and the shell
- * guards) and loads no images (art states are driven manually). What this file proves is the
- * BRANCH and the WIRING — which element renders for which input, which handler reaches which
- * store verb, that an empty or malformed group is skipped while its neighbours render, that
- * one bad card id costs exactly one thumbnail of one group, and that the quantity badge obeys
- * EXPERIENCE.md:94's in-deck-only gate.
+ * The groups view's body — `TierListView.test.tsx`'s harness, on the fourth and last view
+ * kind. The same disclaimers apply: jsdom evaluates no stylesheet (the divider, the measure and
+ * the badge chrome are read as SOURCE by `token-usage.test.ts` and the shell guards) and loads
+ * no images (art states are driven manually). What this file proves is the BRANCH and the
+ * WIRING — which element renders for which input, which handler reaches which store verb, that
+ * an empty or malformed group is skipped while its neighbours render, that one bad card id
+ * costs exactly one thumbnail of one group, and that the quantity badge obeys EXPERIENCE.md:94's
+ * in-deck-only gate.
  */
 
 // Typed through the ALIAS (`schema.ts` is the one home for a wire-derived shape — declaring a
@@ -111,8 +111,8 @@ const settleDeck = (rows: DeckCardSummary[]) => {
     mainboard_count: rows.length,
     sideboard_count: 0,
     distinct_cards: rows.length,
-    created_at: '2026-07-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
+    created_at: '2025-07-01T00:00:00Z',
+    updated_at: '2025-08-01T00:00:00Z',
     cards: rows,
   }
   useDeckStore.setState({ deck: { status: 'deck', detail, boards: boardsOfDeck(detail) } })
@@ -514,7 +514,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(screen.getByRole('button', { name: 'Card c-group-1' })).toBe(tiles[0])
   })
 
-  it('REFUSES every verb on an unknown tile through the store, and stays a button (Q3)', () => {
+  it('REFUSES every verb on an unknown tile through the store, and stays a button', () => {
     seedUnknown('c-group-1')
     seedHydrated('c-group-2')
     const { container } = render(<GroupsView kind="groups" items={[GROUP]} />)
@@ -530,14 +530,14 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(deadTile.tagName).toBe('BUTTON')
     expect(deadTile).not.toBeDisabled()
 
-    // The non-vacuity control (the plant-3 lesson): the same tile, re-armed, proves the
-    // handlers were wired all along and the STORE did the refusing.
+    // The non-vacuity control: the same tile, re-armed, proves the handlers were wired all
+    // along and the STORE did the refusing.
     act(() => seedHydrated('c-group-1'))
     fireEvent.mouseEnter(tilesOf(sectionAt(container, 0))[0])
     expect(useInspectionStore.getState().hoveredId).toBe('c-group-1')
   })
 
-  it('releases a stale hover, focus AND pin when an entry settles to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when an entry settles to unknown', () => {
     const { container } = render(<GroupsView kind="groups" items={[GROUP]} />)
     const [first] = tilesOf(sectionAt(container, 0))
 

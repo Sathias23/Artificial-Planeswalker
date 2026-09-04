@@ -1,7 +1,7 @@
-/* The quantity badge — "×N" over the card's top-right corner (story c4-4, UX-DR3, UX-DR16).
+/* The quantity badge — "×N" over the card's top-right corner (UX-DR3, UX-DR16).
 
    ==== WHY THIS IS A FILE OF ITS OWN, AND NOT A BLOCK IN CardTile.css ==================
-   A COLLISION RESOLVED IN THE OPEN RATHER THAN AT LINT TIME (AC 4). CardTile.css is listed in
+   A COLLISION RESOLVED IN THE OPEN RATHER THAN AT LINT TIME. CardTile.css is listed in
    tests/token-usage.test.ts's CARD_SHAPED allowlist, and the second half of that guard is
    "a card-shaped file may not spend a chrome radius" — the family, `--radius-card` excepted.
    The badge is CHROME SITTING ON a card rather than a card, and DESIGN.md gives it
@@ -10,12 +10,12 @@
    is NOT in CARD_SHAPED, so the pill radius is exactly as legal here as it is on a `Badge`.
 
    The alternative — a declared exception inside the guard — would have weakened a rule that is
-   currently total, for a component that is not a card, in the first story to join the list.
+   total, for a component that is not a card.
 
    ==== IT SHARES THE DFC CONTROL'S MATERIAL, DELIBERATELY ==============================
    DESIGN.md gives `components.quantity-badge` and `components.dfc-flip` the same scrim, the same
-   blur and the same border "so the pair reads as one family". c4-6 builds the second half of
-   that pair, pinned to the tile's TOP-LEFT, and DESIGN.md says why in one clause: "the top-right
+   blur and the same border "so the pair reads as one family". The flip control is the second
+   half of that pair, pinned to the tile's TOP-LEFT, and DESIGN.md says why in one clause: "the top-right
    is occupied by the quantity badge, and the two must never collide." This file owns the right
    corner and nothing else.
 
@@ -37,8 +37,8 @@
 
   /* The `components.quantity-badge` block, verbatim: scrim background, text-primary foreground,
      `1px solid {colors.border-strong}` from DESIGN.md, and `{rounded.pill}`. That 1px is a
-     GEOMETRY LITERAL — there is no `--border-width-*` family to point at — so per the c2-8
-     decide-once ruling it is cited beside the value rather than tokenised. */
+     GEOMETRY LITERAL — there is no `--border-width-*` family to point at — so it is cited
+     beside the value rather than tokenised. */
   background: var(--scrim);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
@@ -50,7 +50,7 @@
      badge stops reading as glass over art. */
   backdrop-filter: blur(6px);
 
-  /* PADDING IS DERIVED, BECAUSE DESIGN.md DECLARES NONE (AC 9). The composition reference ships
+  /* PADDING IS DERIVED, BECAUSE DESIGN.md DECLARES NONE. The composition reference ships
      `2px 9px`, and BOTH numbers are off the 4/8/12/16/24/32/48 scale — UX-DR5 drift, and a lint
      error rather than a preference. `--space-1` / `--space-2` (4px / 8px) is the nearest
      on-scale pair and the only one that keeps the badge subordinate: `--space-2` vertically
@@ -67,17 +67,17 @@
   font: var(--type-numeric);
   font-variant-numeric: var(--type-numeric-features);
 
-  /* THE FADE-OUT HALF OF THE ONE-SHOT GLOW (c7-5, UX-DR16). The transition lives on the badge AT
+  /* THE FADE-OUT HALF OF THE ONE-SHOT GLOW (UX-DR16). The transition lives on the badge AT
      REST so it carries the glow's DEPARTURE: the flashed rule below suspends it for the frame the
      glow appears in, and when `data-flashed` drops, THIS declaration eases `box-shadow` from
-     `var(--glow)` back to nothing over `--motion-glide`. Instant-on, eased-off — the shape ruled
-     twice already (c6-5, c7-4): no `@keyframes` (their `from`/`to` rules cannot be neutralised by
+     `var(--glow)` back to nothing over `--motion-glide`. Instant-on, eased-off — the shape every
+     one-shot glow in this codebase takes: no `@keyframes` (their `from`/`to` rules cannot be neutralised by
      the reduced-motion reader, and `!important` is spec-ignored inside keyframes), no `animation`
      (which invites the loop stylelint bans), no transform (the 5-entry shipped-motion pin in
      token-usage.test.ts must not move). Entirely token-expressed, so zeroing `--motion-glide`
      makes the fade instant — and because an INSTANT glow is still a glow, the tokens.css media
      block additionally omits it outright (`box-shadow: none !important` on the flashed selector),
-     which is the c4-4 hover-pop distinction between a mechanism and a registration.
+     which is CardTile.css's hover-pop distinction between a mechanism and a registration.
      tests/quantity-glow.test.ts asserts both halves from source. */
   transition: box-shadow var(--motion-glide) var(--ease-glide);
 }

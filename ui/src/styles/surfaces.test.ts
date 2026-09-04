@@ -1,5 +1,5 @@
 /**
- * The surface-ramp predicate, proven in both directions (AC 9).
+ * The surface-ramp predicate, proven in both directions.
  *
  * The half of UX-DR1 that CAN be mechanised is "is this pair of surfaces one step apart?".
  * A predicate only ever tested on the legal step is a predicate that could be
@@ -62,7 +62,6 @@ describe('the surface ramp (UX-DR1)', () => {
   // none of them once a value arrives via an `as` cast, a JSON payload or plain JS. Unguarded,
   // `indexOf` returns -1 and the arithmetic answers YES to nonsense — `0 - (-1) === 1`. These
   // two cast deliberately, because that is exactly how the bug would reach production.
-  // (Review finding, Low.)
   it('refuses an out-of-ramp name instead of answering confidently', () => {
     const bogus = 'not-a-surface' as SurfaceName
 

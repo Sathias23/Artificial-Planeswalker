@@ -1,5 +1,5 @@
 /**
- * The boot, the refusal vocabulary and the precedence rule (story c4-2, AC 1, 5, 8–12, 17, 18).
+ * The boot, the refusal vocabulary and the precedence rule.
  *
  * Two testing postures in one file, and the split is deliberate:
  *
@@ -7,10 +7,10 @@
  *   sequencing, the generation guard and the token→panel decisions are asserted against plain
  *   functions with no global `fetch` stub anywhere near them.
  *
- *   **AC 17's seeding assertion stubs `globalThis.fetch` instead**, because the claim it makes is
+ *   **The seeding assertion stubs `globalThis.fetch` instead**, because the claim it makes is
  *   *"this costs ZERO requests"* and a count taken through an injected reader would be a count of
- *   calls to a function the production path does not use. c4-1's own review corrected a vacuous
- *   version of exactly this assertion; the honest count is the one the network sees.
+ *   calls to a function the production path does not use; the honest count is the one the
+ *   network sees.
  *
  * `surfaceOf` is a pure function of two states and is asserted as one — no render, no store.
  * What it looks like on a real screen is `App.test.tsx`'s, from one mount.
@@ -73,8 +73,8 @@ const detail = (overrides: Partial<DeckDetail> = {}): DeckDetail => ({
   mainboard_count: 2,
   sideboard_count: 0,
   distinct_cards: 2,
-  created_at: '2026-07-01T00:00:00Z',
-  updated_at: '2026-08-01T00:00:00Z',
+  created_at: '2025-07-01T00:00:00Z',
+  updated_at: '2025-08-01T00:00:00Z',
   cards: [row('Llanowar Elves', 'Creature — Elf Druid'), row('Forest', 'Basic Land — Forest')],
   ...overrides,
 })
@@ -104,7 +104,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('the boot is two requests, in order, on mount (AC 1)', () => {
+describe('the boot is two requests, in order, on mount', () => {
   it('asks for the active deck first, then for that deck by id', async () => {
     const order: string[] = []
     const runner = createDeckBoot({
@@ -161,7 +161,7 @@ describe('the boot is two requests, in order, on mount (AC 1)', () => {
     expect(readDetail).not.toHaveBeenCalled()
   })
 
-  it('settles a loaded deck with its boards already derived (AC 13)', async () => {
+  it('settles a loaded deck with its boards already derived', async () => {
     const [state] = await boot(
       { kind: 'active-deck', deckId: ATRAXA_DECK_ID },
       {
@@ -179,7 +179,7 @@ describe('the boot is two requests, in order, on mount (AC 1)', () => {
   })
 })
 
-describe('the boot is cancellable and generation-guarded (AC 5)', () => {
+describe('the boot is cancellable and generation-guarded', () => {
   it('writes nothing after stop(), even mid-sequence', async () => {
     const seen: DeckState[] = []
     let releaseActive: (outcome: ActiveDeckOutcome) => void = () => undefined
@@ -266,7 +266,7 @@ describe('the boot is cancellable and generation-guarded (AC 5)', () => {
   })
 })
 
-describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10, 11)', () => {
+describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON', () => {
   it('clears a 404 deck_not_found to the no-active-deck state (FR-11, AD-16)', async () => {
     const [state] = await boot(
       { kind: 'active-deck', deckId: ATRAXA_DECK_ID },
@@ -276,19 +276,17 @@ describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10,
       },
     )
 
-    // c2-9 wrote the mapping and its reason; this story is its FIRST live producer. `'none'` is
-    // the clearing, and the system panel — already `no-active-deck` with its names — is what the
-    // reader sees.
+    // `'none'` is the clearing, and the system panel — already `no-active-deck` with its names —
+    // is what the reader sees.
     expect(state).toEqual({ status: 'none' })
   })
 
   it('leaves NO stale deck behind when a 404 arrives — probe (d)', async () => {
-    // **This test used to prove nothing**, and a probe is what said so: it supplied its own
-    // `onUpdate` carrying `setState(state, true)`, so deleting that replace flag from PRODUCTION
-    // left it green — this epic's standing finding (*the wiring is right and nothing asserts the
-    // wiring*) wearing a store's costume. The repair was structural rather than a better
-    // assertion: the slice now holds the union under a `deck` key, so a merge replaces it
-    // wholesale and no call site has a flag to forget. See `DeckSlice`.
+    // A test that supplied its own `onUpdate` carrying `setState(state, true)` would prove
+    // nothing: deleting that replace flag from PRODUCTION would leave it green — the wiring
+    // right and nothing asserting the wiring. The guard is structural rather than a better
+    // assertion: the slice holds the union under a `deck` key, so a merge replaces it wholesale
+    // and no call site has a flag to forget. See `DeckSlice`.
     useDeckStore.setState({
       deck: {
         status: 'deck',
@@ -332,7 +330,7 @@ describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10,
     expect(state).toEqual({ status: 'refused', reason, panel })
   })
 
-  it('turns a 400 invalid_request into no-active-deck, NOT into the bug panel (Q5, AC 11)', async () => {
+  it('turns a 400 invalid_request into no-active-deck, NOT into the bug panel', async () => {
     const [state] = await boot(
       { kind: 'active-deck', deckId: 'not-a-deck-id' },
       {
@@ -363,10 +361,10 @@ describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10,
 
   it('reports a lost backend as no-deck, never as "the companion hit a bug"', async () => {
     // `panelFor(null)` is `'internal-error'`, which would be a LIE about an absent backend. The
-    // panel that describes one is `disconnected`, and it is c5-6's by `CLIENT_ONLY_STATES` —
-    // `poller.ts` takes exactly this posture for exactly this reason. c5-6 has shipped it, and
-    // this arm is UNCHANGED: the panel is chosen in `surfaceOf` from the connection status, not
-    // here from a boot outcome, so a deck read that found nothing still settles `'none'`.
+    // panel that describes one is `disconnected`, a `CLIENT_ONLY_STATES` member — `poller.ts`
+    // takes exactly this posture for exactly this reason. That panel is chosen in `surfaceOf`
+    // from the connection status, not here from a boot outcome, so a deck read that found
+    // nothing still settles `'none'`.
     const [state] = await boot(
       { kind: 'active-deck', deckId: ATRAXA_DECK_ID },
       {
@@ -385,9 +383,10 @@ describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10,
     expect(state).toEqual({ status: 'refused', reason: 'internal_error', panel: 'internal-error' })
   })
 
-  it('does NOT apply the Q5 override to a 400 on the ACTIVE-DECK route — review finding', async () => {
-    // Q5's entire justification is "the id in the path came from `PUT /api/active-deck`", and
-    // this route carries NO path parameter — so a 400 from it is exactly the client-bug case
+  it('does NOT apply the invalid_request override to a 400 on the ACTIVE-DECK route', async () => {
+    // The override's entire justification is "the id in the path came from
+    // `PUT /api/active-deck`", and this route carries NO path parameter — so a 400 from it is
+    // exactly the client-bug case
     // `states.ts` classifies, and folding it to a calm 'none' would hide a real bug behind
     // "there is no active deck". The comment above this describe said internal-error is the
     // honest panel here; this is the assertion that stops the override from contradicting it.
@@ -399,7 +398,7 @@ describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10,
   })
 })
 
-describe('the boot is total even against inputs the wire cannot produce (review findings)', () => {
+describe('the boot is total even against inputs the wire cannot produce', () => {
   it('never calls the deck reader with a WHITESPACE id — the second lock trims', async () => {
     // `activeDeckIdOf` folds blanks on `trim()`, so production cannot deliver `'  '` — but the
     // second lock is advertised as holding on its own, and a lock that catches `''` while
@@ -420,9 +419,10 @@ describe('the boot is total even against inputs the wire cannot produce (review 
 
   it('settles a REFUSAL, not a forever-booting silence, on a malformed row in a 200 body', async () => {
     // `deckOf` validates the envelope, not the rows — its own docstring says bad rows reach the
-    // derivation. Before the review, a row without a `card` threw inside `boardsOfDeck` AFTER
-    // the last generation check and OUTSIDE any try/catch: an unhandled rejection, no settle,
-    // and a slice stuck at 'booting' forever with no panel — the one outcome this module's
+    // derivation. Without the guard, a row without a `card` would throw inside `boardsOfDeck`
+    // AFTER the last generation check and OUTSIDE any try/catch: an unhandled rejection, no
+    // settle, and a slice stuck at 'booting' forever with no panel — the one outcome this
+    // module's
     // "every outcome is a value" posture exists to ban. Unreachable with the real Pydantic
     // backend; reachable the day the SPA and the backend skew.
     const malformed = detail()
@@ -442,7 +442,7 @@ describe('the boot is total even against inputs the wire cannot produce (review 
   })
 })
 
-describe('the deck payload seeds the card cache, for ZERO requests (AC 17)', () => {
+describe('the deck payload seeds the card cache, for ZERO requests', () => {
   it('populates the HYDRATED tier and issues no request of its own', async () => {
     // The count is taken on `globalThis.fetch` — the real network path — because "costs zero
     // requests" is a claim about the network and not about an injected function.
@@ -476,17 +476,18 @@ describe('the deck payload seeds the card cache, for ZERO requests (AC 17)', () 
 })
 
 /**
- * The `deck_changed` refetch: one request, coalesced by supersession, latest-wins (story c7-3).
+ * The `deck_changed` refetch: one request, coalesced by supersession, latest-wins.
  *
  * Store-level, on injected readers — this file's declared split. Unlike the harness at the top,
  * `onUpdate` here writes the REAL store, because `driveDeckChanged`'s decision table reads
  * `useDeckStore.getState()` and a test driving its own array would assert a table over state the
- * table never saw (the exact vacuity probe (d) recorded). What a refetch looks like on a real
- * screen — derived panels recomputing, the format check re-asking — is `App.test.tsx`'s, from one
+ * table never saw (the exact vacuity the stale-deck test above guards against). What a refetch
+ * looks like on a real screen — derived panels recomputing, the format check re-asking — is
+ * `App.test.tsx`'s, from one
  * mount; what is pinned HERE is the request discipline: which reader fires, with which id, whose
  * signal aborts, and which response is allowed to settle.
  */
-describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)', () => {
+describe('the deck_changed refetch is one request, coalesced, latest-wins', () => {
   /** One captured `readDetail` call: the id asked for, and the abort handle it was handed. */
   interface DetailCall {
     readonly deckId: string
@@ -542,8 +543,8 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
     await flush()
 
     // The matrix's first row, as a request log: one `GET /api/deck/{id}`, zero
-    // `GET /api/active-deck` beyond the boot's own — the whole point of the story's one-request
-    // shape against the old two-request re-drive.
+    // `GET /api/active-deck` beyond the boot's own — the whole point of the one-request shape
+    // against a full two-request re-drive.
     expect(harness.readActive).toHaveBeenCalledTimes(1)
     expect(harness.detailCalls[1].deckId).toBe(ATRAXA_DECK_ID)
     const after = useDeckStore.getState().deck
@@ -571,7 +572,7 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
     await flush()
 
     // Zero requests of either kind since the boot: the deck on the glass was not edited, and
-    // the poll-restart half of the ruling lives in `connection.ts`, outside this table.
+    // the poll-restart half of the response lives in `connection.ts`, outside this table.
     expect(harness.detailCalls).toHaveLength(1)
     expect(harness.readActive).toHaveBeenCalledTimes(1)
     expect(useDeckStore.getState().deck).toBe(before)
@@ -603,7 +604,7 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
     const after = useDeckStore.getState().deck
     expect(after.status === 'deck' && after.detail.name).toBe('Third — wins')
     // EXACTLY one settle for the whole burst — the coalescing claim as a count, and the claim
-    // c7-5's announce-once banks on ("the coalescing machinery is the debounce").
+    // the announce-once counter banks on ("the coalescing machinery is the debounce").
     expect(harness.settles.length - settlesBefore).toBe(1)
   })
 
@@ -627,8 +628,8 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
   })
 
   it('aborts an in-flight refetch on stop(), and its response can never settle', async () => {
-    // `stop()`'s c7-3 duty, found untested by review: deleting `abortRefetch()` from `stop()`
-    // stayed green, because every abort assertion until this one was about refetch-supersedes-
+    // `stop()`'s abort duty, pinned on its own: deleting `abortRefetch()` from `stop()` would
+    // otherwise stay green, because every other abort assertion is about refetch-supersedes-
     // refetch. The generation bump already silences the settle — the abort is what stops a
     // stopped world PAYING for a request nobody can use.
     const harness = buildBoot()
@@ -666,8 +667,9 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
   it.each<[string, DeckOutcome]>([
     ['a 503 database_unavailable', { kind: 'error', reason: 'database_unavailable' }],
     ['a 500 internal_error', { kind: 'error', reason: 'internal_error' }],
-    // The boot's Q5 override folds THIS token to 'none'; on a refetch of an id that just
-    // resolved it is a blip, and dropping it is the row that stops the override leaking here.
+    // The boot's invalid_request override folds THIS token to 'none'; on a refetch of an id
+    // that just resolved it is a blip, and dropping it is the row that stops the override
+    // leaking here.
     ['a 400 invalid_request', { kind: 'error', reason: 'invalid_request' }],
     ['an unreachable backend', { kind: 'unreachable' }],
     [
@@ -735,8 +737,8 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
     driveDeckChanged(boot, ATRAXA_DECK_ID)
     await vi.waitFor(() => expect(readActive).toHaveBeenCalledTimes(3))
 
-    // The fold is a full boot — active-deck FIRST (the server referees, c6-3 ruling #1's
-    // principle) — and no single-deck read was issued against the possibly-departing id: the
+    // The fold is a full boot — active-deck FIRST (the server referees) — and no single-deck
+    // read was issued against the possibly-departing id: the
     // only detail call so far is still the settled boot's own.
     expect(detailCalls).toHaveLength(1)
 
@@ -779,13 +781,13 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
 })
 
 /**
- * The `updating` flag: true for exactly the in-flight window, cleared on EVERY terminal path
- * (story c7-4). Store-level, on the same manually-resolvable harness shape the c7-3 suite uses,
- * because the flag's whole content is "while a request is in flight" and only a withheld reader
+ * The `updating` flag: true for exactly the in-flight window, cleared on EVERY terminal path.
+ * Store-level, on the same manually-resolvable harness shape the refetch suite uses, because
+ * the flag's whole content is "while a request is in flight" and only a withheld reader
  * can hold that window open. What the flag LOOKS like — the header marker, and its invisibility
  * on a cold boot behind `App`'s `deck !== null` gate — is `App.test.tsx`'s, from a real mount.
  */
-describe('the updating flag mirrors the refetch lifecycle (c7-4)', () => {
+describe('the updating flag mirrors the refetch lifecycle', () => {
   interface DetailCall {
     readonly deckId: string
     readonly signal: AbortSignal | undefined
@@ -951,13 +953,13 @@ describe('the updating flag mirrors the refetch lifecycle (c7-4)', () => {
 
 /**
  * The `refetchSettles` counter: +1 on a refetch SUCCESS and on nothing else in the world
- * (story c7-5, UX-DR45). Store-level, on the manually-resolvable harness shape the c7-3 and
- * c7-4 suites use, because the counter's whole content is "which terminal path was taken" and
+ * (UX-DR45). Store-level, on the manually-resolvable harness shape the refetch and updating
+ * suites use, because the counter's whole content is "which terminal path was taken" and
  * only a withheld reader can hold the paths apart. What the counter DRIVES — the polite
  * `deck-announcement` region, its computed count and its keyed-Fragment re-announce — is
  * `App.test.tsx`'s, from a real mount.
  */
-describe('the refetch-settle counter moves only on a refetch success (c7-5)', () => {
+describe('the refetch-settle counter moves only on a refetch success', () => {
   interface DetailCall {
     readonly deckId: string
     readonly signal: AbortSignal | undefined
@@ -1025,8 +1027,8 @@ describe('the refetch-settle counter moves only on a refetch success (c7-5)', ()
     await flush()
 
     // The clear SETTLES (it is the one legislated teardown) and still counts nothing:
-    // announcing "Deck updated" about a deck that was deleted would lie, and the deletion UX
-    // is c7-6's whole subject.
+    // announcing "Deck updated" about a deck that was deleted would lie, and the deletion has
+    // its own UX.
     expect(useDeckStore.getState().deck).toEqual({ status: 'none' })
     expect(settles()).toBe(0)
   })
@@ -1056,8 +1058,8 @@ describe('the refetch-settle counter moves only on a refetch success (c7-5)', ()
     await flush()
 
     // This is the row that rules out the `updating` falling edge as the trigger: every one of
-    // these ENDS the in-flight window (c7-4's suite proves the flag clears) and none of them
-    // completed anything worth a sentence.
+    // these ENDS the in-flight window (the updating suite proves the flag clears) and none of
+    // them completed anything worth a sentence.
     expect(settles()).toBe(0)
   })
 
@@ -1127,11 +1129,12 @@ describe('the refetch-settle counter moves only on a refetch success (c7-5)', ()
   })
 })
 
-describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
+describe('surfaceOf — the precedence, in one place', () => {
   /**
    * A system slice for one panel. `connection` defaults to `'live'` — "the socket is not what
-   * this test is about" — so every assertion written before c5-6 keeps meaning exactly what it
-   * meant, and the fourth arm gets its own describe below rather than leaking into these.
+   * this test is about" — so the assertions outside the connection arm's describe keep meaning
+   * exactly what they mean, and the fourth arm gets its own describe below rather than leaking
+   * into these.
    */
   const system = (
     panel: SystemState['panel'],
@@ -1150,7 +1153,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     },
   }
 
-  it('puts a loaded deck on the glass, displacing the system panel (AC 6)', () => {
+  it('puts a loaded deck on the glass, displacing the system panel', () => {
     const surface = surfaceOf(loaded, system('no-active-deck'))
 
     expect(surface.kind).toBe('deck')
@@ -1163,9 +1166,10 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     expect(surfaceOf(loaded, system('database-updating')).kind).toBe('deck')
   })
 
-  it('gives a deck REFUSAL priority over the poll’s opinion (AC 9)', () => {
-    // The arm that makes AC 9 non-vacuous: without it, the deck read's 503 panel would only ever
-    // appear because the poll happened to see the same 503, and the assertion would prove
+  it('gives a deck REFUSAL priority over the poll’s opinion', () => {
+    // The arm that makes refusal-priority non-vacuous: without it, the deck read's 503 panel
+    // would only ever appear because the poll happened to see the same 503, and the assertion
+    // would prove
     // nothing about the deck path at all.
     const surface = surfaceOf(
       { status: 'refused', reason: 'database_unavailable', panel: 'database-updating' },
@@ -1175,11 +1179,11 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     expect(surface).toEqual({ kind: 'panel', panel: 'database-updating' })
   })
 
-  // TYPED TABLE, not an inline literal: c4-1 lost a diagnosis to an untyped `it.each` widening a
-  // discriminant to `string`, which fails `tsc -b` while `npm test` stays green.
+  // TYPED TABLE, not an inline literal: an untyped `it.each` widens a discriminant to `string`,
+  // which fails `tsc -b` while `npm test` stays green.
   const deferring: [string, DeckState][] = [['none', { status: 'none' }]]
 
-  it.each(deferring)('defers to the system panel while %s (AC 7)', (_label, deck) => {
+  it.each(deferring)('defers to the system panel while %s', (_label, deck) => {
     expect(surfaceOf(deck, system('database-not-initialized'))).toEqual({
       kind: 'panel',
       panel: 'database-not-initialized',
@@ -1223,7 +1227,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     }
   })
 
-  describe('the FOURTH arm: a lost connection outranks everything (c5-6, Q3, AC 7, AC 8)', () => {
+  describe('the FOURTH arm: a lost connection outranks everything', () => {
     const states: [string, DeckState][] = [
       ['booting', INITIAL_DECK_STATE],
       ['none', { status: 'none' }],
@@ -1232,7 +1236,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     ]
 
     it.each(states)('displaces %s once the connection is down', (_label, deck) => {
-      // Every arm, not a representative one: the whole content of Q3's ruling is that this one
+      // Every arm, not a representative one: the whole content of the rule is that this one
       // outranks arm 1, and a test that only checked `none` would pass through a rule written
       // "below the deck".
       expect(surfaceOf(deck, system('no-active-deck', 'down'))).toEqual({
@@ -1245,8 +1249,9 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
       'leaves %s exactly as it was while merely reconnecting (UX-DR35)',
       (_l, deck) => {
         // THE SILENT HALF, and the one that carries UX-DR35. The pre-exhaustion window is the whole
-        // of an ordinary backend restart, and during it this function must behave as though c5-6 had
-        // never touched it — a deck stays rendered, possibly stale, never torn down to a skeleton.
+        // of an ordinary backend restart, and during it this function must behave as though the
+        // connection arm did not exist — a deck stays rendered, possibly stale, never torn down
+        // to a skeleton.
         expect(surfaceOf(deck, system('database-updating', 'reconnecting'))).toEqual(
           surfaceOf(deck, system('database-updating', 'live')),
         )
@@ -1268,7 +1273,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
       })
     })
 
-    it('reads the CONNECTION and not the panel field — the two-writers race Q3 avoided', () => {
+    it('reads the CONNECTION and not the panel field — the two-writers race avoided', () => {
       // The failure this shape prevents: with the HTTP half up and the WS half failing (a proxy
       // misconfiguration is the realistic case), a poll SUCCESS is a change, and a socket that had
       // written `panel: 'disconnected'` into the shared field would have it overwritten while the
@@ -1280,7 +1285,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     })
 
     it('restores the deck the instant the connection returns — no reload, nothing recomputed', () => {
-      // AC 9 at the level of the pure function: the deck slice was never cleared, so recovery is a
+      // Recovery at the level of the pure function: the deck slice was never cleared, so it is a
       // re-render of state nobody destroyed.
       expect(surfaceOf(loaded, system('no-active-deck', 'down')).kind).toBe('panel')
       expect(surfaceOf(loaded, system('no-active-deck', 'live')).kind).toBe('deck')
@@ -1289,7 +1294,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
 })
 
 // =========================================================================================
-// STORY 16.3 — the group tile's quantity selector
+// THE QUANTITY SELECTOR — the group tile's in-deck copy count
 // =========================================================================================
 
 describe('useDeckCardQuantity — the in-deck copy count, or null (16.3, EXPERIENCE.md:94)', () => {

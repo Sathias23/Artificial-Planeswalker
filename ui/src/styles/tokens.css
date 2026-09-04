@@ -19,7 +19,7 @@
    3. THE IMPORTED MOCK CONTAINS DRIFT. Its 18/14/9/7px spacing values are not on the
       4/8/12/16/24/32/48 scale and are not reproduced here (UX-DR5).
 
-   STRUCTURE (AC 2): every token is declared in the ONE block below, selected by
+   STRUCTURE: every token is declared in the ONE block below, selected by
    `:root, [data-theme="voltglass"]`. An alternate theme is added later as a sibling
    `[data-theme="…"]` block in this file and NOTHING in any component changes. The corollary
    is enforced by tests/token-usage.test.ts: no stylesheet other than THIS FILE may DECLARE a
@@ -49,22 +49,17 @@
      stay — they are what a decode failure or a 404 degrades to, not the plan (UX-DR2). */
   --font-sans: 'Space Grotesk', system-ui, sans-serif;
 
-  /* ---- The second family, and the only one (story c2-9, Q2 — Brad's ruling 2026-07-29) ---
-     DESIGN.md's State panel spec asks for a "monospace-styled inline chip" and, measured at
-     109a7d9, there was NO legal way to spell it: `.stylelintrc.json` admits only
-     `var(--font-*)` for `font-family`, `--font-sans` was the one family token, and DESIGN.md's
-     frontmatter declared no mono at all. A specified property with no legal spelling is this
-     epic's third of a kind (c2-7's `min-width: 76px`, c2-8's pip size); the answer differs from
-     both because this time the VALUE is in the design contract's prose and only the token was
-     missing — so the token was added rather than the property dropped (the c2-4 precedent: a
-     partly-tokenised value fails, and later stories ADD a token rather than inline one).
+  /* ---- The second family, and the only one ---
+     DESIGN.md's State panel spec asks for a "monospace-styled inline chip", and
+     `.stylelintrc.json` admits only `var(--font-*)` for `font-family` — so the family is a
+     token here rather than a literal in a component stylesheet.
 
      UX-DR2 ("hierarchy never comes from a second family") is not contradicted: this family
      carries no hierarchy. It styles COMMAND LITERALS — a string the user is about to type into
      a terminal — which is data, the same category as a mana pip's colour. Chrome and display
      type stay single-family, and `findRoleWithoutCompanions` still governs every type role.
 
-     A SYSTEM STACK, deliberately: no @font-face, no download, no committed binary, so c2-5's
+     A SYSTEM STACK, deliberately: no @font-face, no download, no committed binary, so
      offline parity (NFR-06), the one-@font-face guard and the bundle URL scan are all
      untouched. Source: DESIGN.md frontmatter `fonts.mono`, asserted in tests/tokens.test.ts.
 
@@ -111,8 +106,7 @@
   --accent-glow: rgb(139 147 255 / 22%);
 
   /* ---- Focus ring ---------------------------------------------------------------------
-     The tokens a compliant replacement for a removed `outline` is written against — the
-     UX-DR46 ban shipped in c2-1 with nothing to point at. */
+     The tokens a compliant replacement for a removed `outline` is written against (UX-DR46). */
   --focus-ring: #b3baff;
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
@@ -195,7 +189,7 @@
   --shadow-rest: 0 12px 32px rgb(0 0 0 / 50%);
   --glow: 0 0 16px var(--accent-glow);
 
-  /* THE FOCUS RING THAT HAS TO BE LEGIBLE OVER ARTWORK (story c4-4, Q2, UX-DR40, UX-DR41).
+  /* THE FOCUS RING THAT HAS TO BE LEGIBLE OVER ARTWORK (UX-DR40, UX-DR41).
      DESIGN.md's `components.card-tile.focus-ring-over-art`, byte-for-byte — a 2px ring in
      `--focus-ring` hugging the card edge, then 2px more of `--surface-base` separating that
      ring from whatever sits behind it. The inner band is what keeps it visible against a
@@ -204,52 +198,43 @@
      IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE, and that is measured rather than
      preferred: `.stylelintrc.json`'s `box-shadow` allowed-list admits `none` or a comma-list
      of `var(--shadow-…)` / `var(--glow)` AND NOTHING ELSE, so this composite cannot be
-     written in a component stylesheet at all. `ui/README.md` already ruled the answer and
-     named this exact case — "if you need a new composite (a live ring, a pinned ring), ADD A
-     TOKEN TO THE LAYER; do not inline it, and do not declare it in your own file."
+     written in a component stylesheet at all. `ui/README.md` names this exact case — "if you
+     need a new composite (a live ring, a pinned ring), ADD A TOKEN TO THE LAYER; do not inline
+     it, and do not declare it in your own file."
 
      THE PIN MOVES IN TWO FILES, AND THEY MOVE TOGETHER: `expectedNames` + `toHaveLength` in
-     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts. 65 until
-     c4-4, 66 from this token, 68 since c4-5's two rings below — the count lives in those two
-     pins, not here (a literal in this comment went stale once already; review 2026-08-05).
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts. The count
+     lives in those two pins, not here.
 
-     `components.card-tile.live-ring` was DELIBERATELY ABSENT until c4-5, because nothing set
-     `live` on a tile until its inspection contract, and this layer's standing rule is that an
-     entry is added in the commit that gives it a consumer. **c4-5 adds it, below.** */
+     This layer's standing rule is that an entry is added in the commit that gives it a
+     consumer. `components.card-tile.live-ring` is below. */
   --shadow-focus-ring-over-art: 0 0 0 2px var(--focus-ring), 0 0 0 4px var(--surface-base);
 
-  /* THE TWO INSPECTION RINGS (story c4-5, Q2, Q4, UX-DR6, UX-DR20).
-     66 -> 68, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
-     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+  /* THE TWO INSPECTION RINGS (UX-DR6, UX-DR20).
+     The count pins move with these: `expectedNames` + `toHaveLength` in tests/tokens.test.ts,
+     and `declaredTokens.size` in tests/token-usage.test.ts.
 
      THE LIVE RING is `components.card-tile.live-ring`, byte-for-byte — a 1px accent edge plus a
-     20px accent glow, marking the card currently under inspection. The absence of this token
-     was ITSELF asserted, by a test whose name said why ("does NOT ship the live ring, because
-     nothing sets `live` until c4-5"); that test is REPAIRED rather than deleted, because it is
-     the mechanism that told this story's author the pin moves with the value.
+     20px accent glow, marking the card currently under inspection.
 
-     THE PINNED RING is `components.card-detail.pinned-ring`, and it carries a correction to the
-     artefact rather than a copy of it. DESIGN.md declared it `{colors.accent-dim}` on a
-     component whose own background it declares as `{colors.surface-overlay}` — 2.70:1, the
-     pairing DESIGN.md's Colors table bans BY NAME three sections later, and the identical defect
-     the UX validation gate closed as M4/C3 for the live ring above. The fix was never carried
-     across. `--accent` is 5.5:1 on that surface and is the table's own named substitute, so
-     DESIGN.md's frontmatter was AMENDED in the same commit with the reason inline; tokens.test.ts
-     compares these values against that frontmatter, so shipping the correction without amending
-     the artefact would have been a red test, and shipping the artefact's value without the
-     correction would have been an accessibility defect that every gate waved through (the
-     `findAccentDimOnOverlay` guard is same-block only and cannot see a parent's background).
+     THE PINNED RING is `components.card-detail.pinned-ring`, and it is `--accent` rather than
+     `--accent-dim` by necessity: the detail panel's own background is `{colors.surface-overlay}`,
+     where `--accent-dim` measures 2.70:1 — the pairing DESIGN.md's Colors table bans BY NAME.
+     `--accent` is 5.5:1 on that surface and is the table's own named substitute, so DESIGN.md's
+     frontmatter carries it with the reason inline; tokens.test.ts compares these values against
+     that frontmatter. The ban is also kept here, at the value, because the
+     `findAccentDimOnOverlay` guard is same-block only and cannot see a parent's background.
 
      BOTH ARE TOKENS BECAUSE THEY CANNOT BE ANYTHING ELSE: .stylelintrc.json's `box-shadow`
      allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow) AND NOTHING
      ELSE, so neither composite can be written in a component stylesheet at all. ui/README.md
-     ruled this by name — "if you need a new composite (a live ring, a pinned ring), ADD A TOKEN
-     TO THE LAYER" — and these are the two components it was talking about. */
+     names this case — "if you need a new composite (a live ring, a pinned ring), ADD A TOKEN
+     TO THE LAYER" — and these are the two components it means. */
   --shadow-live-ring: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
   --shadow-pinned-ring: 0 0 0 1px var(--accent);
 
-  /* THE DECK ROW'S LIVE RULE (story c4-7, Q6, UX-DR19).
-     68 -> 69, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+  /* THE DECK ROW'S LIVE RULE (UX-DR19).
+     The count pins move with this token: `expectedNames` + `toHaveLength` in
      tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
 
      `components.deck-row.live-rule`, byte-for-byte — a 2px accent bar down the row's leading
@@ -262,33 +247,28 @@
      IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE, and the constraint is the same one the
      three composites above hit: .stylelintrc.json's `box-shadow` allowed-list admits `none` or
      a comma-list of var(--shadow-…) / var(--glow) AND NOTHING ELSE, so `inset 2px 0 0 …`
-     cannot be written in DeckList.css at all. ui/README.md ruled it — "ADD A TOKEN TO THE
+     cannot be written in DeckList.css at all. ui/README.md names it — "ADD A TOKEN TO THE
      LAYER; do not inline it, and do not declare it in your own file."
 
-     `var(--accent)`, and NOT `--accent-dim`, needs no correction here — DESIGN.md's frontmatter
-     already specifies `{colors.accent}` for this one. That is the M4/C3 fix arriving correct
-     the first time, where the tile's live ring and the detail panel's pinned ring each had to
-     be amended after the fact; this story inherits the precedent and the ban rather than the
-     defect. On `--surface-panel`, which is what a row actually sits on (`--surface-overlay` is
-     the row's HOVER colour, not its resting ground), `--accent` is 6.21:1 and `--accent-dim`
-     would be 3.05:1 — and over the row's own live tint the pair is 4.26:1 against 2.09:1, where
-     `--accent-dim` fails the 3:1 non-text floor outright. DeckList.css carries both
-     measurements beside the rule that composites them (corrected at the c4-7 review: this
-     comment previously claimed the overlay surface and the detail panel's 5.5:1/2.70:1 pair). */
+     `var(--accent)`, and NOT `--accent-dim` — DESIGN.md's frontmatter specifies
+     `{colors.accent}` for this one. On `--surface-panel`, which is what a row actually sits on
+     (`--surface-overlay` is the row's HOVER colour, not its resting ground), `--accent` is
+     6.21:1 and `--accent-dim` would be 3.05:1 — and over the row's own live tint the pair is
+     4.26:1 against 2.09:1, where `--accent-dim` fails the 3:1 non-text floor outright.
+     DeckList.css carries both measurements beside the rule that composites them. */
   --shadow-deck-row-live: inset 2px 0 0 var(--accent);
 
-  /* THE SUGGESTION ROW'S LIVE RULE (story c6-7, Q2, UX-DR24).
-     69 -> 70, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+  /* THE SUGGESTION ROW'S LIVE RULE (UX-DR24).
+     The count pins move with this token: `expectedNames` + `toHaveLength` in
      tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
 
-     `components.suggestion-row.live-rule`, byte-for-byte, from the amendment story c6-7 made to
-     DESIGN.md before writing a line of the stylesheet that cites it. Same shape as the deck
+     `components.suggestion-row.live-rule`, byte-for-byte. Same shape as the deck
      row's rule above and for the same reasons — an INSET shadow so becoming live costs no
      layout, and the row's live TINT is a plain `--accent-glow` background needing no token of
      its own because a single colour is not a composite.
 
      IT IS ITS OWN TOKEN RATHER THAN A SECOND CONSUMER OF `--shadow-deck-row-live`, and that is
-     Q2's ruling rather than an oversight. The two values are identical TODAY, and they are
+     deliberate rather than an oversight. The two values are identical TODAY, and they are
      identical by coincidence of two components landing on the same marker shape, not by a
      shared rule: DESIGN.md files them under two different `components.*` blocks, each
      independently amendable, and this layer's contract is that a token IS its artefact entry
@@ -318,45 +298,43 @@
    through them, which is the mechanism, not the whole contract. Any motion that cannot be
    switched off by a duration alone — a transform, a 3D rotation, a crossfade — adds its own
    declaration HERE, in this block, in the story that builds it. A motion with no registered
-   fallback is an incomplete story (Decide-once #3).
+   fallback is unfinished.
 
-   UX-DR42's inventory is exhaustive. Each motion, its named fallback, and the story that
-   owns it:
+   UX-DR42's inventory is exhaustive. Each motion and its named fallback:
 
-     Agent-view bloom (fade + 8px rise)  -> appears in place                        (c6-5)
-     Push-replace crossfade              -> instant content swap                    (c6-6)
-     Card-tile hover pop                 -> no scale, shadow only                   (c4-4)
-     Image fade-in                       -> instant appearance                      (c4-4)
-     Curve-bar height                    -> instant jump                            (c4-8)
-     Deck-row live tint                  -> instant                                 (c4-7)
+     Agent-view bloom (fade + 8px rise)  -> appears in place
+     Push-replace crossfade              -> instant content swap
+     Card-tile hover pop                 -> no scale, shadow only
+     Image fade-in                       -> instant appearance
+     Curve-bar height                    -> instant jump
+     Deck-row live tint                  -> instant
      Accent glow fade                    -> glow omitted; count text + live region
-                                            carry the signal                        (c7-5)
+                                            carry the signal
      Refetch header shimmer              -> static "Updating…" in --type-micro
-                                            / --text-secondary                      (c7-4)
-     DFC flip 3D Y-rotation              -> instant face swap                       (c4-6)
+                                            / --text-secondary
+     DFC flip 3D Y-rotation              -> instant face swap
      Flip-control chrome fade            -> instant 0.65 -> 1.0 step (duration
-                                            token zeroed)                           (c4-6)
+                                            token zeroed)
      Detail-panel content swap           -> instant, no crossfade (it changes on
-                                            every hover)                            (c4-5)
+                                            every hover)
      History-popover fade                -> appears in place (opacity only over
                                             --motion-glide; the duration zeroing
                                             above IS the fallback — no transform,
-                                            nothing to register)                    (17.2)
+                                            nothing to register)
 
-   TWO ROWS READ AS CLASSES — SC-5 gate ruling (Brad, 2026-08-20, sc-5-gate-report-2026-08-20.md):
+   TWO ROWS READ AS CLASSES, deliberately:
    "Image fade-in" covers every image element's fade (the suggestion-row thumbnail included), and
-   "Deck-row live tint" covers the row-tint family (the suggestion row's tint + shadow included,
-   accepting the no-new-row ruling recorded at SuggestionsView.css and c6-7). The completeness
+   "Deck-row live tint" covers the row-tint family (the suggestion row's tint + shadow included;
+   the no-new-row reasoning is recorded at SuggestionsView.css). The completeness
    guard in token-usage.test.ts keys every shipped visual-class transition to a row above.
 
    AND, UNDER EVERY SETTING INCLUDING THIS ONE: NOTHING PULSES OR LOOPS. That is not
    registered here because it is never permitted in the first place — stylelint bans
    animation-iteration-count other than 1, the `infinite` keyword in an `animation`
    shorthand, and alternate/alternate-reverse direction, across every stylesheet in ui/.
-   The connection pill (c5-7) is the component this exists to protect — and it SHIPPED that
-   way: `ConnectionPill.css` declares no `animation` and no `transition` at all, on the dot or
-   anywhere else, so the ban was never tested against it and there is nothing of that
-   component's to register in the inventory above.
+   The connection pill is the component this exists to protect — and `ConnectionPill.css`
+   declares no `animation` and no `transition` at all, on the dot or anywhere else, so there is
+   nothing of that component's to register in the inventory above.
 
    This block is asserted by reading the CSS SOURCE, never a rendered DOM: jsdom does not
    evaluate media queries into computed style, so a getComputedStyle() assertion here would
@@ -370,9 +348,9 @@
     --motion-aurora: 0ms;
   }
 
-  /* ---- c4-4, THE FIRST REGISTRATION THIS BLOCK HAS EVER TAKEN ------------------------
-     Two motions ship in c4-4 and they need DIFFERENT amounts of help, which is the whole
-     reason this block distinguishes a mechanism from a registration:
+  /* ---- THE CARD TILE'S IMAGE FADE-IN AND HOVER POP -------------------------------------
+     Two motions ship on the card tile and they need DIFFERENT amounts of help, which is the
+     whole reason this block distinguishes a mechanism from a registration:
 
        IMAGE FADE-IN -> instant appearance. `transition: opacity var(--motion-pulse)` is
        expressed ENTIRELY through a duration token, so zeroing `--motion-pulse` above already
@@ -405,27 +383,24 @@
      win regardless of what a component declares is the textbook case for `!important`, and
      stating it here is what keeps the next registration from copying the pattern blindly.
 
-     ==== THE SELECTOR MOVED AT c4-6, AND THE MOVE IS THE POINT ==========================
-     This read `.card-tile:hover, .card-tile:focus-visible` until c4-6, whose flip control had to
-     become a SIBLING of the tile's button rather than a descendant of it (an interactive
-     descendant of a `<button>` is invalid HTML that React 19.2 warns about in development and
-     that assistive technology does not reliably expose — both measured). With the control
-     outside the button, `.card-tile:hover` is false while a pointer sits on it, so the pop moved
-     onto `.card-tile-frame`, which is the same BOX and a different element. The guard compares
-     selector TEXT per property, so this registration had to move in the same commit or the whole
-     suite would go red — a false FAILURE, which is the safe direction the residue at
-     `deferred-work.md:3750` was left standing for. */
+     ==== WHY THE SELECTOR IS THE FRAME AND NOT THE TILE =================================
+     The flip control is a SIBLING of the tile's button rather than a descendant of it (an
+     interactive descendant of a `<button>` is invalid HTML that React 19.2 warns about in
+     development and that assistive technology does not reliably expose — both measured). With
+     the control outside the button, `.card-tile:hover` is false while a pointer sits on it, so
+     the pop lives on `.card-tile-frame`, which is the same BOX and a different element. The
+     guard compares selector TEXT per property, so this registration must name the same selector
+     as CardTile.css or the whole suite goes red. */
   .card-tile-frame:hover,
   .card-tile-frame:has(:focus-visible) {
     transform: none !important;
   }
 
-  /* ---- c4-6, THE DFC FLIP — THE FIRST 3D MOTION, AND THE FIRST THAT NEEDS A REPLACEMENT
-     RATHER THAN A REMOVAL -------------------------------------------------------------
+  /* ---- THE DFC FLIP — A 3D MOTION THAT NEEDS A REPLACEMENT RATHER THAN A REMOVAL ------
      UX-DR42's named fallback is "instant face swap". Two rotations ship (FlipControl.css): the
      stacked-faces box turns 180° on flip, and the back face is pre-rotated 180° so that it reads
      the right way round once it has. Both are `transform`, so both are switched off here — and
-     this is where this registration stops resembling c4-4's.
+     this is where this registration stops resembling the hover pop's.
 
      THE HOVER POP COULD SIMPLY BE REMOVED. THIS ONE CANNOT. `backface-visibility: hidden` is
      what decides which of the two stacked faces is painted, and it decides it FROM the rotation:
@@ -437,12 +412,7 @@
      The two `visibility` rules are that replacement, and they are the whole of the fallback:
      each state paints exactly one face, instantly, with nothing to animate. `visibility` rather
      than `display: none`, because the hidden face keeps its box — the layout of the card is the
-     same at both settings, which is the interchangeability UX-DR36 asks for everywhere else.
-
-     `deferred-work.md:3750` — *"the residue stands for whoever ships the next motion (c4-6's 3D
-     flip)"* — is therefore triggered TWICE by this one story: once by the flip's own two
-     rotations, and once by the hover pop's selector moving onto the frame above. Both are closed
-     here rather than carried. */
+     same at both settings, which is the interchangeability UX-DR36 asks for everywhere else. */
   .card-faces[data-flipped='true'],
   .card-face.is-back {
     transform: none !important;
@@ -453,16 +423,15 @@
     visibility: hidden;
   }
 
-  /* ---- c4-7, THE DECK-ROW LIVE TINT — MECHANICAL, AND DELIBERATELY WITHOUT A RULE ------
-     UX-DR42's inventory row for this motion is above and has been reserved BY NAME since c4-4:
-     "Deck-row live tint -> instant (c4-7)". This is the story that fills it, and what it fills
-     it with is a statement rather than a declaration.
+  /* ---- THE DECK-ROW LIVE TINT — MECHANICAL, AND DELIBERATELY WITHOUT A RULE -----------
+     UX-DR42's inventory row for this motion is above: "Deck-row live tint -> instant". What
+     fills it is a statement rather than a declaration.
 
      `.deck-row` transitions `background-color` and `box-shadow` over `var(--motion-pulse)` and
      NOTHING ELSE. That is expressed entirely through a duration token, so zeroing
      `--motion-pulse` at the top of this block already makes it instant — it is MECHANICAL, in
-     exactly the sense c4-4 drew the distinction for its image fade-in, and writing a rule for
-     it here would suggest the mechanism does not work.
+     exactly the sense the image fade-in above is, and writing a rule for it here would suggest
+     the mechanism does not work.
 
      THE DISTINCTION IS THE WHOLE REASON THIS BLOCK EXISTS, so it is worth saying which side
      this lands on and why it was checked rather than assumed. A zeroed duration makes a
@@ -472,16 +441,15 @@
      appears at once and the inset rule appears at once, which is precisely the named fallback.
 
      The consequence for the guard is recorded rather than left to be rediscovered: the
-     enumerated shipped-motion pin in tests/token-usage.test.ts (four entries, all c4-6's) does
-     NOT move for this story, because that pin is keyed on `transform` declarations and this
-     story adds none. A later story that gives a deck row a transform inherits both halves — the
-     rule here and the pin there. */
+     enumerated shipped-motion pin in tests/token-usage.test.ts does NOT count this motion,
+     because that pin is keyed on `transform` declarations and the deck row has none. Whatever
+     later gives a deck row a transform inherits both halves — the rule here and the pin there. */
 
-  /* ---- c6-5, THE AGENT-VIEW BLOOM — THE FIRST REGISTRATION EPIC 6 OWES --------------
-     UX-DR42's inventory row for this motion is at the top of this block and has been reserved
-     BY NAME since c4-4: "Agent-view bloom (fade + 8px rise) -> appears in place (c6-5)". This
-     is the story that fills it, and it needs a rule rather than a statement — the distinction
-     c4-4 drew for its two motions and c4-7 landed on the other side of.
+  /* ---- THE AGENT-VIEW BLOOM — A RULE RATHER THAN A STATEMENT --------------------------
+     UX-DR42's inventory row for this motion is at the top of this block: "Agent-view bloom
+     (fade + 8px rise) -> appears in place". It needs a rule rather than a statement — the
+     distinction the card tile's two motions draw above, landing on the opposite side from the
+     deck-row tint.
 
      THE FADE IS MECHANICAL. `.agent-view` transitions `opacity` over `var(--motion-bloom)`, so
      zeroing that token at the top of this block already makes it instant. Nothing is written
@@ -508,19 +476,19 @@
     transform: none !important;
   }
 
-  /* ---- c7-4, THE REFETCH HEADER SHIMMER — THE FIRST REGISTRATION THAT SWAPS A SIGNAL IN
-     RATHER THAN MERELY SWITCHING ONE OFF -----------------------------------------------
+  /* ---- THE REFETCH HEADER SHIMMER — A REGISTRATION THAT SWAPS A SIGNAL IN RATHER THAN
+     MERELY SWITCHING ONE OFF ----------------------------------------------------------
      UX-DR42's inventory row is at the top of this block: "Refetch header shimmer -> static
-     'Updating…' in --type-micro / --text-secondary (c7-4)". The shimmer ships as a NON-ANIMATED
+     'Updating…' in --type-micro / --text-secondary". The shimmer ships as a NON-ANIMATED
      veil (AppShell.css dims `.app-shell-identity` to 0.55 while `data-updating` is set, easing
      over `--motion-glide`) — no keyframes, no transform, nothing looping — so the EASE is
      already mechanical: zeroing `--motion-glide` above makes the dim instant.
 
      But an instant dim is still the shimmer, and UX-DR42's fallback is a REPLACEMENT: the veil
      goes, the words arrive. Two rules, and both halves live HERE because this block is the
-     single registration point (Decide-once #3):
+     single registration point:
 
-       The first restores the identity block to full strength. `!important` for the c4-4 hover
+       The first restores the identity block to full strength. `!important` for the hover
        pop's measured reason, verbatim: this file is @imported first, the two selectors tie at
        (0,2,0), and without it this override would parse cleanly and do nothing.
 
@@ -534,9 +502,9 @@
     display: block;
   }
 
-  /* ---- c7-5, THE QUANTITY-BADGE ACCENT GLOW — OMITTED, NOT MERELY INSTANT --------------
+  /* ---- THE QUANTITY-BADGE ACCENT GLOW — OMITTED, NOT MERELY INSTANT --------------------
      UX-DR42's inventory row is at the top of this block: "Accent glow fade -> glow omitted;
-     count text + live region carry the signal (c7-5)". The glow ships as a transition out of a
+     count text + live region carry the signal". The glow ships as a transition out of a
      state attribute (QuantityBadge.css: the flashed rule paints `var(--glow)` instantly, the
      base rule fades it out over `--motion-glide`) — no keyframes, no transform, nothing looping
      — so the FADE is already mechanical: zeroing `--motion-glide` above makes it instant.
@@ -544,13 +512,13 @@
      But an instant glow that never fades is a PERSISTENT glow — the opposite of "omitted", and
      the exact trap this block's header describes: duration-zeroing neutralises motion, not
      appearance. So the glow is switched off HERE, explicitly, on the flashed selector. The
-     signal survives its absence by design: the group-header count and c7-5's coalesced
+     signal survives its absence by design: the group-header count and the coalesced
      `deck-announcement` region are the carriers, and the glow was only ever garnish (UX-DR16).
 
-     `!important` for the c4-4 hover pop's measured reason, verbatim: this file is @imported
+     `!important` for the hover pop's measured reason, verbatim: this file is @imported
      first, the two selectors tie at (0,2,0), and without it this override would parse cleanly
-     and do nothing. The enumerated shipped-motion pin does NOT move — that pin is keyed on
-     transform-family declarations and this story adds none. */
+     and do nothing. The enumerated shipped-motion pin does NOT count this — that pin is keyed on
+     transform-family declarations and the badge has none. */
   .card-tile-quantity[data-flashed='true'] {
     box-shadow: none !important;
   }

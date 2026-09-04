@@ -21,10 +21,9 @@ import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
-// The app's ONE focus hand-off (c4-5/c4-11, `AC 6`: one focus home, one implementation). c7-6
-// adds this file as its FOURTH caller — see the surface-transition rescue below — which is a
-// caller, not a copy: nothing here re-implements the `tabIndex = -1` / focus / remove-on-blur
-// dance, and `keyboard-floor.test.ts:787` still finds exactly one module that writes `.tabIndex`.
+// The app's one focus hand-off. The surface-transition rescue below is a caller, not a copy:
+// nothing here re-implements the `tabIndex = -1` / focus / remove-on-blur dance, and
+// `keyboard-floor.test.ts` still finds exactly one module that writes `.tabIndex`.
 import { focusHome } from './containers/focusHome'
 import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { useAgentConnection } from './state/connection'
@@ -34,295 +33,70 @@ import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
 import { useSystemState } from './state/systemState'
 
 /**
- * The application root.
+ * The application root: it composes the shell and fills its slots, and decides nothing about
+ * what the slots say.
  *
- * It composes the shell, the card grid, one state panel, the header badges and the attribution,
- * and nothing else. Every other region the shell holds open — the two analysis panels, the card
- * detail, the deck list, the format check, the agent-view nav and the agent view itself —
- * arrives as a prop from a later story, so this file's job is to stay as close to one line as it
- * honestly can.
+ * The left column is wire-driven (FR-22): the panel is chosen from the poll response's `reason`
+ * token through `PANEL_FOR_REASON`, never from a bare status code (AD-16). The precedence between
+ * a deck and a system panel is NOT decided here: `surfaceOf` (`src/state/deck.ts`) is the one
+ * place it lives, so every consumer reads the same answer instead of re-deriving it from
+ * `deck !== null`. `useSystemState` owns the poll and `useDeckState` owns the boot, and `App` is
+ * the one consumer of each: a second mounted caller silently doubles the request rate.
  *
- * c4-1 owns the card cache and the in-flight deduping that will feed those props, extending the
- * store and the fetch layer **c3-9** opened; until then the shell renders its own placeholders,
- * each naming the story that replaces it.
+ * The right column renders only for `kind === 'deck'`. UX-DR20's "never empty while a deck is
+ * loaded" has nothing to be true of otherwise: a card panel with no deck behind it is an empty
+ * box or a card from a deck no longer on the glass. UX-DR30 holds because the column stays.
  *
- * ================= THE LEFT COLUMN IS NOW WIRE-DRIVEN (c3-9, FR-22) ====================
- *
- * `useSystemState` polls `GET /api/decks` and reports which system panel is true right now. The
- * panel is chosen from the response's `reason` TOKEN through `states.ts`'s `PANEL_FOR_REASON` —
- * never from a bare status code, which is AD-16's rule and the reason two different `503`s put
- * two different panels on the glass. Nothing here decides anything: this file renders whichever
- * panel the boundary picked, and the deck names that one of them carries.
- *
- * WHY THE TERNARY, RATHER THAN `state={panel}`: `StatePanelProps` is a DISCRIMINATED UNION, and
- * only the `no-active-deck` arm accepts `decks` — `EXPERIENCE.md` attaches a deck list to that
- * row and to no other. Spreading one `decks` prop across every state would compile only if that
- * constraint were removed. The two branches are the constraint being honoured, not a special
- * case: it is exactly one `<StatePanel>` on screen either way.
- *
- * THE DISPLACEMENT c2-9 ACCEPTED IS UNCHANGED, AND STILL NOT PAPERED OVER: `AppShell`'s
- * left-column placeholder — the line naming c4-4 and c4-8 — is DISPLACED by this prop, never
- * deleted. It still fires whenever `left` is empty and `AppShell.test.tsx` still asserts it
- * against the component's own props. What c3-9 changed is only that the choice is no longer a
- * constant; **c4-2 / c4-4** replace it again with a deck when there is a deck.
- *
- * THE `decks` PROP IS NOW PASSED, and that is this story's other half. `GET /api/decks` shipped
- * in **c3-1** and nothing called it until now; an empty list is still the ordinary fresh-install
- * answer and still renders nothing extra (StatePanel AC 5). **c4-2** owns reading the deck
- * itself — this story reads the names, which is all the panel's copy promises.
- *
- * ================= AND NOW THERE IS A DECK (c4-2, FR-07, FR-05) ========================
- *
- * `useDeckState` boots once per mount: `GET /api/active-deck`, then — on a non-null id —
- * `GET /api/deck/{deck_id}`. **The precedence between a deck and a system panel is NOT decided
- * here.** `surfaceOf` is the one place it lives (c4-2 Q1), exported from `src/state/deck.ts` so
- * that c4-4's grid, c4-7's deck list and c4-12's empty state read the same answer rather than
- * each re-deriving it from `deck !== null` — which is the epic's *"the grid and the list panel
- * cannot disagree"* clause applied one level up. This file renders the answer and computes none
- * of it; `deck` below is a NARROWING of that answer, not a second rule.
- *
- * BOTH HOOKS ARE CALLED HERE BECAUSE BOTH OWNERSHIPS LIVE HERE. `useSystemState` owns the poll
- * and `useDeckState` owns the boot, and each one's docstring says `App` is its ONE consumer for
- * the same measured reason: a second mounted caller creates a second poller / a second boot and
- * silently doubles the request rate.
- *
- * ================= AND NOW THE DECK IS ON THE GLASS (c4-4, FR-19) ======================
- *
- * The `left` slot finally holds a `CardGrid`. Until this story a loaded deck displaced the system
- * panel and put nothing in its place, so the slot fell back to `AppShell`'s own placeholder —
- * *"The card-art grid lands here — c4-4 …"* — which was the honest displacement rather than a
- * regression, and what made this story's slot findable by searching for its own id. That line is
- * now displaced in turn: **the fourth application of the c2-9 ruling, and the same one.**
- * `AppShell.tsx` is NOT edited, its placeholder still fires whenever `left` is empty, and
- * `AppShell.test.tsx` still asserts it against the component's own props. What changed is only
- * which of the two the running app shows — and `App.test.tsx`'s displacement assertion changed
- * with it, which is the point of that assertion existing.
- *
- * `CardGrid` is the first component in this codebase that is NOT a presentation-only primitive.
- * It lives in `src/containers/`, the category c4-4 ruled into existence (Q1), because a tile that
- * takes `<img onLoad>` and holds a `ref` is banned outright from `src/components/` by four
- * separate guards. `ui/README.md` carries the argument; ~15 later component stories inherit it.
- *
- * Nothing about the precedence moved. `surfaceOf` still decides, this file still renders the
- * answer and computes none of it, and the grid is handed `surface.boards` — the derivation
- * `deckGroups.ts` performed once at write time *"so the grid and the list panel cannot
- * disagree"*. **c4-7**'s deck list reads the same value, including the sideboard this grid
- * deliberately does not draw.
- *
- * ================= AND NOW THE DECK RESPONDS (c4-5, FR-17) =============================
- *
- * The `right` slot holds the card detail panel — the fifth application of the c2-9 displacement
- * ruling, unchanged: `AppShell.tsx` is NOT edited, its placeholder (*"Card detail — c4-5 — the
- * deck list — c4-7 — and the format check — c4-10 — stack here"*) still fires whenever `right`
- * is empty, and `AppShell.test.tsx` still asserts it against the component's own props. What
- * changed is which of the two the running app shows — and only for a deck.
- *
- * ================= WHAT THE RIGHT COLUMN DOES BEHIND A STATE PANEL (c4-5 Q14) ==========
- *
- * **This is a ruling, and it closes a gap in the UX contract rather than one in this story.**
- * `validation-report-2026-07-25.md:78` records it as **L8** — *"Right-column panel visibility is
- * specified for cold-open-no-deck but not for the database-not-initialized or disconnected
- * states, which also put a State panel in the left column"* — and `:146` records the lows as
- * unactioned. The two halves of the contract genuinely disagree: `EXPERIENCE.md:112` says *"Right
- * column panels hidden"* for the one case it covers, while UX-DR30 says *"the right column, nav
- * and footer remain functional around it"*.
- *
- * `surfaceOf` returns `{ kind: 'panel' }` for all six state keys, so this file is where the
- * contradiction becomes code. **Ruled: the detail panel renders only for `kind === 'deck'`.**
- * The reason is not symmetry, it is that UX-DR20's *"never empty while a deck is loaded"* has
- * nothing to be true of otherwise — a persistent card panel with no deck behind it would either
- * be an empty box or would keep showing a card from a deck that is no longer on the glass. The
- * one case the contract DOES specify is honoured exactly, the other five are made to match it,
- * and UX-DR30 stays satisfied because the column is still there with the shell's own line in it.
- * **c4-7 and c4-10 inherit this rather than re-deciding it**, which is what makes it worth
- * writing here instead of in the panel.
- *
- * The `undefined` (rather than `null`) is the same spelling the header props use, and `filled()`
- * makes either safe — see the `deckName` note below.
- *
- * ================= THE `h1` STOPS SAYING WHAT THE KICKER SAYS (C3 retro F2) ============
- *
- * `deckName` is filled with the deck's own name, so the header stops rendering the product name
- * twice — recorded at the C3 retro *"so c4-2 does not treat the swap as cosmetic"*. `AppShell`
- * is NOT edited: the element, its level and its position do not move, which is the whole point
- * of it being a prop, and its `filled()` fallback still fires when there is no deck — which is
- * what keeps a fresh install from being heading-less (c2-6 Q3). `undefined` rather than `''` is
- * deliberate on both header props, though `filled()` makes either safe.
- *
- * ================= WHY THE FOOTER IS NO LONGER A PLACEHOLDER (c2-10) ====================
- *
- * The attribution is a CONDITION OF PUBLIC RELEASE (`DESIGN.md:375`, NFR-08, UX-DR32), not a
- * design choice, so unlike every other slot this one is not waiting for data — it is correct
- * from day one and stays correct forever. There is nothing a later story replaces it with.
- *
- * The same displacement c2-9 performed on the left column applies here, for the same reason and
- * with the same care: `AppShell`'s footer placeholder — the line naming c2-10 — is DISPLACED by
- * this prop, not deleted. It still fires whenever `footer` is empty, and `AppShell.test.tsx`
- * still asserts it against the component's own props. What changed is which of the two the
- * running app shows.
- *
- * ================= "EVERY SURFACE", STRUCTURALLY (Q3, Brad 2026-07-30) ==================
- *
- * The epic asks the attribution to be present on EVERY top-level surface. Today there is exactly
- * one, so an enumerated list of surfaces would be a list its author thought of — this epic's
- * standing finding, three rounds running. The rule is structural instead, and it is already true
- * by construction: **there is one `AppShell`, one `footer` slot and no router, so every surface
- * renders through this file.** `App.test.tsx` asserts the footer is in the `contentinfo`
- * landmark by role and by text, and `ui/README.md` records the rule where the next surface's
- * author will read it.
- *
- * That holds through Epic 6 without amendment, and c6-5 is where it stopped being a prediction:
- * the agent view is an OVERLAY rendered inside the shell (`AppShell`'s `overlay` slot, wired at
- * the foot of this file), not a route that replaces it, so the footer survives it by
- * construction rather than by anyone remembering.
+ * `deckName` fills the `h1` so the header does not render the product name twice; `AppShell`'s
+ * `filled()` fallback keeps a fresh install from being heading-less. The footer attribution is a
+ * condition of public release (NFR-08, UX-DR32) and must appear on every top-level surface, which
+ * holds structurally: one `AppShell`, one `footer` slot, no router, and the agent view is an
+ * overlay inside the shell rather than a route that replaces it.
  */
 export default function App() {
   const system = useSystemState()
   const surface = surfaceOf(useDeckState(), system)
-  // THE AGENT VIEW (c6-5, wired to the wire at c6-6). A CONTENT object or `null`, never a
-  // boolean: the store's own selector resolves "is one showing, and what is it" once, so this
-  // file cannot disagree with it (`agentView.ts`'s `openViewOf`). Since c6-6 the writer is a
-  // `suggestions` frame off the socket (`connection.ts` → `openSuggestionsPush`), so this slot
-  // is now live in the running app rather than exercised by tests alone. Wiring it at c6-5
-  // rather than here was Brad's Q1 ruling (2026-08-10): it is what let the Esc-layering
-  // contract `CardDetail.tsx:89-101` had declared untestable since c4-5 be tested a story early.
+  // A content object or `null`, never a boolean: the store's selector (`openViewOf`) resolves
+  // "is one showing, and what is it" once, so this file cannot disagree with it.
   const agentView = useOpenAgentView()
-  // THE SOCKET, MOUNTED ONCE (c5-6, AC 1). Third in declaration order, behind the poll and the
-  // boot, and returning nothing: what it produces is `system.connection`, which `surfaceOf` two
-  // lines up already reads. `App` is its ONE consumer for the reason `useSystemState` and
-  // `useDeckState` both give — a second mounted caller is a second socket per tab.
-  //
-  // ==== WHERE THE UPGRADE LANDS IN THE REQUEST QUEUE (c4-12 Q10's measurement, extended) ==
-  // React runs effects in DECLARATION ORDER, and hooks called here run their effects BEFORE this
-  // component's own two `useEffect` blocks below. So the order on a cold open is: the poll's
-  // `GET /api/decks`, the boot's `GET /api/active-deck`, this loop's `GET /api/session`, then —
-  // once the ticket lands, a round trip later — the upgrade, and the deck detail and the format
-  // check. The mint is one small request ahead of them; the UPGRADE is not in the HTTP queue at
-  // all once established, which is the point of a socket.
-  //
-  // ⚠️ Declared HERE, above the effect block below. The deck-wide card sweep that used to sit
-  // between them is gone — the deck detail embeds every card, so there is nothing to sweep — and
-  // with it the ~180 ms of queue contention its ordering against the format check was worth.
+  // The socket, mounted once; `App` is its one consumer because a second mounted caller is a
+  // second socket per tab. It produces `system.connection`, which `surfaceOf` already reads. Hooks
+  // run their effects in declaration order, ahead of this component's own `useEffect` blocks, so
+  // keep it here: the session mint then precedes the deck detail and the format check.
   useAgentConnection()
-  // THE UPDATING FLAG (c7-4, UX-DR35, UX-DR42). A hook call above the two measured effect
-  // blocks, exactly as `useAgentConnection` was added — the blocks below are NOT moved and
-  // their relative order is unchanged (see the ⚠️ note above them). A primitive subscription,
-  // so this file re-renders on the flag flipping and on nothing else the deck slice writes.
+  // A primitive subscription (UX-DR35, UX-DR42): this file re-renders on the flag flipping and
+  // on nothing else the deck slice writes.
   const deckUpdating = useDeckUpdating()
-  // The one narrowing of the one rule. Not a second precedence decision: `surfaceOf` has already
-  // said which of the two is true, and this line only gives the deck arm a name so that the
-  // three slots below can read its fields without repeating the discriminant check.
+  // Not a second precedence decision: `surfaceOf` has already said which arm is true; this only
+  // names the deck arm so the slots below can read its fields without repeating the check.
   const deck = surface.kind === 'deck' ? surface : null
   const detail = deck?.detail ?? null
-  // THE FORMAT CHECK NOW KEYS ON `detail` ITSELF, AND THAT IS c7-3 OVERTURNING c4-10's Q7 RULING
-  // ON PURPOSE (ledgered: deferred-work's stale-forever entry named this story; the formatCheck
-  // header names it too). The comment that used to live here argued the opposite — key on the id
-  // STRING, because `detail` is a fresh object on every boot and an object key would re-request
-  // on a re-boot of the same deck. Both halves of that argument were true, and the second has
-  // now changed sides: `detail`'s identity changes exactly when a settled boot OR a settled
-  // c7-3 refetch writes the store, which is exactly the staleness signal the panel lacked —
-  // "one request per deck id" was request-thrift from before any freshness signal existed, and
-  // it is precisely what left the panel stale forever after an agent edit. The amended pin is
-  // still a count: ONE format-check request per settled detail (App.test.tsx pins it), so a
-  // render, a poll transition or a socket status change still issue nothing.
 
-  // THE EMPTY DECK, READ ONCE (c4-12, Q1, AC 1, AC 7, AC 9, AC 10, AC 12).
-  //
-  // A deck with zero cards on every board is a `{kind:'deck'}` surface exactly like a full one —
-  // `deck.ts` settles any 200 that way and `boardsOfDeck` over `cards: []` yields three empty
-  // boards — so there is NO new `Surface` arm and no third re-derivation from `deck !== null`
-  // (c4-2's decide-once ruling). The predicate itself lives beside `DeckBoards` in
-  // `deckGroups.ts`, which is the module that OWNS that type and produces it; see its docstring
-  // for why one expression exists rather than a fifth spelling, and for the sideboard ruling it
-  // inherits from `hasCards` below.
-  //
-  // It is read HERE, above both effects, because two consumers need it at different moments: the
-  // format check's request (suppressed for an empty deck, below) and the format check's RENDER
-  // (gated in the right column). Computing it twice would be the drift `deckGroups.ts` exists to
-  // prevent, in the one file that already reads the derivation three ways.
+  // A deck with zero cards on every board is a `{kind:'deck'}` surface exactly like a full one,
+  // so there is no extra `Surface` arm. The predicate lives beside `DeckBoards` in
+  // `deckGroups.ts`; it is read once, above both effects, because the request and the render
+  // both need it.
   const emptyDeck = deck !== null && deckIsEmpty(deck.boards)
 
-  // THE FORMAT CHECK'S ONE READ (c4-10, Q5, Q6, Q7, AC 9–12).
+  // The format check's one read, driven from here because a container may not reach the network
+  // (`shell.test.ts`) and neither may this file (`posture.test.ts`): `formatCheck.ts` owns the
+  // request, this line owns the decision. Not inside `createDeckBoot` either — that would make a
+  // panel's data a first-paint dependency and put a network outcome inside the value whose
+  // identity IS the deck's, so a report landing would read as a deck replacement and release the
+  // user's pin.
   //
-  // ==== WHY IT IS DRIVEN FROM HERE AND NOT FROM THE PANEL ==============================
-  // A container MAY NOT reach the network (`shell.test.ts:2071-2086` refuses `fetch`, `zustand`
-  // and `.setState` in every container module) and `App.tsx` may not either
-  // (`posture.test.ts:344-357` asserts this file does not match the network family). `client.ts`
-  // is the one door, so `src/state/formatCheck.ts` owns the request and this line owns the
-  // DECISION to make it. This file calls a state action and imports no client.
+  // Keyed on `detail` itself, not the id string: `detail`'s identity changes exactly when a
+  // settled boot or a settled refetch writes the store, which is the staleness signal the panel
+  // needs after an agent edit. The pin is a count — one request per settled detail
+  // (App.test.tsx) — so a render, a poll transition or a socket status change issue nothing.
   //
-  // ==== WHY NOT INSIDE `createDeckBoot`, WHICH IS THE OBVIOUS PLACE ====================
-  // It would make a panel's data a FIRST-PAINT dependency of the whole deck view, and it would
-  // put a network outcome inside the value whose reference identity IS the deck's identity —
-  // `deckMemory.ts` and `CardDetail`'s effect both read `boards` that way, so a report landing
-  // would read as a deck replacement and release the user's pin. The measured cost is worth
-  // stating for the same reason: this is a SECOND `get_deck_with_cards` on the backend, not a
-  // second validation — 5.2 ms median, 33.8 ms worst, measured over the then-40 real decks
-  // in-process (42 at c4-12's re-key, AC 30; two more decks move neither number's order).
-  //
-  // ==== AND WHY IT CLEARS ==============================================================
-  // Without the `null` arm a report would outlive its deck: a deck deleted between two polls
-  // leaves the surface a state panel while the right column's third box still asserts a legality
-  // verdict about a deck that is no longer on the glass. `clearFormatCheck` also bumps the
-  // slice's generation, so a read in flight when the deck goes away writes nothing.
-  //
-  // ONE REQUEST PER SETTLED DETAIL (c7-3, amending c4-10's Q7): `deck_changed`'s coalesced
-  // refetch settles a new `detail`, and this effect re-asks the 5 ms route once per settle — the
-  // panel finally refreshes with the deck it describes. The coalescing itself lives in `deck.ts`
-  // (a burst of events yields ONE settle, so it yields one re-ask here); building any second
-  // rule in this file would be exactly the reconciliation problem Q7 deferred.
-  //
-  // THE CLEANUP IS THE TEARDOWN HALF OF THE CITED PRECEDENT (c4-10 review): `createDeckBoot`
-  // pairs `start()` with `stop()` on cleanup, and this effect's first draft omitted its half —
-  // so an in-flight read survived unmount and wrote to the store, and a StrictMode dev remount
-  // fired a second WIRE request (the generation counter makes the second write harmless, not the
-  // request). `clearFormatCheck` bumps the generation, which abandons the in-flight read; on a
-  // deps change it runs before the next load, which re-drives from `'idle'` exactly as a deck
-  // switch already did through the loading write.
-  //
-  // ==== AND WHY AN EMPTY DECK DOES NOT ASK AT ALL (c4-12, Q4, AC 10) ===================
-  // The request is suppressed rather than made-and-ignored, and the reason is not thrift. The
-  // precedent is already asserted one story back — `App.test.tsx` pins "no format-check request
-  // behind a state panel" — and this is the same rule for the same reason: a panel that cannot
-  // be seen must not be a round trip on the one path NFR-05 measures.
-  //
-  // What the answer WOULD have been is worth writing down, because it is the honest argument for
-  // hiding the panel and neither artefact makes it. Run against the real validator (measured
-  // 2026-08-07, `format_check` over a zero-card deck, `standard` and `brawl` identical): SIX rows,
-  // nothing raised, nothing 404'd — one true `size` violation ("Mainboard has 0 cards; the
-  // minimum is 60") and **four vacuous greens**: *"Every card is legal in standard"*, *"No card
-  // exceeds the copy limit"*, *"No card is banned in standard"*, *"Sideboard has 0 cards"*. Three
-  // of those are confident assertions ABOUT ZERO CARDS — technically true, rhetorically false —
-  // and `routes/decks.py` names the failure mode in its own comment. That is what the panel would
-  // have said to someone who has not added a card yet.
-  //
-  // `emptyDeck` stays in the deps beside `detail`, and c7-3 is the story that made its edge
-  // live: a deck that gains its first card while the tab is open now refetches on the
-  // `deck_changed` frame, `detail` settles anew, `emptyDeck` flips false, and THIS effect asks
-  // for the first time — the forward contract the 2026-08-07 code-review correction recorded,
-  // discharged. (With `detail` itself now a dep, `emptyDeck` is technically derivable from it —
-  // it stays listed because the lint contract wants every read value named, and because the
-  // early-return arm below reads it first.)
-  //
-  // ⚠️ EVERY PATH THROUGH THIS EFFECT CLEARS, and the empty/null arm clears EAGERLY ON ENTRY
-  // rather than registering a cleanup — only the load arm returns `clearFormatCheck` (an arm that
-  // takes the early return has no in-flight read to abandon at unmount; what it must kill is the
-  // PREVIOUS deck's report, now, before this render shows it). c4-10's review found the missing
-  // cleanup half once already; an empty deck taking the early return must still CLEAR, or a
-  // report from the previous deck outlives it. (First written as "the teardown arm is
-  // UNCONDITIONAL" — literally false about the shape; corrected at code review 2026-08-07.)
-  //
-  // ==== WHERE THIS REQUEST NOW SITS IN THE QUEUE ======================================
-  // This request costs the backend **5.0 ms** (measured in-process, of which `format_check()`
-  // itself is 0.07 ms — the rest is a duplicated `get_deck_with_cards`). It used to be the last
-  // of AC 15's six named surfaces to paint by a wide margin, queued at position **106–107**
-  // behind a 99-request per-card sweep through six HTTP/1.1 sockets: measured 2026-08-07 in
-  // Chrome, the other five surfaces were in the DOM at ~205 ms and this one arrived at
-  // 311–428 ms. The sweep is gone (the deck detail embeds every card), so this is now the fourth
-  // request the tab makes and the ~180 ms of queue contention it was worth is not spent at all.
-  //
-  // `FormatCheck` still renders `null` until its report lands, so the panel does not exist until
-  // this request is answered — the ordering matters, it is just no longer contended.
+  // Every path clears, or a deck deleted between two polls would leave a legality verdict about
+  // a deck no longer on the glass. `clearFormatCheck` bumps the slice's generation, so an
+  // in-flight read writes nothing; as the cleanup it also covers unmount and a StrictMode remount.
+  // The empty/null arm clears eagerly instead: it has no in-flight read, and what it must kill is
+  // the previous deck's report, now. An empty deck does not ask at all, for the reason no request
+  // is made behind a state panel: an unseen panel must not be a round trip on the path NFR-05
+  // measures. `emptyDeck` stays in the deps because the lint contract wants every read named.
   useEffect(() => {
     if (detail === null || emptyDeck) {
       clearFormatCheck()
@@ -333,128 +107,52 @@ export default function App() {
   }, [detail, emptyDeck])
 
   /**
-   * What `surface.kind` was on the previous commit — the surface transition's only input.
-   *
-   * A ref rather than state, for `SkipLink`'s reason one level up: nothing renders differently,
-   * and a `setState` here would be a second render pass per surface change for no visible
-   * effect. It is written INSIDE the effect below and never during render (`react-hooks/refs` is
-   * an error, and `AgentView.tsx:200-206` is the shipped precedent for the same discipline).
+   * What `surface.kind` was on the previous commit — the surface transition's only input. A ref
+   * rather than state because nothing renders differently; written inside the effect below and
+   * never during render (`react-hooks/refs` is an error).
    */
   const previousSurfaceKind = useRef(surface.kind)
 
-  // ==== THE SURFACE TRANSITION'S FOCUS RESCUE (c7-6, epic AC 9, UX-DR46) ================
-  //
-  // ⚠️ APPENDED BELOW THE TWO MEASURED EFFECT BLOCKS, WHICH ARE NOT MOVED. Their relative order
-  // is worth ~180 ms of the six-surface layout (see the comment above); this block issues no
-  // request at all, so it cannot displace either one in the queue, and it is last so that it
-  // cannot be mistaken for a reordering of them.
-  //
-  // ==== THE HALF `SkipLink` LEDGERED, AND WHY IT LANDS HERE RATHER THAN THERE ===========
-  // `SkipLink.tsx:62-76` closed its own withdrawal hand-off and ledgered the rest by name: *"a
-  // tile or a deck row holding focus when the deck is deleted or refetched to `no-active-deck`
-  // has the identical problem"*. React unmounting the focused node drops focus to `<body>`,
-  // which restarts Tab from the top of the document — the failure `CardDetail`'s unpin control
-  // found first, at the scale of ONE control, and this is the same failure at the scale of a
-  // whole surface.
-  //
-  // ONE EFFECT, NOT FIVE COPIES OF THE `SkipLink` IDIOM. That component samples `heldFocus` on
-  // the way in because at ITS scale `activeElement === body` in a cleanup is ambiguous — the
-  // link may have died with focus, or focus may have been somewhere else entirely. At the
-  // SURFACE scale it is not ambiguous: the grid, the analysis row and the whole right column all
-  // hang off the same `kind === 'deck'` gate, so they depart in ONE commit, and anything OUTSIDE
-  // that gate which held focus (the header, the nav pills, the connection pill, the footer
-  // links) still holds it afterwards. Focus falling to `<body>` across a deck → panel transition
-  // therefore means the node that had it was in the departing surface. That covers the tile, its
-  // flip control, the deck row, the oracle scroller and the unpin control in one place — five
-  // focusables that would otherwise need five copies of the ref idiom, each with its own blur
-  // bookkeeping to get wrong.
-  //
-  // ALL THREE GUARDS ARE LOAD-BEARING. The focus guard is `SkipLink.tsx:112-116`'s ruling
-  // applied at this scale: if anything else has ALREADY taken focus, moving it again would be
-  // this effect overriding a decision it did not make. The view guard exists because an open
-  // agent view makes that focus reading unreliable — its heading usually holds focus, but a
-  // pointer click on the dialog's non-focusable content blurs to `<body>` (a browser behaviour
-  // jsdom does not model), and rescuing then would park focus BEHIND the modal. Together they
-  // keep the "deletion behind an open view" walk landing on the view's own restore path
-  // (`AgentView.tsx:222-261`) rather than being yanked to the panel underneath while the reader
-  // is still reading.
-  //
-  // THE TARGET IS `AgentView.tsx:253` VERBATIM — the state panel's headline if one is showing,
-  // the `<h1>` otherwise. Not a second destination rule: the panel is what replaced the surface
-  // the focus came from, and `AppShell.test.tsx:66` pins exactly one `h1` for the fallback. The
-  // `??` arm is unreachable through this transition today (every non-`deck` surface renders a
-  // `StatePanel`) and is kept because it costs one expression to be right if that ever changes.
-  //
-  // THE ACCEPTED RESIDUE, recorded rather than guarded against: if focus was already on `<body>`
-  // because nothing had ever been focused, this still moves it to the headline. That is the
-  // standard SPA answer to replaced content, it is what ARM 3 of the agent view's restore
-  // already does, and the alternative — a `heldFocus`-style sample of every focusable in the
-  // departing surface — would be the five copies this effect exists to avoid.
+  // The surface transition's focus rescue (UX-DR46). React unmounting the focused node drops
+  // focus to `<body>`, which restarts Tab from the top of the document; a tile or a deck row
+  // holding focus when the deck is deleted or refetched hits that at the scale of a whole surface.
+  // One effect rather than a copy of `SkipLink`'s ref idiom per focusable: the grid, the analysis
+  // row and the right column all hang off the same `kind === 'deck'` gate, so they depart in one
+  // commit, and anything outside it still holds focus afterwards — focus on `<body>` across a
+  // deck → panel transition therefore means the departing surface held it. If something else
+  // already took focus, moving it again would override a decision this effect did not make. The
+  // target is the state panel's headline if one is showing, else the `<h1>` (`AppShell.test.tsx`
+  // pins exactly one); the `??` arm is unreachable today and costs one expression to be right if
+  // that changes.
   useEffect(() => {
     const departed = previousSurfaceKind.current
     previousSurfaceKind.current = surface.kind
     if (departed !== 'deck' || surface.kind === 'deck') return
-    // THE THIRD GUARD (Greptile, PR #80): an OPEN AGENT VIEW makes body-focus unreadable. The
-    // inference below — "focus on `<body>` across a deck → panel transition means the departing
-    // surface held it" — assumed the view always holds focus while open, and it usually does
-    // (its title takes focus on open). But a real pointer click on the dialog's NON-focusable
-    // content blurs to `<body>` — jsdom never models this, which is why no test caught it — and
-    // rescuing then would park keyboard and AT focus on the panel headline BEHIND the still-open
-    // modal. With a view open the rescue always declines: focus inside the view is ARM 3's to
-    // restore on close, and body-focus beside an open dialog is the view's pre-existing
-    // condition, not this transition's.
+    // An open agent view makes body-focus unreadable: its title usually holds focus, but a
+    // pointer click on the dialog's non-focusable content blurs to `<body>` (jsdom does not model
+    // this), and rescuing then would park focus on the headline BEHIND the still-open modal.
+    // Focus inside the view is the view's own restore-on-close to handle.
     if (agentView !== null) return
     if (document.activeElement !== null && document.activeElement !== document.body) return
     focusHome(document.querySelector('.state-panel-headline') ?? document.querySelector('h1'))
   }, [surface.kind, agentView])
 
-  // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
-  //
-  // UX-DR31 says "any surface rendering a POPULATED grid"; `EXPERIENCE.md:100` contradicts itself
-  // inside a single table row — its *Use* column says "First Tab stop on every surface" while its
-  // body says "Present on every surface that renders a populated grid". And an EMPTY deck (c4-12)
-  // satisfies neither branch of the written rule: it renders no state panel, so the withdrawal
-  // trigger is absent, and its grid is not populated, so the presence trigger is absent too.
-  //
-  // Ruled: present iff a deck is on the glass AND it has at least one card. That covers the state
-  // panel (no deck) and c4-12's empty deck (no cards). The reason is that an empty deck has
-  // NOTHING TO SKIP — zero tiles and zero rows between the link and the right column, so the link
-  // would save zero Tab stops. NOT because the target would be missing: `CardDetail` renders its
-  // frame (carrying `SKIP_TARGET_ID`) and the `Panel` `<h2>` unconditionally — AC 7's own
-  // "the panel is always there" region test pins that — and UX-DR20's "first card of the first
-  // type group" fills the panel's CONTENT, not its heading. (The first written form of this
-  // comment claimed the target would not exist; corrected at code review 2026-08-07.)
-  //
-  // Read off `surface` and `boards`, NOT re-derived: `deck.ts:388-390` warns by name that
-  // `surfaceOf` exists so its consumers "read the same answer rather than each re-deriving it from
-  // `deck !== null`". The card test spans EVERY board the corridor draws from — commander plus
-  // mainboard (the set `CardGrid.tsx:76` spreads into tiles) AND the sideboard, because c4-7's
-  // deck list renders a focusable row per sideboard card too (`DeckList.tsx:251-274`). A
-  // sideboard-only deck has no tiles but still has a corridor of rows, and it was the code-review
-  // ruling (2026-08-07, review of this story) that the link's condition is "any focusable deck
-  // row exists", not "any tile exists" — the tile-only spelling withdrew the link from a state
-  // neither of Q3's two documented cases covers.
-  //
-  // ==== THE BOARD TEST MOVED, AND THE RULING DID NOT (c4-12, Q1) =======================
-  // Everything above still holds word for word; what changed is WHERE the three-board expression
-  // lives. c4-12 needs the same question answered for its empty-deck line, and two spellings of
-  // "does this deck have anything in it" in one file is the drift `deckGroups.ts` was written to
-  // prevent. So the expression is `deckIsEmpty` beside `DeckBoards`, and this line is its exact
-  // negation — a change to the sideboard clause is now structurally a change to both, instead of
-  // a change to one that a reviewer has to notice was not made to the other.
+  // The skip link is present iff a deck is on the glass AND it has at least one card (UX-DR31).
+  // An empty deck has nothing to skip — zero tiles and zero rows before the right column — not a
+  // missing target: `CardDetail` renders its frame (carrying `SKIP_TARGET_ID`) unconditionally.
+  // The sideboard counts because the deck list renders a focusable row per sideboard card, so a
+  // sideboard-only deck still has a corridor. Spelled as `deckIsEmpty`'s exact negation so a
+  // change to the sideboard clause is structurally a change to both.
   const hasCards = deck !== null && !emptyDeck
 
   return (
     <AppShell
       skipLink={hasCards ? <SkipLink /> : undefined}
       deckName={deck?.detail.name}
-      /* THE UPDATING MARKER'S GATE (c7-4). `deck !== null && deckUpdating`, and both halves are
-         load-bearing: the flag alone is also true during a COLD boot (the store cannot know what
-         is on the glass), and it is `deck !== null` — `surfaceOf`'s own answer, not a second
-         derivation — that keeps a cold open, a state panel and the booting frame unmarked. The
-         marker therefore covers exactly the windows UX-DR35 describes: a c7-3 single-request
-         refetch AND a full re-drive behind a still-settled deck (EXPERIENCE.md names reconnect
-         explicitly), because both raise the flag while the deck stays rendered beneath them. */
+      /* Both halves are load-bearing: the flag alone is also true during a cold boot (the store
+         cannot know what is on the glass), and `deck !== null` — `surfaceOf`'s own answer — keeps
+         a cold open, a state panel and the booting frame unmarked, so the marker covers exactly
+         the UX-DR35 windows: a refetch or a full re-drive behind a still-rendered deck. */
       updating={deck !== null && deckUpdating}
       badges={
         deck === null ? undefined : (
@@ -465,41 +163,13 @@ export default function App() {
           />
         )
       }
-      /* THE LEFT COLUMN NOW STACKS THE GRID AND THE ANALYSIS ROW (c4-8, AC 1, AC 2, AC 3).
-         A Fragment, exactly as the right column took one at c4-7, and for the same reason:
-         `.app-shell-column` is already `display:flex; flex-direction:column; gap:
-         var(--space-panel-gap)` (AppShell.css:151-156), so a second child stacks 24px beneath
-         the grid with no shell edit. `AppShell.tsx` is NOT touched — the SEVENTH application of
-         c2-9's displacement ruling, and the first on the LEFT slot since c4-4. Its placeholder
-         (the line naming c4-4, c4-8 and c4-9) still fires whenever `left` is empty, which
-         `AppShell.test.tsx:115` asserts against the component's own props.
-
-         `AnalysisRow` rather than the panel directly, because `AppShell.tsx:127` assigns the
-         1:1 pair to THIS story by name and c4-9 supplies the second panel: the row renders one
-         child at full width today and two at exactly 1:1 the day that story lands, by adding a
-         sibling inside this element and editing nothing else (Q6).
-
-         Gated on the SAME `kind === 'deck'` test as the grid beside it, inherited from the
-         c4-5 Q14 ruling rather than re-decided here (AC 3) — and note this is a DIFFERENT gate
-         from the right column's: the left slot renders a `StatePanel` in the other five cases,
-         not a placeholder.
-
-         ==== THE ROW HAS ITS SECOND CHILD (c4-9, AC 1, AC 2), AND NOTHING ELSE HERE MOVED ====
-         `AnalysisRow` was built at c4-8 to be right twice — one child filling the width, two at
-         exactly 1:1 — so this story lands by adding a sibling and editing neither that component
-         nor `AppShell.tsx`. The EIGHTH application of c2-9's displacement ruling (the shell's
-         left-column placeholder it displaced is gone altogether since 17.5).
-         Document order is the contract: the curve first, the colour bar second, matching
-         DESIGN.md's *"the mana-curve and color-distribution panels below it as a 1:1 pair"*.
-
-         ==== AND THE EMPTY ROW IS NO LONGER THIS FILE'S PROBLEM (c4-9, Q10, AC 33) =========
-         Each panel still owns its own emptiness — `ManaCurve` renders nothing for a zero curve,
-         `ColourDistribution` nothing for a zero pip total — and this comment used to end by
-         accepting the row's EMPTY div surviving in the DOM with the column gap still applied
-         beneath the grid, because gating it here would need a derivation this file must not
-         perform. That is CLOSED, and not here: `.analysis-row:empty { display: none }` lets the
-         row answer for itself, with no total in this file, no second derivation of anything, and
-         no `App.tsx` edit at all. Story 4.12 inherits it. */
+      /* A Fragment: `.app-shell-column` is already `display:flex; flex-direction:column; gap:
+         var(--space-panel-gap)`, so the analysis row stacks beneath the grid with no shell edit.
+         Document order is the contract — the curve first, the colour bar second (DESIGN.md's
+         "mana-curve and color-distribution panels below it as a 1:1 pair"). Each panel owns its
+         own emptiness and `.analysis-row:empty` collapses the row, so no total is derived here.
+         Same `kind === 'deck'` gate as the grid; unlike the right column, the other five cases
+         render a `StatePanel` rather than nothing. */
       left={
         surface.kind === 'deck' ? (
           <>
@@ -516,87 +186,25 @@ export default function App() {
              copy, no reserved box: an `aria-busy` region would announce a wait that is one
              localhost round trip long. `surfaceOf` cannot latch here; every settle path leaves
              `booting`. */ ? null : surface.panel === 'no-active-deck' ? (
-          /* THE WELCOME SURFACE (17.5): the same no-active-deck panel, with the hero art above
-             it. The other five system panels stay bare — no hero, no layout change. The shell
-             renders a single track here because `right` is empty. */
+          /* The same no-active-deck panel, with the hero art above it. The other five system
+             panels stay bare. The shell renders a single track here because `right` is empty. */
           <Welcome decks={system.decks} />
         ) : (
           <StatePanel state={surface.panel} />
         )
       }
-      /* THE RIGHT COLUMN NOW STACKS TWO PANELS (c4-7, AC 1, AC 2, AC 3).
-         A Fragment, and nothing else is needed: `.app-shell-column` is already
-         `display:flex; flex-direction:column; gap: var(--space-panel-gap)` (AppShell.css:151-156),
-         so a second child stacks 24px beneath the first with no shell edit. `AppShell.tsx` is NOT
-         touched — the sixth application of c2-9's displacement ruling, and its `/c4-7/`
-         placeholder still fires whenever `right` is empty, which `AppShell.test.tsx:161`/`:171`
-         assert against the component's own props.
+      /* Detail, list, format check — document order is the contract (DESIGN.md: "card detail,
+         deck list, format check, stacked"). All three share the grid's `kind === 'deck'` gate.
+         The deck list is permanently present beside the grid, never a toggled alternate view
+         (FR-05, UX-DR19), so there is no view-mode state in this file. `FormatCheck` takes no
+         prop: it reads its own slice.
 
-         BOTH panels are gated on the SAME `kind === 'deck'` test, inherited from the c4-5 Q14
-         ruling above rather than re-decided here (AC 2). The deck list is permanently present
-         beside the grid — never a toggled alternate view (FR-05, UX-DR19) — so there is no
-         view-mode state anywhere in this file.
-
-         ==== AND NOW THERE ARE THREE (c4-10, AC 1, AC 2, AC 3) ============================
-         The **ninth** application of c2-9's displacement ruling, and the story that finally
-         displaces its OWN key from the shell's placeholder: that line named c4-5, c4-7 and
-         **c4-10** in one string, so it has been off a rendered deck view since c4-5 — what
-         changes here is that `c4-10` is now absent because its own panel is present. The C3
-         retro's F1 count drops to one; the gate itself stays c8-5's. `AppShell.tsx` is NOT touched
-         and `AppShell.test.tsx` still asserts the placeholder against the component's own props.
-
-         ⚠️ CORRECTED AT c4-11 (Q14). This line named the remaining key as **`c4-11`, in the
-         skip-link work** — and so did c4-9's record and `App.test.tsx`'s two comments. All three
-         were wrong in the same direction, and the skip link renders no story key at all. The key
-         that actually remained was **`c6-8`**: `AppShell.tsx:200` renders `slot(nav, 'Agent-view
-         nav pills land here — c6-8.')` and this file did not pass `nav`, so that string was on
-         the glass on EVERY surface, including a fully loaded deck. It had been there since c2-6
-         and was missed because every F1 assertion below names a `c4-*` key and none looked for a
-         `c6-*` one — a count that only ever checked the keys someone thought of.
-
-         ✅ AND CLOSED AT c6-8, which passes `nav` (see the slot below): the count is now ZERO on
-         every surface, asserted as an absence where it used to be asserted as a presence. The
-         GATE is still c8-5's — a count on two rendered fixtures is not a repo-wide guard, and
-         the correction above is exactly why that distinction is worth keeping.
-
-         `.app-shell-column`'s existing `gap: var(--space-panel-gap)` stacks it 24px beneath the
-         deck list with no shell edit, exactly as the deck list stacked beneath the detail panel.
-         DOCUMENT ORDER IS THE CONTRACT — detail, list, format check — and `DESIGN.md:376` writes
-         the column as *"card detail, deck list, format check, stacked"* in that order.
-
-         `FormatCheck` takes NO PROP, and it is the only panel in the epic that does not: it
-         reads its own slice and needs neither `boards` nor the deck payload. That is worth
-         seeing here rather than only in its header — every sibling takes `boards`, and giving
-         this one the same shape would have coupled it to a derivation it does not use.
-
-         ==== AND THE ONE PANEL c4-12 HIDES (Q3, AC 7, AC 9) ==============================
-         THIS IS THE ONLY NEW GATE THE EMPTY-DECK STORY ADDS, and the count is the finding.
-         AC 7 names THREE panels to hide and TWO OF THEM ALREADY HIDE THEMSELVES: `ManaCurve`
-         returns `null` on a zero curve total, `ColourDistribution` on a zero pip total, and
-         `AnalysisRow.css`'s `:empty` rule then collapses the row that held them. All three
-         shipped deliberately, naming this story — c4-9's is written as *"c4-12's clause
-         arriving early … c4-12's author is told here that the row is already handled and only
-         the panels' own conditions are theirs."* Adding a card-count gate for either would
-         duplicate a working mechanism AND redden the land-only test, which pins those two
-         panels absent on a deck that HAS cards.
-
-         The format check is different, and its own header says why in advance: *"This panel's
-         data is never empty: six rows, always. So there is no self-gate to lean on and story
-         4.12 … is the only thing that will ever hide it."* So the gate is here, in `App.tsx`,
-         and NOT in the panel — deliberately, so the panel keeps exactly ONE self-owned `null`
-         arm (`state.status !== 'report'`, which means *a report has not arrived*, including a
-         refusal that `deferred-work.md` records as silent by ruling) and this story's arm stays
-         visibly a DIFFERENT decision made somewhere else. A reviewer can tell a hidden panel
-         from a failed one because the two live in different files.
-
-         `emptyDeck` and not `!hasCards` — for LEGIBILITY, not behaviour: inside this
-         `surface.kind === 'deck'` branch `deck !== null`, so `!hasCards` reduces to `emptyDeck`
-         identically, sideboard-only deck included (both spellings render the panel there — see
-         `deckIsEmpty`'s docstring for that residue). The first draft of this comment claimed the
-         two differ; they do not, and the record was corrected at code review 2026-08-07. The
-         chosen spelling is the one that names the actual question, so a future edit to
-         `hasCards`'s condition (say, a focusability clause for the skip link) cannot silently
-         move this panel's gate with it. */
+         The empty-deck gate on `FormatCheck` lives here, not in the panel: its data is never
+         empty (six rows, always), so unlike `ManaCurve` and `ColourDistribution` it has no
+         self-gate, and keeping this one here leaves the panel exactly one self-owned `null` arm
+         (`state.status !== 'report'`), so a hidden panel and a failed one live in different
+         files. `emptyDeck` rather than `!hasCards` is legibility only — inside this branch they
+         reduce identically — so a future clause on `hasCards` cannot silently move this gate. */
       right={
         surface.kind === 'deck' ? (
           <>
@@ -606,91 +214,45 @@ export default function App() {
           </>
         ) : undefined
       }
-      /* UNCONDITIONAL, AND THAT IS AC 1 RATHER THAN A SIMPLIFICATION (c5-7).
-         Every other slot on this shell is gated on a surface — the grid and the three analysis
-         panels on `surface.kind === 'deck'`, the skip link on `hasCards`, the badges on a loaded
-         deck. The pill is gated on nothing at all: it renders on a loaded deck, on all six state
-         panels, on an empty deck and on a cold open, which is what *"always visible"* means
-         (FR-15, `EXPERIENCE.md:43`, `:112`).
-
-         It takes NO PROP, and it is the second container in the app that does not (`FormatCheck`
-         is the first). It reads `connection` from the system slice and the deck name from the
-         deck slice through their own hooks — deliberately NOT off `surface` or `deck` in this
-         file, because `surfaceOf` returns a PANEL surface in exactly the `'down'` state where the
-         pill must still know a deck is loaded (`deck.ts:481-486`). Passing either from here would
-         have handed it the one answer it must not use.
-
-         AND THE DECK ANNOUNCER RIDES BESIDE IT (c7-5, UX-DR45) — a fragment in the SAME slot, so
-         `AppShell.tsx` is not edited and no new prop exists: the announcer is one visually-hidden
-         polite `<p>`, which adds no landmark (the banner census holds at 3) and no Tab stop (the
-         corridor pins hold). Props-free like its sibling, for the sibling's reason: it reads the
-         refetch-settle counter and the header counts from the deck slice itself, and the root
-         keeps no opinion about what it says. It renders on EVERY surface exactly as the pill
-         does — an empty region on a cold open or a state panel costs nothing and announces
-         nothing (the mount-silence sentinel), and gating it on a loaded deck here would tear the
-         region out of the accessibility tree mid-session for no user gain. */
+      /* Unconditional: the pill renders on every surface, which is what "always visible" means
+         (FR-15). It takes no prop, reading the slices through their own hooks rather than off
+         `surface` here, because `surfaceOf` returns a PANEL surface in exactly the `'down'` state
+         where the pill must still know a deck is loaded. The deck announcer rides in the same
+         slot (UX-DR45): one visually-hidden polite `<p>`, no landmark, no Tab stop, also
+         props-free, and also on every surface — gating it on a loaded deck would tear the live
+         region out of the accessibility tree mid-session for no gain. */
       connectionPill={
         <>
           <ConnectionPill />
           <DeckAnnouncer />
         </>
       }
-      /* THE LAST SLOT THE SHELL HAD OPEN, FILLED (c6-8). The ELEVENTH application of c2-9's
-         displacement ruling and the one that finishes the set: `AppShell.tsx` is NOT edited, its
-         `slot(nav, 'Agent-view nav pills land here — c6-8.')` placeholder stays exactly where it
-         is, and `AppShell.test.tsx` still asserts it against the component's own props. What
-         changes is that nothing renders it any more — the F1 count of story keys on a rendered
-         app goes to ZERO for the first time since c2-6, which `App.test.tsx` now asserts as an
-         absence where it used to assert the presence.
-
-         PROPS-FREE, like `ConnectionPill` beside it: the nav reads the agent-view store itself.
-         Handing it `agentView` from here would give the root an opinion about which pill is
-         active, and the root's job in this file is where things go, not what they say. */
+      /* Props-free: the nav reads the agent-view store itself. Handing it `agentView` would give
+         the root an opinion about which pill is active; the root's job is where things go. */
       nav={<AgentViewsNav />}
       footer={<Footer />}
-      /* ABSENT WHEN CLOSED, AND THAT IS AC 9 RATHER THAN A STYLE CHOICE.
-         `AppShell.tsx:134-139` warns that a slot filled with an always-mounted transparent
-         element is a click-swallower presenting as *"the app stopped responding to clicks"*,
-         and `filled()` is what gates the wrapper — so this passes `undefined`, not `false`,
-         not `null` and not an element that returns nothing.
-
-         `AppShell.tsx` is NOT edited. The TENTH application of c2-9's displacement ruling,
-         and the last slot the shell had left open: `AppShell.test.tsx` still asserts the
-         overlay's conditional behaviour against the component's own props, and the only
-         remaining placeholder was `nav`'s, and c6-8 filled that slot too (see it above) — so
-         the shell now has no unfilled slot and no placeholder renders anywhere.
-
-         The three dismissal gestures inside the view all call `closeAgentView`, the verb that
-         writes `status` and provably not `content` — so closing here is what UX-DR34 means by
-         *"the view remains re-openable for the rest of the session"* (AC 5). */
+      /* Absent when closed: an always-mounted transparent element in this slot is a
+         click-swallower ("the app stopped responding to clicks"), and `filled()` gates the
+         wrapper, so this passes `undefined`, not `false`, `null` or an element that returns
+         nothing. Every dismissal gesture calls `closeAgentView`, which writes `status` and not
+         `content`, so the view remains re-openable for the rest of the session (UX-DR34). */
       overlay={
         agentView === null ? undefined : (
-          /* NO `key` ON THIS ELEMENT, AND THAT IS c6-6's LOAD-BEARING ABSENCE. A second push
-             while the view is open must REPLACE THE CONTENT IN PLACE (AC 2), which is a prop
-             update on a shell that stays mounted; a `key={agentView.id}` would remount it and
-             thereby replay the entry bloom instead of the crossfade, re-capture the return-focus
-             target while focus sits inside the view, and run the restore cleanup mid-open. The
-             re-fires a remount would have supplied are an effect keyed on `pushId` inside the
-             shell — see `AgentView.tsx`'s replace effect for all three reasons at length. */
+          /* No `key` on this element, deliberately. A second push while the view is open must
+             replace the content in place — a prop update on a shell that stays mounted. A
+             `key={agentView.id}` would remount it: replay the entry bloom instead of the
+             crossfade, re-capture the return-focus target while focus sits inside the view, and
+             run the restore cleanup mid-open. See `AgentView.tsx`'s replace effect. */
           <AgentView
             pushId={agentView.id}
             title={agentView.title}
             count={agentView.count}
             onClose={closeAgentView}
           >
-            {/* THE BODY, AND THE SHELL STAYS CONTENT-AGNOSTIC (c6-6, AC 4). The shell takes
-                `children` and asks nothing about them, so the kind-specific view rides inside
-                rather than being branched on in there.
-
-                KIND-KEYED SINCE c6-8, TOTAL SINCE 16.3. `content.kind` widened to the full
-                four-kind view enum at c6-8 so the NAV could be generic over the closed contract,
-                and each view story since pairs its tool, its dispatch arm and its container in
-                one change — a push never arrives that the UI cannot display. All four arms are
-                reachable now: 16.3 wired `groups` through the socket (whose dispatch holds no
-                drop arm any more) and replaced the trailing `null` with its container, so the
-                ternary is total over the union and a fifth kind fails `npm run typecheck` here
-                rather than rendering nothing. The narrowing on `kind` is what types `items`
-                per arm now that `AgentViewContent` is a discriminated union. */}
+            {/* The shell takes `children` and asks nothing about them, so the kind-specific view
+                rides inside rather than being branched on in there. The ternary is total over
+                the `kind` union — a fifth kind fails `npm run typecheck` here rather than
+                rendering nothing — and the narrowing on `kind` is what types `items` per arm. */}
             {agentView.kind === 'suggestions' ? (
               <SuggestionsView kind={agentView.kind} items={agentView.items} />
             ) : agentView.kind === 'swaps' ? (

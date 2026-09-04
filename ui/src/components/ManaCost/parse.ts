@@ -1,11 +1,11 @@
 /**
- * The Scryfall mana-cost scanner and its accessible-name formatter (story c2-8, AC 6-9, Q4/Q6).
+ * The Scryfall mana-cost scanner and its accessible-name formatter.
  *
  * PURE, TOTAL, AND IT IMPORTS NOTHING. No state, no hook, no DOM, no React — it is a function
  * over a string, held to the presentation-only posture by `ui/tests/shell.test.ts` with an
  * empty import list, exactly as `Badge/tones.ts` is.
  *
- * ==== THE ONE RULE THAT MATTERS (AC 8) ==================================================
+ * ==== THE ONE RULE THAT MATTERS =========================================================
  * IT SCANS THE WHOLE STRING. It does not match a list of known patterns and keep the hits.
  * That distinction is the entire story: a `match()` DISCARDS everything it does not recognise
  * BY CONSTRUCTION, so "never silently drops" cannot be a property of the symbol table — it has
@@ -19,11 +19,11 @@
  * `unknown` (a pip showing its own text); anything outside braces becomes `text`. Nothing is
  * skipped, so a symbol family invented after this file was written still renders.
  *
- * ==== THE OUTPUT SHAPE (Q6) =============================================================
+ * ==== THE OUTPUT SHAPE ==================================================================
  * THREE kinds rather than two, because `unknown` and `text` RENDER DIFFERENTLY — one is a pip,
  * one is inline text — and collapsing them would draw the ` // ` separator as a chip.
  *
- * COLOURS, GLYPH AND PHYREXIAN-NESS ARE SEPARATE FIELDS (AC 9). A `split('/')` that treats
+ * COLOURS, GLYPH AND PHYREXIAN-NESS ARE SEPARATE FIELDS. A `split('/')` that treats
  * every part as a colour renders `{R/W/P}` as a three-way split and `{2/R}` as a colour named
  * "2", and BOTH are in the real data: `{R/W/P}` is two colours plus a marker, `{2/R}` is one
  * colour plus a glyph, `{C/P}` is one colour plus a marker.
@@ -52,7 +52,7 @@ export interface ManaSymbolToken {
   colours: ManaColour[]
   /** The text in the pip's glyph slot: a generic count, or `X`. `null` for a plain colour pip. */
   glyph: string | null
-  /** A MODIFIER, never a third colour (AC 9). See `displayGlyph` for how it is drawn. */
+  /** A MODIFIER, never a third colour. See `displayGlyph` for how it is drawn. */
   phyrexian: boolean
 }
 
@@ -92,7 +92,7 @@ const DIGITS = /^\d+$/
 const classify = (raw: string, inner: string): ManaSymbolToken | ManaUnknownToken => {
   // A WHITESPACE-ONLY inner (`{ }`) shows the raw braces for the same reason `{}` does: a pip
   // rendering spaces is a pip rendering nothing — silent dropping through the back door — and
-  // the space would survive into the accessible name as a stray word (review 2026-07-29).
+  // the space would survive into the accessible name as a stray word.
   const unknown: ManaUnknownToken = {
     kind: 'unknown',
     raw,
@@ -136,7 +136,7 @@ const classify = (raw: string, inner: string): ManaSymbolToken | ManaUnknownToke
   if (colours.length < 1 || colours.length > 2) return unknown
   // A DUPLICATED colour (`{W/W}`) is not real data, and waving it through would render a plain
   // white pip announced as "white or white" — a malformed wire value made to look right, which
-  // is the `{P/P}` rule again one branch down (review 2026-07-29). Order-insensitivity (`{P/W}`,
+  // is the `{P/P}` rule again one branch down. Order-insensitivity (`{P/W}`,
   // `{U/2}`) is DELIBERATE leniency, like case: the canonical reading is the only one possible.
   if (colours.length === 2 && colours[0] === colours[1]) return unknown
   // At most one glyph, and it must be a generic count — `{2/W}`. Anything else in that slot is a
@@ -152,14 +152,13 @@ const classify = (raw: string, inner: string): ManaSymbolToken | ManaUnknownToke
  * Scryfall's cost notation, tokenised. TOTAL: every string yields a list, nothing throws, and
  * every character of the input survives in some token's `raw`.
  *
- * `undefined`, `null` and `''` behave identically (AC 4): the absent cost arrives as `''` from
+ * `undefined`, `null` and `''` behave identically: the absent cost arrives as `''` from
  * this repo's own data — 5,943 lands carry the empty string and `mana_cost` is never NULL.
  *
- * The wire type is NOT nullable — c3-2 measured it, and it was already non-null at c3-1
- * (`mana_cost: string` on both `Card` and `CardSummary`, from the schemas' NULL-coercing
- * validators). All three spellings are still handled, because this is an exported function whose
- * argument type is `string | null | undefined` for callers the wire does not constrain. See
- * `ManaCost.tsx`'s `cost` prop for the same correction.
+ * The wire type is NOT nullable (`mana_cost: string` on both `Card` and `CardSummary`, from the
+ * schemas' NULL-coercing validators). All three spellings are still handled, because this is an
+ * exported function whose argument type is `string | null | undefined` for callers the wire does
+ * not constrain. `ManaCost.tsx`'s `cost` prop takes the same posture.
  */
 export const parseManaCost = (cost: string | null | undefined): ManaToken[] => {
   if (cost === undefined || cost === null || cost === '') return []
@@ -192,7 +191,7 @@ export const parseManaCost = (cost: string | null | undefined): ManaToken[] => {
 }
 
 /**
- * What the pip's glyph slot SHOWS for a recognised symbol (Q3).
+ * What the pip's glyph slot SHOWS for a recognised symbol.
  *
  * THE PHYREXIAN MARKER IS A PLAIN LETTER `P`, IN THE APP'S OWN TYPEFACE. Reproducing the
  * Phyrexian Φ — or a tap symbol, or a set symbol — inside the pip is the same trade-dress
@@ -229,11 +228,11 @@ const describeSymbol = (token: ManaSymbolToken): string => {
 }
 
 /**
- * The cost as a spoken sentence — "2 generic, white or blue" (AC 15, Q4).
+ * The cost as a spoken sentence — "2 generic, white or blue".
  *
  * WHY THIS EXISTS AT ALL: a pip's entire meaning is its FILL COLOUR, and "colour is never the
- * sole carrier" is already a ruled requirement in this same design contract (UX-DR18, ruled for
- * the colour-distribution bar). `ManaCost` puts this string on a `role="img"` wrapper, because
+ * sole carrier" is already a requirement in this same design contract (UX-DR18, for the
+ * colour-distribution bar). `ManaCost` puts this string on a `role="img"` wrapper, because
  * an `aria-label` on a bare `<span>` is name-PROHIBITED on `role="generic"` and screen readers
  * are permitted to ignore it — several do.
  *

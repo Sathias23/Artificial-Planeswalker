@@ -1,11 +1,11 @@
 /**
  * The format-check slice: one read, one writer, and a staleness rule that a deck change cannot
- * defeat (story c4-10, AC 9, AC 11, AC 12).
+ * defeat.
  *
  * Every fixture here is either a **verified real row** or **declared synthetic in place**, with
- * no third option (AC 26). The reports below were read out of the running backend at `4e31ea7`
- * by driving the real ASGI app against the shipped database; where a state has no real instance
- * — there are five — the fixture says so at its declaration and names how it was produced.
+ * no third option. The reports below were read out of the running backend by driving the real
+ * ASGI app against the shipped database; where a state has no real instance — there are five —
+ * the fixture says so at its declaration and names how it was produced.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,7 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('the slice starts idle and every outcome is a value (AC 9)', () => {
+describe('the slice starts idle and every outcome is a value', () => {
   it('starts idle', () => {
     expect(stateNow()).toEqual(INITIAL_FORMAT_CHECK_STATE)
     expect(stateNow()).toEqual({ status: 'idle' })
@@ -63,14 +63,11 @@ describe('the slice starts idle and every outcome is a value (AC 9)', () => {
     ['an unreachable backend', { kind: 'unreachable' }],
   ]
 
-  it.each(OUTCOMES)(
-    'turns %s into `refused`, and never into a panel (Q6, AC 12)',
-    async (_label, outcome) => {
-      await loadFormatCheck('deck-1', () => Promise.resolve(outcome))
+  it.each(OUTCOMES)('turns %s into `refused`, and never into a panel', async (_label, outcome) => {
+    await loadFormatCheck('deck-1', () => Promise.resolve(outcome))
 
-      expect(stateNow()).toEqual({ status: 'refused' })
-    },
-  )
+    expect(stateNow()).toEqual({ status: 'refused' })
+  })
 
   it('never rejects, even when an injected reader throws', async () => {
     await expect(
@@ -92,13 +89,13 @@ describe('the slice starts idle and every outcome is a value (AC 9)', () => {
     expect(stateNow()).toEqual({ status: 'refused' })
 
     // …and a whitespace-only id too. `deckPath('  ')` would encode to `/api/deck/%20%20/…`, a
-    // request guaranteed to 404 — the second-lock weakness `createDeckBoot`'s review closed.
+    // request guaranteed to 404 — the same second-lock weakness `createDeckBoot` guards against.
     await loadFormatCheck('   ', read)
     expect(read).not.toHaveBeenCalled()
   })
 })
 
-describe('a deck change mid-flight cannot land the old deck’s report (AC 9)', () => {
+describe('a deck change mid-flight cannot land the old deck’s report', () => {
   it('drops a superseded load, even when it settles LAST', async () => {
     // THE FAILURE THIS PREVENTS, CONCRETELY: the agent switches decks while a read is in flight
     // and the previous deck's legality verdict lands on top of the new one — a panel confidently
@@ -159,7 +156,7 @@ describe('a deck change mid-flight cannot land the old deck’s report (AC 9)', 
   })
 })
 
-describe('one request per call, and never a retry (AC 11)', () => {
+describe('one request per call, and never a retry', () => {
   const RETRY_OUTCOMES: [string, FormatCheckOutcome][] = [
     ['a refusal', { kind: 'error', reason: 'database_not_initialized' }],
     ['an unreachable backend', { kind: 'unreachable' }],

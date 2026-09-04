@@ -3,7 +3,7 @@ import { StatePanel } from '../StatePanel/StatePanel'
 import './Welcome.css'
 
 /**
- * The Welcome surface (story 17.5) — what the glass shows when the backend is up and no deck is
+ * The Welcome surface — what the glass shows when the backend is up and no deck is
  * active: the hero art as a banner ABOVE the unchanged no-active-deck `StatePanel`.
  *
  * The hero is DECORATIVE and nothing else: `alt=""`, no handlers, no `ref`, no load tracking.

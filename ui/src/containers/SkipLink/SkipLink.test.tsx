@@ -6,14 +6,14 @@ import { SkipLink } from './SkipLink'
 import { SKIP_LINK_LABEL } from './copy'
 
 /**
- * The skip link, in isolation (story c4-11, AC 1, AC 5–9, AC 26).
+ * The skip link, in isolation.
  *
  * ================= WHAT THIS FILE CAN AND CANNOT SEE ==================================
  *
  * **jsdom has no layout and no sequential focus navigation.** `getBoundingClientRect()` is
  * zeroes, so the 24×24 hit box is a SOURCE claim here (`shell.test.ts` reads the declarations)
  * and a MEASURED one only in the eye-check. And there is no built-in Tab traversal at all, which
- * is why `userEvent` is not installed (Q11): `userEvent.tab()` walks its own heuristic list of
+ * is why `userEvent` is not installed: `userEvent.tab()` walks its own heuristic list of
  * tabbable elements, so a test built on it asserts user-event's model of the DOM rather than this
  * app's. Tab ORDER is therefore asserted as DOCUMENT ORDER over a rendered tree, following
  * `CardTile.test.tsx:595-605`, and the real key is pressed in the eye-check.
@@ -34,7 +34,7 @@ import { SKIP_LINK_LABEL } from './copy'
  * this id and really renders an `<h2>` — is asserted against the real component in
  * `CardDetail.test.tsx` and end-to-end in `App.test.tsx`. This file tests the link.
  *
- * DECLARED SYNTHETIC IN PLACE (AC 31): the heading text below is not `PANEL_TITLE` and is not
+ * DECLARED SYNTHETIC IN PLACE: the heading text below is not `PANEL_TITLE` and is not
  * meant to be. Importing that constant would make this fixture look like a copy of the panel and
  * invite the reader to trust it as one.
  */
@@ -44,7 +44,7 @@ const targetPanel = (headingText = 'Stand-in heading') => (
   </div>
 )
 
-describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)', () => {
+describe('the skip link is a real control with a real name (UX-DR47)', () => {
   it('renders a real <button> carrying the canonical string', () => {
     render(<SkipLink />)
     const link = screen.getByRole('button', { name: SKIP_LINK_LABEL })
@@ -57,21 +57,21 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     expect(link.getAttribute('type')).toBe('button')
   })
 
-  it('carries NO tabindex — it is a button, so it is already in the Tab order (AC 12)', () => {
+  it('carries NO tabindex — it is a button, so it is already in the Tab order', () => {
     render(<SkipLink />)
     const link = screen.getByRole('button', { name: SKIP_LINK_LABEL })
 
     // A positive `tabindex` is the obvious way to make something "first" and it is the wrong one:
-    // it would be a new doctrine for this app, whose Tab order is DOCUMENT ORDER (c4-6). What
+    // it would be a new doctrine for this app, whose Tab order is DOCUMENT ORDER. What
     // makes this link first is its POSITION — `AppShell` renders it before the `<header>`.
     expect(link.hasAttribute('tabindex')).toBe(false)
   })
 
-  it('adds no aria-live and announces nothing (AC 26, Q12)', () => {
+  it('adds no aria-live and announces nothing', () => {
     const { container } = render(<SkipLink />)
 
-    // `CardDetail`'s single polite region stays the app's only one. Asserted here so a later
-    // story cannot add "an announcement for the skip" without a red test.
+    // This component announces nothing — its accessible name is the announcement. Asserted here
+    // so a later change cannot add "an announcement for the skip" without a red test.
     expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(0)
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(0)
@@ -91,7 +91,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     // the assertion the three absences exist to protect.
   })
 
-  it('adds NO `onKeyDown` — Enter and Space are the browser’s (AC 7)', () => {
+  it('adds NO `onKeyDown` — Enter and Space are the browser’s', () => {
     // A real `<button>` turns both into a `click`, which is why there is no key handler to write
     // and why writing one would be the bug: a `keydown` handler beside the browser's own
     // activation would move focus TWICE for one Enter. `FlipControl.test.tsx:392-407`'s
@@ -117,7 +117,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Stand-in heading' }))
   })
 
-  it('introduces no landmark of its own (AC 2)', () => {
+  it('introduces no landmark of its own', () => {
     // `AppShell.test.tsx` pins the landmark count with a STAND-IN in the `skipLink` slot, so a
     // `<nav>`/`<aside>` wrapper added HERE would keep every shell test green while moving the
     // landmark count the artefacts pin at three. Asserted against the real component: the button
@@ -136,7 +136,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
   })
 })
 
-describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
+describe('activating it moves focus to the panel heading', () => {
   it('focuses the target panel’s <h2>, and leaves no [tabindex] behind after blur', () => {
     render(
       <>
@@ -159,7 +159,7 @@ describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
     expect(heading.getAttribute('tabindex')).toBe('-1')
 
     // …and the attribute leaves with the focus, so the panel AT REST carries no `[tabindex]` —
-    // which is what `CardDetail`'s AC 25 not-a-modal assertion checks one file over.
+    // which is what `CardDetail`'s not-a-modal assertion checks one file over.
     heading.blur()
     expect(heading.hasAttribute('tabindex')).toBe(false)
   })
@@ -173,7 +173,8 @@ describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
     link.focus()
 
     expect(() => link.click()).not.toThrow()
-    // Focus stays where it was rather than being dropped to <body> — the AC 9 failure mode.
+    // Focus stays where it was rather than being dropped to <body> — the failure mode the
+    // withdrawal rule bans.
     expect(document.activeElement).toBe(link)
   })
 
@@ -199,7 +200,7 @@ describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
   })
 })
 
-describe('withdrawal never drops focus to document.body (AC 9, Q4a)', () => {
+describe('withdrawal never drops focus to document.body', () => {
   it('hands focus to the h1 when it unmounts WHILE FOCUSED', () => {
     const { rerender } = render(
       <>

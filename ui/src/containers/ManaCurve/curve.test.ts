@@ -1,16 +1,12 @@
 /**
- * The curve derivation, against the cards real decks actually contain (story c4-8, AC 6–12).
+ * The curve derivation, against the cards real decks actually contain.
  *
  * **Every fixture below is a REAL card with its REAL `type_line`, `cmc` and `mana_cost`**,
- * re-measured at `0fdb41b` against `%LOCALAPPDATA%\artificial-planeswalker\cards.db`. That is
+ * measured against `%LOCALAPPDATA%\artificial-planeswalker\cards.db`. That is
  * `deckGroups.test.ts`'s convention and it earns its keep twice here: three of the cases below
  * have **zero live rows** and would never be reached by a fixture somebody invented, and two of
  * them are cards this derivation is knowingly WRONG about — pinned so the next author finds a
  * red test rather than a screenshot.
- *
- * `curve.test.ts`, as the story's source tree names it: this file carries no JSX. (The shipped
- * draft was `.tsx` with a justification citing `gate-geometry.test.ts:53` — a rule about
- * `ui/tests/`, irrelevant to a `src/`-co-located file; the review renamed it to match the spec.)
  */
 
 import { describe, expect, it } from 'vitest'
@@ -63,14 +59,14 @@ const row = (name: string, typeLine: string, options: RowOptions = {}): DeckCard
 /** The buckets a list of rows produces, as a plain array — `curveOf` takes the derivation. */
 const curveFor = (rows: DeckCardSummary[]) => curveOf(boardsOf(rows)).buckets.map((b) => b.count)
 
-describe('the buckets are 1 … 7+, and there are seven of them (AC 6)', () => {
+describe('the buckets are 1 … 7+, and there are seven of them', () => {
   it('names them in ascending order with the last one open-ended', () => {
     expect(BUCKETS).toEqual([1, 2, 3, 4, 5, 6, 7])
     expect(LAST_BUCKET).toBe(7)
   })
 
   it('absorbs every cmc at or above the last bucket, including a real 12-drop', () => {
-    // `Ghalta, Primal Hunger` is the live-deck maximum, measured at `0fdb41b`.
+    // `Ghalta, Primal Hunger` is the live-deck maximum.
     expect(bucketOf(12)).toBe(7)
     expect(bucketOf(7)).toBe(7)
     // `Gleemax`, the corpus maximum. A bucketing that overflowed or produced an eighth entry
@@ -83,11 +79,11 @@ describe('the buckets are 1 … 7+, and there are seven of them (AC 6)', () => {
   })
 })
 
-describe('cards below the first bucket fold into it (Q1, AC 11)', () => {
+describe('cards below the first bucket fold into it', () => {
   it('folds a zero-mana non-land into bucket 1 rather than dropping it', () => {
     // `Pym Particles` (`fmsc` #28), the ONE live non-land row with `cmc = 0` in all 40 decks —
-    // and the same row that is c4-7's only `Other`-group card. Its `type_line` really is the
-    // bare string `'Card'`. 4,351 corpus cards share the shape.
+    // and the same row that is the deck list's only `Other`-group card. Its `type_line` really
+    // is the bare string `'Card'`. 4,351 corpus cards share the shape.
     //
     // The alternative was dropping it, and there is no conservation identity here to catch that:
     // nothing on screen would say a card had gone. Folding is the honest direction because a
@@ -97,16 +93,16 @@ describe('cards below the first bucket fold into it (Q1, AC 11)', () => {
 
   it('folds the one fractional cmc in the corpus into bucket 1', () => {
     // `Little Girl`, `{HW}`, `cmc 0.5` — the only non-integer `cmc` in all 38,261 cards.
-    // Q2's rounding question is MOOT because of this fold, not by accident: `Math.floor(0.5)`
+    // The rounding question is MOOT because of this fold, not by accident: `Math.floor(0.5)`
     // is 0 and `Math.round(0.5)` is 1, and the fold puts both in bucket 1.
     expect(bucketOf(0.5)).toBe(1)
     expect(bucketOf(0)).toBe(1)
   })
 })
 
-describe('lands are excluded by a WHOLE-WORD front-face test (Q4, AC 7)', () => {
+describe('lands are excluded by a WHOLE-WORD front-face test', () => {
   it('excludes the four MDFC lands that are in real decks today', () => {
-    // The four cards the repo's land policies disagree about, all in decks at `0fdb41b`:
+    // The four cards the repo's land policies disagree about, all in real decks:
     // 7 rows across 5 decks. FR-05/UX-DR17 say front face, so all four are SPELLS here.
     const mdfc = [
       row("Agadeem's Awakening // Agadeem, the Undercrypt", 'Sorcery // Land', { cmc: 3 }),
@@ -164,8 +160,8 @@ describe('lands are excluded by a WHOLE-WORD front-face test (Q4, AC 7)', () => 
   })
 
   it('DIVERGES from a SUBSTRING test on the two Landers — the defect the proposal carried', () => {
-    // The story's Q4 proposed `frontFace(typeLine).includes('Land')`. Measured at `0fdb41b`,
-    // that test is wrong for exactly two corpus cards, and `deckGroups.ts:166-168` already says
+    // A substring test, `frontFace(typeLine).includes('Land')`, is wrong for exactly two
+    // corpus cards, and `deckGroups.ts:166-168` already says
     // why in writing: *"a substring test would additionally group anything containing
     // `Landfall`-shaped text wrongly"*. Neither card is a land; a substring test drops both out
     // of the curve.
@@ -184,11 +180,11 @@ describe('lands are excluded by a WHOLE-WORD front-face test (Q4, AC 7)', () => 
   })
 })
 
-describe('double-faced cards bucket by their front face — for free (AC 8)', () => {
+describe('double-faced cards bucket by their front face — for free', () => {
   it('buckets a blank-cost transform card by cmc, with no hydration anywhere', () => {
     // 2,830 of 2,830 faced cards with a blank top-level `mana_cost` have `cmc` EQUAL to the
-    // front face's mana value (100%, measured). So the clause that cost c4-7 a whole module and
-    // a dependence on the hydration sweep is satisfied here by reading one field.
+    // front face's mana value (100%, measured). So the front-face clause is satisfied here by
+    // reading one field, with no dependence on the hydration sweep.
     const bolas = row(
       'Nicol Bolas, the Ravager // Nicol Bolas, the Arisen',
       'Legendary Creature — Elder Dragon // Legendary Planeswalker — Bolas',
@@ -215,7 +211,7 @@ describe('double-faced cards bucket by their front face — for free (AC 8)', ()
     ).toEqual([0, 0, 1, 0, 0, 0, 0])
   })
 
-  it('IS KNOWINGLY WRONG for a true split card, and this pins the wrongness (Q2)', () => {
+  it('IS KNOWINGLY WRONG for a true split card, and this pins the wrongness', () => {
     // `Cramped Vents // Access Maze`: Scryfall's `cmc` for a true split card is the SUM of both
     // halves, so `'{3}{B} // {5}{B}{B}'` reports 11 where the front face is 4. 137 corpus cards
     // are this shape and ZERO are in any of the 40 real decks — the panel is correct today BY
@@ -227,22 +223,10 @@ describe('double-faced cards bucket by their front face — for free (AC 8)', ()
     // the expectation below becomes `[0, 0, 0, 1, 0, 0, 0]` and this pin is retired in the same
     // commit.
     //
-    // ⚠️ THE CONDITION ABOVE USED TO NAME c4-9 — *"re-homed to c4-9, which must parse costs
-    // anyway"* — AND c4-9 DECLINED, so the comment is corrected to name the real trigger rather
-    // than a story that has shipped without pulling it. c4-9 parses costs into PIPS: it walks
-    // `ManaSymbolToken.colours` and never adds a generic cost, so nothing it wrote converts a
-    // cost string to a number, and building one anyway — to fix a divergence with ZERO live
-    // exposure, inside a panel with sixteen questions of its own — was scope it could not
-    // justify. **The home is whoever writes a numeric mana-value parser, and there is no story
-    // in Phase 1 that needs one.** Leaving "c4-9" here would have been a shipped comment
-    // predicting a fix that never arrived, which is the same defect this file's own review
-    // correction below records.
-    //
-    // REVIEW CORRECTION (c4-8): the shipped draft gave this card the type line `'Land // Land'`
-    // — a fabrication (the DB says `'Enchantment — Room // Enchantment — Room'`, and no card
-    // with a mana cost is a land pair) under which `isLand` excluded the row before the
-    // derivation ever saw it, leaving the test asserting `bucketOf` tautologies that would
-    // have stayed green through the very fix this pin exists to catch.
+    // The type line is the DB's real one (`'Enchantment — Room // Enchantment — Room'`), not a
+    // placeholder: a land-shaped type line would have `isLand` exclude the row before the
+    // derivation ever saw it, leaving the test asserting `bucketOf` tautologies that would stay
+    // green through the very fix this pin exists to catch.
     const split = row('Cramped Vents // Access Maze', 'Enchantment — Room // Enchantment — Room', {
       cmc: 11,
       manaCost: '{3}{B} // {5}{B}{B}',
@@ -253,7 +237,7 @@ describe('double-faced cards bucket by their front face — for free (AC 8)', ()
   })
 })
 
-describe('the board policy is commander + mainboard, sideboard excluded (Q5, AC 9)', () => {
+describe('the board policy is commander + mainboard, sideboard excluded', () => {
   it('counts the commander', () => {
     // 16 of 40 real decks carry one; including it moves the corpus non-land quantity from
     // 1,812 to 1,828. `deck_analysis.py:171-173` includes it too, so the panel and the MCP tool
@@ -269,7 +253,7 @@ describe('the board policy is commander + mainboard, sideboard excluded (Q5, AC 
   })
 
   it('excludes the sideboard', () => {
-    // `deckGroups.ts:199` already ruled it in shipped source: the sideboard *"is not part of the
+    // `deckGroups.ts:199` already states it: the sideboard *"is not part of the
     // deck the curve and colour panels describe"*. 41 rows across 5 real decks.
     expect(
       curveFor([
@@ -289,7 +273,7 @@ describe('the board policy is commander + mainboard, sideboard excluded (Q5, AC 
   })
 })
 
-describe('counts are SUMMED QUANTITIES, never row counts (AC 10)', () => {
+describe('counts are SUMMED QUANTITIES, never row counts', () => {
   it('counts a ×4 row as four cards', () => {
     // The same rule `deckGroups.ts:166-167` fixed for group headers. A row count would not move
     // when a quantity changed from 3 to 4, which is the change a curve exists to report.
@@ -308,7 +292,7 @@ describe('counts are SUMMED QUANTITIES, never row counts (AC 10)', () => {
   })
 })
 
-describe('the totals and the scale (AC 18, AC 19)', () => {
+describe('the totals and the scale', () => {
   it('reports the total and the tallest bucket', () => {
     const curve = curveOf(
       boardsOf([
@@ -345,7 +329,7 @@ describe('the totals and the scale (AC 18, AC 19)', () => {
   })
 })
 
-describe('the derivation is a pure total function (Q9, AC 12)', () => {
+describe('the derivation is a pure total function', () => {
   it('returns a fresh value and mutates nothing it was handed', () => {
     const rows = [row('Lightning Bolt', 'Instant', { cmc: 1 })]
     const boards = boardsOf(rows)

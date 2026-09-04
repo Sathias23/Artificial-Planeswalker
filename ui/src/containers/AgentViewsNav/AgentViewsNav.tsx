@@ -26,38 +26,30 @@ import {
 import { pushTimeLabel } from './pushTime'
 
 /**
- * The agent-views nav — one pill per kind of thing the agent can put on the glass (story c6-8,
- * FR-18, UX-DR28, UX-DR33, UX-DR34, UX-DR37, UX-DR39, UX-DR40, UX-DR44, UX-DR45, UX-DR47,
+ * The agent-views nav — one pill per kind of thing the agent can put on the glass (FR-18,
+ * UX-DR28, UX-DR33, UX-DR34, UX-DR37, UX-DR39, UX-DR40, UX-DR44, UX-DR45, UX-DR47,
  * `DESIGN.md:260-269`/`:522`, `EXPERIENCE.md:39-42`/`:73`/`:139-147`).
  *
- * It FILLS the header nav slot via `App.tsx`'s `nav` prop. Historically that slot carried the
- * c2-6 placeholder (`slot(nav, 'Agent-view nav pills land here — c6-8.')`) under c2-9's
- * displacement ruling — **`AppShell.tsx` was never edited**, the string simply stopped being
- * rendered when this nav arrived; story 17.5 then retired the placeholder text from the shell
- * itself, so the quoted call no longer exists in `AppShell.tsx`.
+ * It FILLS the header nav slot via `App.tsx`'s `nav` prop; `AppShell.tsx` itself knows nothing
+ * about it.
  *
  * ================= IT IS GENERIC OVER THE ENUM, NOT OVER WHAT HAS A VIEW ==============
  *
  * Four pills always, keyed by {@link AgentViewKind} — the closed four-kind union derived in
- * `schema.ts`. Story 9.1's own acceptance criterion depends on it: *"the Swaps pill becomes
- * active automatically, because the nav is generic over the closed `kind` enum from Story
- * 5.1"*, which is only true if this file never mentions which kinds happen to be renderable
- * today. It does not. A fifth kind added on the Python side reaches {@link PILL_ORDER} through
- * the generator and grows a pill here with no edit.
+ * `schema.ts`. A new kind's pill becomes active automatically, because the nav is generic over
+ * the closed `kind` enum — which is only true if this file never mentions which kinds happen to
+ * be renderable today. It does not. A fifth kind added on the Python side reaches
+ * {@link PILL_ORDER} through the generator and grows a pill here with no edit.
  *
- * **The honest consequence, in the open (Q1, discharged in full at 16.3):** the genericness
- * paid off exactly as promised — `swaps` (16.1), `tier_list` (16.2) and `groups` (16.3) each
- * shipped their tool, dispatch arm and view, and each pill became reachable from the wire with
- * NO edit to this file, which is Q1's ruling proven three times over. All four kinds are now
- * delivered (the socket's dispatch holds no drop arm), so every pill can activate in
- * production. Quiet still means what UX-DR33 says and nothing less: "no push of this kind yet
- * THIS SESSION" — not a degraded state or a placeholder, but the named ninth state with its
- * own copy, and *"your agent hasn't sent this yet"* stays a true sentence about a session, no
- * longer about a tool.
+ * All four kinds have a tool, a dispatch arm and a view (the socket's dispatch holds no drop
+ * arm), so every pill can activate in production. Quiet means what UX-DR33 says and nothing
+ * less: "no push of this kind yet THIS SESSION" — not a degraded state or a placeholder, but
+ * the named ninth state with its own copy, and *"your agent hasn't sent this yet"* is a true
+ * sentence about a session, not about a tool.
  *
  * ================= WHAT IT IS NOT ====================================================
  *
- * **Not a `<nav>` landmark** (Q5). UX-DR44 enumerates the app's landmarks and this group is not
+ * **Not a `<nav>` landmark.** UX-DR44 enumerates the app's landmarks and this group is not
  * among them; the pills open overlays over the current page rather than navigating anywhere, so
  * the landmark would be a promise about where a click leads. {@link NAV_GROUP_LABEL} is what
  * gives the group its name instead — visibly, for everyone, rather than in an ARIA attribute
@@ -80,21 +72,21 @@ import { pushTimeLabel } from './pushTime'
 export function AgentViewsNav() {
   return (
     <>
-      {/* THE GROUP'S NAME, ON THE GLASS (Q5). A plain `<span>`, not a heading: a heading here
+      {/* THE GROUP'S NAME, ON THE GLASS. A plain `<span>`, not a heading: a heading here
           would enter the document outline between the deck name and the panel titles and claim
           a structural rank this row does not have. The shell's `.app-shell-nav` already ships
           `display:flex; align-items:center; gap: var(--space-3)`, so this and the pill row sit
           beside each other with no wrapper of their own and no shell edit. */}
       <span className="agent-views-nav-kicker">{NAV_GROUP_LABEL}</span>
-      {/* A plain flex group rather than a list (Q5). Four sibling buttons announce as four
+      {/* A plain flex group rather than a list. Four sibling buttons announce as four
           buttons; wrapping them in `ul`/`li` would add "list, 4 items" to every traversal of
-          the header for no navigational gain — c6-7's rows earned their list by being an
+          the header for no navigational gain — the suggestion rows earned their list by being an
           arbitrary-length collection of content, which four fixed controls are not. */}
       <div className="agent-views-nav-pills">
         {PILL_ORDER.map((kind) => (
           <AgentViewPill key={kind} kind={kind} />
         ))}
-        {/* THE FIFTH PILL, AFTER THE FOUR KIND PILLS (story 17.2, FR-18, ruled 2026-08-22).
+        {/* THE FIFTH PILL, AFTER THE FOUR KIND PILLS (FR-18).
             Deliberately OUTSIDE the map: History is not an `AgentViewKind` — it never pushes and
             has no view of its own — so keying it into `PILL_ORDER` would put a non-kind in a list
             the enum derives, and the exhaustiveness gate on `AGENT_VIEW_LABELS` would stop
@@ -106,27 +98,27 @@ export function AgentViewsNav() {
 }
 
 /**
- * The pills, left to right: **Suggestions, Swaps, Tier list, Card groups** (Q3).
+ * The pills, left to right: **Suggestions, Swaps, Tier list, Card groups**.
  *
  * ENUM ORDER, read off {@link AGENT_VIEW_LABELS}' declaration order rather than authored a
  * second time here. Three artefacts give three different orders — the mock omits Suggestions
  * entirely and leads with Card groups, the IA table reads suggestions/groups/swaps/tier_list,
- * and the wire enum reads suggestions/swaps/tier_list/groups — so Q3 took the enum's, on the
- * grounds that a nav *defined* as generic over the contract should get its order from the
- * contract rather than from a fourth authored opinion. Suggestions first is also the only P0
+ * and the wire enum reads suggestions/swaps/tier_list/groups — so the enum's wins: a nav
+ * *defined* as generic over the contract should get its order from the contract rather than
+ * from a fourth authored opinion. Suggestions first is also the only P0
  * kind first.
  *
  * The cast is the honest cost of that derivation, and it is sound for a reason the type system
  * cannot state: `AGENT_VIEW_LABELS` is declared `satisfies Record<AgentViewKind, string>`, so
  * its keys ARE exactly the union — no more (excess-property checking) and no fewer (missing-key
  * checking). `Object.keys` merely loses that on the way out. Deriving it this way rather than
- * retyping the four strings is what makes Story 9.1's *"with no nav work"* literally true, and
+ * retyping the four strings is what makes "a new kind needs no nav work" literally true, and
  * `AgentViewsNav.test.tsx` pins the rendered order so the implicitness stays gated.
  */
 const PILL_ORDER = Object.keys(AGENT_VIEW_LABELS) as readonly AgentViewKind[]
 
 /**
- * One pill (AC 1, AC 2, AC 3, AC 4).
+ * One pill.
  *
  * A module-local component rather than an inline branch in the map, because each pill takes TWO
  * store subscriptions of its own — that is the point of the per-kind selectors, and it is what
@@ -134,7 +126,7 @@ const PILL_ORDER = Object.keys(AGENT_VIEW_LABELS) as readonly AgentViewKind[]
  * loop, so the loop calls a component. `SuggestionRow` in `SuggestionsView.tsx` is the shipped
  * precedent for the shape.
  *
- * ================= QUIET IS `disabled`, NEVER `tabindex="-1"` (AC 1) ==================
+ * ================= QUIET IS `disabled`, NEVER `tabindex="-1"` =========================
  *
  * `keyboard-floor.test.ts:753-780` pins exactly ONE named `tabindex` exception in this app
  * (`focusHome`'s), so a quiet pill spelled `tabindex="-1"` would be a second exception and a red
@@ -146,20 +138,18 @@ const PILL_ORDER = Object.keys(AGENT_VIEW_LABELS) as readonly AgentViewKind[]
  * A pill can never go active → quiet (retention is only ever added), so no focused element can
  * become disabled underfoot — the one real hazard of disabling controls dynamically.
  *
- * ================= AND NO `onKeyDown`, ON EITHER STATE (UX-DR39, dw:49) ===============
+ * ================= AND NO `onKeyDown`, ON EITHER STATE (UX-DR39) ======================
  *
  * Enter and Space are the button element's own click. A synthetic key handler here would be dead
- * three times over: `deferred-work.md:49` records that the document-capture Esc handler's
- * `stopPropagation()` starves React's synthetic delegation while a view is open; the pills sit
+ * three times over: the document-capture Esc handler's `stopPropagation()` starves React's synthetic delegation while a view is open; the pills sit
  * under the scrim while a view is open anyway; and a real `<button>` already does the thing the
- * handler would do. dw:49 names these pills by name and this is the annotation it was waiting
- * for.
+ * handler would do.
  */
 function AgentViewPill({ kind }: { kind: AgentViewKind }) {
   // The quiet/active decision is `useAgentViewHasPush`'s alone, deliberately separate from the
-  // time below — a retained push with an unreadable `ts` must still read as ACTIVE (review
-  // finding, 2026-08-12): reading activeness off `pushedAt` conflated "never pushed" with
-  // "pushed, timestamp unreadable" and made the latter permanently unreachable via its pill.
+  // time below — a retained push with an unreadable `ts` must still read as ACTIVE: reading
+  // activeness off `pushedAt` would conflate "never pushed" with "pushed, timestamp unreadable"
+  // and make the latter permanently unreachable via its pill.
   const hasPushed = useAgentViewHasPush(kind)
   const pushedAt = useAgentViewPushTime(kind)
   const unread = useAgentViewUnread(kind)
@@ -175,11 +165,10 @@ function AgentViewPill({ kind }: { kind: AgentViewKind }) {
           type="button"
           className="agent-views-nav-pill"
           disabled
-          /* BOTH, and that is Q2's ruling (see `copy.ts`). `title` is the pointer affordance the
+          /* BOTH, deliberately (see `copy.ts`). `title` is the pointer affordance the
              artefacts ask for; `aria-describedby` is what keeps it from being a hover-only
-             disclosure of unique information, which UX-DR39 bans and which the 07-22
-             accessibility review already caught once on the connection pill. Both carry the same
-             string, so the two channels cannot say different things. */
+             disclosure of unique information, which UX-DR39 bans. Both carry the same string,
+             so the two channels cannot say different things. */
           title={QUIET_TOOLTIP}
           aria-describedby={hintId}
         >
@@ -207,13 +196,13 @@ function AgentViewPill({ kind }: { kind: AgentViewKind }) {
     <button
       type="button"
       className="agent-views-nav-pill"
-      /* AC 4, and the whole of it. Everything the re-opened view needs was retained when the
+      /* RE-OPEN, and the whole of it. Everything the re-opened view needs was retained when the
          push arrived, so this asks the agent for nothing — and because `App.tsx` renders the
          overlay only while a view is open, this write MOUNTS the shell: the entry bloom, the
          focus-to-heading and the return-focus capture (which grabs this pill, since this pill is
          what was just clicked) all re-fire for free, and `SuggestionsView`'s `items`-keyed
          hydration effect re-runs against the CURRENT card cache. Stale ids degrade to
-         unknown-card placeholders through machinery this story does not touch. */
+         unknown-card placeholders through the view's own machinery. */
       onClick={() => reopenAgentView(kind)}
     >
       {AGENT_VIEW_LABELS[kind]}
@@ -231,7 +220,7 @@ function AgentViewPill({ kind }: { kind: AgentViewKind }) {
       )}
       {!unread ? null : (
         <>
-          {/* PRESENTATIONAL (Q6). The word below is what carries the meaning; this is the
+          {/* PRESENTATIONAL. The word below is what carries the meaning; this is the
               colour that makes it glanceable. `aria-hidden` rather than an `aria-label` on the
               dot, because a labelled decorative span is a second name fragment in an order the
               accname algorithm decides, not the designer. */}
@@ -248,7 +237,7 @@ function AgentViewPill({ kind }: { kind: AgentViewKind }) {
 }
 
 /**
- * The stroke-based clock glyph on the History pill (story 17.2, DESIGN.md's
+ * The stroke-based clock glyph on the History pill (DESIGN.md's
  * `components.history-popover` header note) — **a plain UI glyph, never anything
  * set-symbol-shaped**, which is the note's own emphasis: a circular glyph in a Magic app is one
  * careless flourish away from reading as a set symbol, so this is the most generic clock
@@ -278,15 +267,15 @@ function ClockGlyph() {
 }
 
 /**
- * The History pill and its popover — the ruled FR-18 home (story 17.2, Sathias 2026-08-22;
- * `EXPERIENCE.md`'s `History pill + popover` row, DESIGN.md `{components.history-popover}`).
+ * The History pill and its popover — FR-18's home (`EXPERIENCE.md`'s `History pill + popover`
+ * row, DESIGN.md `{components.history-popover}`).
  *
  * ================= THE APP'S FIRST DISCLOSURE CONTROL, AND WHAT THAT IS NOT ===========
  *
  * A real `<button aria-haspopup aria-expanded>` toggling a **non-modal** popover: no scrim, no
  * focus trap, no roving focus, no landmark, no live region — opening and closing announce
- * nothing, and a push arriving while it is open closes it unannounced (the arrival ruling opens
- * the push's view, and popover and modal never coexist — see {@link showPopover}). The entries
+ * nothing, and a push arriving while it is open closes it unannounced (an arriving push opens
+ * its view, and popover and modal never coexist — see {@link showPopover}). The entries
  * are ordinary document-order Tab stops, withdrawn on dismiss.
  *
  * ================= QUIET UNTIL THE FIRST PUSH OF *ANY* KIND ===========================
@@ -369,10 +358,10 @@ function HistoryPill() {
   // callback runs SYNCHRONOUSLY on the store write, before React commits, which buys the focus
   // hand-off its timing: focus still sits on the entry that is ABOUT to unmount, so it is moved
   // to the pill here, and the view's mount-time return-focus capture then records the pill —
-  // never `document.body`. The `open` reset is synchronous too, deliberately (review finding 1,
-  // 2026-08-22): the first shipped form parked it in a requestAnimationFrame, and a view closed
-  // before that frame fired cancelled the reset in the effect cleanup — leaving `open` true and
-  // the popover springing back uninvited the moment the view left the glass.
+  // never `document.body`. The `open` reset is synchronous too, deliberately: parked in a
+  // requestAnimationFrame, a view closed before that frame fired would cancel the reset in the
+  // effect cleanup — leaving `open` true and the popover springing back uninvited the moment
+  // the view left the glass.
   useEffect(() => {
     if (!open) return
     return useAgentViewStore.subscribe((state) => {
@@ -386,7 +375,7 @@ function HistoryPill() {
   // ESC, THE WRAPPER-LEVEL HALF (see the header): a native listener attached through the ref —
   // `jsx-a11y` is right that the wrapper `<span>` is not a control, so the listener goes on the
   // node rather than into a prop, the `AgentView` trap's exact reasoning. On the WRAPPER rather
-  // than the popover root (review finding 3, 2026-08-22): focus can legitimately sit on the
+  // than the popover root: focus can legitimately sit on the
   // PILL while the popover is open — toggling put it there — and a popover-scoped listener
   // would miss that Esc, closing via the document half below WITHOUT consuming the keystroke
   // and co-releasing an active pin. It `preventDefault()`s, which is what keeps the SAME Esc
@@ -441,7 +430,7 @@ function HistoryPill() {
   }, [showPopover])
 
   const activateEntry = (id: string) => {
-    // CLOSE FIRST, THEN OPEN (the sequencing ruling): `closePopover` puts focus on the pill and
+    // CLOSE FIRST, THEN OPEN: `closePopover` puts focus on the pill and
     // unmounts the entries; `reopenPush` then mounts the view, whose capture effect records the
     // pill as the element to restore focus to on dismissal. One handler, one commit, one
     // overlay level.
@@ -456,7 +445,7 @@ function HistoryPill() {
           type="button"
           className="agent-views-nav-pill agent-views-nav-history-pill"
           disabled
-          /* BOTH channels, the kind pills' Q2 ruling verbatim — a pointer `title` plus a
+          /* BOTH channels, the kind pills' pattern verbatim — a pointer `title` plus a
              programmatic description, one string, so the two cannot disagree. The disclosure
              attributes stay on the quiet pill too: it IS the toggle, merely not yet usable, and
              a control whose role changes when it activates is a control a reader has to
@@ -498,8 +487,7 @@ function HistoryPill() {
         <ClockGlyph />
         {HISTORY_LABEL}
         {/* NO time, NO unread dot, ever: the pill names a LIST, not a push — the times live on
-            the entries inside, and unread stays per-kind on the kind pills (the ruled
-            sub-treatment). */}
+            the entries inside, and unread stays per-kind on the kind pills. */}
       </button>
       {showPopover && <HistoryPopover id={popoverId} onActivate={activateEntry} />}
     </span>
@@ -507,14 +495,14 @@ function HistoryPill() {
 }
 
 /**
- * The popover itself (story 17.2) — a plain group of entry `<button>`s, newest first, exactly
+ * The popover itself — a plain group of entry `<button>`s, newest first, exactly
  * as the store holds them ({@link useAgentViewHistory} is the stored reference; the ORDERING —
  * by envelope `ts`, never `id`, malformed `ts` at arrival position — is the store's, decided
  * once in `historyWith`, so this component renders the array and re-sorts nothing).
  *
  * NOT a modal, NOT a landmark, NOT a live region, NOT a listbox: no role, no label, no
  * `aria-live`, no roving focus — the entries are ordinary Tab stops and open/close announce
- * nothing (the ruled sub-treatments, all confirmed here). Mounting moves focus to the first
+ * nothing. Mounting moves focus to the first
  * (newest) entry; every later focus move is the person's own.
  *
  * The enter is an OPACITY-ONLY fade over the glide tokens, expressed as a transition out of a
@@ -534,15 +522,15 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  // THE CLAMPS' ANCHOR TERMS (Greptile PR #97, rounds 2–4). The popover hangs below a
-  // content-sized header on a row that is ALLOWED to wrap (`.agent-views-nav-pills` declares
-  // `flex-wrap: wrap` as the honest narrow-window failure mode), so neither of its distances —
-  // from the viewport top (the height clamp's subtrahend, round 2) nor from the viewport left
-  // to its own right-anchored edge (the width clamp's budget, round 4: a wrapped pill leaves
-  // the viewport's right edge, and a 100vw-based cap then lets a long title run past the LEFT
-  // edge) — is knowable in CSS alone. Both are measured before paint into custom properties
-  // (the ManaCurve/ColourDistribution channel — literal inline styles stay illegal) and
-  // RE-measured on window resize while open (round 3): resize is the only thing that can move
+  // THE CLAMPS' ANCHOR TERMS. The popover hangs below a content-sized header on a row that is
+  // ALLOWED to wrap (`.agent-views-nav-pills` declares `flex-wrap: wrap` as the honest
+  // narrow-window failure mode), so neither of its distances — from the viewport top (the
+  // height clamp's subtrahend) nor from the viewport left to its own right-anchored edge (the
+  // width clamp's budget: a wrapped pill leaves the viewport's right edge, and a 100vw-based
+  // cap then lets a long title run past the LEFT edge) — is knowable in CSS alone. Both are
+  // measured before paint into custom properties (the ManaCurve/ColourDistribution channel —
+  // literal inline styles stay illegal) and RE-measured on window resize while open: resize is
+  // the only thing that can move
   // the anchor mid-open — the header re-wraps with the window, and the list itself cannot
   // change under an open popover (an arriving push closes it). `rect.right` is anchor-stable
   // even as content grows, because the popover is right-anchored to the wrapper. Not a key
@@ -568,8 +556,7 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
 
   // Esc handling lives on the WRAPPER in `HistoryPill` (both halves — the consuming node
   // listener and the census-registered document one), not here: focus can sit on the pill while
-  // the popover shows, and a popover-scoped listener would miss that keystroke (review finding
-  // 3, 2026-08-22).
+  // the popover shows, and a popover-scoped listener would miss that keystroke.
 
   return (
     <div
@@ -592,7 +579,7 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
 }
 
 /**
- * One history entry (story 17.2): kind label + push title (when the agent supplied one) + time.
+ * One history entry: kind label + push title (when the agent supplied one) + time.
  *
  * The TITLE renders only when it differs from the kind's own word: the store's builders fall
  * back to `AGENT_VIEW_LABELS[kind]` for an untitled push, and "Suggestions — Suggestions" would

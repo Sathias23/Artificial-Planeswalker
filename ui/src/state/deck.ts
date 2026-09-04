@@ -1,97 +1,22 @@
 /**
- * The deck the companion is showing: the boot that finds it, and the rule that decides whether
- * it or a system panel is on the glass (story c4-2, FR-07, FR-11, AD-12, AD-16).
+ * The deck the companion is showing: the boot that finds it, and the rule that decides whether it
+ * or a system panel is on the glass (FR-07, FR-11, AD-12, AD-16).
  *
- * This is the first story in which a **deck** exists in the client, and it is therefore the first
- * that has to answer a question nine stories deferred: *when a deck and a system state are both
- * true, which one is on the glass?* {@link surfaceOf} is that answer, and it is deliberately ONE
- * exported expression rather than a ternary in `App.tsx` — a second copy of a precedence rule is
- * what lets **c4-4**'s grid and **c4-7**'s deck list disagree, which is the epic's own
- * *"the grid and the list panel cannot disagree"* clause read one level up.
+ * The boot is two requests, on mount: `GET /api/active-deck`, then on a non-null id
+ * `GET /api/deck/{deck_id}`. The first route holds no `DbSession` and cannot answer `503`, so
+ * database refusals are about the SECOND request. `deck_id: null` is the ordinary answer, not a
+ * failure: the active-deck slot dies with the backend process (FR-07).
  *
- * ================= THE BOOT IS TWO REQUESTS, AND THEY FAIL DIFFERENTLY =================
+ * A DECK refusal becomes a panel where a CARD refusal never does (FR-13): a deck IS the view, so
+ * there is nothing left standing to protect, and every deck token has an honest panel in
+ * `PANEL_FOR_REASON` (FR-11: a deleted deck clears to *"there is no active deck"*).
  *
- * `GET /api/active-deck` first; then, on a non-null id, `GET /api/deck/{deck_id}`. Two requests,
- * in that order, **on mount** — not on a timer, not per component. The asymmetry that shapes the
- * code is in `client.ts`'s header: the first route publishes `200/400/500` and structurally
- * cannot answer `503`, because it holds no `DbSession` at all. So the epic's database-refusal
- * criteria are about the SECOND request, and both requests get their own outcome union.
- *
- * **`deck_id: null` is the ordinary answer, not a failure.** The active-deck slot lives in the
- * backend's memory and dies with the process (FR-07), so a cold open after any restart reports
- * `null` whatever was displayed before.
- *
- * ================= A DECK REFUSAL BECOMES A PANEL. A CARD REFUSAL NEVER DOES ===========
- *
- * c4-1 AC 13 forbade `panelFor()` on the card path, and a reader arriving here holding that rule
- * will think this file breaks it. It does not, and the difference is worth stating where it will
- * be looked for rather than reconstructed:
- *
- *   **A card** is one tile in a working view. `card_not_found` maps to `null` in
- *   `PANEL_FOR_REASON` and `panelFor` clamps `null` to `'internal-error'`, so routing a card
- *   refusal through it would replace a whole working deck view with *"The companion hit a bug"*
- *   because one card was missing — the FR-13 failure `states.ts` bans outright.
- *
- *   **A deck** IS the view. There is nothing left standing to protect, every deck token has an
- *   honest panel, and `PANEL_FOR_REASON` has held the mapping since c2-9 with its reason written
- *   down: *"A deck deleted between a push and a refetch (FR-11) is not an error state of its own
- *   — the honest thing on screen is 'there is no active deck'."*
- *
- * **This story is that entry's FIRST LIVE PRODUCER.** `PANEL_FOR_REASON.deck_not_found` has been
- * unreachable dead code since it was written: `panelFor` is called only by `poller.ts`, which
- * reads only `GET /api/decks` — a route that does not publish `deck_not_found` (verified in
- * `openapi.json`: `200/400/413/500/503`). So the map is CONSUMED here, not paraphrased.
- *
- * ================= WHAT WRITES THIS SLICE, AND WHAT MAY NEVER (AD-12, AC 18) ===========
- *
- * The spine, verbatim: *"its state comes from exactly two inputs — REST responses and WebSocket
- * messages. Nothing else may write the store."* Today that means {@link createDeckBoot}'s REST
- * answers and nothing else — no component setter, no `localStorage`, no URL parsing, no derived
- * value written back in. The WebSocket is the second input's TRIGGER, never its writer: a
- * `deck_changed` frame drives {@link refetchOnDeckChanged} (c7-3) and the state written is still
- * a REST response's, through this module's one writer. `tests/store-writes.test.ts` asserts the
- * rule rather than trusting this paragraph.
- *
- * ================= WHAT THIS STORY DELIBERATELY DOES NOT DO ============================
- *
- * - **No timer, no poll of its own — one boot per mount, plus one EDGE-TRIGGERED re-drive per
- *   poll recovery.** The review found the boot's original one-shot posture let a refusal panel
- *   outlive the condition it reported: a cold open during a DB build settles
- *   `{status:'refused'}`, and when the build finished the poll recovered while the glass stayed
- *   on the stale 503 panel — an FR-22 regression. So {@link useDeckState} re-drives the boot
- *   when the poll transitions INTO a healthy `no-active-deck` while the deck state is
- *   `'refused'` or `'none'` — never while `'deck'` (a loaded deck stays; Epic 5 owns switching)
- *   and never on a timer. The bound Q6 asked for is structural: one re-drive per recovery EDGE,
- *   and edges are backend-state transitions, not a loop the client can wind. A deck the agent
- *   sets while the tab is open and the poll HEALTHY still waits for Epic 5's `deck_changed` —
- *   that half of the residue stands, with its named home. So does a narrower one: a transient
- *   blip on a boot request AFTER the poll has already stopped has no later edge to heal it, and
- *   persists until reload or c5-6's reconnect. **c5-6 has shipped that reconnect**, so the
- *   residue is closed: {@link redriveDeckBoot} re-drives this boot on every reconnect success and
- *   on every `active_deck_changed` frame, and neither is an edge this module has to detect.
- *   **c7-3 split `deck_changed` off that path**: a matching (or deck-agnostic) event on a
- *   SETTLED deck now runs {@link refetchOnDeckChanged}'s single-request refetch instead of the
- *   full re-drive — while the `'none'`/`'refused'`/unsettled windows keep the authoritative
- *   two-request re-drive, so every recovery this bullet describes still heals identically.
- * - **No render.** The grid is **c4-4**, the placeholders **c4-3**, the detail panel **c4-5**,
- *   the deck list and its group headers **c4-7**, the curve **c4-8**, the format check **c4-10**,
- *   the empty-deck state **c4-12**. {@link DeckBoards} ships declared and unread by this story's
- *   own render, exactly as c4-1's cache did.
- * - **No cache reset.** `resetCardCache()` on a deck transition was homed here on the theory that
- *   this story owns a `deck_changed` transition; measured, it does not — see Q7's ruling in the
- *   story record, which re-homed it and the orphaned-return question by name. **Narrowed at c5-4
- *   (Q6, 2026-08-08) from "c5-4 / c5-6" to c5-6 alone**: c5-4 turned out to be backend-only — a
- *   connection registry, a fan-out and one route call — so it builds no client event handler for
- *   either question to attach to. `c5-6` owns the browser's connect/reconnect loop, and therefore
- *   both halves.
- *
- *   **c5-6 answered both (Q6, Brad 2026-08-08), and the answer was not a reset.** A blanket
- *   `resetCardCache()` on a deck transition is wrong: the cache is shared with Epic 6's views, so
- *   it would discard hydration two decks hold in common to fix a per-id attempt budget. What
- *   ships instead is `resetCardAttempts()` — counters only, hydrated entries untouched, and only
- *   entries the BOUND made terminal re-armed. The orphaned-return declare stands unchanged,
- *   because the new verb creates no orphans: it throws nothing away and bumps no generation. This
- *   module is untouched by either ruling.
+ * AD-12: *"its state comes from exactly two inputs — REST responses and WebSocket messages."* The
+ * WebSocket is a TRIGGER, never a writer: a `deck_changed` frame drives a refetch, and what is
+ * written is still a REST response, through one writer (`tests/store-writes.test.ts`). No timer:
+ * recovery is edge-triggered — the poll recovering into `no-active-deck`, a reconnect, or a
+ * `deck_changed`/`active_deck_changed` frame. No render, and no cache reset (reconnect re-arms card
+ * attempt budgets in `cards.ts` rather than discarding hydration the agent views share).
  */
 
 import { useEffect } from 'react'
@@ -112,92 +37,45 @@ import { seedDeckCards } from './cards'
 import { subscribeSystemState, type SystemState } from './systemState'
 
 /**
- * What the client knows about the active deck. A discriminated union, in the manner
- * `DecksOutcome` and `CardEntry` established — so no consumer infers a condition from
- * `undefined` and the compiler can exhaust it (Q2).
- *
- * The alternative — `deck: DeckDetail | null` plus a separate `error` field — is two invariants
- * that can disagree, and the disagreement is invisible until a consumer reads both.
+ * What the client knows about the active deck. A discriminated union: `deck | null` plus an
+ * `error` field would be two invariants that can disagree.
  */
 export type DeckState =
-  /**
-   * The boot has not answered yet. A real state a cold open occupies for one paint, and
-   * DISTINCT from `'none'`: "we have not asked" and "there is no deck" are different facts, and
-   * only one of them is worth putting on the glass. Both defer to the system panel today, which
-   * is what keeps the first frame calm (c3-9's `INITIAL_SYSTEM_STATE` reasoning).
-   */
+  /** The boot has not answered yet — DISTINCT from `'none'`: "not asked" is not "no deck". */
   | { readonly status: 'booting' }
   /**
-   * **No deck is on the glass, and no deck-specific panel is claimed** — the system state is the
-   * authority. Three inputs reach it, and they are three genuinely different facts that produce
-   * the same honest screen:
-   *
-   *   1. `deck_id: null` — the ordinary post-restart cold open (FR-07).
-   *   2. A refusal whose panel IS `'no-active-deck'` — `deck_not_found` (FR-11's *"a 404 clears"*)
-   *      and, by Q5's ruling, `invalid_request`.
-   *   3. `unreachable` — no response arrived, so nothing was decided. `poller.ts`'s posture
-   *      exactly: claiming `internal-error` here would say *"The companion hit a bug"* about a
-   *      backend that is merely absent, and the panel that describes an absent backend
-   *      (`disconnected`) is **c5-6's** by `CLIENT_ONLY_STATES` — now shipped, and reached through
-   *      {@link surfaceOf}'s connection arm rather than through this union, which is why this
-   *      member is unchanged.
+   * No deck and no deck-specific panel — the system state is the authority. Reached by
+   * `deck_id: null` (FR-07), by a refusal whose panel IS `'no-active-deck'`, and by `unreachable`:
+   * nothing was decided, and claiming `internal-error` would say *"The companion hit a bug"* about
+   * a backend that is merely absent (that panel is {@link surfaceOf}'s connection arm).
    */
   | { readonly status: 'none' }
   /** A deck loaded. `boards` is derived ONCE, here, at write time — see `deckGroups.ts`. */
   | { readonly status: 'deck'; readonly detail: DeckDetail; readonly boards: DeckBoards }
-  /**
-   * A read was refused and the refusal has a panel of its own — both database `503`s, a `500`,
-   * or a body that is not the contract. `reason` is the token when this build recognises it,
-   * clamped to `null` otherwise for `CardEntry`'s reason: everything downstream switches on
-   * `ErrorReason`, and a widened `string` would push that decision into every consumer.
-   */
+  /** A read was refused with a panel of its own. `reason` is clamped to `null` when unrecognised. */
   | { readonly status: 'refused'; readonly reason: ErrorReason | null; readonly panel: StateKey }
 
 /** The state before the boot answers. Exported so tests can restore it between renders. */
 export const INITIAL_DECK_STATE: DeckState = { status: 'booting' }
 
 /**
- * The slice, holding the union **under a key** rather than as the store's own shape.
- *
- * **A probe found the reason, and it is not stylistic.** zustand's `setState` MERGES by default,
- * so a store whose shape IS `DeckState` accepts `setState({ status: 'none' })` and keeps the
- * `detail` of the deck that was there a moment ago — a `'none'` state carrying a ghost deck, in a
- * store every consumer narrows on `status`. The obvious guard is the replace flag
- * (`setState(next, true)`) at every call site, and the probe that deleted it stayed GREEN,
- * because the test was driving its own `onUpdate` rather than the production one — this epic's
- * standing finding (*the wiring is right and nothing asserts the wiring*) in a new costume.
- *
- * Wrapping the union in `{ deck }` makes the whole failure impossible instead of guarded: a merge
- * of one key replaces that key's value wholesale, so no member's fields can outlive it and no
- * call site has a flag to forget. A guard nobody can bypass beats a guard nobody remembers.
+ * The slice, holding the union **under a key**: zustand's `setState` MERGES by default, so a store
+ * whose shape IS `DeckState` would accept `setState({ status: 'none' })` and keep a ghost `detail`.
+ * A merge of one key replaces that key's value wholesale, and no call site has a flag to forget.
  */
 export interface DeckSlice {
   readonly deck: DeckState
   /**
-   * Whether the boot is re-reading the deck RIGHT NOW (story c7-4, UX-DR35, UX-DR42) — the
-   * deck-header updating treatment's one input. True from a `start()` or `refetch()` until that
-   * sequence's LAST exit, on every terminal path including the dropped ones (`settleFor` cannot
-   * carry this flag: drops never settle). A sibling KEY rather than a member of {@link DeckState},
-   * because it is lifecycle truth about the request, not about what is on the glass — and because
-   * `applyDeckState`'s merge write then leaves it alone by construction, exactly as the wrapped
-   * union above leaves ghost fields impossible.
-   *
-   * The App layer gates the marker on `deck !== null && updating`, so a cold boot (which also
-   * raises this flag) draws nothing: there is no deck on the glass to mark as updating.
+   * Whether the boot is re-reading the deck RIGHT NOW (UX-DR35, UX-DR42). True from a `start()` or
+   * `refetch()` until that sequence's LAST exit, dropped outcomes included. A sibling KEY rather
+   * than a member of {@link DeckState}: lifecycle truth about the request, not about the glass.
    */
   readonly updating: boolean
   /**
-   * How many coalesced refetches have settled SUCCESSFULLY (story c7-5, UX-DR45) — the
-   * announce-once signal, as store truth. Monotonic; incremented in exactly ONE place, the
-   * success arm of {@link refetchSequence}, synchronously with its settle — so it can never move
-   * on a boot settle, the 404-clear, a dropped outcome, a superseded response or a `stop()`.
-   *
-   * A COUNTER rather than the `updating` falling edge or `detail` identity, deliberately: the
-   * falling edge fires on every terminal path including drops (announcing a dropped 503 would
-   * lie), and `detail`'s identity changes on boot settles and deck switches too (announcing a
-   * switch contradicts UX-DR45's refetch-only wording). And a counter rather than a boolean,
-   * because two refetches ending at the same total must still announce twice — the
-   * `DeckAnnouncer` keys its DOM mutation on this value.
+   * How many coalesced refetches have settled SUCCESSFULLY (UX-DR45) — the announce-once signal.
+   * Incremented in exactly ONE place, {@link refetchSequence}'s success arm, so it never moves on a
+   * boot settle, the 404-clear or a drop. A COUNTER, not a boolean, because two refetches ending at
+   * the same total must still announce twice.
    */
   readonly refetchSettles: number
 }
@@ -208,33 +86,17 @@ export const useDeckStore = create<DeckSlice>(() => ({
   refetchSettles: 0,
 }))
 
-/** The ONE writer (AD-12, AC 18). Every input to this slice goes through here. */
+/** The ONE writer (AD-12). Every input to this slice goes through here. */
 const applyDeckState = (deck: DeckState): void => useDeckStore.setState({ deck })
 
-/**
- * The updating flag's writer — `applyDeckState`'s sibling, same module, same AD-12 door (c7-4).
- * Generation-guarding is the CALLER's (each boot owns its own counter; this module-level writer
- * cannot see one).
- */
+/** The updating flag's writer. Generation-guarding is the CALLER's (each boot owns its counter). */
 const applyUpdating = (updating: boolean): void => useDeckStore.setState({ updating })
 
-/**
- * The settle counter's writer — the third sibling through the AD-12 door (c7-5), `applyUpdating`'s
- * shape exactly. It takes the NEXT value rather than incrementing internally so that
- * {@link resetDeckState} and the one increment site share one writer; guarding which settles may
- * count is the increment site's (it sits synchronously beside `refetchSequence`'s own generation
- * check, so no second guard exists here to drift from the first).
- */
+/** The settle counter's writer. Takes the NEXT value so reset and increment share one writer. */
 const applyRefetchSettles = (refetchSettles: number): void =>
   useDeckStore.setState({ refetchSettles })
 
-/**
- * Forget the deck. **For tests** — the module holds no other lifetime to reset.
- *
- * Still not a production `deck_changed` handler, even now that one exists (c7-3): that handler
- * is {@link refetchOnDeckChanged}, and it REFETCHES rather than forgets — nothing on the
- * production `deck_changed` path ever writes an empty state except the legislated 404-clear.
- */
+/** Forget the deck. **For tests** — production never forgets; it refetches (or 404-clears). */
 export const resetDeckState = (): void => {
   applyDeckState(INITIAL_DECK_STATE)
   applyUpdating(false)
@@ -242,32 +104,13 @@ export const resetDeckState = (): void => {
 }
 
 /**
- * The panel a DECK refusal draws, where that differs from `PANEL_FOR_REASON`'s answer (Q5, AC 11).
- *
- * A per-context map beside its consumer, `states.ts` untouched — the identical shape c4-1's Q5
- * ruled for card reads (`PLACEHOLDER_FOR_CARD_REFUSAL`), and for the identical reason: a token's
- * UI destination can be context-dependent without the token's own classification being wrong.
- *
- * **`invalid_request` is the whole map, and it is a ruling.** `states.ts` classifies that token
- * `NO_UI_RESPONSE` — *"The SPA never generates a malformed request, so this token means a client
- * bug or a stray caller on the port"* — and **that premise is exactly what fails on this route**.
- * The id in the path did not come from the SPA. It came from `PUT /api/active-deck`, whose
- * `ActiveDeckRequest` accepts **any non-blank string of up to 256 characters, stores it verbatim,
- * and deliberately does not check that the deck exists**. An agent typo is therefore a perfectly
- * ordinary way to reach this token, and letting it fall through to `panelFor` would put *"The
- * companion hit a bug. Restart the companion."* on screen for one. An id the app cannot resolve
- * is an id the app cannot resolve, whichever token says so, and *"there is no active deck"* is
- * the true sentence.
- *
- * That does not weaken `NO_UI_RESPONSE`: it stays correct for the whole-screen poll, where
- * `/api/decks` carries no id and an `invalid_request` really does mean a client bug with nothing
- * to show. `states.ts` is untouched deliberately — adding `invalid_request` to
- * `PLACEHOLDER_FOR_REASON` or to `PANEL_FOR_REASON` would break
- * `ReasonClassificationsAreDisjoint`, *and rightly*, because the destination is a property of the
- * context and not of the token.
- *
- * Every other token is `panelFor`'s call, unmodified — which is the point of the map being
- * `Partial` and one entry long rather than a second `switch` over the vocabulary.
+ * The panel a DECK refusal draws where that differs from `PANEL_FOR_REASON` — a per-context map,
+ * `states.ts` untouched. `invalid_request` is deliberate: `states.ts` classifies it `NO_UI_RESPONSE`
+ * on the premise that the SPA never sends a malformed request, but this id came from
+ * `PUT /api/active-deck`, which stores any non-blank string without checking the deck exists. An
+ * agent typo must read *"there is no active deck"*, not *"The companion hit a bug"*. Adding the
+ * token to `states.ts` would break `ReasonClassificationsAreDisjoint`, rightly: the destination is a
+ * property of the context, not of the token.
  */
 const PANEL_FOR_DECK_REFUSAL = {
   invalid_request: 'no-active-deck',
@@ -280,23 +123,15 @@ const knownReason = (reason: string | null): ErrorReason | null =>
 /** The overrides, widened for lookup — an assignment rather than a cast, as `cards.ts` does. */
 const deckPanels: Partial<Record<ErrorReason, StateKey>> = PANEL_FOR_DECK_REFUSAL
 
-/**
- * The panel a refused DECK read puts on the glass: the per-context override, else `panelFor`.
- *
- * `Object.hasOwn` is inside {@link knownReason}; the lookup below is on an already-narrowed
- * token, so `'__proto__'` cannot reach it.
- */
+/** The per-context override, else `panelFor`. `hasOwn` is inside {@link knownReason}. */
 const deckPanelFor = (reason: string | null): StateKey => {
   const known = knownReason(reason)
   return (known === null ? undefined : deckPanels[known]) ?? panelFor(reason)
 }
 
 /**
- * What a refusal turns into: `'none'` when the honest panel is *"there is no active deck"*,
- * `'refused'` otherwise.
- *
- * The `'no-active-deck'` answer is the CLEARING signal, and reading it out of the map is what
- * makes AC 8 a consumption of `PANEL_FOR_REASON` rather than a paraphrase of it.
+ * `'none'` when the honest panel is *"there is no active deck"*, `'refused'` otherwise — the
+ * clearing signal read out of the map, not paraphrased.
  */
 const stateForPanel = (panel: StateKey, reason: string | null): DeckState =>
   panel === 'no-active-deck'
@@ -304,70 +139,36 @@ const stateForPanel = (panel: StateKey, reason: string | null): DeckState =>
     : { status: 'refused', reason: knownReason(reason), panel }
 
 /**
- * A refusal on the DECK read (`GET /api/deck/{deck_id}`): the per-context override, else
- * `panelFor`. Note the honest consequence of a `404` clearing, recorded rather than fixed:
- * after a `404` the backend still reports that deck id as active, so the NEXT boot (a reload,
- * or a remount) asks for it again and clears again. That is one wasted request per cold open
- * against a deleted deck, it is self-correcting the moment the agent sets another deck, and the
- * alternative — the client telling the backend to forget an id — is a `PUT` this story has no
- * mandate to make.
+ * A refusal on the DECK read. After a `404` clears, the backend still reports the id as active, so
+ * the NEXT boot asks again and clears again — one wasted request per cold open, accepted.
  */
 const deckRefusalState = (reason: string | null): DeckState =>
   stateForPanel(deckPanelFor(reason), reason)
 
 /**
- * A refusal on the ACTIVE-DECK read (`GET /api/active-deck`): `panelFor`, with **no override**.
- *
- * The Q5 override does not apply here, and applying it was a review finding, not a nuance: its
- * entire justification is *"the id in the path came from `PUT /api/active-deck`"*, and this
- * route carries NO path parameter. A `400 invalid_request` from it is therefore exactly the
- * case `states.ts` classifies — a client bug or a stray caller on the port — and folding it to
- * a calm `'none'` would render a real bug as *"there is no active deck"*. `panelFor` clamps it
- * to `'internal-error'`, which is the honest panel; the test on this route says the same.
+ * A refusal on the ACTIVE-DECK read: `panelFor`, with **no override**. That route carries NO path
+ * parameter, so a `400` from it really is a client bug; folding it to `'none'` would hide it.
  */
 const activeRefusalState = (reason: string | null): DeckState =>
   stateForPanel(panelFor(reason), reason)
 
 /** What one settled boot decided. Exported for the tests that drive the sequence directly. */
 export interface DeckBoot {
-  /**
-   * Runs the two-request sequence once per `start()`/`stop()` cycle. Idempotent while running
-   * AND after settling — `live` is never cleared by completion, so a settled boot re-runs only
-   * via `stop()` then `start()`, which is exactly how the recovery re-drive uses it.
-   */
+  /** Runs the sequence once per `start()`/`stop()` cycle; a settled boot re-runs only via `stop()`. */
   start: () => void
   /** Abandons the sequence: nothing it has in flight may write after this. Idempotent. */
   stop: () => void
   /**
-   * Refetch ONE deck by id — the single-request half of the boot, on the boot (story c7-3).
-   *
-   * The `deck_changed` handler's request shape: one `readDetail`, no `readActive`, sharing this
-   * boot's generation counter, settle guard, refusal mapping and summary seeding — the "existing
-   * machinery extended, never a second boot implementation" clause made literal. Each call
-   * SUPERSEDES any refetch already in flight: the previous request's `AbortSignal` is aborted
-   * and the generation bump makes its response unable to settle, so a burst of calls holds at
-   * most one request in flight and exactly the LAST response wins (UX-DR35's "a newer event
-   * cancels and restarts", with no timer anywhere — the supersession IS the coalescing).
-   *
-   * A no-op unless the boot has settled ({@link DeckBoot.settled}): a refetch racing an
-   * unsettled two-request sequence would bump the generation out from under it and could strand
-   * the slice at `'booting'` if its own outcome were then dropped. The caller
-   * ({@link refetchOnDeckChanged}) routes that window to a full re-drive instead, per the
-   * mid-boot row of c7-3's decision table — this guard is the boot refusing to be misused, not
-   * a second copy of the table.
-   *
-   * Outcome mapping is deliberately NOT the boot's (see the runner): only `deck_not_found`
-   * settles (the legislated 404-clear); every other refusal, an unreachable, an abort and a
-   * malformed row are all DROPPED so the loaded deck stays on the glass (UX-DR35
-   * never-teardown; staleness accepted).
+   * Refetch ONE deck by id, sharing the boot's generation counter, settle guard, refusal mapping
+   * and seeding. Each call SUPERSEDES any refetch in flight (abort + generation bump), so a burst
+   * holds at most one request and the LAST response wins — UX-DR35's *"a newer event cancels and
+   * restarts"* with no timer; the supersession IS the coalescing. A no-op unless the boot has
+   * settled: racing an unsettled sequence could strand the slice at `'booting'`. Only
+   * `deck_not_found` settles (the 404-clear); every other refusal, an unreachable, an abort and a
+   * malformed row are DROPPED so the loaded deck stays on the glass (UX-DR35 never-teardown).
    */
   refetch: (deckId: string) => void
-  /**
-   * Whether the most recent `start()`'s sequence has settled — the bookkeeping
-   * {@link refetchOnDeckChanged} reads to tell "a deck is loaded and quiet" from "a re-drive is
-   * mid-flight against a possibly-departing id". False from `start()` until the sequence's one
-   * settle lands; a refetch neither requires nor clears it.
-   */
+  /** Whether the most recent `start()`'s sequence has settled. A refetch neither needs nor clears it. */
   settled: () => boolean
 }
 
@@ -376,33 +177,17 @@ export interface DeckBootOptions {
   readonly onUpdate: (state: DeckState) => void
   /** Injected so tests need no global `fetch` stub, exactly as `createPoller`'s `read?:` is. */
   readonly readActive?: () => Promise<ActiveDeckOutcome>
-  /**
-   * Likewise. **Production passes neither.** The optional `signal` is the refetch's abort
-   * handle (story c7-3): the boot sequence passes none, and `readDeck` merges it with its own
-   * read timeout inside `client.ts`'s one door.
-   */
+  /** Likewise. **Production passes neither.** `signal` is the refetch's abort handle. */
   readonly readDetail?: (deckId: string, signal?: AbortSignal) => Promise<DeckOutcome>
 }
 
 /**
  * Build the boot. Nothing happens until `start()`.
  *
- * **WHY A GENERATION COUNTER AND NOT A `live` BOOLEAN (AC 5).** `createPoller` carries the
- * argument in full at `poller.ts:161` — *"a plain `live` boolean cannot tell 'stopped' from
- * 'stopped and restarted'"* — and it applies here with one extra edge the poller does not have:
- * this is a TWO-REQUEST sequence, so the second request is issued **after an await**, and a
- * React StrictMode remount (mount → cleanup → mount, in development) can land a `stop()` and a
- * fresh `start()` in that exact window. A boolean would let the first sequence resume, issue its
- * second request against an abandoned world, and write a deck the caller has already left. The
- * counter is re-checked after BOTH awaits, and `onUpdate` is called through a guard rather than
- * directly, so there is one place a stale write can be stopped instead of three.
- *
- * Args:
- *   options: See {@link DeckBootOptions}.
- *
- * Returns:
- *   A {@link DeckBoot}. Every instance owns its own generation, so a second one cannot silence
- *   the first by accident or be silenced by it.
+ * A GENERATION COUNTER rather than a `live` boolean (`poller.ts`'s argument), with one extra edge:
+ * the second request is issued after an await, and a React StrictMode remount can land a `stop()`
+ * and a fresh `start()` in that window. A boolean would let the first sequence resume and write a
+ * deck the caller has already left. Every instance owns its own generation.
  */
 export const createDeckBoot = ({
   onUpdate,
@@ -411,13 +196,7 @@ export const createDeckBoot = ({
 }: DeckBootOptions): DeckBoot => {
   let live = false
   let generation = 0
-  /**
-   * Whether the most recent `start()`'s sequence has settled (story c7-3). Cleared by `start()`,
-   * set inside {@link settleFor}'s guard — so a superseded sequence's late settle can no more
-   * flip this flag than it can write the store. `stop()` deliberately leaves it alone: the flag
-   * describes the last sequence that RAN, and the one reader (`refetch`'s gate, via
-   * {@link refetchOnDeckChanged}) always pairs it with the store's own state.
-   */
+  /** Set inside {@link settleFor}'s guard, so a superseded sequence's late settle cannot flip it. */
   let sequenceSettled = false
   /** The in-flight refetch's abort handle, or `null`. Aborted on every supersede and on stop. */
   let refetchController: AbortController | null = null
@@ -427,12 +206,7 @@ export const createDeckBoot = ({
     refetchController = null
   }
 
-  /**
-   * The ONE settle guard, shared by the boot sequence and the refetch (c7-3): emit only if the
-   * caller still owns the store. Marking `sequenceSettled` here rather than at each call site is
-   * what keeps the flag inside the same guard as the write — a refetch's settle re-asserts a
-   * truth it required, and a stale sequence's settle asserts nothing.
-   */
+  /** The ONE settle guard, shared by boot and refetch: emit only if the caller still owns the store. */
   const settleFor =
     (gen: number) =>
     (state: DeckState): void => {
@@ -442,13 +216,9 @@ export const createDeckBoot = ({
     }
 
   /**
-   * The updating flag's clear, generation-guarded exactly as {@link settleFor} guards a write
-   * (c7-4). One helper rather than a clear at each of the runners' five-plus return paths — the
-   * runners reach it through `finally`, so no exit can miss it — and the guard is what stops a
-   * SUPERSEDED run's exit from clearing the flag its successor just raised: the successor bumped
-   * `generation` before it started, so the stale run's `gen` no longer matches. `settleFor` alone
-   * cannot carry this duty because the dropped outcomes (a 503, an unreachable, an abort, a
-   * malformed row) never settle, and every one of them still ends the in-flight window.
+   * The updating flag's clear, reached through `finally` so no exit misses it, and generation-
+   * guarded so a SUPERSEDED run's exit cannot clear the flag its successor just raised.
+   * `settleFor` cannot carry this: dropped outcomes never settle, yet each ends the window.
    */
   const clearUpdatingFor = (gen: number): void => {
     if (gen !== generation) return
@@ -471,14 +241,10 @@ export const createDeckBoot = ({
     if (active.kind === 'unreachable') return settle({ status: 'none' })
     if (active.kind === 'error') return settle(activeRefusalState(active.reason))
 
-    // The blank id is refused HERE, with no request, and it is a route-shape fact rather than a
-    // validation opinion: `deckPath('')` is the bare collection path `/api/deck/` — a DIFFERENT
-    // route, not a malformed parameter — so the id gate that answers every other hostile value
-    // never gets to see this one. `hydrateCard` refuses `''` one layer up for the same reason.
-    // `readActiveDeck` already folds a blank id to `null`, so this is the second lock on a door
-    // that has one; it stays because the sequence below must never call `readDetail('')` — and
-    // it trims, because `activeDeckIdOf` folds on `trim()` and a second lock weaker than the
-    // first (`'  '` slipping through to `/api/deck/%20%20`) is the review finding it closed.
+    // Refused HERE with no request: `deckPath('')` is the bare collection path `/api/deck/`, a
+    // DIFFERENT route. `readActiveDeck` already folds a blank id to `null`; this second lock stays
+    // because the sequence must never call `readDetail('')`, and it trims because a lock weaker
+    // than the first (`'  '` reaching `/api/deck/%20%20`) is no lock.
     if (active.deckId === null || active.deckId.trim() === '') return settle({ status: 'none' })
 
     let detail: DeckOutcome
@@ -492,20 +258,13 @@ export const createDeckBoot = ({
     if (detail.kind === 'unreachable') return settle({ status: 'none' })
     if (detail.kind === 'error') return settle(deckRefusalState(detail.reason))
 
-    // In a try/catch because `deckOf` validates the envelope, not the rows (`id`, `name`,
-    // `Array.isArray(cards)` — its own docstring declares that bad rows reach the derivation),
-    // so a malformed row inside a valid-looking `200` throws in `boardsOfDeck` AFTER every
-    // guard has passed. Without the catch that is an unhandled rejection and a slice stuck at
-    // `'booting'` forever — no panel, no signal — which breaks this module's own "every outcome
-    // is a value" posture (a review finding). Unreachable with the real Pydantic backend;
-    // reachable the day the SPA and the backend skew.
+    // `deckOf` validates the envelope, not the rows, so a malformed row inside a `200` throws in
+    // `boardsOfDeck` AFTER every guard. Without the catch that is an unhandled rejection and a
+    // slice stuck at `'booting'` forever. Unreachable with the real backend; reachable on skew.
     try {
-      // AC 17 — the whole cards the payload ALREADY carried become HYDRATED cache entries, at a
-      // cost of ZERO requests: the deck detail embeds each row's full `Card`, so no consumer of
-      // this deck ever needs `GET /api/cards/{card_id}`. Called before `settle` so that a
-      // consumer re-rendered by the state below reads a cache that is already warm. The
-      // generation check after the await above guards this too: a stopped or superseded boot
-      // discards its payload WITHOUT seeding.
+      // The payload's whole cards become HYDRATED cache entries at ZERO requests. Before `settle`,
+      // so a consumer re-rendered by the state below reads a warm cache; the generation check
+      // above means a superseded boot discards its payload WITHOUT seeding.
       seedDeckCards(detail.deck.cards)
       settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
     } catch {
@@ -513,7 +272,7 @@ export const createDeckBoot = ({
     }
   }
 
-  /** {@link runSequence}, with the c7-4 updating window closed on EVERY exit path. */
+  /** {@link runSequence}, with the updating window closed on EVERY exit path. */
   const run = async (gen: number): Promise<void> => {
     try {
       await runSequence(gen)
@@ -523,27 +282,12 @@ export const createDeckBoot = ({
   }
 
   /**
-   * The single-request refetch (story c7-3): re-read ONE deck, keep the glass calm about it.
-   *
-   * The boot's machinery, not a copy of it — same generation slot, same settle guard, same
-   * `seedDeckCards`-before-settle ordering and the same malformed-row catch. What differs
-   * is the OUTCOME MAPPING, and every difference is UX-DR35 legislation rather than taste:
-   *
-   *   - `deck_not_found` settles the boot's own clearing state ({@link deckRefusalState} maps it
-   *     through `PANEL_FOR_REASON` to `{status:'none'}`) — *"a 404 clears to no-active-deck"*.
-   *   - EVERY other refusal, an `unreachable` (which is also what an abort surfaces as — the
-   *     merged signal rejects `fetch` inside the one door and `readDeck` folds it), and a
-   *     malformed row are DROPPED without a settle: the boot maps these to a panel because at
-   *     cold open there is nothing on the glass to protect, and a refetch maps them to nothing
-   *     because there is — tearing a loaded deck down to a panel on a transient blip is the
-   *     exact teardown UX-DR35 forbids. Staleness is accepted; recovery is the next event, the
-   *     reconnect re-drive, or the poll edge.
-   *
-   * The invalid_request→'none' override deliberately does NOT clear here: its Q5 justification
-   * ("the id in the path came from `PUT /api/active-deck`") holds — but its conclusion rests on
-   * the id being one the app has never resolved, and THIS id is the settled `detail.id`, which
-   * just resolved. A 400 about it mid-session reads as a blip, not a verdict, so it drops with
-   * the other refusals; only the token FR-11 legislates ever clears a loaded deck.
+   * The single-request refetch: the boot's machinery with a different OUTCOME MAPPING (UX-DR35).
+   * `deck_not_found` settles the clearing state; every other refusal, an `unreachable` (which is
+   * also what an abort surfaces as) and a malformed row are DROPPED, because tearing a loaded deck
+   * down to a panel on a transient blip is the teardown UX-DR35 forbids. The `invalid_request`
+   * override does NOT clear here: THIS id is the settled `detail.id`, which just resolved, so a 400
+   * about it mid-session reads as a blip, not a verdict.
    */
   const refetchSequence = async (
     gen: number,
@@ -567,32 +311,21 @@ export const createDeckBoot = ({
     }
 
     try {
-      // The same zero-request seeding AC 17 bought the boot, for the same reason: a consumer
-      // re-rendered by the settle below reads a cache that is already warm with the new rows.
+      // The same zero-request seeding the boot does, for the same reason.
       seedDeckCards(detail.deck.cards)
       settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
-      // THE ANNOUNCE-ONCE SIGNAL (c7-5, UX-DR45): incremented HERE and nowhere else — beside the
-      // one settle that means "a coalesced refetch completed with a new deck". Synchronous with
-      // the generation check above (no await between), so the `:537` guard already covers it and
-      // a superseded run's late response can no more bump this than it can write the store. It
-      // sits AFTER the settle so a throw in `boardsOfDeck` (evaluated as the settle's argument)
-      // skips both together, and the boot's own success arm deliberately has no counterpart:
-      // cold boots, switches and reconnect re-drives all settle there, silently.
+      // THE ANNOUNCE-ONCE SIGNAL (UX-DR45): incremented HERE and nowhere else, synchronous with the
+      // generation check above, and AFTER the settle so a throw in `boardsOfDeck` skips both. The
+      // boot's own success arm deliberately has no counterpart.
       applyRefetchSettles(useDeckStore.getState().refetchSettles + 1)
     } catch {
-      // A malformed row inside a 200: the boot settles a panel because a cold open has nothing
-      // else to show; a refetch leaves the DECK STORE untouched, because the deck already on
-      // the glass parsed (UX-DR35). Stated precisely rather than as "dropped whole" (review
-      // correction): `seedDeckCards` runs BEFORE the derivation that throws, so the card
-      // cache may retain whatever validly-shaped rows the payload carried. That residue
-      // is additive data keyed by card id — the same rows a later successful
-      // refetch would seed — so it is harmless, and unwinding a cache shared with the agent
-      // views to cosmetically purify a dropped outcome would be a second mechanism for zero
-      // observable gain.
+      // A malformed row inside a 200: the deck store is left untouched, because the deck on the
+      // glass parsed (UX-DR35). `seedDeckCards` ran first, so the card cache may retain the
+      // payload's valid rows — additive data a later successful refetch would seed anyway.
     }
   }
 
-  /** {@link refetchSequence}, with the c7-4 updating window closed on EVERY exit path. */
+  /** {@link refetchSequence}, with the updating window closed on EVERY exit path. */
   const refetchRun = async (gen: number, deckId: string, signal: AbortSignal): Promise<void> => {
     try {
       await refetchSequence(gen, deckId, signal)
@@ -607,36 +340,30 @@ export const createDeckBoot = ({
       live = true
       generation += 1
       sequenceSettled = false
-      // Raised HERE, synchronously with the generation bump, so the header can mark the very
-      // frame the sequence begins on (c7-4). A re-drive behind a still-settled deck is the case
-      // that shows it; a cold boot raises it too and the App layer's `deck !== null` gate is
-      // what keeps the cold open unmarked.
+      // Synchronous with the generation bump, so the header marks the very frame the sequence
+      // begins on. A cold boot raises it too; the App layer's `deck !== null` gate hides that.
       applyUpdating(true)
       void run(generation)
     },
     stop: () => {
       live = false
       generation += 1
-      // A stopped boot may not leave a refetch running against a world it has abandoned — the
-      // generation bump already silences its settle; the abort stops paying for it (c7-3).
+      // The bump already silences a running refetch's settle; the abort stops paying for it.
       abortRefetch()
-      // …and the marker dies with the abort (c7-4): the bump above means the aborted run's own
-      // `finally` will SKIP its clear (gen no longer matches), so `stop()` clears directly —
-      // unguarded, because a stopped world has nothing in flight to be superseded by.
+      // The aborted run's own `finally` will SKIP its clear (gen no longer matches), so `stop()`
+      // clears directly — unguarded, because a stopped world has nothing in flight.
       applyUpdating(false)
     },
     refetch: (deckId) => {
-      // The gate the interface docstring declares: never race an unsettled sequence. Checked
-      // here as well as in the caller, because a generation bump from an ungated refetch would
-      // silence the in-flight boot and could strand the slice at `'booting'` forever.
+      // Never race an unsettled sequence: the bump would silence the in-flight boot and could
+      // strand the slice at `'booting'` forever.
       if (!live || !sequenceSettled) return
-      // Supersede FIRST, then abort: the bump is what makes the aborted request's response
-      // (perhaps already resolving) fail its settle guard, so the abort is a network economy
-      // and never load-bearing for correctness.
+      // Supersede FIRST, then abort: the bump is what fails the aborted response's settle guard,
+      // so the abort is a network economy and never load-bearing.
       generation += 1
       abortRefetch()
-      // AFTER the gate and the bump (c7-4): an ungated set would raise the marker for an event
-      // the boot refused, and a pre-bump set would belong to the generation being superseded.
+      // AFTER the gate and the bump: an ungated set would mark an event the boot refused, and a
+      // pre-bump set would belong to the generation being superseded.
       applyUpdating(true)
       const controller = new AbortController()
       refetchController = controller
@@ -647,102 +374,46 @@ export const createDeckBoot = ({
 }
 
 /**
- * What is actually on the glass: a deck, or one system panel — **never both** (Q1, AC 6).
- *
- * A value rather than a pair of booleans, so `App.tsx` renders an answer instead of computing
- * one, and so **c4-4**, **c4-7** and **c4-12** read the same answer rather than each re-deriving
- * it from `deck !== null`.
+ * What is actually on the glass: a deck, or one system panel — **never both**. A value, so
+ * `App.tsx` renders an answer instead of computing one and no consumer re-derives it.
  */
 export type Surface =
   | { readonly kind: 'deck'; readonly detail: DeckDetail; readonly boards: DeckBoards }
   | { readonly kind: 'panel'; readonly panel: StateKey }
   /**
-   * Nothing yet: the boot has not heard back from `GET /api/active-deck`.
-   *
-   * Not a third kind of content — it is the ABSENCE of a decision, and it carries no `StateKey`
-   * because no copy belongs to a frame nobody is meant to read. `INITIAL_SYSTEM_STATE.panel` is
-   * `no-active-deck` (the honest value once the answer lands and is `null`), and before this arm
-   * existed that panel — hero art included — painted on the first frame of EVERY cold open,
-   * including one that was about to render a deck. This masks it until the read settles.
+   * The boot has not heard back yet — the ABSENCE of a decision, carrying no `StateKey` because no
+   * copy belongs to a frame nobody is meant to read. Without this arm the `no-active-deck` panel,
+   * hero art included, painted on the first frame of EVERY cold open.
    */
   | { readonly kind: 'booting' }
 
 /**
- * The panel a lost connection draws (story c5-6, Q3, AC 17).
- *
- * Typed `ClientOnlyState` and not `StateKey`, which is dw:3500's disposition made mechanical:
- * `disconnected` is in `CLIENT_ONLY_STATES` precisely because no response can carry it, and this
- * is one of the two places in the app that chooses a panel from something other than a wire
- * token. Retarget it at a wire-sourced panel and `npm run typecheck` names it. See that
- * constant's docstring in `states.ts` for why the consumption is type-level rather than runtime.
+ * The panel a lost connection draws. Typed `ClientOnlyState`, not `StateKey`: `disconnected` has
+ * no wire token by design, and retargeting this at a wire-sourced panel fails `npm run typecheck`.
  */
 const DISCONNECTED_PANEL: ClientOnlyState = 'disconnected'
 
 /**
- * THE PRECEDENCE, IN ONE EXPRESSION (Q1, AC 6, AC 7, AC 8, AC 9, AC 11).
- *
- * `EXPERIENCE.md`'s state table gives the answer row by row — *"Cold open, backend live, deck
- * set"* → the deck view; *"Fresh install, DB missing"* → a panel; *"Deck deleted"* → a panel —
- * and every one of those rows is *a deck, or a panel, never both*. Three arms, in this order,
- * and each one is an acceptance criterion:
- *
- *   1. **A loaded deck displaces the system panel** (AC 6). Note what that costs and why it is
- *      correct anyway: with the panel gone and no grid until **c4-4**, the shell's `left` slot
- *      falls back to its own placeholder — *"The card-art grid lands here — c4-4 …"* — which is
- *      the honest displacement rather than a regression, and the same pattern c2-9 and c2-10
- *      both accepted for the slots they filled.
- *   2. **Else a deck REFUSAL that decided a panel of its own** (AC 9, AC 11). This arm is why the
- *      order is not simply "deck, else system": the deck read's `503 database_unavailable` and
- *      `503 database_not_initialized` must put THEIR panels on the glass, and a rule that let the
- *      poll's opinion win would make that criterion pass only by coincidence — the two routes
- *      usually agree, so the assertion would be vacuous exactly when it mattered.
- *   3. **Else the system panel** (AC 7). `none` lands here, so a fresh install shows
- *      `no-active-deck` with the deck names the poll already fetched, non-clickable. `booting`
- *      no longer does: it has its own arm above, which renders nothing at all until the
- *      active-deck read settles.
- *
- * ==== AND NOW THERE IS A FOURTH ARM, ABOVE ALL THREE (c5-6, Q3, Brad 2026-08-08) =======
- *
- * **A lost connection outranks even a loaded deck**, and that needed a deliberate ruling because
- * the two written rules point opposite ways. The epic's Story 5.6 says the Disconnected panel
- * *"takes the left column"* and UX-DR30 allows one state panel at a time there; arm 1 above has
- * ranked a loaded deck above every system panel since c4-2. Meanwhile **UX-DR35 says a deck is
- * never torn down to a skeleton during reconnection.**
- *
- * Both hold, because they are about different moments. The arm below fires on `'down'` **only** —
- * the two-gate threshold in `socket.ts`, sixty seconds and four failures — and the whole
- * pre-exhaustion window is `'reconnecting'`, during which this function returns exactly what it
- * returned before this story: **the deck stays on the glass, possibly stale, exactly as UX-DR35
- * asks.** Only once the app is prepared to assert *"Lost the companion backend"* does the panel
- * displace it.
- *
- * ⚠️ **It reads the CONNECTION, not the `panel` field**, and that is the point of Q3 rather than a
- * detail of it. Writing `panel: 'disconnected'` into the shared field would put two writers on one
- * slot: with the HTTP half up and the WS half failing, the next poll success is a CHANGE and would
- * overwrite the disconnected panel while the socket was still down. Composing the two opinions
- * here instead means neither erases the other — and it is what keeps `PANEL_FOR_REASON` and
- * `panelFor` untouched, which `PanelSourcesAreDisjoint` requires: `disconnected` has no wire token
- * by design.
- *
- * **The deck slice is untouched underneath.** Nothing is cleared, so when the socket comes back
- * the `'live'` status re-renders straight back to the deck that was there — AC 9's *"comes back
- * without a reload"*, for free, because this is a pure function over state nobody destroyed.
+ * THE PRECEDENCE, IN ONE EXPRESSION — `EXPERIENCE.md`'s state table, every row *a deck, or a
+ * panel, never both*. A lost connection outranks even a loaded deck, but only on `'down'`, the
+ * two-gate threshold in `socket.ts`; through the whole `'reconnecting'` window the deck stays on
+ * the glass, possibly stale, as UX-DR35 asks. It reads the CONNECTION, not the `panel` field:
+ * writing `'disconnected'` into the shared field would put two writers on one slot, and the next
+ * poll success would overwrite it while the socket was still down (`PanelSourcesAreDisjoint`). The
+ * deck slice is untouched underneath, so the socket coming back re-renders the deck with no reload.
+ * Then booting renders nothing; a loaded deck displaces the system panel; a deck REFUSAL's own
+ * panel outranks the poll's opinion (the two routes usually agree, so a rule that let the poll win
+ * would pass only by coincidence); else the system panel.
  *
  * Args:
  *   deck: The deck slice.
- *   system: The system slice — `panel` and `connection`; `decks` belongs to whoever renders the
- *     panel.
- *
- * Returns:
- *   The one surface to render.
+ *   system: The system slice — `panel` and `connection`.
  */
 export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
   if (system.connection === 'down') return { kind: 'panel', panel: DISCONNECTED_PANEL }
-  // Below the connection arm and above everything else: a backend the app has given up on is a
-  // fact worth a panel whatever the boot is doing, but any OTHER panel chosen before the
-  // active-deck read settles is a guess — and the `no-active-deck` guess draws the Welcome hero,
-  // 420 KB of art, on the way to a deck view that never wanted it. Every settle path of the boot
-  // leaves `'booting'` (`deck`, `none`, `refused`), so this arm cannot latch.
+  // Any panel chosen before the active-deck read settles is a guess — and the `no-active-deck`
+  // guess draws the Welcome hero, 420 KB of art, on the way to a deck view that never wanted it.
+  // Every settle path leaves `'booting'`, so this arm cannot latch.
   if (deck.status === 'booting') return { kind: 'booting' }
   if (deck.status === 'deck') return { kind: 'deck', detail: deck.detail, boards: deck.boards }
   if (deck.status === 'refused') return { kind: 'panel', panel: deck.panel }
@@ -750,29 +421,11 @@ export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
 }
 
 /**
- * The mounted `App`'s deck boot, re-driven — or a no-op when nothing is mounted (c5-6, AC 5).
- *
- * ==== WHY A SEAM AND NOT A SECOND BOOT ================================================
- * `createDeckBoot` is already idempotent, generation-guarded, seeds the card cache and settles
- * every refusal into a panel; `useDeckState` already re-drives it on the poll-recovery edge with
- * `stop()` then `start()`. So the reconnect refetch is not a new mechanism at all — it is the
- * existing one, driven from a new trigger. Building a second "refetch the deck" path would be a
- * second place for the two-request sequence, the blank-id gate and the seeding to drift.
- *
- * ==== WHY A MODULE SLOT RATHER THAN AN EXPORTED BOOT ==================================
- * The boot must stay inside the effect — {@link useDeckState}'s docstring gives the reason (a
- * module-level boot fires during import, in every test file that touches this module, and twice
- * under StrictMode with no cleanup between) — but `connection.ts` needs to drive it and lives in
- * a different module. So the INSTANCE stays in the effect and this slot references it while one is
- * mounted. It is the mirror of `systemState.ts`'s `mounted` poller, and both exist for the same
- * reason `subscribeSystemState` exists: a seam beats naming another module's store.
- *
- * **This is a DIFFERENT trigger from the poll edge, deliberately.** The edge-trigger below never
- * re-drives a loaded `'deck'` — `App.test.tsx`'s "boots exactly once" pins that request count —
- * whereas a reconnect re-drives whatever the state is, INCLUDING a loaded deck, because the whole
- * point of the reconnect refetch is that the deck on the glass may have changed while the socket
- * was gone (AC 5, AC 6). Nothing about the edge's semantics is weakened; a second trigger is
- * added beside it.
+ * The mounted `App`'s deck boot, or `null` — the seam `connection.ts` re-drives it through. A
+ * module slot rather than an exported boot because the instance must stay inside the effect (a
+ * module-level boot fires during import, and twice under StrictMode); the mirror of
+ * `systemState.ts`'s `mounted` poller. A reconnect re-drives whatever the state is, INCLUDING a
+ * loaded deck — unlike the poll edge — because the deck may have changed while the socket was gone.
  */
 let mounted: DeckBoot | null = null
 
@@ -783,48 +436,22 @@ export const redriveDeckBoot = (): void => {
 }
 
 /**
- * c7-3's decision table over one `deck_changed`, driven against an explicit boot.
+ * The decision table over one `deck_changed`. Exported so `deck.test.ts` can drive it with an
+ * injected boot; production reaches it through {@link refetchOnDeckChanged}.
  *
- * **Exported for `deck.test.ts` alone** — the store-level suite drives it with a boot built on
- * injected readers, exactly as it drives `createDeckBoot`; production reaches it only through
- * {@link refetchOnDeckChanged}, which supplies the mounted instance. The table, row by row
- * (the I/O matrix in the story spec is the authority):
- *
- *   1. **Settled `'deck'`, matching or deck-agnostic id** → {@link DeckBoot.refetch} of the
- *      SETTLED `detail.id` — one `GET /api/deck/{id}`, zero `GET /api/active-deck`. The settled
- *      id is used even on a match (they are equal by the check) because it is the only id this
- *      client holds as truth; the event's copy was only ever a routing hint.
- *   2. **Settled `'deck'`, a DIFFERENT deck's id** → nothing. The deck on the glass was not
- *      edited, and refetching it anyway would be spending a request to learn nothing. (The
- *      caller still restarts a stopped poll — the "deck list may refresh regardless" half lives
- *      in `connection.ts`, beside both branches.)
- *   3. **Anything else** — `'none'`, `'refused'`, `'booting'`, or a loaded deck whose RE-DRIVE
- *      is still unsettled — → the full two-request re-drive, `redriveDeckBoot`'s own
- *      stop()/start(). The server is the referee (c6-3 ruling #1's principle): during any window
- *      where the settled `detail.id` is not current truth, adjudicating ids client-side is how a
- *      single-deck refetch of a DEPARTING deck beats an in-flight re-drive to a newly-activated
- *      one and strands the glass on the old deck. Re-driving also keeps the recovery windows the
- *      full boot already heals (the unreachable blip, the 404 residue) healing exactly as they
- *      did before this story.
- *   4. **A STOPPED boot that once settled** — `live` false, `sequenceSettled` still true, the
- *      store still `'deck'` — passes rows 1's gates and the event then dies silently at
- *      `refetch()`'s own `!live` no-op: neither a refetch nor a re-drive (the `stop()`ped state
- *      swallows `start()`-less drives by design). Recorded for totality because this function is
- *      exported; UNREACHABLE through the production seam, because {@link refetchOnDeckChanged}
- *      requires the MOUNTED boot, the mounting effect starts it in the same breath, and the only
- *      `stop()` without a following `start()` is the unmount cleanup — which clears the slot
- *      before this verb could see the stopped instance. A test driving an explicit stopped boot
- *      observes a silent no-op, which is also the only honest answer for a boot whose owner
- *      said stop.
- *
- * The mismatch check reads the settled `detail.id` and NOTHING else: there is no stored
- * `activeDeckId` anywhere in the client, and inventing one would be a second source of truth
- * free to drift from the store (story spec, Design Notes).
+ * A settled `'deck'` with a matching or deck-agnostic id → {@link DeckBoot.refetch} of the
+ * SETTLED `detail.id` (the event's copy was only ever a routing hint). A settled `'deck'` with a
+ * DIFFERENT id → nothing. Anything else — `'none'`, `'refused'`, `'booting'`, or an unsettled
+ * re-drive → the full two-request re-drive: the server is the referee, because adjudicating ids
+ * client-side while the settled id is not current truth is how a refetch of a DEPARTING deck beats
+ * an in-flight re-drive and strands the glass on the old deck. A STOPPED boot dies silently at
+ * `refetch()`'s `!live` no-op; unreachable through the production seam. There is no stored
+ * `activeDeckId` anywhere — inventing one would be a second source of truth.
  *
  * Args:
  *   boot: The boot to drive — production's mounted instance, or a test's own.
- *   deckId: The event's `deck_id`, already FOLDED by the caller: `null` means the frame was
- *     deck-agnostic (missing, null or blank id — "refetch whatever is active").
+ *   deckId: The event's `deck_id`, already FOLDED: `null` means deck-agnostic ("refetch whatever
+ *     is active").
  */
 export const driveDeckChanged = (boot: DeckBoot, deckId: string | null): void => {
   const { deck } = useDeckStore.getState()
@@ -837,55 +464,20 @@ export const driveDeckChanged = (boot: DeckBoot, deckId: string | null): void =>
   boot.refetch(deck.detail.id)
 }
 
-/**
- * The mounted `App`'s answer to a `deck_changed` frame — or a no-op when nothing is mounted.
- *
- * `redriveDeckBoot`'s shape exactly, one story on: `connection.ts` calls this with the folded
- * `deck_id` and holds no `setState` and names no store; the store read and every write stay in
- * this module, which `store-writes.test.ts` names as `deck_changed`'s home. The decision itself
- * is {@link driveDeckChanged}, split out so the store-level suite can drive it without a React
- * mount.
- *
- * Args:
- *   deckId: The event's `deck_id`, folded to `null` when deck-agnostic. See
- *     {@link driveDeckChanged}.
- */
+/** The mounted `App`'s answer to a `deck_changed` frame — or a no-op when nothing is mounted. */
 export const refetchOnDeckChanged = (deckId: string | null): void => {
   if (mounted === null) return
   driveDeckChanged(mounted, deckId)
 }
 
-/**
- * Whether the boot is re-reading the deck right now — the header's updating marker (c7-4).
- *
- * A primitive selector beside {@link useDeckState}, `useInspectionTargetId`'s shape: the one
- * consumer (`App`, which gates it on a loaded deck) re-renders only when the flag flips, never
- * on the deck writes the other hook already carries.
- */
+/** The header's updating marker. A primitive selector: re-renders only when the flag flips. */
 export const useDeckUpdating = (): boolean => useDeckStore((slice) => slice.updating)
 
 /**
- * How many copies of one card the active deck runs, or `null` when it runs none — the group
- * tile's quantity-badge input (story 16.3, EXPERIENCE.md:94).
- *
- * A PRIMITIVE selector beside {@link useDeckUpdating}, for the per-tile subscription discipline
- * `agentView.ts`'s pill selectors state: a group strip mounts one subscriber per tile, and a
- * selector returning an object would re-render every tile on every deck write. A number
- * compares by value, so a tile re-renders only when ITS card's count actually changes.
- *
- * `null` and never `0`: the badge's meaning here is "copies in this deck", and EXPERIENCE.md:94
- * is explicit that a card the deck does not run carries NO badge — "rendering '×0' would be a
- * lie". So the not-in-deck answer is the absence of a number, not a zero the consumer might
- * print. Any state where no deck is settled (`booting`, `none`, `refused`) answers `null` for
- * the same reason: there is no deck for the count to be a fact about.
- *
- * Entries are SUMMED across boards — `detail.cards` carries one row per (card, board), so a
- * card in both the mainboard and the sideboard is still one card the deck runs, and "copies in
- * this deck" is the total. Containers reading `useDeckStore` directly is sanctioned
- * (`ConnectionPill` precedent); `App` keeps the boot.
- *
- * Args:
- *   cardId: The tile's printing id, exactly as the wire sent it.
+ * How many copies of one card the active deck runs, or `null` when it runs none — the group tile's
+ * quantity badge. A PRIMITIVE selector, because a group strip mounts one subscriber per tile.
+ * `null` and never `0`: a card the deck does not run carries NO badge (*"rendering '×0' would be a
+ * lie"*). SUMMED across boards — `detail.cards` carries one row per (card, board).
  */
 export const useDeckCardQuantity = (cardId: string): number | null =>
   useDeckStore((slice) => {
@@ -902,47 +494,21 @@ export const useDeckCardQuantity = (cardId: string): number | null =>
     return found ? copies : null
   })
 
-/**
- * How many coalesced refetches have settled successfully — the `DeckAnnouncer`'s trigger (c7-5).
- *
- * A primitive selector beside {@link useDeckUpdating}, for the same re-render economy: the one
- * consumer re-renders when the counter advances — once per settled refetch, by construction —
- * and never on the deck writes, the updating flag, or anything else this slice carries.
- */
+/** How many coalesced refetches have settled successfully — the `DeckAnnouncer`'s trigger. */
 export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice.refetchSettles)
 
 /**
  * Subscribe to the deck state, and boot it once for as long as the caller is mounted.
  *
- * **`App` is the ONE consumer**, which is `useSystemState`'s rule and holds here for a sharper
- * reason: every mounted caller creates its OWN boot, so a second consumer would silently double
- * the request count on a route this story exists to make cheap. A future component that needs
- * the deck reads {@link useDeckStore} directly and lets the root keep the boot.
+ * **`App` is the ONE consumer**: every mounted caller creates its OWN boot. Other components read
+ * {@link useDeckStore} directly. In an effect, because a module-level boot would fire during import.
  *
- * In an effect rather than at module scope, for `systemState.ts`'s reason: a module-level boot
- * would fire during import — in every test file that touches this module, and twice under
- * StrictMode with no cleanup between. In an effect it starts on mount and is abandoned on
- * unmount, which is also what lets `App.test.tsx` prove FR-07 from ONE mount.
- *
- * ================= THE RECOVERY RE-DRIVE (review finding, FR-22) =======================
- *
- * The subscription below is the module header's re-drive, and its trigger is an EDGE, not a
- * level: the poll's panel transitioning INTO `no-active-deck` from anything else. That edge is
- * the poll saying "the backend went from refusing to healthy" — the moment a deck refusal
- * settled during the outage stops being true. On it, a `'refused'` or `'none'` deck state is
- * re-booted once via `stop()`/`start()` (fresh generation, so the guard argument above holds
- * unchanged); a `'deck'` never is — `App.test.tsx`'s "boots exactly once" test crosses this
- * exact edge with a loaded deck and pins the request count — and a `'booting'` sequence is left
- * to settle against whatever it reads, a window declared in the header. Level-triggering
- * instead (re-drive whenever the poll IS healthy and the deck refused) would loop forever
- * against an id that refuses forever, which is precisely what AC 12's ten-minute test bans.
- *
- * The listener reads the slice through `useDeckStore.getState()` rather than closing over a
- * render's value: an effect's closure sees the state of the render that ran it, and this
- * decision must be made against the state of NOW.
- *
- * Returns:
- *   The current `DeckState`. Re-renders the caller whenever the boot changes it.
+ * The recovery re-drive (FR-22) is an EDGE, not a level: the poll's panel transitioning INTO
+ * `no-active-deck` is the poll saying "the backend went from refusing to healthy". On it a
+ * `'refused'` or `'none'` state is re-booted once; a `'deck'` never is (`App.test.tsx`'s "boots
+ * exactly once" crosses this edge with a loaded deck). Level-triggering would loop forever against
+ * an id that refuses forever. The listener reads `useDeckStore.getState()` rather than a render's
+ * closure, because the decision must be made against the state of NOW.
  */
 export const useDeckState = (): DeckState => {
   useEffect(() => {
@@ -959,8 +525,7 @@ export const useDeckState = (): DeckState => {
     return () => {
       unsubscribe()
       // Identity-checked: a StrictMode remount runs this cleanup BEFORE the next effect, so an
-      // unconditional clear is correct today and would silently un-register the live boot the day
-      // that order changed. See {@link redriveDeckBoot}.
+      // unconditional clear would silently un-register the live boot the day that order changed.
       if (mounted === boot) mounted = null
       boot.stop()
     }

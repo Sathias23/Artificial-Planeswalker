@@ -21,9 +21,9 @@ import { emptyPushLine } from '../SuggestionsView/copy'
 import './GroupsView.css'
 
 /**
- * What a `groups` push puts INSIDE the agent view shell (story 16.3) — the fourth and last view
- * body, built as `TierListView.tsx`'s structural sibling, and every ruling that file carries
- * applies here unless a line below says otherwise.
+ * What a `groups` push puts INSIDE the agent view shell — the fourth and last view body, built
+ * as `TierListView.tsx`'s structural sibling, and every invariant that file carries applies
+ * here unless a line below says otherwise.
  *
  * ================= WHAT IS DIFFERENT, AND WHY (DESIGN.md's group-section) ================
  *
@@ -173,7 +173,7 @@ const MULTIPLICATION_SIGN = '×'
  * Everything else carries over from `TierTile` verbatim: the accessible name is the card's own
  * front-face name in a visually hidden span (`alt=""` by UX-DR48), every tile is the same
  * button whatever its entry's state, the store's `inspectable()` refuses the verbs on a dead
- * id, and the stale-target release effect is the same Greptile-P1 valve, per tile because
+ * id, and the stale-target release effect is the same valve, per tile because
  * targets are per card.
  */
 function GroupTile({ cardId }: { cardId: string }) {
@@ -242,7 +242,7 @@ function GroupTile({ cardId }: { cardId: string }) {
               className="card-shape group-tile-image"
               data-loaded={art === 'shown' ? 'true' : 'false'}
               /* AD-11: the backend proxy, never a CDN host; rendition UNSPELLED so the bytes
-                 share the grid's browser-cache key (SuggestionsView's Q4). */
+                 share the grid's browser-cache key. */
               src={cardImageUrl(cardId, undefined, face)}
               /* `alt=""`, EXACTLY (UX-DR48): the tile's accessible name is the hidden span
                  above, and the card's name is the detail panel's to speak. */
@@ -317,7 +317,7 @@ export function GroupsView({ kind, items }: GroupsViewProps) {
      a card grouped twice costs one request. Keyed on `items`, not on mount: replace-in-place
      re-fires against a mounted shell. Skipped groups' valid ids hydrate too, deliberately —
      the skip is render-only, and a duplicate id shared with a healthy group must find the
-     cache warm either way (the 16.2 pinned behaviour, mirrored). */
+     cache warm either way (`TierListView`'s pinned behaviour, mirrored). */
   useEffect(() => {
     const ids = new Set<string>()
     for (const raw of items) for (const cardId of cardIdsOf(itemOf(raw))) ids.add(cardId)

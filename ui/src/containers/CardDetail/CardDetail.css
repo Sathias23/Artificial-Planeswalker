@@ -1,4 +1,4 @@
-/* CardDetail — THE ART ONLY (story c4-5, UX-DR4, UX-DR36, DESIGN.md:387, `components.card-detail`).
+/* CardDetail — THE ART ONLY (UX-DR4, UX-DR36, DESIGN.md:387, `components.card-detail`).
 
    ==== WHY THIS FILE HOLDS ONE THING, AND ITS CHROME IS NEXT DOOR ========================
    This stylesheet is in `tests/token-usage.test.ts`'s CARD_SHAPED allowlist, and membership cuts
@@ -57,7 +57,7 @@
   box-shadow: var(--shadow-rest);
 }
 
-/* The well and the named placeholder reach c4-3's roots through the PUBLIC contract — the
+/* The well and the named placeholder reach the placeholder's roots through the PUBLIC contract — the
    `card-shape` class every card-shaped thing carries — rather than through `.card-placeholder` /
    `.card-placeholder-well`, which are that component's private names. This rule gives them
    position and nothing else: no radius, no border, no background. (A rule in one file reaching a

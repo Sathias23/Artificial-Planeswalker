@@ -1,4 +1,4 @@
-/* The footer attribution (story c2-10, UX-DR32, NFR-08).
+/* The footer attribution (UX-DR32, NFR-08).
 
    NO COMPOSITION REFERENCE EXISTS FOR THIS COMPONENT. `DESIGN.md:366` lists what the imported
    mock demonstrates and what it does not, and Footer attribution is on the SECOND list — with
@@ -6,18 +6,15 @@
    placeholder and the skip link. `DESIGN.md`'s own bullet and its `components.footer-attribution`
    frontmatter are the whole source; there is no arrangement to read and no drift table to write.
 
-   THIS COMPONENT OWNS ITS APPEARANCE, AND THE SHELL OWNS ITS LAYOUT (Q2, Brad 2026-07-30).
-   `.app-shell-footer` shipped `font: var(--type-micro)` and `color: var(--text-tertiary)` while
-   this story's AC requires `--text-secondary`. Two single-class selectors setting `color` is a
-   source-order race decided by import order, and this repo has been bitten by an unmodelled
-   cascade once already (c2-6's last-wins finding). Rather than add a second rule and reason
-   about which wins, the shell was STRIPPED back to `flex-shrink: 0` — its layout job — and
-   everything `DESIGN.md` assigns to `components.footer-attribution` is declared exactly once,
-   here. There is no cascade to reason about because there is no second declaration.
+   THIS COMPONENT OWNS ITS APPEARANCE, AND THE SHELL OWNS ITS LAYOUT. Two single-class
+   selectors setting `color` would be a source-order race decided by import order. So
+   `.app-shell-footer` holds only `flex-shrink: 0` — its layout job — and everything `DESIGN.md`
+   assigns to `components.footer-attribution` is declared exactly once, here. There is no
+   cascade to reason about because there is no second declaration.
 
-   NO MOTION, DELIBERATELY. AC 6's hover is a colour change and nothing else. A `transition`
+   NO MOTION, DELIBERATELY. The hover is a colour change and nothing else. A `transition`
    would have to be built from `--motion-*` tokens AND registered in the reduced-motion inventory
-   at the foot of tokens.css (Decide-once #3, ui/README.md:323) — a motion with no registered
+   at the foot of tokens.css (ui/README.md:323) — a motion with no registered
    fallback is an incomplete story. The cheapest correct answer is no transition, and then there
    is no inventory entry to owe.
 
@@ -33,13 +30,13 @@
    DESIGN.md's own `textTransform:` key, not from a list.
 
    SO THE LEGAL NOTICE RENDERS AS 10px ALL-CAPS, and that is the spec as written rather than an
-   accident (Q1, Brad 2026-07-30). `DESIGN.md:324` assigns footer attribution to the micro role
+   accident. `DESIGN.md:324` assigns footer attribution to the micro role
    and declares that role uppercase; the DOM text is unaffected by `text-transform`, so the
    verbatim gate, the copy-rules content half and the screen reader all read the sentence exactly
    as DESIGN.md wrote it. Only the render is capitalised. Whether it is comfortably READABLE at
    that size is the one thing no gate here can answer — it is first on the epic manual-testing
-   checklist, and if it reads badly the correction is a DESIGN.md amendment in Epic 8's
-   release-readiness pass, made with the rendered page in hand rather than from the spec.
+   checklist, and if it reads badly the correction is a DESIGN.md amendment, made with the
+   rendered page in hand rather than from the spec.
 
    1px — DESIGN.md, `components.footer-attribution.border-top`: "1px solid
    {colors.border-hairline}". The background and foreground come from the same frontmatter block.
@@ -58,7 +55,7 @@
   text-transform: uppercase;
 }
 
-/* THE LINKS (AC 5, AC 6, AC 7).
+/* THE LINKS.
 
    `text-decoration: underline` at REST, not on hover. UX-DR32 requires the links be identifiable
    without hovering, and UX-DR47 forbids a hover-only affordance — an underline that appears on
@@ -75,19 +72,16 @@
    makes the minimums apply at all — on a plain inline box they do nothing, which is the quiet
    way this AC would have been satisfied in source and false on screen.
 
-   ⚠️ BOTH CITATIONS CORRECTED AT c4-11 (AC 41). They were written as `:375` and `:418`, and both
-   had DRIFTED as DESIGN.md grew: `:375` is now the font-delivery paragraph and `:418` is the Skip
-   link bullet, so a reader following either arrived somewhere that says nothing about hit areas.
-   Re-read from the file as it stands: `:419` carries "each link's hit area ≥ 24px tall" and `:462`
-   carries the global "≥ 24×24px hit area" rule. The same drift hit `ManaPip.css:3` (`366` → `428`)
-   and c2-10's own record — **a DESIGN.md line number copied from a prior implementation artefact
-   is the thing to distrust**, which is why c4-11 re-read every citation it makes.
+   ⚠️ DESIGN.md LINE NUMBERS DRIFT AS THE FILE GROWS — **a DESIGN.md line number copied from a
+   prior implementation artefact is the thing to distrust**. Re-read each citation from the file
+   as it stands: `:419` carries "each link's hit area ≥ 24px tall" and `:462` carries the global
+   "≥ 24×24px hit area" rule.
 
-   NOT `inline-flex`, AND THAT IS A REVIEW FIND (2026-07-30), NOT A PREFERENCE: text decorations
+   NOT `inline-flex`, AND THAT IS NOT A PREFERENCE: text decorations
    do not propagate into flex items, so an underline declared on an (inline-)flex anchor renders
-   as NO underline in real browsers — true in source, false on screen, on this story's central
-   AC — and every gate here reads source while jsdom applies no stylesheet, so no automated
-   check could have seen it. The rendered underline stays on the epic manual-testing checklist. */
+   as NO underline in real browsers — true in source, false on screen — and every gate here
+   reads source while jsdom applies no stylesheet, so no automated check could have seen it. The
+   rendered underline stays on the epic manual-testing checklist. */
 .footer-attribution-link {
   display: inline-block;
   min-width: 24px;
@@ -101,15 +95,14 @@
 }
 
 /* `:focus-visible`, not `:focus` — a mouse click on a link should not leave a ring behind it,
-   and UX-DR46's requirement is about the KEYBOARD indicator. These are the first focusable
-   elements in the codebase, so this is also the first use of the `--focus-ring*` tokens, which
-   shipped in c2-1 with nothing to point at (tokens.css:113-118).
+   and UX-DR46's requirement is about the KEYBOARD indicator. The `--focus-ring*` tokens are
+   tokens.css:113-118.
 
    `outline`, not `box-shadow`: an outline is not clipped by an ancestor's overflow and does not
    participate in layout, so a link at the very bottom edge of the window still shows its whole
    ring. Nothing here sets `outline: none`, so there is no removal needing a replacement.
 
-   THE COLOUR BRIGHTENS HERE TOO (review find, 2026-07-30): hover's move to `--text-primary`
+   THE COLOUR BRIGHTENS HERE TOO: hover's move to `--text-primary`
    with no keyboard equivalent would be state feedback that does not exist for a keyboard user —
    the same shape UX-DR47 bans for the underline, applied to the brightening. */
 .footer-attribution-link:focus-visible {

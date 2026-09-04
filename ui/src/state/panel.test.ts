@@ -1,14 +1,14 @@
 /**
- * The boundary that makes `StatePanel` safe to hand a wire value (story c3-9, AC 2, AC 8).
+ * The boundary that makes `StatePanel` safe to hand a wire value.
  *
  * Two claims, and they are different claims:
  *
- *   **AC 2** — the panel comes from the TOKEN, not from the status. Proved by discrimination
+ *   **First** — the panel comes from the TOKEN, not from the status. Proved by discrimination
  *   rather than by inspection: the two database tokens share one status and produce two panels,
  *   so no implementation that read `response.status` could pass this file. That is AD-16's
  *   *"nothing in the SPA keys off a bare status code"* made executable for the first time.
  *
- *   **AC 8** — the function is TOTAL. Not "handles the cases we thought of": every string, plus
+ *   **Second** — the function is TOTAL. Not "handles the cases we thought of": every string, plus
  *   `null`, has an answer, and the three routes to `internal-error` are asserted separately
  *   because they are three different mistakes (an unknown token, a token with no panel, and no
  *   token at all).
@@ -20,11 +20,11 @@ import { STATE_COPY } from '../components/StatePanel/copy'
 import { PANEL_FOR_REASON } from '../components/StatePanel/states'
 import { panelFor } from './panel'
 
-describe('the panel comes from the token, never from the status (AC 2)', () => {
+describe('the panel comes from the token, never from the status', () => {
   it('gives two DIFFERENT panels to the two tokens that share status 503', () => {
     // The whole of AD-16 in three lines. Both of these arrive as `503`; a client keyed on the
-    // status could not tell them apart, and the fresh-install path — the story's headline —
-    // would show "Card database is updating." to someone who has never built a database.
+    // status could not tell them apart, and the fresh-install path would show "Card database is
+    // updating." to someone who has never built a database.
     expect(panelFor('database_not_initialized')).toBe('database-not-initialized')
     expect(panelFor('database_unavailable')).toBe('database-updating')
     expect(panelFor('database_not_initialized')).not.toBe(panelFor('database_unavailable'))
@@ -46,7 +46,7 @@ describe('the panel comes from the token, never from the status (AC 2)', () => {
   })
 })
 
-describe('it is total, so nothing unrenderable reaches STATE_COPY (AC 8)', () => {
+describe('it is total, so nothing unrenderable reaches STATE_COPY', () => {
   it('clamps a token that is not in the union at all', () => {
     expect(panelFor('quantum_flux_capacitor_failed')).toBe('internal-error')
   })
@@ -82,7 +82,7 @@ describe('it is total, so nothing unrenderable reaches STATE_COPY (AC 8)', () =>
     },
   )
 
-  it('and a KNOWN token still maps normally — the non-vacuity half (AC 26)', () => {
+  it('and a KNOWN token still maps normally — the non-vacuity half', () => {
     // Everything above resolves to `internal-error`, which `() => 'internal-error'` would also
     // satisfy. This is the assertion that says the clamp is a clamp and not the whole function.
     expect(panelFor('deck_not_found')).toBe('no-active-deck')

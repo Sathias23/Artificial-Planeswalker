@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { Welcome } from './Welcome'
 
-describe('Welcome (story 17.5)', () => {
+describe('Welcome', () => {
   it('puts a DECORATIVE hero above the unchanged no-active-deck panel', () => {
     const { container } = render(<Welcome decks={['Boros Aggro', 'Sultai Midrange']} />)
 

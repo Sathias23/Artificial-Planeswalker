@@ -1,5 +1,5 @@
 /**
- * Refresh the backend's confirmed identity, once per trigger (story 17.1, FR-15, AD-4).
+ * Refresh the backend's confirmed identity, once per trigger (FR-15, AD-4).
  *
  * `connection.ts` fires this on every transition to `'live'` — the first connect and every
  * reconnect alike, because the socket emits on change only, so `'live'` arrives exactly once per
