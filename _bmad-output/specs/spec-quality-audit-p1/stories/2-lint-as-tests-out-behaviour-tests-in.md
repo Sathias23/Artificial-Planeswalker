@@ -2,7 +2,7 @@
 title: 'Remove lint-as-tests and add behaviour tests for the import layer and MCP wire'
 type: 'chore'
 created: '2026-09-04'
-status: 'review'
+status: 'done'
 baseline_commit: 'f183031268b61f0a61d71aec9beed1596426bd3e'
 review_loop_iteration: 0
 context: ['_bmad-output/specs/spec-quality-audit-p1/SPEC.md', '_bmad-output/specs/spec-quality-audit-p1/batches.md', '_bmad-output/specs/spec-quality-audit-p1/stories/2-deletion-manifest.md']
