@@ -25,7 +25,6 @@ Discovery files are planted with ``Path.write_text(json.dumps(...))`` and never 
 by c1-7 AC 15).
 """
 
-import ast
 import json
 import logging
 import socket
@@ -547,23 +546,12 @@ def an_event(deck_id: str | None = None) -> ActiveDeckChangedEvent:
 class TestExportedSurface:
     """AC 1 + AC 3: the leaf's public names, and the measured timeout split they carry."""
 
-    def test_the_dialled_address_is_loopback_ipv4(self):
-        """AC 1: a literal, not an import of ``server.HOST`` — a leaf may not import the app."""
-        assert client.LOOPBACK_HOST == "127.0.0.1"
-
-    def test_the_health_path_is_the_endpoint_c1_2_serves(self):
-        assert client.HEALTH_PATH == "/health"
-
     def test_base_url_is_the_one_place_the_url_is_assembled(self):
         assert client.base_url(51234) == "http://127.0.0.1:51234"
         assert "localhost" not in client.base_url(51234)
 
     def test_the_probe_timeout_splits_a_short_connect_from_a_longer_read(self):
         """AC 3: the measured trade — 1 s connect (a dead port stalls ~2 s), 2 s read."""
-        assert client.PROBE_TIMEOUT.connect == 1.0
-        assert client.PROBE_TIMEOUT.read == 2.0
-        assert client.PROBE_TIMEOUT.write == 2.0
-        assert client.PROBE_TIMEOUT.pool == 2.0
         assert client.PROBE_TIMEOUT.connect < client.PROBE_TIMEOUT.read, (
             "connect must stay the tight half: calling a live-but-busy app dead starts a second "
             "instance, which is the failure this story exists to prevent"
@@ -571,19 +559,10 @@ class TestExportedSurface:
 
     def test_the_whole_probe_has_a_total_deadline(self):
         """Review finding: ``read`` caps the gap between chunks, so a drip-feed needs this cap."""
-        assert client._PROBE_TOTAL_SECONDS == 5.0
         ordinary = client.PROBE_TIMEOUT.connect + client.PROBE_TIMEOUT.read
         assert client._PROBE_TOTAL_SECONDS > ordinary, (
             "the total deadline must never be the reason an ordinary outcome is cut short"
         )
-
-    def test_the_events_path_is_the_endpoint_c5_5_serves(self):
-        """c6-1 AC 2: the one place the push URL's path is spelled."""
-        assert client.EVENTS_PATH == "/agent/events"
-
-    def test_the_active_deck_path_is_the_endpoint_c3_4_serves(self):
-        """c6-2 AC 2: the one place the display-control URL's path is spelled."""
-        assert client.ACTIVE_DECK_PATH == "/api/active-deck"
 
     def test_the_whole_push_has_a_deadline_covering_both_attempts(self):
         """c6-1 Q4: one cap over probe + post + re-probe + retry, not per leg.
@@ -591,14 +570,12 @@ class TestExportedSurface:
         It must clear two whole probes, or the retry the story exists to make transparent would be
         cut off by the very deadline meant to bound a pathological listener.
         """
-        assert client._PUSH_TOTAL_SECONDS == 10.0
         assert client._PUSH_TOTAL_SECONDS >= 2 * client._PROBE_TOTAL_SECONDS, (
             "the push deadline must fit both attempts, or FR-12's retry can never complete"
         )
 
     def test_the_notify_budget_is_ad_9s_one_second_not_the_pushs_ten(self):
         """c7-1 AC: AD-9's ~1 s responsiveness bound, pinned so it cannot silently widen."""
-        assert client._NOTIFY_TOTAL_SECONDS == 1.0
         assert client._NOTIFY_TOTAL_SECONDS < client._PUSH_TOTAL_SECONDS, (
             "the notifier is what a user waits on; it must stay far tighter than the push budget"
         )
@@ -1456,24 +1433,6 @@ class TestNotifyDeckChanged:
         for record in caplog.records:
             assert token not in record.getMessage()
             assert token not in str(record.args)
-
-    def test_no_detached_task_identifier_appears_in_client_py(self):
-        """AC 13 (AD-9), pinned locally as well as by ``test_ws.py``'s package-wide sweep.
-
-        That sweep already covers this file (it walks every module under ``src/companion``), so
-        this is a belt-and-braces local pin — the notifier's own test module should not depend on
-        a guard that lives, and could be edited, elsewhere.
-        """
-        tree = ast.parse(Path(client.__file__).read_text(encoding="utf-8"))
-        found: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name):
-                found.add(node.id)
-            elif isinstance(node, ast.Attribute):
-                found.add(node.attr)
-
-        banned = found & {"create_task", "ensure_future", "TaskGroup", "gather"}
-        assert banned == set(), f"detached-execution identifiers found in client.py: {banned}"
 
 
 def a_request(deck_id: str = "deck-alpha") -> ActiveDeckRequest:

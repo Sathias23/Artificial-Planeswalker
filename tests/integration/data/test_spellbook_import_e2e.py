@@ -24,8 +24,6 @@ from src.data.models.combo import (
     ComboVariantPieceModel,
 )
 
-pytestmark = pytest.mark.integration
-
 
 @pytest.fixture
 async def test_db(tmp_path):
@@ -269,3 +267,94 @@ async def test_skip_counters_reported(test_db, monkeypatch):
         assert stats.skipped_status == 1
         assert stats.skipped_banned == 1
         assert stats.skipped_requires == 1
+
+
+async def _import_first_snapshot(test_db, monkeypatch) -> None:
+    patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
+    async with test_db() as session:
+        await import_spellbook_snapshot(session)
+
+
+async def _assert_first_snapshot_intact(test_db) -> None:
+    async with test_db() as session:
+        variant_ids, pieces, meta = await _snapshot_state(session)
+    assert variant_ids == {"1-2", "3-4", "5-6"}
+    assert len(pieces) == 7
+    assert meta is not None
+    assert meta.export_version == "5.6.0"
+
+
+async def test_a_header_after_the_variants_array_is_a_malformed_export(test_db, monkeypatch):
+    """``timestamp``/``version`` must precede ``variants``; an export that reaches the array
+    first is refused as broken and the previous snapshot is untouched."""
+    await _import_first_snapshot(test_db, monkeypatch)
+    doc = {"variants": FIRST_VARIANTS, "timestamp": "2026-07-17T00:00:00+00:00", "version": "9"}
+    patch_download(monkeypatch, gzip.compress(json.dumps(doc).encode("utf-8")))
+
+    async with test_db() as session:
+        with pytest.raises(SpellbookImportError, match="header"):
+            await import_spellbook_snapshot(session)
+
+    await _assert_first_snapshot_intact(test_db)
+
+
+async def test_a_truncated_gzip_is_a_broken_download(test_db, monkeypatch):
+    await _import_first_snapshot(test_db, monkeypatch)
+    whole = gzipped_payload(FIRST_VARIANTS, version="5.7.0")
+    patch_download(monkeypatch, whole[: len(whole) // 2])
+
+    async with test_db() as session:
+        with pytest.raises(SpellbookImportError, match="broken or truncated"):
+            await import_spellbook_snapshot(session)
+
+    await _assert_first_snapshot_intact(test_db)
+
+
+async def test_an_export_without_a_variants_array_is_refused(test_db, monkeypatch):
+    await _import_first_snapshot(test_db, monkeypatch)
+    doc = {"timestamp": "2026-07-17T00:00:00+00:00", "version": "5.7.0", "aliases": []}
+    patch_download(monkeypatch, gzip.compress(json.dumps(doc).encode("utf-8")))
+
+    async with test_db() as session:
+        with pytest.raises(SpellbookImportError, match="no 'variants' array"):
+            await import_spellbook_snapshot(session)
+
+    await _assert_first_snapshot_intact(test_db)
+
+
+async def test_every_skip_reason_is_counted_once_and_an_all_skipped_export_aborts(
+    test_db, monkeypatch
+):
+    """Three variants, one per skip reason: the stats name each, and zero eligible aborts."""
+    variants = [
+        make_wire_variant("s-1", ["Card A"], status="E"),
+        make_wire_variant(
+            "s-2", ["Card B"], requires=[{"template": {"name": "A sac outlet"}, "quantity": 1}]
+        ),
+        make_wire_variant("s-3", ["Card C"], bracket_tag="B"),
+    ]
+    patch_download(monkeypatch, gzipped_payload(variants))
+
+    async with test_db() as session:
+        with pytest.raises(SpellbookImportError, match="[Zz]ero eligible.*3"):
+            await import_spellbook_snapshot(session)
+        variant_ids, pieces, meta = await _snapshot_state(session)
+
+    assert (variant_ids, pieces, meta) == (set(), set(), None), "nothing was written"
+
+
+async def test_a_caller_supplied_temp_dir_keeps_the_directory_and_drops_the_download(
+    test_db, monkeypatch, tmp_path
+):
+    patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
+    temp_dir = tmp_path / "operator-scratch"
+    temp_dir.mkdir()
+    (temp_dir / "keep.txt").write_text("the operator's own file", encoding="utf-8")
+
+    async with test_db() as session:
+        stats = await import_spellbook_snapshot(session, temp_dir=temp_dir)
+
+    assert stats.imported == 3
+    assert temp_dir.is_dir(), "the operator's directory is left in place"
+    assert (temp_dir / "keep.txt").exists()
+    assert not (temp_dir / "variants.json.gz").exists(), "only our download is removed"

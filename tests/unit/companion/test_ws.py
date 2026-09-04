@@ -20,13 +20,9 @@ and the reason this file still drives the in-process ASGI callable is unchanged 
 under two minutes is a property of there being no sockets in them.
 """
 
-import ast
-import doctest
-import importlib
 import inspect
 import logging
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from pydantic import TypeAdapter
@@ -51,9 +47,6 @@ from tests.unit.companion.conftest import (
     open_socket,
 )
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_WS_SOURCE = _REPO_ROOT / "src/companion/app/ws.py"
-_STATE_SOURCE = _REPO_ROOT / "src/companion/app/state.py"
 _SESSION_PATH = "/api/session"
 _WS_LOGGER = "src.companion.app.ws"
 
@@ -375,36 +368,6 @@ class TestHostIsTheShippedMiddlewareAndNotACopy:
             "reach a route expecting to accept it"
         )
 
-    async def test_ws_py_contains_no_host_check_of_its_own(self):
-        """AD-5's *reused, not duplicated* half, asserted structurally rather than by reading.
-
-        **What it compares:** ``ws.py``'s syntax tree against the vocabulary a second ``Host``
-        check would have to be written in. **What it cannot see:** a check spelled entirely in
-        names it does not know — which is why the behavioural pair above exists, and why a bare
-        ``"host"`` string constant is caught here too (``code_identifiers`` is AST-only and skips
-        constants, so this walks the source for the literal separately).
-        """
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-        names |= {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-        names |= {
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom)
-            for alias in node.names
-        }
-
-        # Non-vacuity: the walk really found this module's own code.
-        assert {"origin_is_allowed", "consume", "accept"} <= names
-
-        assert not ({"host_is_allowed", "allowed_authorities", "HostValidationMiddleware"} & names)
-        constants = {
-            node.value.lower()
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Constant) and isinstance(node.value, str)
-        }
-        assert "host" not in constants, "ws.py reads a Host header of its own (AD-5: reuse it)"
-
     async def test_a_good_host_with_a_bad_origin_is_refused(self, lifespan_client):
         """AC 10, first pairing: ``Host`` alone is not enough — an honest hostile tab passes it."""
         app = build_app()
@@ -467,167 +430,6 @@ class TestAfterTheSocketIsAccepted:
             sent = await drive_handshake(app, ticket=await _mint(client))
 
         assert [message["type"] for message in sent] == ["websocket.accept"]
-
-
-class TestTheRegistryVocabularyGuardIsReplaced:
-    """AC 14, 21: G7 is retired, and this is the set that replaces it (C4 retro item 13).
-
-    **What G7 was.** ``test_no_connection_registry_was_scaffolded`` asserted that ``ws.py``
-    mentioned none of ``{broadcast, connections, ConnectionRegistry}`` and that ``state.py``
-    exported no ``ConnectionRegistry`` — a guard against *scaffolding a story that had not been
-    designed*. It was written to redden on this story's first real line, and it did.
-
-    **Why it is removed rather than edited.** Its subject no longer exists: there is no
-    "not-yet-designed registry" to keep out. A guard whose premise is spent cannot be weakened into
-    a weaker version of itself without becoming decoration — so it goes, and these take over the
-    surface it was standing in front of. The C4 standing agreement is that a review-added mechanism
-    is never silently deleted: the removal and this replacement set both re-enter review with the
-    story, which is what this class's existence records.
-
-    **What the replacements protect, which G7 could not.** G7 could only assert absence. These
-    assert the *shape of the presence*: that the fan-out is in ``ws.py`` and the membership is in
-    ``state.py`` (the split the spine's module map rules), that there is exactly one serialiser,
-    and that neither of AD-9's or AD-7's two bans has been crossed on the push path.
-    """
-
-    def test_the_fan_out_lives_in_ws_and_the_membership_does_not(self):
-        """AC 14 (spine ``:451``): ``ws.py # upgrade + ticket consume + broadcast``.
-
-        **What it compares:** which module *defines* the fan-out and which defines the container.
-        **What it cannot see:** a third module importing both and adding a second fan-out of its
-        own — bounded instead by the serialiser guard below, which walks the whole package.
-        """
-        assert callable(ws.broadcast)
-        assert callable(ws.broadcast_active_deck_changed)
-        assert isinstance(ws.ConnectionRegistry, type)  # imported for the annotation…
-        assert "class ConnectionRegistry" not in _WS_SOURCE.read_text(encoding="utf-8")
-        assert "class ConnectionRegistry" in _STATE_SOURCE.read_text(encoding="utf-8")
-
-    def test_ws_builds_no_registry_of_its_own(self):
-        """The sibling of ``test_the_upgrade_reaches_the_store_through_the_one_accessor``.
-
-        A second registry would be a second answer to "how many clients are connected". c5-5
-        reports a THIRD thing — `broadcast()`'s delivered count (Q1) — and that is precisely why
-        this guard still matters: two accountings that can legitimately disagree are a design;
-        three, one of them accidental, is a bug.
-        """
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        constructions = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "ConnectionRegistry"
-        ]
-
-        assert "connection_registry" in _identifiers(_WS_SOURCE)  # non-vacuity: it reads the one
-        assert constructions == [], "ws.py builds its own ConnectionRegistry"
-
-    def test_the_push_path_creates_no_task(self):
-        """AC 13 (AD-9): ``create_task`` is banned here, pinned structurally rather than by prose.
-
-        **What it compares:** every module under ``src/companion`` for the detached-execution
-        vocabulary. **What it cannot see:** a detachment spelled through a name it does not know
-        (a helper called ``spawn`` that wraps ``ensure_future`` in a module not scanned) — bounded
-        by the scan covering the whole package rather than only the diff's files.
-        """
-        offenders = []
-        for path in sorted((_REPO_ROOT / "src/companion").rglob("*.py")):
-            found = _identifiers(path) & {"create_task", "ensure_future", "TaskGroup", "gather"}
-            if found:
-                offenders.append(f"{path.name}: {sorted(found)}")
-
-        assert offenders == [], f"the companion detached execution somewhere: {offenders} (AD-9)"
-
-    def test_the_broadcast_path_opens_no_database(self):
-        """AC 13 (AD-7): no DB round-trip on the push path, protecting NFR-05's 250 ms budget.
-
-        **What it compares:** ``ws.py``'s syntax tree against this package's database vocabulary.
-        **What it cannot see:** a query reached through ``websocket.app.state`` by a name it does
-        not know — bounded by the module importing no session, engine or repository at all.
-        """
-        identifiers = _identifiers(_WS_SOURCE)
-
-        assert {"broadcast", "snapshot", "send_text"} <= identifiers  # non-vacuity
-        forbidden = {"deps", "Database", "DbSession", "get_session", "AsyncSession", "select"}
-        assert not (forbidden & identifiers), (
-            f"the broadcast path reached for {forbidden & identifiers} (AD-7)"
-        )
-
-    def test_the_websocket_module_holds_exactly_one_serialiser(self):
-        """AC 10, first half: one wire serialiser in ``ws.py``, and it is the event's own.
-
-        **What it compares:** every serialising call in ``ws.py``'s syntax tree. A hand-built
-        ``json.dumps({"kind": …})`` beside the model's own dump would be the second wire format
-        AC 10 forbids, and would show up here as a second call site. **What it cannot see:** a
-        serialiser in another module that ``ws.py`` imports and calls under a different name —
-        which is bounded by ``contracts.py`` shipping no such helper (asserted below) and by the
-        module importing nothing that could be one.
-
-        ``discovery.py``'s ``model_dump_json`` is deliberately **out of scope**: it writes
-        ``companion.json`` on disk, which is not the wire and not this event.
-        """
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        call_sites = [
-            node.func.attr
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"model_dump_json", "model_dump", "dumps", "json"}
-        ]
-
-        assert call_sites == ["model_dump_json"], (
-            f"expected exactly one wire serialiser in ws.py; found {call_sites} (AC 10)"
-        )
-
-    def test_the_serialisation_happens_outside_the_fan_out_loop(self):
-        """AC 10, second half — and this is the one that would catch the real regression.
-
-        Moving ``model_dump_json()`` inside the ``for`` would keep the count at one and still cost
-        a serialisation per client, which is what "serialised once per broadcast" exists to
-        prevent. **What it compares:** whether the dump's AST node is a descendant of any loop
-        inside :func:`~src.companion.app.ws.broadcast`. **What it cannot see:** a serialisation
-        hidden behind a call this function makes — bounded by the count guard above.
-        """
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        fan_out = next(
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.AsyncFunctionDef) and node.name == "broadcast"
-        )
-        loops = [node for node in ast.walk(fan_out) if isinstance(node, ast.For | ast.While)]
-        in_a_loop = [
-            node
-            for loop in loops
-            for node in ast.walk(loop)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "model_dump_json"
-        ]
-
-        assert loops, "non-vacuity: broadcast really does iterate the clients"
-        assert in_a_loop == [], "the envelope is serialised once per client, not once per broadcast"
-
-    def test_contracts_ships_no_wire_serialisation_helper(self):
-        """AC 10's third half: the path is the model's own dump, so there is nothing else to use.
-
-        ``contracts.py`` is a leaf and read-only for this story; a shared constructor, if one is
-        ever wanted, belongs in ``ws.py``. **What it compares:** that the contracts module defines
-        no module-level function whose name suggests it builds or serialises an envelope. **What it
-        cannot see:** such a helper added as a *method* on an envelope class — which would at least
-        be one wire format rather than two, and is a design conversation rather than a defect.
-        """
-        from src.companion import contracts
-
-        tree = ast.parse(Path(contracts.__file__).read_text(encoding="utf-8"))
-        helpers = [
-            node.name
-            for node in tree.body
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-            and any(word in node.name.lower() for word in ("serial", "envelope", "encode", "wire"))
-        ]
-
-        assert helpers == [], f"contracts.py grew a wire helper: {helpers}"
 
 
 class TestThePathAndTheMountOrdering:
@@ -694,21 +496,6 @@ class TestThePathAndTheMountOrdering:
 
         assert not _was_accepted(sent)
         assert ticket_store(app).resident_count == 1, "the handler ran for a path it does not own"
-
-
-class TestTheBindAddressIsUnchanged:
-    """AC 11 (NFR-01): the socket rides c1-3's bind; this story adds no bind surface."""
-
-    def test_the_server_still_binds_loopback_only(self):
-        from src.companion.app import server
-
-        assert server.HOST == "127.0.0.1"
-
-    def test_ws_py_opens_no_socket_of_its_own(self):
-        identifiers = _identifiers(_WS_SOURCE)
-
-        assert "websocket_upgrade" in identifiers  # non-vacuity
-        assert not ({"socket", "uvicorn", "serve", "bind", "listen"} & identifiers)
 
 
 class TestTheFailClosedNet:
@@ -792,14 +579,6 @@ class TestTheFailClosedNet:
             # No pytest.raises: the assertion is that this line simply returns.
             await drive_handshake(app, ticket=ticket)
 
-    async def test_the_error_middleware_is_still_http_only(self):
-        """Q6's other half: the fix is local, so the shipped middleware must not have grown."""
-        from src.companion.app import errors
-
-        source = inspect.getsource(errors.UnhandledErrorMiddleware.__call__)
-
-        assert 'scope["type"] != "http"' in source
-
     async def test_the_healthy_path_closes_nothing(self, lifespan_client):
         """Non-vacuity: 1011 must be reachable only through a fault."""
         app = build_app()
@@ -818,50 +597,6 @@ class TestTheTwoCredentialsNeverTouch:
     socket.
     """
 
-    def test_the_ws_module_names_no_agent_credential(self):
-        """**What it compares:** ``ws.py``'s syntax tree against the eight ways the agent token is
-        reachable in this package. **What it cannot see:** an indirection built from names it does
-        not know (``getattr(app.state, "agent_" + "token")``), which is the residual its sibling
-        over ``state.py`` also carries.
-        """
-        identifiers = _identifiers(_WS_SOURCE)
-
-        # Non-vacuity, and a real one: the walk must be finding the upgrade's OWN code, or every
-        # absence below is satisfied by scanning an empty set.
-        assert {"websocket_upgrade", "origin_is_allowed", "ticket_store", "consume"} <= identifiers
-
-        shared_paths = {
-            "discovery",
-            "mint_token",
-            "agent_token",
-            "presented_credential",
-            "agent_token_is_valid",
-            "require_agent_token",
-            "AgentToken",
-            "_AUTHORIZATION_HEADER",
-        }
-        assert not (shared_paths & identifiers), (
-            f"the WebSocket upgrade shares a code path with the agent token: "
-            f"{shared_paths & identifiers} (AD-5)"
-        )
-
-    def test_the_upgrade_reaches_the_store_through_the_one_accessor(self):
-        """AC 12: the store is not moved, not wrapped and not duplicated."""
-        identifiers = _identifiers(_WS_SOURCE)
-
-        assert "ticket_store" in identifiers
-        assert "TicketStore" in identifiers, "the type is imported for the annotation, not rebuilt"
-        # A second holder would be a second construction site for one piece of state.
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        constructions = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "TicketStore"
-        ]
-        assert constructions == [], "ws.py builds its own TicketStore"
-
     def test_the_state_module_mechanism_is_untouched(self):
         """AC 12's other half, read against ``state.py`` rather than against this story's diff."""
         assert not inspect.iscoroutinefunction(TicketStore.consume)
@@ -879,115 +614,6 @@ class TestTheConsumeStaysSynchronous:
 
     def test_consume_is_still_a_plain_function(self):
         assert not inspect.iscoroutinefunction(TicketStore.consume)
-
-    def test_the_consume_call_site_is_not_inside_an_await(self):
-        """The AST half: no ``Await`` node anywhere in the function that pops the ticket.
-
-        **What it compares:** the body of ``ws.py``'s authorisation function for ``Await`` nodes and
-        for its own ``async`` -ness. **What it cannot see:** a suspension introduced *outside* that
-        function and *between* the two decisions — which is impossible only because both decisions
-        are inside it, and the next assertion pins that they are.
-        """
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        functions = {
-            node.name: node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-        }
-
-        gate = functions["_handshake_is_authorised"]
-        assert isinstance(gate, ast.FunctionDef), (
-            "_handshake_is_authorised became `async def` — one of the three changes state.py "
-            "names as breaking the no-lock argument"
-        )
-        assert not [node for node in ast.walk(gate) if isinstance(node, ast.Await)]
-
-    def test_both_decisions_live_in_that_one_synchronous_function(self):
-        """Non-vacuity for the guard above: an empty function has no ``Await`` either."""
-        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
-        gate = next(
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef) and node.name == "_handshake_is_authorised"
-        )
-        called = {
-            node.func.id
-            for node in ast.walk(gate)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        }
-        attributes = {node.attr for node in ast.walk(gate) if isinstance(node, ast.Attribute)}
-
-        assert "origin_is_allowed" in called
-        assert "consume" in attributes
-
-    def test_the_pop_is_still_one_statement(self):
-        """The first of state.py's three breakers: splitting the pop into a get plus a del."""
-        source = inspect.getsource(TicketStore.consume)
-
-        assert source.count(".pop(") == 1
-        assert "del " not in source
-
-
-class TestTheDocstringExamplesRun:
-    """AC 19 (``deferred-work.md``'s doctest entry): every ``Example:`` block in the package runs.
-
-    **This is the prescribed fix, not the convenient one.** The ledger entry named
-    ``security.py:97,116`` as two blocks nothing executed, and said the honest repair is *"one test
-    that walks every ``src/companion`` module"* rather than two more bespoke lines — because two
-    bespoke lines leave the third module's examples unexecuted and the next story owing the same
-    entry again. c5-1 (``test_contracts.py``) and c5-2 (``test_routes_session.py``) each wired one
-    module; this **supersedes** both by covering the package, and neither is deleted — a passing
-    guard is not removed for being redundant (C4 retro).
-
-    ``testpaths`` is scoped to ``tests/``, so ``--doctest-modules`` never reaches ``src/``; folding
-    ``doctest.testmod`` into an ordinary test is the shape this package already uses.
-    """
-
-    @staticmethod
-    def _companion_modules():
-        """Import and return every module under ``src/companion``, discovered from the tree.
-
-        Discovered rather than listed, which is the whole point: a module added tomorrow is
-        covered without an edit here, and that is what closes the ledger entry instead of
-        re-homing it.
-        """
-        package_root = _REPO_ROOT / "src/companion"
-        modules = []
-        for path in sorted(package_root.rglob("*.py")):
-            if path.name == "__init__.py":
-                dotted = ".".join(path.parent.relative_to(_REPO_ROOT).parts)
-            else:
-                dotted = ".".join(path.relative_to(_REPO_ROOT).with_suffix("").parts)
-            modules.append(importlib.import_module(dotted))
-        return modules
-
-    def test_every_example_in_every_companion_module_passes(self):
-        modules = self._companion_modules()
-
-        # Non-vacuity on the walk itself: an empty discovery would satisfy every assertion below.
-        assert len(modules) > 10, f"the module walk found only {len(modules)}"
-
-        attempted = 0
-        failures = []
-        for module in modules:
-            results = doctest.testmod(module, verbose=False)
-            attempted += results.attempted
-            if results.failed:
-                failures.append(f"{module.__name__}: {results.failed} failed")
-
-        assert not failures, failures
-        # Non-vacuity on the execution: `testmod` reports 0 failed for a module with no examples,
-        # so the attempted count is the half that proves anything ran at all.
-        assert attempted > 0
-
-    def test_the_security_module_examples_are_among_them(self):
-        """The specific gap the ledger entry named, asserted by name so it cannot silently lapse."""
-        from src.companion.app import security
-
-        results = doctest.testmod(security, verbose=False)
-
-        assert results.attempted > 0, "security.py's Example: blocks stopped being executable"
-        assert results.failed == 0
 
 
 class TestTheConnectionRegistry:
@@ -1108,51 +734,6 @@ class TestTheConnectionRegistry:
         assert len(snapshot) == 2
         assert set(snapshot) == {first, second}
         assert registry.connected_count == 1
-
-    def test_the_count_reads_no_database(self):
-        """AC 4 (AD-8, FR-06): story 5.5 returns this from ``POST /agent/events``.
-
-        **What it compares:** ``state.py``'s syntax tree for the database vocabulary this package
-        reaches a session through. **What it cannot see:** a query issued through a name it does
-        not know — which is bounded by the module importing no engine, asserted here too.
-        """
-        identifiers = _identifiers(_STATE_SOURCE)
-
-        assert {"ConnectionRegistry", "connected_count"} <= identifiers  # non-vacuity
-        forbidden = {"Database", "DbSession", "get_session", "AsyncSession", "deps", "select"}
-        assert not (forbidden & identifiers), (
-            f"state.py reached for {forbidden & identifiers}; the push path takes no DB (AD-7)"
-        )
-
-    def test_the_registry_carries_no_lock(self):
-        """AC 2: the argument is in the docstring, and the absence is asserted here.
-
-        **What it compares:** the module's syntax tree for lock vocabulary, plus a constructed
-        registry's own attributes. **What it cannot see:** a lock acquired somewhere else on the
-        registry's behalf — which ``ws.py``'s fan-out would have to spell, and nothing does.
-        """
-        identifiers = _identifiers(_STATE_SOURCE)
-
-        assert "ConnectionRegistry" in identifiers  # non-vacuity
-        assert not ({"Lock", "acquire", "asyncio", "threading"} & identifiers)
-        assert not [
-            name for name, value in vars(ConnectionRegistry()).items() if "lock" in name.lower()
-        ]
-
-    def test_the_no_lock_argument_is_written_down_rather_than_assumed(self):
-        """AC 2: ``state.py:36-68`` names what would earn a lock; this class must do the same.
-
-        **What it compares:** that the registry's own docstring states the argument and names its
-        breakers. **What it cannot see:** whether the argument is *correct* — that is review's job,
-        and the point of requiring it in prose is that review has something to check.
-        """
-        docstring = ConnectionRegistry.__doc__
-
-        assert docstring is not None
-        assert "lock" in docstring.lower()
-        assert "await" in docstring.lower(), (
-            "the no-lock argument rests on the absence of a suspension point; say so"
-        )
 
 
 def _an_event(deck_id="deck-under-test"):
@@ -1449,51 +1030,3 @@ class TestTheRegistryAccessor:
         """AC 3 (AD-10): the registry is a lifespan value, not a ``build_app()`` one."""
         assert connection_registry(build_app()) is None
         assert not hasattr(build_app().state, "connections")
-
-
-def _identifiers(path):
-    """Return every identifier a module's **code** mentions, ignoring prose and string constants.
-
-    The same AST-only shape ``test_routes_active_deck.code_identifiers`` uses, and for the same
-    reason: a raw-text scan is keyed on syntax rather than meaning, so the first thing it catches
-    is the docstring explaining why the banned thing is absent. Re-stated here rather than imported
-    across test modules, matching how the two existing copies in this package already relate.
-
-    **One deliberate widening over the sibling: names a module *defines*.** ``code_identifiers``
-    collects ``Name`` and ``Attribute`` nodes, and a ``def foo()`` is neither — so a scan of a
-    module whose only interesting content is its own definitions has nothing to assert non-vacuity
-    against, which is exactly the shape ``ws.py`` has. Adding definitions strengthens the
-    non-vacuity half and cannot weaken the ban half: a module that *defined* ``agent_token``
-    should fail these guards too.
-
-    Args:
-        path: A path to a Python module.
-
-    Returns:
-        Every imported module and name, every ``Name``, every attribute accessed, and every
-        function, class and argument this module defines.
-    """
-    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
-    found = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            found.add(node.name)
-        elif isinstance(node, ast.arg):
-            found.add(node.arg)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                found.update(alias.name.split("."))
-                found.add(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                found.update(node.module.split("."))
-                found.add(node.module)
-            for alias in node.names:
-                found.add(alias.name)
-                if alias.asname:
-                    found.add(alias.asname)
-        elif isinstance(node, ast.Name):
-            found.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            found.add(node.attr)
-    return found

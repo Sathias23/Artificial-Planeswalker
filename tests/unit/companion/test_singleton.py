@@ -196,8 +196,3 @@ class TestModuleIsInert:
         importlib.reload(singleton)
 
         assert not never.exists()
-
-    def test_the_module_names_no_port_number(self):
-        source = Path(singleton.__file__).read_text(encoding="utf-8")
-
-        assert "8765" not in source

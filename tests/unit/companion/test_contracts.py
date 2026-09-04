@@ -680,19 +680,6 @@ class TestTheIngestReceipt:
         # tab open is the ordinary state, not a failure the agent should retry.
         assert EventIngestReceipt(clients=0).clients == 0
 
-    def test_the_wire_description_names_no_internal_number(self):
-        # c5-2's TTL lesson, re-applied: the prose above `Attributes:` ships VERBATIM as the
-        # schema `description` and therefore into `types.d.ts` and `/docs`. The envelope byte cap
-        # is an implementation number that lives in `_MAX_ENVELOPE_BYTES`'s own docstring; a
-        # concrete figure here would be a wire commitment nobody ruled.
-        description = EventIngestReceipt.__doc__ or ""
-        summary = description.split("Attributes:")[0]
-
-        assert "64" not in summary
-        assert "KB" not in summary
-        # Non-vacuity: there is real prose to have found a number in.
-        assert len(summary.split()) > 20
-
 
 class TestReviewRoundTwoDoctests:
     """c5-1 review round 2: the `Example:` doctest blocks were never confirmed to run anywhere.

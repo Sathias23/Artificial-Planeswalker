@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Lint-as-tests removed.** Roughly 250 Python tests and 26 `ui/tests/` files that
+  asserted on source text, docstring prose, constant literals or README/PRD
+  wording are gone, along with the three docs-drift suites (only the two
+  "documented port / cache layout equals the shipped constant" checks were
+  kept); the UX-DR33 copy bans (no `!`, no emoji, no "something went wrong")
+  now live as eslint `no-restricted-syntax` selectors over `ui/src/`.
+- **`npm run test:gates`.** The two `ui/tests/` suites that shell into a real
+  tool (ESLint/stylelint, a Vite dev server) run under their own vitest config
+  and 180 s timeout; `npm test` keeps vitest's default timeout. CI runs both.
+- **Behaviour tests for the import layer and the MCP wire.** Scryfall bulk
+  download retry/ceiling arms, Spellbook malformed exports and skip accounting,
+  combo-snapshot name folding, and one `call_tool` round trip for every
+  registered MCP tool (with a guard that fails when a new tool lacks one).
 - **One version source.** `src.__version__` now reads the installed package
   metadata instead of carrying its own literal (it had drifted to 0.1.0), and
   `ui/package.json` carries the same version as `pyproject.toml`; a unit test

@@ -23,6 +23,81 @@ const A11Y_INTERACTION_HANDLERS = [
   'onKeyUp',
 ]
 
+/**
+ * The inline-style ban, as `no-restricted-syntax` entries. Hoisted so the copy-ban block below
+ * can carry the same entries: flat config replaces a rule's options wholesale for every block
+ * that names it, so a second `no-restricted-syntax` block that listed only its own selectors
+ * would silently switch the inline-style ban off for the files it matches.
+ */
+const INLINE_STYLE_BANS = [
+  {
+    // Not a direct inline object literal at all — nothing static can prove what is in
+    // it. The attribute's value must BE `{…}` or `{…} as CSSProperties` (the cast is
+    // load-bearing: React's CSSProperties has no index signature for `--` keys, so the
+    // bare literal is TS2353); a call, a ternary, a variable or a string hides its keys
+    // and stays an error however compliant an object it contains.
+    selector:
+      'JSXAttribute[name.name="style"]:not([value.expression.type="ObjectExpression"]):not([value.expression.type="TSAsExpression"][value.expression.expression.type="ObjectExpression"])',
+    message:
+      'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
+      'guard in tests/token-usage.test.ts can see it. A style attribute that is not a ' +
+      'literal object (or a literal directly under one `as` cast) hides its keys from ' +
+      'every static reader, so it cannot be the named-channel form c4-8 opened. Put the ' +
+      'rule in a .css file and reach values through var(--…). See ui/README.md, ' +
+      '"The token layer".',
+  },
+  {
+    // The ordinary case, and the one the ban has always been about: the attribute IS a
+    // literal, but it carries a spread, a computed key, or any property whose key is not
+    // a declared runtime channel. Each `[key.value="…"]` is an exact string match against
+    // the allowlist; an identifier key (`padding`) or a computed key has no matching
+    // `value`, so the chained `:not()`s fire — conservative in the right direction. A
+    // third channel is a third `:not()`, which is the protocol working rather than a
+    // reason to loosen back to a prefix.
+    selector:
+      'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"]):not([key.value="--colour-bar-share"]):not([key.value="--history-popover-top"]):not([key.value="--history-popover-right"])))',
+    message:
+      'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
+      'guard in tests/token-usage.test.ts can see it. Put the rule in a .css file and ' +
+      'reach values through var(--…). The ONLY permitted form is an object literal ' +
+      'whose keys are all DECLARED runtime channels (today: --curve-bar-height, ' +
+      '--colour-bar-share, --history-popover-top, --history-popover-right), with no ' +
+      'spread — a bare `--` prefix is not enough, because a ' +
+      'custom property can override a real design token for every descendant (c4-8, ' +
+      'AC 17; c4-9, AC 19). See ui/README.md, "The token layer".',
+  },
+]
+
+/**
+ * UX-DR33's voice rules for user-facing copy, as lint: no exclamation mark (including the
+ * full-width and compatibility spellings NFKC folds to `!`), no emoji, and never
+ * "something went wrong". Selectors over string literals, JSX text and template chunks only —
+ * `!` as an operator is never a `Literal`, and a comment is not a node, so neither can fire.
+ * The backslashes are doubled because esquery unescapes the selector before it builds the
+ * RegExp. Proven both ways by `tests/lint-gates.test.ts` on the `copy-ban-*.tsx` fixtures.
+ */
+const COPY_BANS = [
+  {
+    selector:
+      ':matches(Literal[value=/[!！︕﹗‼⁉]/u], JSXText[value=/[!！︕﹗‼⁉]/u], TemplateElement[value.cooked=/[!！︕﹗‼⁉]/u])',
+    message:
+      'UX-DR33: calm, terminal-literate copy carries no exclamation mark (the full-width and ' +
+      'compatibility spellings fold to `!` and are banned with it).',
+  },
+  {
+    selector:
+      ':matches(Literal[value=/\\p{Extended_Pictographic}/u], JSXText[value=/\\p{Extended_Pictographic}/u], TemplateElement[value.cooked=/\\p{Extended_Pictographic}/u])',
+    message: 'UX-DR33: no emoji and no mascot in copy.',
+  },
+  {
+    selector:
+      ':matches(Literal[value=/something\\s+went\\s+wrong/iu], JSXText[value=/something\\s+went\\s+wrong/iu], TemplateElement[value.cooked=/something\\s+went\\s+wrong/iu])',
+    message:
+      'UX-DR33: never blame and never shrug — "something went wrong" is banned; say what ' +
+      'happened and what to do next.',
+  },
+]
+
 export default tseslint.config(
   {
     // `dist` is the build output (c2-2 redirects it into src/companion/app/static/).
@@ -208,51 +283,24 @@ export default tseslint.config(
       // stylelint and tests/token-usage.test.ts can both see the declaration around it. The
       // hatch passes a NUMBER through the attribute; it does not pass a style — and with the
       // name allowlist, it cannot pass a token override either.
-      'no-restricted-syntax': [
-        'error',
-        {
-          // Not a direct inline object literal at all — nothing static can prove what is in
-          // it. The attribute's value must BE `{…}` or `{…} as CSSProperties` (the cast is
-          // load-bearing: React's CSSProperties has no index signature for `--` keys, so the
-          // bare literal is TS2353); a call, a ternary, a variable or a string hides its keys
-          // and stays an error however compliant an object it contains.
-          selector:
-            'JSXAttribute[name.name="style"]:not([value.expression.type="ObjectExpression"]):not([value.expression.type="TSAsExpression"][value.expression.expression.type="ObjectExpression"])',
-          message:
-            'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
-            'guard in tests/token-usage.test.ts can see it. A style attribute that is not a ' +
-            'literal object (or a literal directly under one `as` cast) hides its keys from ' +
-            'every static reader, so it cannot be the named-channel form c4-8 opened. Put the ' +
-            'rule in a .css file and reach values through var(--…). See ui/README.md, ' +
-            '"The token layer".',
-        },
-        {
-          // The ordinary case, and the one the ban has always been about: the attribute IS a
-          // literal, but it carries a spread, a computed key, or any property whose key is not
-          // a declared runtime channel. Each `[key.value="…"]` is an exact string match against
-          // the allowlist; an identifier key (`padding`) or a computed key has no matching
-          // `value`, so the chained `:not()`s fire — conservative in the right direction. A
-          // third channel is a third `:not()`, which is the protocol working rather than a
-          // reason to loosen back to a prefix.
-          selector:
-            'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"]):not([key.value="--colour-bar-share"]):not([key.value="--history-popover-top"]):not([key.value="--history-popover-right"])))',
-          message:
-            'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
-            'guard in tests/token-usage.test.ts can see it. Put the rule in a .css file and ' +
-            'reach values through var(--…). The ONLY permitted form is an object literal ' +
-            'whose keys are all DECLARED runtime channels (today: --curve-bar-height, ' +
-            '--colour-bar-share, --history-popover-top, --history-popover-right), with no ' +
-            'spread — a bare `--` prefix is not enough, because a ' +
-            'custom property can override a real design token for every descendant (c4-8, ' +
-            'AC 17; c4-9, AC 19). See ui/README.md, "The token layer".',
-        },
-      ],
+      'no-restricted-syntax': ['error', ...INLINE_STYLE_BANS],
+    },
+  },
+
+  {
+    // Shipped UI source only: colocated tests may quote the banned strings while asserting on
+    // rendered copy, and `tests/fixtures/tsx/copy-ban-*.tsx` are the fixtures that prove the
+    // ban fires and stays silent.
+    files: ['src/**/*.{ts,tsx}', 'tests/fixtures/tsx/copy-ban-*.tsx'],
+    ignores: ['src/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', ...INLINE_STYLE_BANS, ...COPY_BANS],
     },
   },
 
   {
     // Node-side code: build config, the shared dev-proxy module and the gate-proving tests.
-    files: ['vite.config.ts', 'config/**/*.ts', 'tests/**/*.ts'],
+    files: ['vite.config.ts', 'vitest.gates.config.ts', 'config/**/*.ts', 'tests/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
 )
