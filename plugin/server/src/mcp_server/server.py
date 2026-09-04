@@ -1,24 +1,28 @@
-"""FastMCP server builder for Artificial-Planeswalker (Story 1.3; sync RAG tools added 2.4/2.5).
+"""FastMCP server builder for Artificial-Planeswalker (Story 1.3; RAG tools added 2.4/2.5).
 
 Constructs the ``FastMCP`` server and registers the tool surface. The Epic-1 tools are
 ``async def`` and ``await`` the async ``src/data`` repositories directly on the
 FastMCP event loop (D-1.3a), closing over a ``session_factory`` so the server is
 test-injectable; the default factory reuses the data-layer engine.
 
-The Epic-2 search tools are fundamentally different: they are **sync** ``def`` tools (FastMCP runs
-them in its anyio worker threadpool) because the vector index is reachable only on the sync
-``sqlite-vec`` ``ConnectionFactory`` connection — the async aiosqlite engine never loads the
-extension. ``semantic_search_cards`` (Story 2.4) embeds a natural-language query, so it also closes
-over an optional ``embedder`` (a test seam; the production embedder is resolved lazily inside the
-tool via :func:`get_embedder`, never at build time). ``find_similar_cards`` (Story 2.5) is seeded by
-a card's **stored** vector and **never embeds**, so it uses only the ``connection_factory`` seam —
-no embedder. Both close over the injected ``connection_factory`` (per-thread sqlite-vec connection,
-NFR6).
+The Epic-2 search tools are fundamentally different: their helpers are **sync** because the vector
+index is reachable only on the sync ``sqlite-vec`` ``ConnectionFactory`` connection — the async
+aiosqlite engine never loads the extension. FastMCP calls a sync tool inline on its event loop (it
+does not threadpool them), so each of these tools is an ``async def`` closure that runs its helper
+— connection acquisition included — in ``asyncio.to_thread``; otherwise a five-minute index build
+would stall every other call and the MCP ping. ``semantic_search_cards`` (Story 2.4) embeds a
+natural-language query, so it also closes over an optional ``embedder`` (a test seam; the production
+embedder is resolved lazily inside the worker via :func:`get_embedder`, never at build time).
+``find_similar_cards`` (Story 2.5) is seeded by a card's **stored** vector and **never embeds**, so
+it uses only the ``connection_factory`` seam — no embedder. Both close over the injected
+``connection_factory`` (per-thread sqlite-vec connection, NFR6: the connection is taken on the
+worker thread, never on the loop thread).
 
 Two first-run tools sit alongside these: ``initialize_database`` (async — the one-time in-client
-Scryfall card import that build-on-first-run depends on, since a packaged install ships no data) and
-``build_search_index`` (sync — builds the ``card_vec`` index). Every card/deck tool guards an
-un-imported database with a graceful ``database_not_initialized`` status that points at
+Scryfall card import that build-on-first-run depends on, since a packaged install ships no data;
+its aggregate and parse passes are offloaded to a worker thread) and ``build_search_index``
+(builds the ``card_vec`` index, offloaded the same way as the search tools). Every card/deck tool
+guards an un-imported database with a graceful ``database_not_initialized`` status that points at
 ``initialize_database`` rather than leaking a raw "no such table" error.
 
 The read-only ``view_deck`` tool renders a saved deck to a self-contained HTML page and
@@ -39,13 +43,17 @@ Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
 """
 
+import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.companion.client import aclose_shared_client
 from src.companion.client import notify_deck_changed as _notify_deck_changed
 from src.companion.contracts import (
     GroupsPayload,
@@ -189,7 +197,15 @@ def build_server(
     if connection_factory is None:
         connection_factory = ConnectionFactory()
 
-    mcp = FastMCP("artificial-planeswalker")
+    @asynccontextmanager
+    async def _lifespan(_server: FastMCP) -> AsyncIterator[None]:
+        """Close the companion client's shared connection pool when the server's run ends."""
+        try:
+            yield
+        finally:
+            await aclose_shared_client()
+
+    mcp = FastMCP("artificial-planeswalker", lifespan=_lifespan)
 
     @mcp.tool()
     async def lookup_card_by_name(
@@ -414,8 +430,10 @@ def build_server(
         become sideboard cards.
         The import is additive: it never clears the deck or silently merges an
         existing quantity. Each nonblank card line gets an ordered result such as
-        ``ok``, ``ambiguous``, ``not_found``, ``invalid``, or ``exists``. Valid
-        lines remain persisted when another line fails.
+        ``ok``, ``ambiguous``, ``not_found``, ``invalid``, or ``exists``. Every
+        line is resolved first and all resolvable lines are written in one
+        transaction: a line that fails to resolve never blocks the others, but
+        if that single write fails nothing is added and the status is ``error``.
 
         Args:
             deck_id: Existing saved deck id from ``create_deck`` or ``list_decks``.
@@ -428,8 +446,8 @@ def build_server(
             result = await _import_decklist_helper(
                 session, deck_id=deck_id, arena_export=arena_export
             )
-        # One emit per tool call, not per imported line — the helper's per-line delegation to
-        # add_card_to_deck commits N times, and the glass needs to hear "changed" exactly once.
+        # One emit per tool call: the helper commits its resolvable lines in one transaction, and
+        # the glass needs to hear "changed" exactly once, after that commit has landed.
         if result.imported_lines > 0:
             await _emit_deck_changed(result.deck_id)
         return result
@@ -929,7 +947,7 @@ def build_server(
             )
 
     @mcp.tool()
-    def semantic_search_cards(
+    async def semantic_search_cards(
         query: str,
         colors: list[str] | None = None,
         color_mode: Literal["any", "all", "exact", "at_most"] = "any",
@@ -969,25 +987,30 @@ def build_server(
             ``build_search_index`` tool), or ``database_not_initialized`` (no card data yet — run
             the ``initialize_database`` tool).
         """
-        # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6); the embedder
-        # is the injected test seam or the lazily-built process singleton (never loaded at build).
-        conn = connection_factory.get_connection()
-        emb = embedder if embedder is not None else get_embedder()
-        return _semantic_search_helper(
-            conn,
-            emb,
-            query,
-            colors=colors,
-            color_mode=color_mode,
-            mana_value_min=mana_value_min,
-            mana_value_max=mana_value_max,
-            format=format,
-            games=games,
-            limit=limit,
-        )
+
+        # Off the loop: the per-thread sqlite-vec connection (NFR6) and the embedder — the
+        # injected test seam or the lazily-built process singleton, never loaded at build — are
+        # both resolved inside the worker, then the sync helper runs there.
+        def _run() -> SemanticSearchResult:
+            conn = connection_factory.get_connection()
+            emb = embedder if embedder is not None else get_embedder()
+            return _semantic_search_helper(
+                conn,
+                emb,
+                query,
+                colors=colors,
+                color_mode=color_mode,
+                mana_value_min=mana_value_min,
+                mana_value_max=mana_value_max,
+                format=format,
+                games=games,
+                limit=limit,
+            )
+
+        return await asyncio.to_thread(_run)
 
     @mcp.tool()
-    def find_similar_cards(
+    async def find_similar_cards(
         card_name: str | None = None,
         card_id: str | None = None,
         colors: list[str] | None = None,
@@ -1034,21 +1057,25 @@ def build_server(
             ``build_search_index`` tool), or ``database_not_initialized`` (no card data yet — run
             the ``initialize_database`` tool).
         """
-        # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6). This tool
-        # never embeds — it reads the seed's stored vector — so it needs no embedder.
-        conn = connection_factory.get_connection()
-        return _find_similar_helper(
-            conn,
-            card_name=card_name,
-            card_id=card_id,
-            colors=colors,
-            color_mode=color_mode,
-            mana_value_min=mana_value_min,
-            mana_value_max=mana_value_max,
-            format=format,
-            games=games,
-            limit=limit,
-        )
+
+        # Off the loop: the per-thread sqlite-vec connection (NFR6) is taken inside the worker.
+        # This tool never embeds — it reads the seed's stored vector — so it needs no embedder.
+        def _run() -> SimilarCardsResult:
+            conn = connection_factory.get_connection()
+            return _find_similar_helper(
+                conn,
+                card_name=card_name,
+                card_id=card_id,
+                colors=colors,
+                color_mode=color_mode,
+                mana_value_min=mana_value_min,
+                mana_value_max=mana_value_max,
+                format=format,
+                games=games,
+                limit=limit,
+            )
+
+        return await asyncio.to_thread(_run)
 
     # Both tools below wipe-and-rebuild local state (the card tables / the embedding index), so
     # they carry an honest destructive hint for clients that gate such tools behind confirmation.
@@ -1085,7 +1112,7 @@ def build_server(
         return await _initialize_database_helper(update=update)
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
-    def build_search_index(rebuild: bool = False) -> BuildSearchIndexResult:
+    async def build_search_index(rebuild: bool = False) -> BuildSearchIndexResult:
         """Build the semantic search index (one-time step that enables semantic_search_cards).
 
         Run this after ``initialize_database`` to enable ``semantic_search_cards`` and
@@ -1103,8 +1130,12 @@ def build_server(
             A result whose ``status`` is ``ok`` (index built — see ``cards_indexed`` /
             ``cards_skipped``), ``database_not_initialized`` (import the cards first), or ``error``.
         """
-        # Sync tool: FastMCP threadpools it. Reuses the injected sqlite-vec connection factory and
-        # the lazily-built embedder singleton (``embedder`` is the build_server test seam).
-        return _build_search_index_helper(connection_factory, embedder=embedder, rebuild=rebuild)
+        # Off the loop: the whole build — connection, embedder resolution, embedding — runs in a
+        # worker thread so other tool calls are answered while it works. Reuses the injected
+        # sqlite-vec connection factory and the lazily-built embedder singleton (``embedder`` is
+        # the build_server test seam).
+        return await asyncio.to_thread(
+            _build_search_index_helper, connection_factory, embedder=embedder, rebuild=rebuild
+        )
 
     return mcp

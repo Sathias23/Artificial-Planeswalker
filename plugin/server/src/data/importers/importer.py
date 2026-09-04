@@ -1,9 +1,11 @@
 """Batch import logic for inserting cards into the database."""
 
+import asyncio
 import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import islice
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,9 +86,16 @@ async def import_cards(
     Processes cards in batches, using INSERT OR REPLACE for SQLite upsert logic.
     Commits after each batch to avoid long-running transactions.
 
+    The iterator is pulled ``batch_size`` items at a time in a worker thread
+    (``asyncio.to_thread``): parsing and transforming the Scryfall stream is CPU work that would
+    otherwise hold the event loop for the whole import. Counting and the insert stay on the loop.
+    ``rejects`` is appended to from the worker thread while the loop thread only reads it between
+    batches, so the two never touch it at the same time.
+
     Args:
         session: AsyncSession for database operations.
-        cards_iterator: Iterator yielding CardModel instances or None (for skipped cards).
+        cards_iterator: Iterator yielding CardModel instances or None (for skipped cards). It is
+            advanced from a worker thread, never concurrently with itself.
         batch_size: Number of cards to insert per batch (default 1,000).
         rejects: Optional shared reject collector (the same list the transformer behind
             *cards_iterator* appends to). It becomes ``ImportStatistics.rejects``, so each
@@ -104,27 +113,33 @@ async def import_cards(
 
     logger.info(f"Starting import with batch size: {batch_size}")
 
-    for card in cards_iterator:
-        stats.total_processed += 1
+    iterator = iter(cards_iterator)
 
-        # Skip None cards (transformation failures)
-        if card is None:
-            stats.total_errors += 1
-            continue
+    def _next_chunk() -> list[CardModel | None]:
+        return list(islice(iterator, batch_size))
 
-        batch.append(card)
+    while chunk := await asyncio.to_thread(_next_chunk):
+        for card in chunk:
+            stats.total_processed += 1
 
-        # Insert batch when it reaches batch_size
-        if len(batch) >= batch_size:
-            await _insert_batch(session, batch, stats)
-            batch.clear()
+            # Skip None cards (transformation failures)
+            if card is None:
+                stats.total_errors += 1
+                continue
 
-            # Log progress
-            logger.info(
-                f"Processed {stats.total_processed:,} cards "
-                f"({stats.total_inserted:,} inserted, {stats.total_errors} errors) "
-                f"- {stats.cards_per_second():.1f} cards/sec"
-            )
+            batch.append(card)
+
+            # Insert batch when it reaches batch_size
+            if len(batch) >= batch_size:
+                await _insert_batch(session, batch, stats)
+                batch.clear()
+
+                # Log progress
+                logger.info(
+                    f"Processed {stats.total_processed:,} cards "
+                    f"({stats.total_inserted:,} inserted, {stats.total_errors} errors) "
+                    f"- {stats.cards_per_second():.1f} cards/sec"
+                )
 
     # Insert remaining cards in final partial batch
     if batch:

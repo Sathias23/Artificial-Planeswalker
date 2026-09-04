@@ -150,10 +150,42 @@ def _selector_error(card_id: str | None, name: str | None) -> str | None:
     return None
 
 
-async def _resolve_card(
+def _location(sideboard: bool) -> str:
+    return "sideboard" if sideboard else "mainboard"
+
+
+def ambiguous_message(name: str, match_count: int) -> str:
+    """The ``ambiguous`` message shared by ``add_card_to_deck`` and ``import_decklist``."""
+    return (
+        f"'{name}' matches {match_count} cards. "
+        "Re-call with a specific card_id, or refine the name."
+    )
+
+
+def card_not_found_message(*, card_id: str | None, name: str | None) -> str:
+    """The ``card_not_found`` message shared by the deck tools (one selector is set)."""
+    identifier = f"card_id '{card_id}'" if card_id is not None else f"name '{name}'"
+    return f"No card found for {identifier}."
+
+
+def card_exists_message(card_name: str, *, sideboard: bool) -> str:
+    """The ``exists`` message shared by ``add_card_to_deck`` and ``import_decklist``."""
+    return (
+        f"'{card_name}' is already in the {_location(sideboard)} of this deck; "
+        "adjust the quantity instead."
+    )
+
+
+def card_added_message(card_name: str, quantity: int, *, sideboard: bool) -> str:
+    """The ``ok`` message shared by ``add_card_to_deck`` and ``import_decklist``."""
+    copies = "copy" if quantity == 1 else "copies"
+    return f"Added {quantity} {copies} of '{card_name}' to the {_location(sideboard)}."
+
+
+async def resolve_card(
     card_repo: CardRepository, *, card_id: str | None, name: str | None
 ) -> tuple[Card | None, str | None, list[Card]]:
-    """Resolve a card by ``card_id`` OR ``name`` for the add/remove helpers.
+    """Resolve a card by ``card_id`` OR ``name`` for the add/remove/import helpers.
 
     The ``card_id`` path is a point lookup; the ``name`` path mirrors
     ``lookup_card_by_name``'s exact→partial bucketing (0 / 1 / >1). The caller
@@ -439,27 +471,23 @@ async def add_card_to_deck(
             message=f"No deck found with id '{deck_id}'.",
         )
 
-    card, error_status, matches = await _resolve_card(card_repo, card_id=card_id, name=name)
+    card, error_status, matches = await resolve_card(card_repo, card_id=card_id, name=name)
     if error_status == "ambiguous":
+        assert name is not None  # only the name path can be ambiguous
         return DeckCardResult(
             status="ambiguous",
             deck_id=deck_id,
             matches=[CardSummary.model_validate(c) for c in matches],
-            message=(
-                f"'{name}' matches {len(matches)} cards. "
-                "Re-call with a specific card_id, or refine the name."
-            ),
+            message=ambiguous_message(name, len(matches)),
         )
     if card is None:
-        identifier = f"card_id '{card_id}'" if card_id is not None else f"name '{name}'"
         return DeckCardResult(
             status="card_not_found",
             deck_id=deck_id,
             card_id=card_id,
-            message=f"No card found for {identifier}.",
+            message=card_not_found_message(card_id=card_id, name=name),
         )
 
-    location = "sideboard" if sideboard else "mainboard"
     try:
         await deck_repo.add_card_to_deck(deck_id, card.id, quantity, sideboard, commander=commander)
     except IntegrityError:
@@ -467,10 +495,7 @@ async def add_card_to_deck(
             status="exists",
             deck_id=deck_id,
             card_id=card.id,
-            message=(
-                f"'{card.name}' is already in the {location} of this deck; "
-                "adjust the quantity instead."
-            ),
+            message=card_exists_message(card.name, sideboard=sideboard),
         )
     except DatabaseError:
         logger.exception("add_card_to_deck failed for deck_id=%s card_id=%s", deck_id, card.id)
@@ -480,12 +505,11 @@ async def add_card_to_deck(
             message="A database error occurred adding the card.",
         )
 
-    copies = "copy" if quantity == 1 else "copies"
     return DeckCardResult(
         status="ok",
         deck_id=deck_id,
         card_id=card.id,
-        message=f"Added {quantity} {copies} of '{card.name}' to the {location}.",
+        message=card_added_message(card.name, quantity, sideboard=sideboard),
     )
 
 
@@ -540,7 +564,7 @@ async def remove_card_from_deck(
             message=f"No deck found with id '{deck_id}'.",
         )
 
-    card, error_status, matches = await _resolve_card(card_repo, card_id=card_id, name=name)
+    card, error_status, matches = await resolve_card(card_repo, card_id=card_id, name=name)
     if error_status == "ambiguous":
         return DeckCardResult(
             status="ambiguous",

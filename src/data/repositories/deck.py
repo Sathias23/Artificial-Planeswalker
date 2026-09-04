@@ -1,6 +1,7 @@
 """Deck repository for database operations on deck data."""
 
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
@@ -14,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.base import BaseRepository
-from src.data.schemas.deck import Deck, DeckCard
+from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry
 
 logger = logging.getLogger(__name__)
 
@@ -378,6 +379,84 @@ class DeckRepository(BaseRepository):
                 "DatabaseError in add_card_to_deck: deck_id=%s, card_id=%s, in_transaction=%s - %s",
                 deck_id,
                 card_id,
+                self.session.in_transaction(),
+                str(e),
+            )
+            raise
+
+    async def add_cards_to_deck(
+        self, deck_id: str, entries: Sequence[DeckCardEntry]
+    ) -> list[DeckCard]:
+        """Add many cards to a deck in one transaction: one commit, one reload.
+
+        The bulk sibling of :meth:`add_card_to_deck` for ``import_decklist``. Every entry is
+        staged, committed together, and the new rows are reloaded (with their cards) in one
+        query. On any database error the session is rolled back and **nothing** is added.
+
+        Args:
+            deck_id: Deck UUID
+            entries: The rows to add. The caller must not repeat a ``(card_id, sideboard)``
+                pair (the association's primary key) and must not name a row already in the
+                deck — either is an ``IntegrityError`` that rolls back the whole batch. Each
+                entry's quantity is at least 1 by construction; the upper cap
+                (``MAX_CARD_QUANTITY``) is the caller's job.
+
+        Returns:
+            One ``DeckCard`` per entry, in entry order; an empty list (and no commit) for no
+            entries.
+
+        Raises:
+            IntegrityError: If any entry duplicates a row in the deck or in ``entries``.
+            DatabaseError: For other database-level errors.
+        """
+        if not entries:
+            return []
+
+        try:
+            self.session.add_all(
+                DeckCardModel(
+                    deck_id=deck_id,
+                    card_id=entry.card_id,
+                    quantity=entry.quantity,
+                    sideboard=entry.sideboard,
+                    commander=entry.commander,
+                )
+                for entry in entries
+            )
+            await self.session.commit()
+
+            stmt = (
+                select(DeckCardModel)
+                .where(
+                    DeckCardModel.deck_id == deck_id,
+                    DeckCardModel.card_id.in_({entry.card_id for entry in entries}),
+                )
+                .options(selectinload(DeckCardModel.card))
+            )
+            result = await self.session.execute(stmt)
+            by_key = {(row.card_id, row.sideboard): row for row in result.scalars()}
+            return [
+                DeckCard.model_validate(by_key[(entry.card_id, entry.sideboard)])
+                for entry in entries
+            ]
+
+        except IntegrityError as e:
+            await self.session.rollback()
+            logger.warning(
+                "IntegrityError in add_cards_to_deck: deck_id=%s, entries=%d - %s",
+                deck_id,
+                len(entries),
+                str(e),
+            )
+            raise
+
+        except DatabaseError as e:
+            await self.session.rollback()
+            logger.error(
+                "DatabaseError in add_cards_to_deck: deck_id=%s, entries=%d, "
+                "in_transaction=%s - %s",
+                deck_id,
+                len(entries),
                 self.session.in_transaction(),
                 str(e),
             )

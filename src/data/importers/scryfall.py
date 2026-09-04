@@ -1,5 +1,6 @@
 """Main orchestrator for Scryfall bulk data import process."""
 
+import asyncio
 import logging
 import shutil
 import tempfile
@@ -423,9 +424,11 @@ async def import_scryfall_bulk_data(
                 download_uri, output_file, max_bytes=_max_download_bytes(advertised_size)
             )
 
-            # Stage 3: Pass 1 — aggregate every printing per oracle identity
+            # Stage 3: Pass 1 — aggregate every printing per oracle identity. A CPU-bound stream
+            # over the ~500 MB file, run off the event loop so a concurrent MCP call (or ping)
+            # is answered while it works.
             logger.info("Stage 3/6: Aggregating printings per oracle identity (pass 1)...")
-            aggregates = build_oracle_aggregates(downloaded_file)
+            aggregates = await asyncio.to_thread(build_oracle_aggregates, downloaded_file)
 
             # Stage 4: Pass 2 — re-stream, keep canonical printings, union games
             logger.info("Stage 4/6: Transforming canonical printings (pass 2)...")

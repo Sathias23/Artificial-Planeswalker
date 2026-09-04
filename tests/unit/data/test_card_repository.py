@@ -156,6 +156,47 @@ class TestFindByNameExact:
 
         assert card is None
 
+    async def test_mixed_case_lookup_is_an_index_search(
+        self, populated_repo: CardRepository, populated_session: AsyncSession
+    ) -> None:
+        """A mixed-case name hits, and the plan is ``SEARCH ... USING INDEX``, not a scan."""
+        from sqlalchemy import event
+
+        captured: list[tuple[str, tuple]] = []
+        engine = populated_session.get_bind()
+
+        def capture(conn, cursor, statement, parameters, context, executemany):
+            if "FROM cards" in statement and "WHERE" in statement:
+                captured.append((statement, parameters))
+
+        event.listen(engine, "before_cursor_execute", capture)
+        try:
+            card = await populated_repo.find_by_name_exact("LIGHTNING bolt")
+        finally:
+            event.remove(engine, "before_cursor_execute", capture)
+
+        assert card is not None
+        assert card.name == "Lightning Bolt"
+        sql, params = captured[-1]
+        connection = await populated_session.connection()
+        plan = await connection.run_sync(
+            lambda sync_conn: sync_conn.exec_driver_sql(
+                "EXPLAIN QUERY PLAN " + sql, params
+            ).fetchall()
+        )
+        lines = [str(row[-1]) for row in plan]
+        detail = "\n".join(lines)
+        assert "SEARCH cards USING INDEX ix_cards_name_nocase" in detail, detail
+        assert "SEARCH cards USING INDEX ix_cards_printed_name_nocase" in detail, detail
+        assert not any(line.startswith("SCAN cards") for line in lines), detail
+
+    async def test_wildcard_characters_are_compared_literally(
+        self, populated_repo: CardRepository
+    ) -> None:
+        """``%`` and ``_`` are not LIKE wildcards on the exact path."""
+        assert await populated_repo.find_by_name_exact("Light%") is None
+        assert await populated_repo.find_by_name_exact("Lightning Bol_") is None
+
     async def test_returns_pydantic_schema(self, populated_repo: CardRepository) -> None:
         """Test that returned object is a Pydantic schema."""
         card = await populated_repo.find_by_name_exact("Lightning Bolt")

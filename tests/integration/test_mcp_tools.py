@@ -22,7 +22,9 @@ test_derive_confidence_full_matrix); orphaned-row handling belongs to the
 deferred data-layer orphan story (7.1 review disposition).
 """
 
+import asyncio
 import json
+import threading
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -31,6 +33,7 @@ from mcp import ClientSession
 from mcp.shared.memory import create_connected_server_and_client_session
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.companion import client as companion_client
 from src.companion.client import PushOutcome
 from src.companion.contracts import (
     GroupsPayload,
@@ -1537,6 +1540,65 @@ async def test_build_search_index_round_trip(
     assert result.isError is False and result.structuredContent is not None
     assert result.structuredContent["status"] == "ok"
     assert result.structuredContent["cards_indexed"] == 2
+
+
+class _BlockingEmbedder(FakeEmbedder):
+    """A fake embedder whose first batch blocks until the test opens the gate."""
+
+    def __init__(self, gate: threading.Event) -> None:
+        super().__init__()
+        self.gate = gate
+        self.entered = threading.Event()
+
+    def encode_batch(self, texts):
+        self.entered.set()
+        assert self.gate.wait(timeout=30), "the test never released the index build"
+        return super().encode_batch(texts)
+
+
+async def test_a_tool_call_is_answered_while_the_index_builds(
+    seeded_card_db: async_sessionmaker[AsyncSession], tmp_path: Path
+):
+    """``build_search_index`` runs off the loop: a concurrent ``list_decks`` returns mid-build."""
+    gate = threading.Event()
+    embedder = _BlockingEmbedder(gate)
+    factory = _sync_cards_factory(tmp_path, seed=True)
+    try:
+        server = build_server(
+            session_factory=seeded_card_db, connection_factory=factory, embedder=embedder
+        )
+        async with create_connected_server_and_client_session(server) as client:
+            build = asyncio.create_task(client.call_tool("build_search_index", {}))
+            try:
+                # The build is inside the embedder (in a worker thread) and holding there...
+                assert await asyncio.wait_for(asyncio.to_thread(embedder.entered.wait, 15), 20)
+                # ...while the loop answers another tool call.
+                listed = await asyncio.wait_for(client.call_tool("list_decks", {}), timeout=10)
+                assert not build.done(), "list_decks returned while the build was still parked"
+            finally:
+                gate.set()
+            built = await build
+    finally:
+        factory.close()
+
+    assert listed.isError is False and listed.structuredContent is not None
+    assert listed.structuredContent["status"] in {"ok", "empty"}
+    assert built.isError is False and built.structuredContent is not None
+    assert built.structuredContent["status"] == "ok"
+
+
+async def test_the_server_lifespan_closes_the_shared_companion_client(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """When the server's run ends, the leaf's pooled ``httpx.AsyncClient`` is closed."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        await client.list_tools()  # the session is up, so the lifespan has been entered
+        shared = companion_client._shared_client()
+        assert not shared.is_closed
+
+    assert shared.is_closed
+    assert companion_client._shared is None
 
 
 @pytest.fixture

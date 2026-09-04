@@ -161,6 +161,13 @@ class CardRepository(BaseRepository):
         When multiple printings exist (same name, different sets), returns the
         first one ordered by ID. Optionally filters by format legality and game availability.
 
+        The comparison is ``COLLATE NOCASE`` equality, so it is served by the
+        ``ix_cards_*_nocase`` indexes rather than a table scan, and ``name`` is compared
+        literally — ``%`` and ``_`` are not wildcards here (see ``find_by_name_partial``).
+        SQLite's ``NOCASE`` folds ASCII letters only (exactly like the ``lower()``/``LIKE`` path
+        it replaced), so a non-ASCII case mismatch misses here and falls to callers' partial
+        bucket.
+
         Args:
             name: Card name to search for (case-insensitive, matches name OR printed_name)
             format_filter: Optional format to filter by ("standard" or None)
@@ -183,9 +190,13 @@ class CardRepository(BaseRepository):
         """
         from sqlalchemy import or_
 
-        # Search both name and printed_name fields
+        # Search both name and printed_name fields. One collated term per index: SQLite's OR
+        # optimisation needs an index for each term or it falls back to a scan.
         stmt = select(CardModel).where(
-            or_(CardModel.name.ilike(name), CardModel.printed_name.ilike(name))
+            or_(
+                CardModel.name.collate("NOCASE") == name,
+                CardModel.printed_name.collate("NOCASE") == name,
+            )
         )
         stmt = self._apply_format_filter(stmt, format_filter)
         stmt = self._apply_games_filter(stmt, games)

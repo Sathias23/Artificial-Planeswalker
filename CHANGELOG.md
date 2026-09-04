@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Indexed exact card lookup and single-transaction import.** `cards.name` and
+  `cards.printed_name` gain `COLLATE NOCASE` indexes (created on existing
+  databases automatically when the engine connects — no migration to run), and
+  `lookup_card_by_name` / `add_card_to_deck` / `find_similar_cards(card_name=…)`
+  / `import_decklist` resolve names through them instead of a table scan. An
+  exact name is now compared literally — `%` and `_` in it were LIKE wildcards
+  before — and an existing database pays a one-time ~0.4 s index build on its
+  first connection after upgrading. `import_decklist` resolves every line first
+  and writes the deck in one transaction (one commit, one reload) instead of one
+  commit per line.
+- **Search tools off the event loop.** `semantic_search_cards`,
+  `find_similar_cards` and `build_search_index` run their work in a worker thread,
+  and `initialize_database` offloads its aggregate and parse passes, so a second
+  tool call (or the MCP ping) is answered while an index build or import runs.
+- **One round trip per companion push, lazy embedder import.** The companion
+  client shares one `httpx.AsyncClient` and no longer probes `/health` before each
+  push — a refused connection is still `app_not_running` — and the MCP server no
+  longer imports `fastembed` until a semantic tool actually runs.
 - **Lint-as-tests removed.** Roughly 250 Python tests and 26 `ui/tests/` files that
   asserted on source text, docstring prose, constant literals or README/PRD
   wording are gone, along with the three docs-drift suites (only the two

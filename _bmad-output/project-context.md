@@ -58,8 +58,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Use modern 3.12 syntax** (ruff `UP` rules auto-enforce): `X | None` not `Optional[X]`,
   `list[str]`/`dict[str, Any]` not `List`/`Dict`, built-in generics.
 - **Async everywhere in `src/data` + `src/logic`.** DB access is `async`/`await` on
-  `AsyncSession`; never call sync SQLAlchemy APIs. (Exception: MCP tools are **sync `def`** —
-  see Framework rules — and embeddings run on CPU synchronously.)
+  `AsyncSession`; never call sync SQLAlchemy APIs. (Exception: the sqlite-vec search helpers are
+  sync and run via `asyncio.to_thread` — see Framework rules — and embeddings run on CPU
+  synchronously.)
 - **Timezone-aware UTC only:** `datetime.now(UTC)` (import `UTC` from `datetime`). Never naive
   `datetime.now()` / `utcnow()`.
 - **Logging, not prints, in library code:** module-level `logger = logging.getLogger(__name__)`;
@@ -104,8 +105,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Tools are stateless and self-contained (D5):** `format`/`games` are **tool parameters**;
   "active deck" is a client-supplied **`deck_id`** — no per-session server state. The old
   `set_format_filter` / `set_games_filter` / `toggle_auto_feedback` session tools are dropped.
-- **Define tools as sync `def`** — FastMCP runs them in a threadpool. Use **WAL mode** and
-  **one SQLite connection per worker thread**; the embedding model is a **process singleton**.
+- **Register tools as `async def`.** FastMCP does NOT threadpool sync tools (it calls them inline
+  on the event loop), so a tool whose helper is sync/CPU-bound (the sqlite-vec search tools, the
+  index build) wraps the helper in `await asyncio.to_thread(...)`, acquiring its per-thread SQLite
+  connection **inside** the worker. Use **WAL mode**; the embedding model is a **process singleton**.
 - Tools wrap the existing repositories/validators directly; they **return structured results**
   (not the legacy HTML-blob strings the PydanticAI prompt required).
 - Port tool catalog 1:1 from `src/agent/tools` + two new search tools (`semantic_search_cards`,
@@ -240,8 +243,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Don't reintroduce per-session server state in MCP tools.** Format/games/active-deck are
   caller-supplied parameters (D5); session state belongs to the *client*, not the server.
 - **Don't block the event loop / mismatch sync vs async:** `src/data`/`src/logic` are async;
-  MCP tools are sync `def` (threadpooled) with their own per-thread SQLite connection + WAL.
-  Don't `await` inside a sync tool or share one connection across threads.
+  sync sqlite-vec helpers run under `asyncio.to_thread` with their own per-thread SQLite
+  connection + WAL. Don't call a blocking helper directly from an `async def` tool, and never
+  share one sqlite-vec connection across threads.
 - **Don't forget `k`/`LIMIT` on a `sqlite-vec` KNN query** — an unbounded vector scan is a
   performance cliff. Over-fetch `k`, then JOIN-filter on relational predicates.
 - **Don't let `FASTEMBED_CACHE_DIR` default** — it points at a volatile temp dir, forcing model

@@ -2,10 +2,17 @@
 
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Float, String
+from sqlalchemy import JSON, Boolean, Float, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.data.models.base import Base
+
+# Case-insensitive name lookups compare with ``COLLATE NOCASE``, and SQLite uses an index only when
+# its collation matches the query's — the plain ``index=True`` b-trees on ``name``/``printed_name``
+# (binary collation) cannot serve them. ``src.data.database`` creates these on existing databases
+# from its connect hook; ``create_all`` creates them on fresh ones.
+NOCASE_NAME_INDEX = "ix_cards_name_nocase"
+NOCASE_PRINTED_NAME_INDEX = "ix_cards_printed_name_nocase"
 
 
 class CardModel(Base):
@@ -16,6 +23,10 @@ class CardModel(Base):
     """
 
     __tablename__ = "cards"
+    __table_args__ = (
+        Index(NOCASE_NAME_INDEX, text("name COLLATE NOCASE")),
+        Index(NOCASE_PRINTED_NAME_INDEX, text("printed_name COLLATE NOCASE")),
+    )
 
     # Primary key - Scryfall card ID (UUID)
     id: Mapped[str] = mapped_column(String, primary_key=True, init=True)

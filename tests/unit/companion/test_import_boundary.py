@@ -77,6 +77,7 @@ _REPO_WRITE_METHODS = frozenset(
         "update_deck",
         "delete_deck",
         "add_card_to_deck",
+        "add_cards_to_deck",
         "remove_card_from_deck",
         "update_card_quantity",
         "update_deck_color_identity",

@@ -11,14 +11,16 @@ ways: an HTTP stub that answers (any status, any bytes), a bare listening socket
 TCP handshake and then says nothing (``ReadTimeout``), and a port with nothing on it at all
 (``ConnectTimeout`` under a short deadline). Each is one row of AC 4's matrix.
 
-The HTTP stub answers ``GET``, ``POST`` and ``PUT`` from **three separate scripts**, which c6-1
-needed and c1-8 did not: one call makes two requests against the same stub — a ``/health`` probe and
-then the authenticated leg — so a single canned response could not express "identity is fine, the
-credential is not". Each script is a queue whose **last entry repeats forever**, so ``[403, 200]``
-is the retry case and ``[403]`` alone is the terminal one, and neither can pass by the stub simply
-running out. c6-2 added the third script rather than sharing the POST's, because the two verbs
-answer **different 200 bodies** — a shared queue would let an active-deck test pass while the client
-parsed an event receipt.
+The HTTP stub answers ``GET``, ``POST`` and ``PUT`` from **three separate scripts**: the ``GET``
+script is the ``/health`` body the probe (``probe_health`` / ``live_instance``) reads, and the
+authenticated verbs each have their own. Each script is a queue whose **last entry repeats
+forever**, so ``[403, 200]`` is the retry case and ``[403]`` alone is the terminal one, and neither
+can pass by the stub simply running out. c6-2 added the third script rather than sharing the
+POST's, because the two verbs answer **different 200 bodies** — a shared queue would let an
+active-deck test pass while the client parsed an event receipt. The authenticated verbs no longer
+probe before sending (one round trip per push), so the stub's request log doubles as the proof that
+no ``GET`` precedes a ``POST`` or ``PUT``. Every response carries ``Connection: close`` because the
+client under test pools connections and the stub joins its handler threads at teardown.
 
 Discovery files are planted with ``Path.write_text(json.dumps(...))`` and never through
 ``write_discovery`` — a fixture built by the code under test proves nothing (c1-6's rule, restated
@@ -114,12 +116,19 @@ class _StubHandler(BaseHTTPRequestHandler):
             self.server.requests.append(record)
 
     def _reply(self, status: int, body: bytes, content_type: str) -> None:
-        """Send one complete, correctly framed response."""
+        """Send one complete, correctly framed response, then close the connection.
+
+        ``Connection: close`` because the client under test pools its connections: a kept-alive
+        socket would leave this handler thread blocked on the next request line, and the stub's
+        ``server_close()`` joins its handler threads at teardown.
+        """
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
+        self.close_connection = True
 
     def do_GET(self) -> None:  # noqa: N802 — the name BaseHTTPRequestHandler dispatches to
         """Record the request, then reply with the stub's configured status and bytes."""
@@ -129,8 +138,8 @@ class _StubHandler(BaseHTTPRequestHandler):
 
     # POST is recorded as well as GET for c1-8's reason — the probe must send nothing but a GET, and
     # a regression that started posting would otherwise meet a silent 501 and record nothing at all
-    # — and it is *answered from its own script* for c6-1's: the push probes and then posts against
-    # this same stub, so the two legs need to be able to answer differently.
+    # — and it is *answered from its own script* for c6-1's: the authenticated legs need to answer
+    # differently from the ``/health`` GET that ``companion_status``'s probe reads.
     def do_POST(self) -> None:  # noqa: N802 — the name BaseHTTPRequestHandler dispatches to
         """Record the request, fire the stub's hook, then answer per the next scripted entry."""
         stub = self.server
@@ -179,6 +188,7 @@ class _StubHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", "1000000")
+        self.send_header("Connection", "close")
         self.end_headers()
         try:
             for _ in range(1500):
@@ -186,7 +196,8 @@ class _StubHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 time.sleep(0.02)
         except OSError:
-            self.close_connection = True  # the client gave up and closed its end
+            pass  # the client gave up and closed its end
+        self.close_connection = True
 
     def log_message(self, format, *args) -> None:
         """Swallow the default stderr access log — the stub is scaffolding, not code under test."""
@@ -565,12 +576,14 @@ class TestExportedSurface:
         )
 
     def test_the_whole_push_has_a_deadline_covering_both_attempts(self):
-        """c6-1 Q4: one cap over probe + post + re-probe + retry, not per leg.
+        """c6-1 Q4: one cap over the request and its retry, not per leg.
 
-        It must clear two whole probes, or the retry the story exists to make transparent would be
-        cut off by the very deadline meant to bound a pathological listener.
+        It must clear two whole requests (connect + read each), or the retry the story exists to
+        make transparent would be cut off by the very deadline meant to bound a pathological
+        listener.
         """
-        assert client._PUSH_TOTAL_SECONDS >= 2 * client._PROBE_TOTAL_SECONDS, (
+        one_request = client.PROBE_TIMEOUT.connect + client.PROBE_TIMEOUT.read
+        assert client._PUSH_TOTAL_SECONDS >= 2 * one_request, (
             "the push deadline must fit both attempts, or FR-12's retry can never complete"
         )
 
@@ -1002,13 +1015,18 @@ class TestPushEvent:
         assert len(stub.posts) == 1, "the push must reach the companion, not the proxy"
 
 
-class TestPushIdentityGate:
-    """c6-1 AC 2 + AC 8: identity is proven before the token moves, or nothing moves at all."""
+class TestPushDiscoveryGate:
+    """The discovery file is the trust root: no usable file, nothing moves; a live port gets one
+    POST.
+
+    The pre-send ``/health`` probe is gone (one round trip per push): a stale file naming a dead
+    port is caught by the connection being refused, and the stub sees no ``GET`` at all.
+    """
 
     async def test_no_discovery_file_is_app_not_running_without_touching_the_network(
         self, stub_server
     ):
-        """AC 2: no record, no probe, no post — and an honest token."""
+        """AC 2: no record, no request — and an honest token."""
         stub = stub_server(body=health_bytes("inst-alpha"))
         assert not discovery.discovery_path().exists()
 
@@ -1027,40 +1045,55 @@ class TestPushIdentityGate:
         assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
         assert stub.requests == []
 
-    async def test_a_foreign_identity_is_app_not_running_and_no_token_is_sent(self, stub_server):
-        """AD-4's whole point: something answered is not evidence, and a mismatch sends nothing.
-
-        This is the mechanism test for the gate — delete the ``live_instance`` call in front of the
-        POST and this is the assertion that goes red, because the stub would receive the token.
-        """
-        token = "s3cret-token-do-not-send-me"
-        stub = stub_server(body=health_bytes("some-other-process"))
-        plant_discovery(port=stub.port, instance_id="inst-alpha", token=token)
+    async def test_a_live_backend_sees_exactly_one_request_and_it_is_the_post(self, stub_server):
+        """One round trip per push: the POST, and no ``GET /health`` in front of it."""
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
 
         outcome = await client.push_event(an_event())
 
-        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
-        assert stub.requests, "the port was dialled, or this proves nothing"
-        assert stub.posts == [], "identity failed; nothing may be posted"
-        for request in stub.requests:
-            assert token not in request.as_text()
-            assert "authorization" not in request.headers.lower()
+        assert outcome == client.PushOutcome(outcome="displayed", clients=1)
+        assert [r.request_line.split(" ", 1)[0] for r in stub.requests] == ["POST"]
+
+    async def test_consecutive_pushes_on_one_loop_share_one_client(self, stub_server, monkeypatch):
+        """One ``httpx.AsyncClient`` is built per loop and reused across pushes."""
+        constructed: list[httpx.AsyncClient] = []
+        real_client = httpx.AsyncClient
+
+        class CountingClient(real_client):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                constructed.append(self)
+
+        monkeypatch.setattr(httpx, "AsyncClient", CountingClient)
+        client.reset_shared_client()
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        first = await client.push_event(an_event())
+        shared = client._shared_client()
+        second = await client.push_event(an_event())
+
+        assert first.outcome == second.outcome == "displayed"
+        assert client._shared_client() is shared
+        assert len(constructed) == 1, "a second push must not build a second client"
+        assert len(stub.posts) == 2
 
     async def test_a_dead_port_is_app_not_running(self, sockets):
-        """The ordinary post-crash state, seen from the push path."""
+        """The ordinary post-crash state: the connection is refused, so nothing landed."""
         plant_discovery(port=sockets.dead(), instance_id="inst-alpha")
 
         outcome = await client.push_event(an_event(), timeout=FAST)
 
         assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
 
-    async def test_a_silent_listener_is_app_not_running(self, sockets):
-        """The probe never gets an identity, so the push never begins."""
+    async def test_a_silent_listener_is_backend_error(self, sockets):
+        """Something accepted the connection and never answered the POST: a read timeout."""
         plant_discovery(port=sockets.silent(), instance_id="inst-alpha")
 
         outcome = await client.push_event(an_event(), timeout=FAST)
 
-        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
 
 
 class TestPushRetriesOnceOnAForbiddenToken:
@@ -1096,12 +1129,8 @@ class TestPushRetriesOnceOnAForbiddenToken:
             "presence-only check"
         )
 
-    async def test_the_retry_re_proves_identity_before_sending_the_new_token(self, stub_server):
-        """Q2 ruling: AD-4's verify-before-you-send has no once-per-call exemption.
-
-        Two probes and two posts, in that interleaving: the retry is a *full* discovery → health →
-        identity cycle, not a bare file re-read.
-        """
+    async def test_the_retry_re_reads_discovery_and_probes_nothing(self, stub_server):
+        """Two POSTs and zero GETs: the retry re-reads the file, it does not re-probe the port."""
 
         def restart(post_count: int) -> None:
             if post_count == 1:
@@ -1117,7 +1146,7 @@ class TestPushRetriesOnceOnAForbiddenToken:
         await client.push_event(an_event())
 
         methods = [request.request_line.split(" ", 1)[0] for request in stub.requests]
-        assert methods == ["GET", "POST", "GET", "POST"]
+        assert methods == ["POST", "POST"]
 
     async def test_a_second_refusal_is_backend_error_and_the_retry_is_spent(self, stub_server):
         """AC 4: exactly two POSTs, ever. The script refuses forever; the client stops anyway."""
@@ -1175,11 +1204,11 @@ class TestPushNeverRaisesAndNeverLeaksTheToken:
     """c6-1 AC 7: every failure is a token, and the credential is in exactly one place."""
 
     async def test_a_backend_that_hangs_up_on_the_push_is_backend_error(self, stub_server):
-        """A transport failure on the POST leg alone — identity was already proven.
+        """A transport failure after the connection was accepted.
 
-        ``backend_error``, not ``app_not_running``: the ``/health`` probe against this very port
-        succeeded a moment earlier, so "no app is there" would be the wrong report. Note the single
-        POST — a dropped connection is not a refused credential and buys no retry.
+        ``backend_error``, not ``app_not_running``: this port accepted the POST and then hung up,
+        so "no app is there" would be the wrong report — only a *refused* connection means that.
+        Note the single POST — a dropped connection is not a refused credential and buys no retry.
         """
         stub = stub_server(body=health_bytes("inst-alpha"), post_script=[(HANGUP, b"")])
         plant_discovery(port=stub.port, instance_id="inst-alpha")
@@ -1282,7 +1311,7 @@ class TestNotifyDeckChanged:
     """c7-1: the one shared notifier — a ~1 s bounded await, no detached task, and never a raise.
 
     Reuses :func:`push_event`'s stub, discovery and log-capture patterns throughout: the notifier
-    shares the identity gate, the retry-once shape and the outcome vocabulary with the push, and
+    shares the discovery gate, the retry-once shape and the outcome vocabulary with the push, and
     the tests below prove that reuse rather than re-deriving it.
     """
 
@@ -1613,8 +1642,8 @@ class TestSetActiveDeck:
         assert len(stub.puts) == 1, "the request must reach the companion, not the proxy"
 
 
-class TestSetActiveDeckIdentityGate:
-    """c6-2 AC 4 + AD-4: identity is proven before the token moves, or nothing moves at all."""
+class TestSetActiveDeckDiscoveryGate:
+    """c6-2 AC 4 on the push's terms: the discovery file gates the send, and there is no probe."""
 
     async def test_no_discovery_file_is_app_not_running_without_touching_the_network(
         self, stub_server
@@ -1636,24 +1665,14 @@ class TestSetActiveDeckIdentityGate:
         assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
         assert stub.requests == []
 
-    async def test_a_foreign_identity_is_app_not_running_and_no_token_is_sent(self, stub_server):
-        """The mechanism test for this verb's gate: delete the ``live_instance`` call and this reds.
-
-        Zero PUTs and no token in any recorded byte — AD-4's whole point, on the leg that would
-        otherwise hand a credential to whatever inherited the port.
-        """
-        token = "s3cret-token-do-not-send-me"
-        stub = stub_server(body=health_bytes("some-other-process"))
-        plant_discovery(port=stub.port, instance_id="inst-alpha", token=token)
+    async def test_a_live_backend_sees_exactly_one_request_and_it_is_the_put(self, stub_server):
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
 
         outcome = await client.set_active_deck(a_request())
 
-        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
-        assert stub.requests, "the port was dialled, or this proves nothing"
-        assert stub.puts == [], "identity failed; nothing may be sent"
-        for request in stub.requests:
-            assert token not in request.as_text()
-            assert "authorization" not in request.headers.lower()
+        assert outcome == client.PushOutcome(outcome="displayed", clients=1)
+        assert [r.request_line.split(" ", 1)[0] for r in stub.requests] == ["PUT"]
 
     async def test_a_dead_port_is_app_not_running(self, sockets):
         plant_discovery(port=sockets.dead(), instance_id="inst-alpha")
@@ -1662,12 +1681,12 @@ class TestSetActiveDeckIdentityGate:
 
         assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
 
-    async def test_a_silent_listener_is_app_not_running(self, sockets):
+    async def test_a_silent_listener_is_backend_error(self, sockets):
         plant_discovery(port=sockets.silent(), instance_id="inst-alpha")
 
         outcome = await client.set_active_deck(a_request(), timeout=FAST)
 
-        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
 
 
 class TestSetActiveDeckRetriesOnceOnAForbiddenToken:
@@ -1705,8 +1724,8 @@ class TestSetActiveDeckRetriesOnceOnAForbiddenToken:
             "the retry must carry the token the re-read found, not the one that was refused"
         )
 
-    async def test_the_retry_re_proves_identity_before_sending_the_new_token(self, stub_server):
-        """AD-4's verify-before-you-send has no once-per-call exemption (c6-1 Q2)."""
+    async def test_the_retry_re_reads_discovery_and_probes_nothing(self, stub_server):
+        """Two PUTs and zero GETs: the retry re-reads the file, it does not re-probe the port."""
 
         def restart(put_count: int) -> None:
             if put_count == 1:
@@ -1722,7 +1741,7 @@ class TestSetActiveDeckRetriesOnceOnAForbiddenToken:
         await client.set_active_deck(a_request())
 
         methods = [request.request_line.split(" ", 1)[0] for request in stub.requests]
-        assert methods == ["GET", "PUT", "GET", "PUT"]
+        assert methods == ["PUT", "PUT"]
 
     async def test_a_second_refusal_is_backend_error_and_the_retry_is_spent(self, stub_server):
         """Exactly two PUTs, ever. The script refuses forever; the client stops anyway."""
@@ -1776,7 +1795,7 @@ class TestSetActiveDeckNeverRaisesAndNeverLeaksTheToken:
     """c6-2 AC 4: every failure is a token, and the credential is in exactly one place."""
 
     async def test_a_backend_that_hangs_up_is_backend_error(self, stub_server):
-        """``backend_error``, not ``app_not_running``: ``/health`` answered a moment earlier."""
+        """``backend_error``, not ``app_not_running``: the port accepted the PUT, then hung up."""
         stub = stub_server(body=health_bytes("inst-alpha"), put_script=[(HANGUP, b"")])
         plant_discovery(port=stub.port, instance_id="inst-alpha")
 
