@@ -1416,7 +1416,7 @@ agent-view store per kind and takes focus — the containers rule applied in the
 usually applied. Its rule is `AgentView.css`'s close pill with three states added, since
 `DESIGN.md:522` declares those two controls to be one component.
 
-#### Colour is never the sole carrier — the CVD question, measured
+#### Colour is never the sole carrier — the CVD question
 
 _For a sighted colour-vision-deficient user, a pip's colour IS its sole carrier_ — `ManaPip`
 draws no glyph for the five WUBRG colours, deliberately (UX-DR7 bans mana-symbol icon fonts, and
