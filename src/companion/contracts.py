@@ -1000,7 +1000,7 @@ class SuggestionsEvent(_EventEnvelope):
                 {
                     "kind": "suggestions",
                     "id": "0f6e2a11-9c3d-4b7e-8a52-1d4f6c8b0e33",
-                    "ts": "2026-08-07T09:15:00Z",
+                    "ts": "2025-01-01T09:15:00Z",
                     "payload": {
                         "title": "Resilience options",
                         "items": [
@@ -1047,7 +1047,7 @@ class SwapsEvent(_EventEnvelope):
                 {
                     "kind": "swaps",
                     "id": "1a7c4b98-2e5f-4c10-9d3a-7b2e5f8c1a04",
-                    "ts": "2026-08-07T09:16:00Z",
+                    "ts": "2025-01-01T09:16:00Z",
                     "payload": {
                         "title": "Cheaper removal",
                         "items": [
@@ -1096,7 +1096,7 @@ class TierListEvent(_EventEnvelope):
                 {
                     "kind": "tier_list",
                     "id": "2b8d5ca9-3f60-4d21-ae4b-8c3f6a9d2b15",
-                    "ts": "2026-08-07T09:17:00Z",
+                    "ts": "2025-01-01T09:17:00Z",
                     "payload": {
                         "title": "How this deck's creatures rank",
                         "items": [
@@ -1143,7 +1143,7 @@ class GroupsEvent(_EventEnvelope):
                 {
                     "kind": "groups",
                     "id": "3c9e6db0-4071-4e32-bf5c-9d407bae3c26",
-                    "ts": "2026-08-07T09:18:00Z",
+                    "ts": "2025-01-01T09:18:00Z",
                     "payload": {
                         "title": "What this deck is doing",
                         "items": [
@@ -1189,7 +1189,7 @@ class DeckChangedEvent(_EventEnvelope):
                 {
                     "kind": "deck_changed",
                     "id": "4d0f7ec1-5182-4f43-a06d-ae518cbf4d37",
-                    "ts": "2026-08-07T09:19:00Z",
+                    "ts": "2025-01-01T09:19:00Z",
                     "payload": {"deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"},
                 }
             ]
@@ -1227,7 +1227,7 @@ class ActiveDeckChangedEvent(_EventEnvelope):
                 {
                     "kind": "active_deck_changed",
                     "id": "5e1a8fd2-6293-4a54-b17e-bf629dca5e48",
-                    "ts": "2026-08-07T09:20:00Z",
+                    "ts": "2025-01-01T09:20:00Z",
                     "payload": {"deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"},
                 }
             ]

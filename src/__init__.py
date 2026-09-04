@@ -11,7 +11,6 @@ try:
 except PackageNotFoundError:  # pragma: no cover - only when the package is not installed
     __version__ = "0.0.0"
 
-__author__ = "Brad"
 
 # Project metadata
 PROJECT_NAME: Final[str] = "Artificial Planeswalker"

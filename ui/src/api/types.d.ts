@@ -363,7 +363,7 @@ export interface components {
          *       "payload": {
          *         "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
          *       },
-         *       "ts": "2026-08-07T09:20:00Z"
+         *       "ts": "2025-01-01T09:20:00Z"
          *     }
          */
         ActiveDeckChangedEvent: {
@@ -594,7 +594,7 @@ export interface components {
          *       "payload": {
          *         "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
          *       },
-         *       "ts": "2026-08-07T09:19:00Z"
+         *       "ts": "2025-01-01T09:19:00Z"
          *     }
          */
         DeckChangedEvent: {
@@ -924,7 +924,7 @@ export interface components {
          *         ],
          *         "title": "What this deck is doing"
          *       },
-         *       "ts": "2026-08-07T09:18:00Z"
+         *       "ts": "2025-01-01T09:18:00Z"
          *     }
          */
         GroupsEvent: {
@@ -1056,7 +1056,7 @@ export interface components {
          *         ],
          *         "title": "Resilience options"
          *       },
-         *       "ts": "2026-08-07T09:15:00Z"
+         *       "ts": "2025-01-01T09:15:00Z"
          *     }
          */
         SuggestionsEvent: {
@@ -1150,7 +1150,7 @@ export interface components {
          *         ],
          *         "title": "Cheaper removal"
          *       },
-         *       "ts": "2026-08-07T09:16:00Z"
+         *       "ts": "2025-01-01T09:16:00Z"
          *     }
          */
         SwapsEvent: {
@@ -1238,7 +1238,7 @@ export interface components {
          *         ],
          *         "title": "How this deck's creatures rank"
          *       },
-         *       "ts": "2026-08-07T09:17:00Z"
+         *       "ts": "2025-01-01T09:17:00Z"
          *     }
          */
         TierListEvent: {
