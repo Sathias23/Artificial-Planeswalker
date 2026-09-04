@@ -5,14 +5,34 @@ import os
 import threading
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-from fastembed import TextEmbedding
 from numpy.typing import NDArray
 
 from src.paths import fastembed_cache_dir
 
+if TYPE_CHECKING:
+    from fastembed import TextEmbedding
+
 logger = logging.getLogger(__name__)
+
+
+def _load_text_embedding() -> type["TextEmbedding"]:
+    """Import fastembed on first use and return its ``TextEmbedding`` class.
+
+    Importing fastembed pulls in ONNX Runtime and tokenizers (~250 ms), so it happens here, when
+    an :class:`Embedder` is actually built, rather than when this module — and through
+    ``src.search`` the MCP server — is imported. Tests replace this function with one returning
+    a fake, which is why the class is resolved through a call rather than a module attribute.
+    """
+    from fastembed import TextEmbedding
+
+    # Typed local rather than a bare return: under pre-commit's ``--ignore-missing-imports``
+    # mypy the imported class is ``Any``, and a bare ``return`` of it trips no-any-return.
+    cls: type[TextEmbedding] = TextEmbedding
+    return cls
+
 
 # Single source of truth for downstream stories (2.2 schema / 2.3 builder import these — never
 # hardcode the dimension or model name elsewhere).
@@ -94,9 +114,9 @@ class Embedder:
         # The model lazily downloads into this dir on first use; create it if absent.
         cache_path.mkdir(parents=True, exist_ok=True)
         logger.info("Loading fastembed model %s (cache_dir=%s)", MODEL_NAME, self._cache_dir)
-        # This is the expensive one-time load (the "lazy boundary"): import is free, the model
-        # materializes here, on the first get_embedder() call.
-        self._model = TextEmbedding(model_name=MODEL_NAME, cache_dir=self._cache_dir)
+        # The "lazy boundary": both the fastembed import and the one-time model load happen here,
+        # on the first get_embedder() call — never at module import.
+        self._model = _load_text_embedding()(model_name=MODEL_NAME, cache_dir=self._cache_dir)
 
     @property
     def dim(self) -> int:
@@ -168,9 +188,9 @@ class Embedder:
 
 
 # --- Process-lifetime singleton (AC2) ------------------------------------------------------
-# The model is shared across the whole process and all of FastMCP's threadpool workers. This is
-# the ONLY supported way to obtain an Embedder for build-time (Story 2.3) and serve-time
-# (Stories 2.4-2.5).
+# The model is shared across the whole process and every worker thread the search tools run on
+# (``asyncio.to_thread``). This is the ONLY supported way to obtain an Embedder for build-time
+# (Story 2.3) and serve-time (Stories 2.4-2.5).
 _embedder: Embedder | None = None
 _lock = threading.Lock()
 
@@ -178,7 +198,7 @@ _lock = threading.Lock()
 def get_embedder() -> Embedder:
     """Return the process-wide :class:`Embedder`, building it exactly once on first use.
 
-    Uses double-checked locking so that concurrent first-use calls from FastMCP's threadpool
+    Uses double-checked locking so that concurrent first-use calls from worker threads
     cannot race two model loads. After the model is built, the fast path returns the cached
     instance without taking the lock. ``_embedder`` is assigned only after a successful build,
     so a failed construction never leaves a half-built singleton behind.

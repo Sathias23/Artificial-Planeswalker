@@ -5,6 +5,8 @@ no model download or ONNX session ever occurs. The real-model load is covered by
 ``@pytest.mark.integration`` test in ``tests/integration/search/test_embedder.py``.
 """
 
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -41,12 +43,31 @@ class FakeTextEmbedding:
 
 @pytest.fixture
 def fake_model(monkeypatch):
-    """Patch ``TextEmbedding`` with the fake, reset the singleton + counter, clean up after."""
+    """Patch the lazy ``TextEmbedding`` loader with the fake; reset the singleton; clean up."""
     FakeTextEmbedding.construction_count = 0
-    monkeypatch.setattr(embedder_module, "TextEmbedding", FakeTextEmbedding)
+    monkeypatch.setattr(embedder_module, "_load_text_embedding", lambda: FakeTextEmbedding)
     reset_embedder()
     yield FakeTextEmbedding
     reset_embedder()
+
+
+def test_importing_the_server_does_not_import_fastembed() -> None:
+    """``import src.mcp_server.server`` must not pull in fastembed (~250 ms of ONNX/tokenizers).
+
+    A subprocess, because this process has long since imported both; the assertion only means
+    something on a cold interpreter.
+    """
+    code = (
+        "import sys, src.mcp_server.server, src.search; "
+        "assert 'fastembed' not in sys.modules, 'fastembed was imported'"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[3],
+    )
+    assert proc.returncode == 0, proc.stderr
 
 
 # --- _resolve_cache_dir (AC3) --------------------------------------------------------------

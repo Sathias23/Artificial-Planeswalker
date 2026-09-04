@@ -37,6 +37,31 @@ class DeckCard(BaseModel):
         return v
 
 
+class DeckCardEntry(BaseModel):
+    """One row to add in a bulk ``DeckRepository.add_cards_to_deck`` call.
+
+    The write-side counterpart of :class:`DeckCard`: the association fields only, no nested
+    card. Validated on construction so a quantity below 1 is rejected before any row is staged;
+    the upper cap (``MAX_CARD_QUANTITY``) is the calling tool's job, as it is for
+    ``add_card_to_deck``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    card_id: str
+    quantity: int
+    sideboard: bool = False
+    commander: bool = False
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: int) -> int:
+        """Validate quantity is at least 1."""
+        if v < 1:
+            raise ValueError("Quantity must be at least 1")
+        return v
+
+
 class Deck(BaseModel):
     """Pydantic schema for deck metadata and relationships.
 

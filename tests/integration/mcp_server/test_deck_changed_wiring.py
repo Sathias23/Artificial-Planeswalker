@@ -584,12 +584,11 @@ class TestARealHttpFailureCostsTheMutationNothing:
     async def test_a_real_500_after_the_commit_leaves_the_result_byte_identical(
         self, deck_db, stub_server
     ):
-        """``/health`` is valid, the POST answers 500 — and the tool never notices.
+        """The port accepts the POST and answers 500 — and the tool never notices.
 
-        The stub's ``GET`` answers a well-formed health body echoing the instance id the planted
-        record claims, so ``live_instance()`` matches and the client genuinely sends the token
-        (AD-4's "verify before you send"). Only then does the POST fail. That ordering is the whole
-        point: a failure planted *before* the identity gate would be a second spelling of
+        The planted record names a live stub, so the client genuinely sends the token in its one
+        request, and it is that request the backend fails. That is the whole point: a failure
+        planted *before* the send (no file, a refused port) would be a second spelling of
         ``app_not_running`` and would never exercise the swallow at all.
         """
         stub = stub_server(
@@ -632,8 +631,8 @@ class TestARealHttpFailureCostsTheMutationNothing:
             "the emit that failed was still the right one — a swallowed wrong event would look "
             "identical from the tool's side"
         )
-        # …and the probe really ran first, which is what makes this a post-identity-gate failure.
-        assert any(request.request_line.startswith("GET /health ") for request in stub.requests)
+        # …and it was the only request: one round trip per notify, no ``/health`` probe in front.
+        assert [r.request_line.split(" ", 1)[0] for r in stub.requests] == ["POST"]
 
     async def test_a_wedged_backend_pays_the_bound_and_the_mutation_still_returns_ok(
         self, deck_db, sockets
@@ -651,8 +650,8 @@ class TestARealHttpFailureCostsTheMutationNothing:
         to flake is loose enough to miss it. The firing probe for this row proved exactly that —
         the planted regression stayed green. ``drip()`` answers headers and then feeds body bytes
         every 20 ms forever, so **no per-read deadline can ever fire** and only a whole-operation
-        deadline can end it: ~1 s with the notify budget, ~5 s
-        (``client._PROBE_TOTAL_SECONDS``) without. A five-fold separation instead of a two-fold
+        deadline can end it: ~1 s with the notify budget, ~10 s
+        (``client._PUSH_TOTAL_SECONDS``) without. A ten-fold separation instead of a two-fold
         one, which is what makes the ceiling below both safe and meaningful.
         """
         port = sockets.drip()
@@ -677,16 +676,16 @@ class TestARealHttpFailureCostsTheMutationNothing:
         #   * below the floor -> the client never really dialled (a short-circuit, and the row
         #     would be proving nothing about the swallow);
         #   * inside the window -> `_NOTIFY_TOTAL_SECONDS` (1.0 s) ended it, which is the claim;
-        #   * above the ceiling -> the notify budget was bypassed and `_PROBE_TOTAL_SECONDS`
-        #     (5.0 s) is what stopped the wait — the exact regression AD-9 forbids, since a
+        #   * above the ceiling -> the notify budget was bypassed and `_PUSH_TOTAL_SECONDS`
+        #     (10.0 s) is what stopped the wait — the exact regression AD-9 forbids, since a
         #     mutation tool's answer is held up by this await.
         # 3 s rather than 1.1 s so a loaded CI runner's scheduling jitter can never flake the row,
-        # and still two full seconds clear of the 5 s regression.
+        # and still seven full seconds clear of the 10 s regression.
         assert elapsed >= 0.9, (
             f"the mutation returned in {elapsed:.3f}s — too fast to have dialled the wedged port "
             "at all, so this row proves nothing about the swallow"
         )
         assert elapsed < 3.0, (
             f"the mutation took {elapsed:.3f}s; AD-9's ~1 s notify bound did not apply and the "
-            "5 s probe deadline is what ended it"
+            "10 s push deadline is what ended it"
         )

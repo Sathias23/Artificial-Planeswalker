@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +11,7 @@ from src.data.database import create_engine, create_session_factory, init_databa
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.repositories.deck import DeckRepository
-from src.data.schemas.deck import Deck, DeckCard
+from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry
 
 # The wall clock is too coarse to separate two repository calls: datetime.now(UTC) advances in
 # ~593 us steps on the maintainer's Windows box, while a create/update round-trip against the
@@ -390,6 +391,87 @@ async def test_add_card_to_deck_mainboard(
     assert deck_card.quantity == 4
     assert deck_card.sideboard is False
     assert deck_card.card.name == "Lightning Bolt"
+
+
+async def test_add_cards_to_deck_commits_once_and_reloads_every_row(
+    deck_repo: DeckRepository,
+    test_cards: list[CardModel],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bulk add: one commit for the whole batch, rows back in entry order with their cards."""
+    deck = await deck_repo.create_deck(name="Bulk", format="commander")
+    commits = 0
+    original_commit = AsyncSession.commit
+
+    async def counting_commit(self: AsyncSession) -> None:
+        nonlocal commits
+        commits += 1
+        await original_commit(self)
+
+    monkeypatch.setattr(AsyncSession, "commit", counting_commit)
+
+    rows = await deck_repo.add_cards_to_deck(
+        deck.id,
+        [
+            DeckCardEntry(card_id="card-forest", quantity=1, commander=True),
+            DeckCardEntry(card_id="card-bolt", quantity=4),
+            DeckCardEntry(card_id="card-bolt", quantity=1, sideboard=True),
+        ],
+    )
+
+    assert commits == 1
+    assert all(isinstance(row, DeckCard) for row in rows)
+    assert [(r.card_id, r.quantity, r.sideboard, r.commander, r.card.name) for r in rows] == [
+        ("card-forest", 1, False, True, "Forest"),
+        ("card-bolt", 4, False, False, "Lightning Bolt"),
+        ("card-bolt", 1, True, False, "Lightning Bolt"),
+    ]
+    loaded = await deck_repo.get_deck_with_cards(deck.id)
+    assert loaded is not None
+    assert len(loaded.deck_cards) == 3
+
+
+async def test_add_cards_to_deck_with_no_entries_commits_nothing(
+    deck_repo: DeckRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deck = await deck_repo.create_deck(name="Empty Bulk", format="standard")
+
+    async def forbidden_commit(self: AsyncSession) -> None:
+        raise AssertionError("no entries, no commit")
+
+    monkeypatch.setattr(AsyncSession, "commit", forbidden_commit)
+
+    assert await deck_repo.add_cards_to_deck(deck.id, []) == []
+
+
+async def test_add_cards_to_deck_duplicate_rolls_back_the_whole_batch(
+    deck_repo: DeckRepository, test_cards: list[CardModel], session: AsyncSession
+) -> None:
+    """One conflicting entry means nothing from the batch lands, and the session stays usable."""
+    deck = await deck_repo.create_deck(name="Conflict", format="standard")
+    await deck_repo.add_card_to_deck(deck.id, "card-bolt", 1)
+    session.expunge_all()  # a fresh identity map, as a later request's session would have
+
+    with pytest.raises(IntegrityError):
+        await deck_repo.add_cards_to_deck(
+            deck.id,
+            [
+                DeckCardEntry(card_id="card-forest", quantity=1),
+                DeckCardEntry(card_id="card-bolt", quantity=2),
+            ],
+        )
+
+    loaded = await deck_repo.get_deck_with_cards(deck.id)
+    assert loaded is not None
+    assert [(dc.card_id, dc.quantity) for dc in loaded.deck_cards] == [("card-bolt", 1)]
+    # Rolled back: the next write on the same session succeeds.
+    added = await deck_repo.add_card_to_deck(deck.id, "card-forest", 1)
+    assert added.card_id == "card-forest"
+
+
+def test_deck_card_entry_rejects_quantity_below_one() -> None:
+    with pytest.raises(ValidationError):
+        DeckCardEntry(card_id="card-bolt", quantity=0)
 
 
 @pytest.mark.parametrize("bad_quantity", [0, -1, -5])

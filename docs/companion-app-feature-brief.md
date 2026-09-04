@@ -123,7 +123,7 @@ Priorities: P0 = MVP-blocking, P1 = MVP-desirable, P2 = post-MVP.
 |------|------------|
 | User invokes companion tools with the app closed | FR-12 graceful degradation; tools return results as text |
 | Port conflict on default port | Backend falls back to an ephemeral port; discovery file is the source of truth, tools never hardcode the port |
-| Stale discovery file after crash | Tools validate with a lightweight `GET /health` before POSTing; treat failure as "app not running" |
+| Stale discovery file after crash | Tools POST straight to the recorded port with its per-process token; a refused connection is reported as "app not running", and `companion_status` still probes `GET /health` for identity |
 | SQLite lock contention during bulk data refresh | WAL mode + read-only connections; backend surfaces a "database updating" state if reads fail transiently |
 | Scryfall image hotlink etiquette | Disk cache per FR-04 satisfies Scryfall's caching guidance and enables offline use |
 | Payload schema drift between Python and TS | Single Pydantic source of truth; generate TS types in CI (e.g., via JSON Schema) |

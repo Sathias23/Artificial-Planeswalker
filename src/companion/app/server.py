@@ -342,6 +342,9 @@ def run(port: int | None = None, *, open_browser: bool = False) -> None:
     # one thread are legal — but this must never move below _serve or inside a coroutine, because
     # calling asyncio.run from within a running loop raises.
     live = asyncio.run(client.live_instance())
+    # asyncio.run closed that loop; the leaf's shared httpx client is cached against it and would
+    # otherwise be dropped later from a live loop with its pool still bound to the dead one.
+    client.reset_shared_client()
     if live is not None:
         live_url = client.base_url(live.port)
         print(

@@ -1,9 +1,11 @@
 """Database engine and session management for async SQLAlchemy."""
 
 import logging
+import sqlite3
 from collections.abc import AsyncGenerator
+from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,7 +18,11 @@ from src.data.models.base import Base
 
 # Import models to register them with Base.metadata
 # These imports ensure SQLAlchemy knows about all tables when creating the schema
-from src.data.models.card import CardModel  # noqa: F401
+from src.data.models.card import (  # noqa: F401
+    NOCASE_NAME_INDEX,
+    NOCASE_PRINTED_NAME_INDEX,
+    CardModel,
+)
 from src.data.models.combo import (  # noqa: F401
     ComboSnapshotMetaModel,
     ComboVariantModel,
@@ -28,13 +34,64 @@ from src.paths import database_url as default_database_url
 
 logger = logging.getLogger(__name__)
 
+_NOCASE_INDEX_DDL: tuple[str, ...] = (
+    f"CREATE INDEX IF NOT EXISTS {NOCASE_NAME_INDEX} ON cards (name COLLATE NOCASE)",
+    f"CREATE INDEX IF NOT EXISTS {NOCASE_PRINTED_NAME_INDEX} "
+    "ON cards (printed_name COLLATE NOCASE)",
+)
 
-def create_engine(database_url: str | None = None) -> AsyncEngine:
+
+def ensure_nocase_indexes(dbapi_connection: Any, _connection_record: Any = None) -> None:
+    """Create the ``COLLATE NOCASE`` name indexes on an existing ``cards`` table, if absent.
+
+    The migration path for databases created before the indexes existed: the MCP server never
+    runs ``init_database`` at startup, so the engine's ``connect`` hook calls this on every new
+    pooled connection. ``CREATE INDEX IF NOT EXISTS`` is a catalog check once the indexes exist,
+    and it raises on a missing table, hence the ``sqlite_master`` guard — a fresh database gets the
+    indexes from ``create_all`` instead.
+
+    The index names are checked first and no DDL is issued when both already exist, so a
+    read-only or locked database never pays the busy-timeout wait (nor warns) once it is current.
+
+    Never fails the connection: a competing writer holding the lock (a bulk import or index build)
+    surfaces as ``sqlite3.OperationalError``, and a corrupt or non-SQLite file as another
+    ``sqlite3.DatabaseError``; both are logged so the connection still opens and
+    :func:`is_database_initialized` can report the state gracefully. The next new connection
+    retries.
+
+    Args:
+        dbapi_connection: The raw (aiosqlite-adapted or plain ``sqlite3``) DBAPI connection.
+        _connection_record: SQLAlchemy's pool record, unused.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cards'")
+        if cursor.fetchone() is None:
+            return
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cards' "
+            "AND name IN (?, ?)",
+            (NOCASE_NAME_INDEX, NOCASE_PRINTED_NAME_INDEX),
+        )
+        if len(cursor.fetchall()) == len(_NOCASE_INDEX_DDL):
+            return
+        for ddl in _NOCASE_INDEX_DDL:
+            cursor.execute(ddl)
+    except sqlite3.DatabaseError as exc:
+        logger.warning("Could not ensure the cards NOCASE indexes (%s); will retry", exc)
+    finally:
+        cursor.close()
+
+
+def create_engine(database_url: str | None = None, *, ensure_indexes: bool = True) -> AsyncEngine:
     """Create an async SQLAlchemy engine.
 
     Args:
         database_url: Database connection string. If None, resolves the shared central-data-dir
             URL via ``src.paths.database_url()`` (an explicit ``CARDS_DATABASE_URL`` still wins).
+        ensure_indexes: Register the connect hook that adds the ``cards`` NOCASE indexes to an
+            existing database (the no-script migration path). The companion app passes ``False``:
+            it is a read-only shell of ``cards.db`` (AD-2) and must never issue DDL.
 
     Returns:
         Configured AsyncEngine instance for aiosqlite.
@@ -49,6 +106,8 @@ def create_engine(database_url: str | None = None) -> AsyncEngine:
         # sqlite3.connect(timeout=...), which sets SQLite's busy timeout.)
         connect_args={"timeout": 5},
     )
+    if ensure_indexes and engine.dialect.name == "sqlite":
+        event.listen(engine.sync_engine, "connect", ensure_nocase_indexes)
 
     # Instrument SQLAlchemy with Logfire if observability is enabled
     # This is safe to call even if Logfire is not configured (it will be a no-op)

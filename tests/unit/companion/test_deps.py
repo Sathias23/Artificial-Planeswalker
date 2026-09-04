@@ -269,9 +269,9 @@ class TestFirstUseCreatesExactlyOneEngine:
         calls = []
         real_create_engine = deps.create_engine
 
-        def counting_create_engine(url):
+        def counting_create_engine(url, **kwargs):
             calls.append(url)
-            return real_create_engine(url)
+            return real_create_engine(url, **kwargs)
 
         # Patch where it is looked up (Gotcha 13), not src.data.database's own reference.
         monkeypatch.setattr(deps, "create_engine", counting_create_engine)
@@ -309,9 +309,9 @@ class TestTheCreationLock:
         held = []
         real_create_engine = deps.create_engine
 
-        def observing_create_engine(url):
+        def observing_create_engine(url, **kwargs):
             held.append(holder._lock.locked())
-            return real_create_engine(url)
+            return real_create_engine(url, **kwargs)
 
         monkeypatch.setattr(deps, "create_engine", observing_create_engine)
 
@@ -674,8 +674,8 @@ class TestConcurrentFirstRequests:
         engines = []
         real_create_engine = deps.create_engine
 
-        def counting_create_engine(url):
-            engine = real_create_engine(url)
+        def counting_create_engine(url, **kwargs):
+            engine = real_create_engine(url, **kwargs)
             engines.append(engine)
             return engine
 

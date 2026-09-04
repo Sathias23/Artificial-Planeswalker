@@ -5,27 +5,36 @@ This is the whole leaf client named in the spine's Structural Seed
 finding out whether a companion is genuinely live on the discovered port, and refusing to believe
 anything else. c6-1 landed the **``POST /agent/events`` half**: :func:`push_event`, its retry-once,
 and the closed outcome vocabulary every companion MCP tool reports through. c6-2 added a sibling
-verb on the same gate — :func:`set_active_deck`, ``PUT /api/active-deck`` — sharing the probe and
-the retry-once shape rather than duplicating them. Every send, on either verb, reuses the probe
-below before it goes out, including before the retry. c7-1 adds the third verb on the same gate,
-:func:`notify_deck_changed` — the one shared notifier AD-9 requires, POSTing to the same
+verb on the same gate — :func:`set_active_deck`, ``PUT /api/active-deck`` — sharing the discovery
+read and the retry-once shape rather than duplicating them. c7-1 adds the third verb on the same
+gate, :func:`notify_deck_changed` — the one shared notifier AD-9 requires, POSTing to the same
 ``/agent/events`` route :func:`push_event` already uses, but under a **~1 s** whole-call budget
 instead of :func:`push_event`'s ~10 s, and swallowing every exception rather than letting an
 unexpected one through: the mutation tool that calls it must never fail because a notification did.
 
-**Why the probe exists at all (AD-4).** The discovery file says *where* the companion is, but a
+**What the probe is for (AD-4, amended).** The discovery file says *where* the companion is, but a
 file outlives the process that wrote it: AD-15 accepts that a crash leaves a stale entry behind,
 and the operating system is free to hand that port to something else entirely. "Something answered"
-is therefore not evidence — a local dev server that returns ``200`` to every path would pass that
-test. Only an ``instance_id`` echoed back that **matches the recorded one** proves the process
-answering is the process the file describes. That match is what makes it safe to send the agent
-token, and a mismatch is *app not running*, never *ambiguous* and never a reason to send a
-credential.
+is therefore not evidence — only an ``instance_id`` echoed back that **matches the recorded one**
+proves the process answering is the process the file describes. That proof is what the runner's
+single-instance check and ``companion_status`` need, and :func:`live_instance` is where they get
+it. The authenticated verbs no longer probe before each send: the discovery file stays the trust
+root (no file, or an unreadable one, is ``app_not_running`` with zero network), a refused
+connection on the send itself is ``app_not_running`` too, and the residual case — the app died and
+a foreign loopback process took its port before the file was removed — already runs as the same
+user, so the per-process token is not worth a round trip per push (the ruling is recorded in
+``_bmad-output/specs/spec-quality-audit-p1/stories/3-indexed-lookup-single-transaction-import-off-loop-search.md``,
+Design Notes).
 
 **``/health`` is unauthenticated by design, and that is not a gap.** It is what a caller reads
 *before* deciding to trust the port, so requiring the token to read it would invert the order: the
 credential would have to be handed to an unproven process to find out whether that process deserved
 it. Nothing on this path sends a token, reads one, or logs one.
+
+**One client, shared.** Every request here goes through one lazily built ``httpx.AsyncClient``
+(:func:`_shared_client`), cached per running event loop so a push reuses the pooled connection
+instead of paying a fresh client and handshake each call; :func:`aclose_shared_client` is the
+server lifespan's hook to close it. Per-request ``timeout=`` keeps each verb's own deadline.
 
 **Why the timeout is split — a short connect, a longer read.** Measured on the primary development
 platform, a TCP connect to a *dead* loopback port takes **~2 s** to report refusal (raw socket,
@@ -110,16 +119,16 @@ a sanctioned widening of AC 4's net — the ``TimeoutError`` it raises is folded
 """
 
 _PUSH_TOTAL_SECONDS = 10.0
-"""The deadline on a whole authenticated call — probe, request, re-probe and retry together.
+"""The deadline on a whole authenticated call — the request and its one retry together.
 
 Named for the push it was measured against, and shared unchanged by every verb that goes through
 :func:`_once_then_retry`: each has exactly the same two-attempt shape, so a second constant would
 need its own pin and would buy nothing but a second thing to keep in step.
 
-An authenticated call has a second exposure the probe does not: :data:`PROBE_TIMEOUT`'s ``read``
-still caps only the gap between chunks, and now there are up to *four* legs behind that gap. One
-cap over all of them is what makes "this call returns" a property of the function rather than a sum
-of four independent hopes.
+An authenticated call has an exposure a single request does not: :data:`PROBE_TIMEOUT`'s ``read``
+still caps only the gap between chunks, and there are up to *two* legs behind that gap. One cap
+over both of them is what makes "this call returns" a property of the function rather than a sum
+of independent hopes.
 
 Ten seconds, not five, because it has to clear **two whole attempts**: a deadline that could fire
 mid-retry would cut off the very transparency FR-12's retry exists to provide, turning a healthy
@@ -134,11 +143,11 @@ _NOTIFY_TOTAL_SECONDS = 1.0
 Ten times tighter than :data:`_PUSH_TOTAL_SECONDS`, and deliberately its own constant rather than a
 parameter a caller can widen: this budget caps the latency a deck-mutation tool pays for telling the
 glass a deck changed, and AD-9 draws that line at roughly one second, not ten. The notifier still
-gets the same two-attempt shape as every other verb through :func:`_once_then_retry` — probe, send,
-and on a refused credential, re-probe and retry once — all of it inside this one second rather than
-ten, because losing the retry to a tight budget is an acceptable trade here: the caller never sees
-the difference between a budget expiry and any other ``backend_error``, and never waits to find out
-which happened.
+gets the same two-attempt shape as every other verb through :func:`_once_then_retry` — send, and
+on a refused credential, re-read discovery and retry once — all of it inside this one second rather
+than ten, because losing the retry to a tight budget is an acceptable trade here: the caller never
+sees the difference between a budget expiry and any other ``backend_error``, and never waits to
+find out which happened.
 """
 
 PushOutcomeToken = Literal[
@@ -150,7 +159,7 @@ PushOutcomeToken = Literal[
 ]
 """Everything this client can report about one authenticated call, and nothing else (AD-8).
 
-Written for the push and unchanged by the verbs that joined it: every one of them proves identity,
+Written for the push and unchanged by the verbs that joined it: every one of them reads discovery,
 sends one authenticated request, and learns the same five things from the answer. A verb whose
 *caller* can distinguish more than five outcomes layers those above this set rather than widening
 it — ``deck_not_found`` is the shipped example, and it lives in the MCP tool because the deck lookup
@@ -177,9 +186,11 @@ Why each token exists, in the order a caller cares:
   **success** (``200 {"clients": 0}``), not an error; this is the only place it becomes "nobody saw
   it". A caller must not retry it — c5-5's ruling: the backend will not re-send, so a retry pushes
   duplicates at the first tab to open.
-* ``app_not_running`` — no companion could be proven live, so nothing was sent. Covers a missing or
-  unreadable discovery file, a dead or foreign port, and a failed identity match alike, because a
-  caller can do exactly one thing about all of them.
+* ``app_not_running`` — no companion could be reached, so nothing landed. Covers a missing or
+  unreadable discovery file and a port that refuses the connection alike (and, where identity is
+  still probed, a failed match), because a caller can do exactly one thing about all of them. On
+  the retry it is reported even though the first request reached a live backend: the app went
+  away between the refusal and the re-read, and *not running* is the honest answer.
 * ``payload_rejected`` — the backend refused the envelope itself (400 or 413). Retrying is
   pointless; the payload has to change.
 * ``backend_error`` — the companion is there and the push did not land. The residual: 5xx, an
@@ -233,6 +244,65 @@ def base_url(port: int) -> str:
     return f"http://{LOOPBACK_HOST}:{port}"
 
 
+_shared: tuple[asyncio.AbstractEventLoop, httpx.AsyncClient] | None = None
+"""The cached ``(loop, client)`` pair behind :func:`_shared_client`."""
+
+
+def _shared_client() -> httpx.AsyncClient:
+    """Return the one ``httpx.AsyncClient`` every request in this module goes through.
+
+    Built lazily on first use and cached against the running event loop: an ``AsyncClient``'s
+    connection pool belongs to the loop it was first used on, so a different loop (each pytest
+    async test gets its own; the runner's ``asyncio.run`` startup check closes its loop) gets a
+    fresh client and the stale one is simply dropped. ``trust_env=False`` for both of its reasons —
+    a configured proxy would misroute the loopback dial, and ``.netrc`` would otherwise quietly
+    attach an ``Authorization`` header of its own. No default timeout: every call passes its own,
+    so each verb keeps its measured deadline.
+
+    ``keepalive_expiry=2.0``: uvicorn closes an idle keep-alive connection after 5 s and httpx's
+    default pool expiry is also 5 s, so a pooled socket could be closed by the server at the very
+    moment the next push reuses it — a spurious ``backend_error``. Expiring the pooled socket well
+    before the server does means a push after a pause dials afresh instead.
+
+    Returns:
+        The shared client for the running loop.
+    """
+    global _shared
+    loop = asyncio.get_running_loop()
+    if _shared is not None:
+        cached_loop, cached = _shared
+        if cached_loop is loop and not cached.is_closed:
+            return cached
+    client = httpx.AsyncClient(trust_env=False, limits=httpx.Limits(keepalive_expiry=2.0))
+    _shared = (loop, client)
+    return client
+
+
+def reset_shared_client() -> None:
+    """Forget the cached client without closing it (test isolation only).
+
+    The next call on any loop builds a fresh client; the forgotten one's sockets close when it is
+    garbage-collected. Production code closes properly through :func:`aclose_shared_client`.
+    """
+    global _shared
+    _shared = None
+
+
+async def aclose_shared_client() -> None:
+    """Close the shared client, if this loop owns one, and forget it.
+
+    The MCP server's lifespan calls this when its run ends. A client cached for a *different* loop
+    cannot be closed from here (its pool lives on that loop) and is dropped instead.
+    """
+    global _shared
+    if _shared is None:
+        return
+    cached_loop, cached = _shared
+    _shared = None
+    if cached_loop is asyncio.get_running_loop() and not cached.is_closed:
+        await cached.aclose()
+
+
 async def probe_health(port: int, *, timeout: httpx.Timeout | None = None) -> HealthResponse | None:
     """Ask *port* who it is, and return its answer only if a companion gave one.
 
@@ -245,8 +315,8 @@ async def probe_health(port: int, *, timeout: httpx.Timeout | None = None) -> He
     wrong shape, bytes that are not UTF-8, and any status other than ``200`` — the only status a
     real companion's ``/health`` returns, so a ``201`` or ``204`` is just as foreign as a ``400``.
     The whole body sits inside one ``except (TimeoutError, httpx.HTTPError, ValueError)``,
-    including the client's construction and teardown: a "never raises" promise that only covers
-    the happy path is not one (the c1-7 review's first finding).
+    including obtaining the shared client: a "never raises" promise that only covers the happy
+    path is not one (the c1-7 review's first finding).
 
     All three members of that tuple are load-bearing and none is redundant — ``httpx.HTTPError``
     is the root of the transport family and is *not* a ``ValueError``, ``TimeoutError`` (what
@@ -256,11 +326,12 @@ async def probe_health(port: int, *, timeout: httpx.Timeout | None = None) -> He
     subclasses. It is deliberately **not** ``except Exception``: a ``MemoryError`` mid-probe is a
     broken machine, not a companion that is not running.
 
-    **The dial ignores proxy environment variables** (``trust_env=False``). httpx grants loopback
-    no exemption from ``HTTP_PROXY``/``ALL_PROXY``, so without this a machine with a proxy
-    configured would send the probe *to the proxy*, judge the live companion dead, and start the
-    duplicate instance this probe exists to prevent. It also stops ``.netrc`` from quietly
-    attaching an ``Authorization`` header — nothing on this path may carry a credential (AC 6).
+    **The dial ignores proxy environment variables** (the shared client's ``trust_env=False``).
+    httpx grants loopback no exemption from ``HTTP_PROXY``/``ALL_PROXY``, so without this a machine
+    with a proxy configured would send the probe *to the proxy*, judge the live companion dead, and
+    start the duplicate instance this probe exists to prevent. It also stops ``.netrc`` from
+    quietly attaching an ``Authorization`` header — nothing on this path may carry a credential
+    (AC 6).
 
     The status is checked explicitly rather than via ``raise_for_status()``. That keeps "this is
     not our app" an ordinary outcome instead of an exception caught two lines later, and it keeps
@@ -280,13 +351,10 @@ async def probe_health(port: int, *, timeout: httpx.Timeout | None = None) -> He
     """
     url = f"{base_url(port)}{HEALTH_PATH}"
     try:
-        async with (
-            asyncio.timeout(_PROBE_TOTAL_SECONDS),
-            httpx.AsyncClient(
-                timeout=PROBE_TIMEOUT if timeout is None else timeout, trust_env=False
-            ) as client,
-        ):
-            response = await client.get(url)
+        async with asyncio.timeout(_PROBE_TOTAL_SECONDS):
+            response = await _shared_client().get(
+                url, timeout=PROBE_TIMEOUT if timeout is None else timeout
+            )
             if response.status_code != 200:
                 logger.debug(
                     "Probe of %s answered %d, not 200; treating as app not running",
@@ -309,11 +377,11 @@ async def live_instance(*, timeout: httpx.Timeout | None = None) -> DiscoveryRec
     nobody named. With a record in hand, its port is probed and the echoed identity compared; only
     an exact match counts.
 
-    The *record* is returned rather than a bool because both of its other fields are wanted the
-    moment identity is proven — its ``port`` is what the runner's refusal message prints, and its
-    ``token`` is the credential :func:`_send` puts on the wire. Nothing *here* reads that token:
-    this function's contract is that it hands back a proven record, and the one place a credential
-    is read is the one place it is sent.
+    The *record* is returned rather than a bool because its other fields are wanted the moment
+    identity is proven — its ``port`` is what the runner's refusal message prints and what
+    ``companion_status`` probes again for the tab count. Nothing *here* reads the token: this
+    function's contract is that it hands back a proven record, and the one place a credential is
+    read is the one place it is sent (:func:`_send`, which reads discovery itself).
 
     **Never raises.** ``read_discovery`` and :func:`probe_health` both make that promise already,
     and this function adds no third failure mode of its own.
@@ -348,18 +416,25 @@ async def _send(
     path: str,
     body: str,
     timeout: httpx.Timeout | None,
-) -> httpx.Response | None:
-    """Make one authenticated request to a companion whose identity is already proven.
+) -> httpx.Response | PushOutcome:
+    """Make one authenticated request to the companion the discovery record names.
 
     **Never raises**, on the same terms and with the same net as :func:`probe_health`: the whole
-    body — client construction and teardown included — sits inside one
+    body — obtaining the shared client included — sits inside one
     ``except (TimeoutError, httpx.HTTPError, ValueError)``, and deliberately not ``except
     Exception``. A ``MemoryError`` mid-send is a broken machine, not a backend that did not answer.
 
-    ``trust_env=False`` is load-bearing here for *both* of its reasons, where the probe only had
-    one. A configured proxy would misroute the loopback dial exactly as it would a probe — and this
-    request carries a credential, so ``.netrc`` quietly attaching an ``Authorization`` header of its
-    own would be a second one on a request that already has the right one.
+    A connection that is **refused or never completes** (``ConnectError``, ``ConnectTimeout``) is
+    the ordinary post-crash state — a stale file naming a dead port — and is reported as
+    ``app_not_running``; it used to be the probe's job to catch that before the token moved. Every
+    other failure to complete the exchange (a read timeout, a dropped connection) means something
+    is listening and did not answer properly, which is ``backend_error``.
+
+    The shared client's ``trust_env=False`` is load-bearing here for *both* of its reasons, where
+    the probe only had one. A configured proxy would misroute the loopback dial exactly as it would
+    a probe — and this request carries a credential, so ``.netrc`` quietly attaching an
+    ``Authorization`` header of its own would be a second one on a request that already has the
+    right one.
 
     Generic over method and path rather than hard-wired to the push, so that a sibling verb against
     the same gate — same header, timeouts and net — can reuse this implementation instead of
@@ -372,35 +447,37 @@ async def _send(
     log line at any level. There is no error branch that echoes the request.
 
     Args:
-        record: The discovery record whose identity has just been proven. Its ``token`` is the
-            credential; passing an unproven record would send it to whatever holds that port.
+        record: The discovery record just read from disk. Its ``token`` is the credential and its
+            ``port`` the destination.
         method: The HTTP method, e.g. ``"POST"``.
         path: The path to request, e.g. :data:`EVENTS_PATH`.
         body: The already-serialised JSON body.
         timeout: Override the per-request deadline; ``None`` uses :data:`PROBE_TIMEOUT`, whose
             connect/read split applies unchanged — a live companion answers this route as promptly
-            as it answers ``/health``.
+            as it answers ``/health``, and a dead port is refused inside the short connect half.
 
     Returns:
-        The response, whatever its status, or ``None`` if the exchange never completed.
+        The response, whatever its status, or the outcome to report if the exchange never
+        completed: ``app_not_running`` when no connection could be made, else ``backend_error``.
     """
     url = f"{base_url(record.port)}{path}"
     try:
-        async with httpx.AsyncClient(
-            timeout=PROBE_TIMEOUT if timeout is None else timeout, trust_env=False
-        ) as http:
-            return await http.request(
-                method,
-                url,
-                content=body,
-                headers={
-                    "Authorization": f"Bearer {record.token}",
-                    "content-type": "application/json",
-                },
-            )
+        return await _shared_client().request(
+            method,
+            url,
+            content=body,
+            headers={
+                "Authorization": f"Bearer {record.token}",
+                "content-type": "application/json",
+            },
+            timeout=PROBE_TIMEOUT if timeout is None else timeout,
+        )
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        logger.debug("No companion answering at %s (%s)", url, type(exc).__name__)
+        return PushOutcome(outcome="app_not_running")
     except (TimeoutError, httpx.HTTPError, ValueError) as exc:
         logger.debug("The %s to %s did not complete (%s)", method, url, type(exc).__name__)
-        return None
+        return PushOutcome(outcome="backend_error")
 
 
 def _outcome_for(response: httpx.Response) -> PushOutcome | None:
@@ -449,26 +526,25 @@ def _outcome_for(response: httpx.Response) -> PushOutcome | None:
 
 
 async def _attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome | None:
-    """Run one whole prove-then-send cycle: discovery, ``/health``, identity, then the POST.
+    """Run one whole read-then-send cycle: discovery, then the POST.
 
-    Identity is re-proven on **every** attempt, including the retry (Q2, Brad 2026-08-09). AD-4's
-    rule is "verify before you send the token", and it has no once-per-call exemption: the retry
-    sends a *different* token, read from a file that has demonstrably just changed, to a port the
-    operating system was free to reassign in the meantime.
+    Discovery is re-read on **every** attempt, including the retry: the retry exists to pick up a
+    *different* token from a file that has demonstrably just changed, and a re-read that finds no
+    file means the app went away between the refusal and the retry.
 
     Args:
         body: The serialised envelope.
-        timeout: Forwarded to both legs.
+        timeout: Forwarded to the request.
 
     Returns:
         The outcome, or ``None`` if the backend refused the credential and a retry could help.
     """
-    record = await live_instance(timeout=timeout)
+    record = read_discovery()
     if record is None:
         return PushOutcome(outcome="app_not_running")
     response = await _send(record, method="POST", path=EVENTS_PATH, body=body, timeout=timeout)
-    if response is None:
-        return PushOutcome(outcome="backend_error")
+    if isinstance(response, PushOutcome):
+        return response
     return _outcome_for(response)
 
 
@@ -492,7 +568,7 @@ async def _once_then_retry(
     authenticated requests ever leave a call through here.**
 
     Args:
-        attempt: One whole prove-then-send cycle, called with no arguments so the verb closes over
+        attempt: One whole read-then-send cycle, called with no arguments so the verb closes over
             its own body, path and timeout.
         what: The verb's name for the log line, e.g. ``"push"``. Never a payload and never a
             credential — this module logs neither.
@@ -537,14 +613,14 @@ async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None)
     machine, not a companion that did not answer, and is deliberately let through rather than folded
     into ``backend_error``.
 
-    **The sequence.** Read discovery → probe ``/health`` → match the echoed ``instance_id`` → only
-    then send the token. A failure anywhere before that match is ``app_not_running`` and **no
-    credential leaves the process** (AD-4).
+    **The sequence.** Read discovery → send the token to the recorded port, in one request. No
+    usable file is ``app_not_running`` and **no credential leaves the process**; a refused
+    connection on the send is ``app_not_running`` too (the file outlived its process).
 
     **The retry, and why it is exactly one** (FR-12). The backend mints a fresh token every start,
     so a companion restarted mid-session refuses the token a tool is holding with a ``403``. That is
     the single case where trying again is not a duplicate but a correction, and the whole cycle is
-    re-run — file, probe, identity — before the newly read token is sent (:func:`_once_then_retry`
+    re-run — file, then send — before the newly read token is sent (:func:`_once_then_retry`
     owns that budget, and every authenticated verb spends it identically). A second ``403`` is
     ``backend_error``: the credential is not merely stale, and a client that kept retrying would
     re-send the payload indefinitely against a backend that keeps saying no. **At most two POSTs
@@ -560,9 +636,9 @@ async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None)
             :data:`~src.companion.contracts.AgentEvent`. Taken already-built and **never
             re-validated**: the union is an ``Annotated`` discriminated union with no
             ``.model_validate``, and the caller has by construction handed over something valid.
-        timeout: Override the per-request deadline for both legs. Exists so a test can drive the
-            dead-port and never-answers cases in milliseconds; production callers pass nothing and
-            get :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`, which
+        timeout: Override the per-request deadline. Exists so a test can drive the dead-port and
+            never-answers cases in milliseconds; production callers pass nothing and get
+            :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`, which
             production callers must not be able to opt out of.
 
     Returns:
@@ -601,9 +677,9 @@ async def notify_deck_changed(
     :data:`_NOTIFY_TOTAL_SECONDS` — **~1 s**, not :func:`push_event`'s ~10 s — because AD-9 draws
     the line at what a *user* waits on: a mutation tool's response is held up by this await, so the
     deadline has to be short enough that a wedged or absent companion never becomes the reason an
-    agent turn feels slow. The same two-attempt shape (probe, send, and on a refused credential,
-    re-probe and retry once) runs through :func:`_once_then_retry` inside that one second, sharing
-    :func:`_attempt` — and therefore the same identity gate and the same ``/agent/events`` POST —
+    agent turn feels slow. The same two-attempt shape (send, and on a refused credential, re-read
+    discovery and retry once) runs through :func:`_once_then_retry` inside that one second, sharing
+    :func:`_attempt` — and therefore the same discovery gate and the same ``/agent/events`` POST —
     with :func:`push_event` rather than duplicating either.
 
     **Every exception is caught, and none of them propagates** — the one deliberate divergence from
@@ -644,8 +720,8 @@ async def notify_deck_changed(
             payload's own nullable contract (:class:`~src.companion.contracts.DeckChangedPayload`),
             reused unchanged. c7-2 is where a real deck id is threaded through; c7-1 wires no
             caller.
-        timeout: Override the per-request deadline for both legs, on :func:`push_event`'s terms.
-            Production callers pass nothing and get :data:`PROBE_TIMEOUT`. It does **not** override
+        timeout: Override the per-request deadline, on :func:`push_event`'s terms. Production
+            callers pass nothing and get :data:`PROBE_TIMEOUT`. It does **not** override
             :data:`_NOTIFY_TOTAL_SECONDS`, which production callers must not be able to opt out of.
 
     Returns:
@@ -725,25 +801,24 @@ def _active_deck_outcome_for(response: httpx.Response) -> PushOutcome | None:
 
 
 async def _active_deck_attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome | None:
-    """Run one whole prove-then-send cycle: discovery, ``/health``, identity, then the ``PUT``.
+    """Run one whole read-then-send cycle: discovery, then the ``PUT``.
 
-    Identity is re-proven on **every** attempt, including the retry, for :func:`_attempt`'s reason:
-    AD-4's rule has no once-per-call exemption, and the retry sends a *different* token to a port
-    the operating system was free to reassign in the meantime.
+    Discovery is re-read on **every** attempt, including the retry, for :func:`_attempt`'s reason:
+    the retry sends a *different* token, read from a file that has just changed.
 
     Args:
         body: The serialised request.
-        timeout: Forwarded to both legs.
+        timeout: Forwarded to the request.
 
     Returns:
         The outcome, or ``None`` if the backend refused the credential and a retry could help.
     """
-    record = await live_instance(timeout=timeout)
+    record = read_discovery()
     if record is None:
         return PushOutcome(outcome="app_not_running")
     response = await _send(record, method="PUT", path=ACTIVE_DECK_PATH, body=body, timeout=timeout)
-    if response is None:
-        return PushOutcome(outcome="backend_error")
+    if isinstance(response, PushOutcome):
+        return response
     return _active_deck_outcome_for(response)
 
 
@@ -755,8 +830,8 @@ async def set_active_deck(
     The one public way anything outside this module reaches ``PUT /api/active-deck``. It is a
     **control** call rather than a push — it changes what the glass is pointed at instead of adding
     something to it — but from this client's side the shape is identical to :func:`push_event`'s:
-    prove identity, send one authenticated request, report one of the five tokens, and **never break
-    an agent turn** with an exception (FR-12). Same net, same ``MemoryError`` carve-out.
+    read discovery, send one authenticated request, report one of the five tokens, and **never
+    break an agent turn** with an exception (FR-12). Same net, same ``MemoryError`` carve-out.
 
     ``displayed`` here means *the change reached at least one open tab*, and
     ``no_clients_connected`` means the backend stored it with nobody watching — a success on the
@@ -775,9 +850,9 @@ async def set_active_deck(
             re-validated**, mirroring :func:`push_event`'s concrete-envelope rule: the caller has by
             construction handed over something valid, and the backend's answer is authoritative
             about everything else.
-        timeout: Override the per-request deadline for both legs. Exists so a test can drive the
-            dead-port and never-answers cases in milliseconds; production callers pass nothing and
-            get :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`.
+        timeout: Override the per-request deadline. Exists so a test can drive the dead-port and
+            never-answers cases in milliseconds; production callers pass nothing and get
+            :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`.
 
     Returns:
         Exactly one :class:`PushOutcome`.
