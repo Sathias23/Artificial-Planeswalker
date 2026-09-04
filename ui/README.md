@@ -1272,12 +1272,25 @@ now landed. The boundary as it actually stands:
   would re-render the whole app on every tile's hydration. AD-12 bans a second state LIBRARY, not
   a second store instance. **Nothing outside each slice's own module writes it**, which is
   `tests/store-writes.test.ts` rather than a convention.
-- **The cache is TWO-TIER, and the bulk tier is free.** `GET /api/deck/{deck_id}` already embeds a
-  full `CardSummary` per card, so `seedCardSummaries(deckCards)` populates name/cost/type-line for
-  a whole deck with **zero** requests. Measured on the largest real deck (99 tiles): 38,182 bytes
-  in one request against 212,436 bytes in 99 for the full rows. `hydrateCard(cardId)` fetches the
-  rest per id, on demand, deduping concurrent callers onto one shared promise. **c4-2 calls the
-  seeder** with the payload its own fetch already returns.
+- **The deck payload fills the cache, and it is free.** `GET /api/deck/{deck_id}` embeds the whole
+  `Card` per row — legalities, `image_uris`, `card_faces` — so `seedDeckCards(deckCards)` writes a
+  **hydrated** entry for every id out of the one request the deck boot already makes, and a deck
+  view issues **zero** `GET /api/cards/{card_id}`. The boot calls the seeder with the payload its
+  own fetch already returns.
+
+  This replaced a per-card sweep. The deck detail used to carry a bounded `CardSummary` per row, so
+  anything needing a full record — the flip control's `card_faces`, the detail panel's legalities —
+  swept the deck one id at a time: **99 requests** on the largest real deck, 212,436 bytes against
+  the 38,182 the summaries cost, and a mount total of 106 requests where it is now **5** (decks,
+  active-deck, deck detail, format check, session) at any deck size. `App.test.tsx` pins that five.
+
+  `hydrateCard(cardId)` is still the path for an id the open deck does NOT contain — the agent
+  views hydrate arbitrary thumbnails — deduping concurrent callers onto one shared promise. That
+  route now sends `Cache-Control: private, max-age=3600`, so a repeat within the hour costs no
+  round trip; `client.ts` still passes `cache: 'no-store'` on its own reads, because the in-memory
+  cache already guarantees one request per id per tab and a read it _does_ issue is one it wanted
+  fresh.
+
 - **The WebSocket exists as of c5-6.** `openAgentSocket` is in `src/api/client.ts` beside the one
   `fetch` — the door list in `tests/posture.test.ts` still reads exactly one entry, which was the
   whole of that story's Q1 — and `src/state/socket.ts` takes the factory INJECTED so the loop

@@ -46,11 +46,11 @@ import { EMPTY_DECK_LINE } from './copy'
  * it was handed. Say it loudly, because `useCardEntry`'s own docstring names a tile as its
  * expected caller and the next reader will assume it:
  *
- *   `DeckCardSummary.card` already carries name, mana cost and type line for every tile, free, in
- *   the one request c4-2 already makes — 38,182 bytes in one response against 212,436 in 99.
- *   `seedCardSummaries` has already put all of them in the cache. A tile needs nothing a full
- *   `Card` would add: oracle text and price are the DETAIL PANEL's (c4-5), and `image_uris` is
- *   never consulted because the tile asks the image route directly.
+ *   `DeckCardSummary.card` already carries the whole card for every tile, free, in the one
+ *   request the deck boot already makes, and `seedDeckCards` has already put all of them in the
+ *   cache as hydrated entries. A tile reads name, mana cost and type line off the board it was
+ *   handed; oracle text is the DETAIL PANEL's (c4-5), and `image_uris` is never consulted because
+ *   the tile asks the image route directly.
  *
  *   The unknown-card variant has **no population reachable from a deck payload** — measured, 0
  *   dangling card references across 2,027 rows — so the one branch that would need a cache read

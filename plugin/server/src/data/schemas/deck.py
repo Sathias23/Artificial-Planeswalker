@@ -307,3 +307,73 @@ class DeckDetail(DeckSummary):
             for dc in deck.deck_cards
         ]
         return cls(**cls._summary_fields(deck), cards=cards)
+
+
+class DeckCardFull(BaseModel):
+    """One card entry in a deck, carrying the whole card record rather than a summary.
+
+    The same quantity, board and commander fields as a bounded deck entry, but ``card``
+    is the full card record — legalities, image URLs and card faces included — so a
+    view that renders a decklist needs no follow-up request per card.
+
+    Attributes:
+        The sibling of :class:`DeckCardSummary` rather than a replacement for it: a
+        bounded summary is still what an LLM tool result should carry, so ``load_deck``
+        keeps that shape and only the companion's HTTP deck detail uses this one.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    card_id: str
+    quantity: int
+    sideboard: bool
+    commander: bool = False
+    card: Card
+
+
+class DeckDetailFull(DeckSummary):
+    """A saved deck's metadata, card counts and full card list.
+
+    Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardFull`` per entry,
+    each embedding the complete card record. This is what a browser client renders a
+    deck view from in a single request.
+
+    The order of ``cards`` is **not** meaningful and is not the order the cards were
+    added. A consumer that wants a stable presentation order (by type, by mana value, by
+    name) must sort them itself.
+
+    Attributes:
+        The order of ``cards`` falls out of the ORM: the underlying relationship declares
+        no ``order_by``, so entries arrive in the composite primary key's order. Like
+        ``DeckSummary``, build it with :meth:`from_deck` rather than ``model_validate``.
+    """
+
+    cards: list[DeckCardFull] = []
+
+    @classmethod
+    def from_deck(cls, deck: Deck) -> Self:
+        """Project a full ``Deck`` into a detail whose entries carry whole cards.
+
+        Overrides :meth:`DeckSummary.from_deck` only to add ``cards`` — every other field
+        comes from the shared ``_summary_fields``, so a field added to ``DeckSummary``
+        reaches this shape too without an edit here.
+
+        Args:
+            deck: The source deck, with ``deck_cards`` (and each entry's ``card``)
+                already loaded. See :meth:`DeckSummary.from_deck` for what happens when
+                they are not.
+
+        Returns:
+            The detail, with all three counts computed rather than defaulted.
+        """
+        cards = [
+            DeckCardFull(
+                card_id=dc.card_id,
+                quantity=dc.quantity,
+                sideboard=dc.sideboard,
+                commander=dc.commander,
+                card=Card.model_validate(dc.card),
+            )
+            for dc in deck.deck_cards
+        ]
+        return cls(**cls._summary_fields(deck), cards=cards)

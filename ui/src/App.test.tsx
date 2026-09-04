@@ -174,18 +174,54 @@ const deckCard = (name: string, typeLine: string, quantity = 1, manaCost = '', c
   quantity,
   sideboard: false,
   commander: false,
+  // THE WHOLE `Card`, because that is what the wire now carries. The deck detail embeds the full
+  // record per row, so everything a tile can ever need — legalities, `image_uris`, `card_faces` —
+  // is here and nothing sweeps the deck for it afterwards. A fixture that carried the old bounded
+  // summary would leave every flip control untested while the suite stayed green.
   card: {
     id: `id-${name}`,
     name,
+    oracle_id: `oracle-${name}`,
     mana_cost: manaCost,
     cmc,
     type_line: typeLine,
-    oracle_text: '',
+    // Non-blank, because the deck payload is now where the detail panel's oracle text comes from:
+    // it used to arrive on the per-card hydration this fixture no longer performs, and a blank
+    // one renders no oracle scroller — which is a Tab stop several corridor pins count.
+    oracle_text: 'Tap: Add G.',
     colors: [],
+    color_identity: [],
     rarity: 'rare',
     set_code: 'tst',
+    set_name: 'Test Set',
+    collector_number: '1',
+    legalities: {},
+    games: ['paper'],
+    ...pathwayFaces(name),
   },
 })
+
+/**
+ * Shape C — per-face images, no top-level map — for the six real MDFC Pathways, and `{}` for
+ * everything else.
+ *
+ * Shared by the deck payload and the card route so a Pathway is a two-faced record wherever it
+ * arrives from; each half of the stored `A // B` name is its face's name, which is how the corpus
+ * spells it.
+ */
+const pathwayFaces = (name: string): Record<string, unknown> =>
+  PATHWAY_NAMES.includes(name)
+    ? {
+        image_uris: null,
+        card_faces: name.split(' // ').map((faceName, index) => ({
+          name: faceName,
+          mana_cost: '',
+          type_line: 'Land',
+          oracle_text: '',
+          image_uris: { normal: `https://cards.test/${index === 0 ? 'front' : 'back'}.jpg` },
+        })),
+      }
+    : {}
 
 /** `GET /api/deck/{id}`'s body, with the fields the header and the derivation actually read. */
 const deckDetail = (overrides: Record<string, unknown> = {}) =>
@@ -333,21 +369,9 @@ const cardRecord = (name: string) =>
       collector_number: '1',
       legalities: {},
       games: ['paper'],
-      // Shape C — per-face images, no top-level map — for the six Pathways, so the corridor pin
-      // below renders their flip controls exactly as the live backend makes them render. Each
-      // half of the stored `A // B` name is its face's name, which is how the corpus spells it.
-      ...(PATHWAY_NAMES.includes(name)
-        ? {
-            image_uris: null,
-            card_faces: name.split(' // ').map((faceName, index) => ({
-              name: faceName,
-              mana_cost: '',
-              type_line: 'Land',
-              oracle_text: '',
-              image_uris: { normal: `https://cards.test/${index === 0 ? 'front' : 'back'}.jpg` },
-            })),
-          }
-        : {}),
+      // Shape C for the six Pathways, from the same helper the deck payload uses — see
+      // `pathwayFaces`.
+      ...pathwayFaces(name),
     }),
     { status: 200 },
   )
@@ -618,6 +642,77 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
       ).toHaveLength(0)
     },
   )
+})
+
+/**
+ * THE FIRST FRAME SHOWS NOTHING, AND THAT IS THE POINT.
+ *
+ * `INITIAL_SYSTEM_STATE.panel` is `no-active-deck`, which is the honest answer once the
+ * active-deck read says so and a guess before it does. Rendering that guess drew the Welcome
+ * surface — hero art and all — on the first commit of EVERY cold open, including the ordinary one
+ * that was about to render a deck: a 420 KB image fetched, decoded and thrown away.
+ *
+ * `surfaceOf`'s `booting` arm masks it, and these tests assert the mask at the level where it is
+ * observable: the DOM of an app whose boot has not settled. The precedence itself (connection
+ * outranks booting; every settle path leaves it) is `deck.test.ts`'s, asserted as a pure function.
+ */
+describe('nothing paints until the active-deck read settles', () => {
+  it('renders NO panel and NO image on the first frame, with a deck coming', () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks())
+
+    render(<App />)
+
+    // Not `queryByRole` on a name — the claim is that NO panel of any kind is in the DOM, and
+    // that is a class query rather than an accessible-name one.
+    expect(document.querySelector('.state-panel')).toBeNull()
+    expect(document.querySelector('.welcome')).toBeNull()
+    expect(document.querySelectorAll('img')).toHaveLength(0)
+    // The shell itself is still there — booting hides a SLOT, not the application.
+    expect(screen.getByRole('main')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toBeVisible()
+  })
+
+  it('renders nothing on the first frame with NO deck coming either — then the Welcome lands', async () => {
+    booting(activeDeck(null))
+    answering(decks('Boros Aggro'))
+
+    render(<App />)
+
+    expect(document.querySelector('.welcome')).toBeNull()
+    expect(document.querySelectorAll('img')).toHaveLength(0)
+
+    await settle()
+
+    // …and once the read has actually answered "no deck", the surface appears with its hero.
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(document.querySelector('img.welcome-hero')).not.toBeNull()
+  })
+
+  it('fetches NO hero at all on a cold open that lands on a deck', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks())
+
+    render(<App />)
+    await settle()
+
+    // The hero is an `<img src>`, so the browser rather than the app fetches it and jsdom never
+    // will — which is exactly why the assertion is that no element ever asked for one. A
+    // `hero` element in the tree is a hero request in a real browser.
+    expect(document.querySelector('img.welcome-hero')).toBeNull()
+    expect(document.querySelector('.welcome')).toBeNull()
+    expect(callsTo(fetchMock, 'hero')).toBe(0)
+  })
+
+  it('leaves booting on the refusal path too — a 503 boot shows its panel', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    answering(decks())
+
+    render(<App />)
+    await settle()
+
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+  })
 })
 
 /**
@@ -1182,54 +1277,43 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(images.filter((img) => img.getAttribute('src')?.includes('size=large'))).toHaveLength(1)
   })
 
-  it('seeds the card cache free, and hydrates each DISTINCT card exactly once (AC 17, c4-6 AC 23)', async () => {
+  it('seeds the card cache HYDRATED and asks the card route for nothing (AC 17)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks())
 
     render(<App />)
     await settle()
 
-    // THIS ASSERTION HAS MOVED TWICE, AND BOTH MOVES SHARPENED IT RATHER THAN RELAXING IT.
+    // THIS ASSERTION HAS MOVED THREE TIMES, AND EVERY MOVE SHARPENED IT.
     //
-    // c4-2 wrote `toBe(0)`: seeding is free, so while nothing consumed the hydration tier nothing
-    // had to ask. c4-5 gave the route its first caller — the detail panel hydrates its inspection
-    // target — and the number became ONE. **c4-6 makes it ONE PER DISTINCT CARD**, and the reason
-    // is a fact about the wire rather than a change of appetite: the flip control must render
-    // "when its tile renders", and whether a card HAS a back face lives only in the hydrated
-    // record. `CardSummary` carries neither `card_faces` nor `image_uris`, so a deck-wide sweep is
-    // what makes AC 1 true (that story's Q1 prices the two alternatives it declined).
+    // c4-2 wrote `toBe(0)`: seeding was free, and nothing consumed the hydration tier. c4-5 gave
+    // the route its first caller — the detail panel hydrates its inspection target — and the
+    // number became ONE. c4-6 made it ONE PER DISTINCT CARD, because the flip control must render
+    // "when its tile renders" and only the full record says whether a card has a back face, which
+    // the bounded `CardSummary` on the deck payload could not answer.
     //
-    // WHAT IS STILL ASSERTED, AND IT IS THE PART THAT MATTERS:
-    //
-    //   the SUMMARY tier is still FREE for every card in the deck — it arrives inside the one
-    //   `GET /api/deck/{id}` c4-2 already makes, 38,182 bytes in hand for the real 99-tile deck;
-    //
-    //   and the sweep costs exactly ONE request per DISTINCT id — not one per tile, not one per
-    //   render, and not one per hover. Two cards in this fixture, two requests. On the largest
-    //   real deck that ceiling is 99, measured read-only at c4-6's Task 0, and `hydrateCard`'s
-    //   in-flight dedupe plus its terminal-refusal gate are what hold it there.
+    // It is now back to ZERO, and for the reason that makes every earlier number obsolete rather
+    // than relaxed: the deck detail EMBEDS the whole `Card` per row, so `seedDeckCards` writes a
+    // hydrated entry for every id out of the one request the boot already makes. The flip control
+    // still needs `card_faces`; it just already has them.
     //
     // The cold-open target is `Llanowar Elves`: no commander in this fixture, so the grid's
     // visual order starts at the first populated type group, and `Creature` precedes `Land`.
     expect(useCardStore.getState().cards['id-Llanowar Elves']?.status).toBe('hydrated')
     expect(useCardStore.getState().cards['id-Forest']?.status).toBe('hydrated')
-    expect(callsTo(fetchMock, '/api/cards/')).toBe(2)
-    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
-    // THE ONE THAT WOULD CATCH A DOUBLE SWEEP. The panel hydrates its target and the sweep
-    // hydrates the whole deck, so the cold-open card is asked for by BOTH — and it must still cost
-    // one request, because `hydrateCard` shares the promise rather than issuing a second read.
-    expect(callsTo(fetchMock, '/api/cards/id-Forest')).toBe(1)
-    // THE WHOLE-MOUNT TOTAL, ITEMISED SO THE NUMBER STAYS READABLE (c4-10, AC 10): one poll of
-    // `/api/decks`, one `/api/active-deck`, one deck detail, TWO card hydrations, one format
-    // check, and — new in **c5-6** — one `GET /api/session`. SEVEN, with every member broken out
-    // beside it so that a bump here can never be absorbed as "the sweep got bigger".
+    expect(callsTo(fetchMock, '/api/cards/')).toBe(0)
+    // THE WHOLE-MOUNT TOTAL, ITEMISED SO THE NUMBER STAYS READABLE (AC 10): one poll of
+    // `/api/decks`, one `/api/active-deck`, one deck detail, one format check and one
+    // `GET /api/session`. FIVE — and, decisively, five for a two-card deck AND for a 99-card one,
+    // because no member of that list scales with the deck. The previous total was seven here and
+    // 106 on the real Atraxa deck.
     //
     // The socket's contribution to a cold open is that ONE mint, and then nothing: the upgrade is
     // not an HTTP request the fixture can see, and a live connection costs no polling at all.
     // That is the whole economic case for the channel, stated as a number rather than as prose.
     expect(formatCheckCalls(fetchMock)).toBe(1)
     expect(callsTo(fetchMock, '/api/session')).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(7)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
   })
 
   it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {
@@ -3367,11 +3451,13 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     // …and the colour distribution moved 1 → 2 green pips ({G} + {1}{G}):
     expect(screen.getByText('2 pips')).toBeVisible()
     expect(screen.queryByText('1 pip')).toBeNull()
-    // The hydration sweep re-fired off the new detail — the new id was fetched exactly once…
+    // The refetched detail SEEDED the new id rather than fetching it — the whole card rode in on
+    // the one deck read, so the card route is never asked…
+    expect(useCardStore.getState().cards['id-Grizzly Bears']?.status).toBe('hydrated')
     expect(
       callsTo(fetchMock, '/api/cards/id-Grizzly%20Bears'),
-      'the hydration sweep re-fires off the refetched detail (AC 1)',
-    ).toBe(1)
+      'a refetch costs no per-card request (AC 1)',
+    ).toBe(0)
     // …and the format check re-asked, which is the amended c4-10 pin: one request per SETTLED
     // detail. Before this story the panel stayed stale forever after an agent edit.
     expect(
@@ -5959,9 +6045,12 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
     expect(rows()[0]).toHaveTextContent('Llanowar Elves')
     expect(rows()[0]).toHaveTextContent(ITEMS[0].reason)
 
-    // ONE READ PER UNIQUE ID, over the real client and the real route (AD-12): these ids are in
-    // no deck, so nothing seeded them and the deck sweep will never reach them.
-    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
+    // ONE READ PER UNIQUE ID **THAT IS NOT ALREADY IN THE OPEN DECK**, over the real client and
+    // the real route (AD-12). `Llanowar Elves` is in the booted deck, so the deck detail already
+    // seeded it hydrated and this view asks for nothing; `Birds of Paradise` is not, so it costs
+    // exactly one read. Both halves matter: the second is the view's own hydration working, the
+    // first is the request diet reaching a surface that is not the grid.
+    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(0)
     expect(callsTo(fetchMock, '/api/cards/id-Birds%20of%20Paradise')).toBe(1)
   })
 
@@ -6068,7 +6157,10 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
     // new items. A mount-only hydration effect would leave every id of the second push unfetched.
     const fetchMock = await bootedDeck()
     await pushRows([ITEMS[0]], 'push-1')
-    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
+    // Zero: this id is in the open deck, so the deck detail already seeded it hydrated. The
+    // REPLACE below is what this test is about, and `Birds of Paradise` — which no deck carries —
+    // is the id that proves the effect re-ran rather than only mounting.
+    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(0)
 
     await pushRows([ITEMS[1]], 'push-2')
 

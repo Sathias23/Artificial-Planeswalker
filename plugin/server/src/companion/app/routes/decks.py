@@ -24,7 +24,7 @@ from fastapi import APIRouter
 from src.companion.app.deps import DbSession
 from src.companion.app.errors import CompanionError, error_responses
 from src.data.repositories.deck import DeckRepository
-from src.data.schemas.deck import DeckDetail, DeckSummary
+from src.data.schemas.deck import DeckDetailFull, DeckSummary
 from src.logic.deck_validator import FormatCheckReport, format_check
 
 router = APIRouter(prefix="/api")
@@ -48,28 +48,25 @@ async def read_decks(session: DbSession) -> list[DeckSummary]:
         the same clock tick fall back to id order, which is a UUID and therefore
         arbitrary — do not read a strict newest-first guarantee into a tie.
     """
-    # The response is small, but producing it is not: list_decks eager-loads every card of every
-    # deck (deck.py:263) to compute three integers, then discards them. Accepted rather than fixed
-    # — it is existing src/data behaviour the MCP list_decks tool already pays, and a count-only
-    # query here would be a second read path over one shape (AD-1). Ledgered in deferred-work.md,
-    # homed at c10-3. A comment rather than a docstring Note:, because `Note:` is one of the two
-    # headers main.py deliberately does NOT truncate — this detail would cross the wire into
-    # types.d.ts and /docs, where "deferred-work.md" and "c10-3" mean nothing to a UI author.
-    decks = await DeckRepository(session).list_decks()
-    return [DeckSummary.from_deck(deck) for deck in decks]
+    # list_deck_summaries, not list_decks: the counts are three aggregates the database can
+    # compute, and the eager-loaded alternative reads every card of every deck to produce them.
+    # The MCP list_decks tool keeps the eager-loaded path; both live in src/data, so this route
+    # still defines no deck shape of its own (AD-1).
+    return await DeckRepository(session).list_deck_summaries()
 
 
 @router.get(
     "/deck/{deck_id}",
-    response_model=DeckDetail,
+    response_model=DeckDetailFull,
     responses=error_responses("deck_not_found"),
 )
-async def read_deck(deck_id: str, session: DbSession) -> DeckDetail:
+async def read_deck(deck_id: str, session: DbSession) -> DeckDetailFull:
     """Return one saved deck in full: its metadata, its counts and every card in it.
 
     The whole decklist, with each entry naming its quantity, which board it belongs
-    to, whether it is the commander, and a summary of the card itself. The order of
-    ``cards`` is not meaningful — see ``DeckDetail``.
+    to, whether it is the commander, and the whole card record itself — legalities, image
+    URLs and faces included — so a client needs no follow-up request per card. The order of
+    ``cards`` is not meaningful — see ``DeckDetailFull``.
 
     Args:
         deck_id: The deck's id. A deck id has no declared shape, so any id this
@@ -88,7 +85,7 @@ async def read_deck(deck_id: str, session: DbSession) -> DeckDetail:
     deck = await DeckRepository(session).get_deck_with_cards(deck_id)
     if deck is None:
         raise CompanionError("deck_not_found")
-    return DeckDetail.from_deck(deck)
+    return DeckDetailFull.from_deck(deck)
 
 
 @router.get(

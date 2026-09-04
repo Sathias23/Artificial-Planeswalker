@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Companion cold-open request diet.** Opening the companion on a 99-card deck
+  made about 216 requests; it now makes about 105, and only five of those are
+  JSON. `GET /api/deck/{deck_id}` embeds each row's whole card, so the browser
+  no longer sweeps the deck one `GET /api/cards/{card_id}` at a time (99
+  requests gone); `GET /api/decks` computes its three counts as SQL aggregates
+  instead of loading every card of every deck; the card route sends
+  `Cache-Control: private, max-age=3600`; a warm card image is served from the
+  disk cache without reading the card row first; the first frame renders nothing
+  until the active-deck answer lands, so a deck view no longer paints the
+  Welcome surface on the way there; and the hero art ships as a recompressed,
+  content-hashed asset (146 KB, served immutable) instead of a 420 KB unhashed
+  file served `no-cache`. The MCP `load_deck` / `list_decks` payloads are
+  unchanged — the full-card deck shapes are additions beside the bounded ones,
+  not replacements.
 - **Indexed exact card lookup and single-transaction import.** `cards.name` and
   `cards.printed_name` gain `COLLATE NOCASE` indexes (created on existing
   databases automatically when the engine connects — no migration to run), and

@@ -18,7 +18,7 @@
 /* The banner. NOT `aspect-ratio`: the shipped tree writes that property EXACTLY ONCE, on
    `.card-shape`, and token-usage.test.ts gates a second one anywhere (c4-3 AC 2) — so the
    banner is capped by height instead. 240px — DESIGN.md, `components.welcome.hero-max-height`:
-   the source is 1536x1024 and would stand 480px tall at the block width; `max-height` with
+   the source is 1000x667 and would stand taller than that at the block width; `max-height` with
    `object-fit: cover` crops it to a banner, anchored by `object-position` — DESIGN.md,
    `components.welcome.hero-position: 'center 20%'` — so the title in the artwork stays visible.
    A `max-height` rather than a `height` is the edge-case ruling: if the file is missing, `alt=""`

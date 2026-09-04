@@ -59,10 +59,10 @@ import { ORACLE_SCROLLER_LABEL, PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } f
  *
  * ================= NO SPINNER, AND IT IS STRUCTURAL (AC 12, UX-DR36) ===================
  *
- * There is no loading branch in the text at all. Every deck card is seeded to `'summary'` by
- * `createDeckBoot` → `seedCardSummaries`, so the panel always has something to draw the instant
- * a target is set; and `hydrateCard`'s `'loading'` entry CARRIES the summary it had before, so
- * nothing it was already showing goes blank while a request is in flight (AC 13). The only
+ * There is no loading branch in the text at all. Every deck card is seeded `'hydrated'` by
+ * `createDeckBoot` → `seedDeckCards`, so for a card in the OPEN DECK the panel draws in full at
+ * first frame with nothing in flight; and for an id outside it, `hydrateCard`'s `'loading'` entry
+ * CARRIES whatever was known before, so nothing already on screen goes blank (AC 13). The only
  * placeholder-shaped thing here is the silent well behind the ART, which is
  * `EXPERIENCE.md`'s placeholder-then-fill, not a skeleton.
  *

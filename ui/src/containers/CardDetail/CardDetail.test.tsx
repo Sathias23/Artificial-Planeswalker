@@ -71,6 +71,12 @@ const summary = (id: string, over: Partial<CardSummary> = {}): CardSummary => ({
   colors: ['W', 'U', 'B', 'G'],
   rarity: 'mythic',
   set_code: 'cmr',
+  set_name: 'Test Set',
+  collector_number: '1',
+  oracle_id: 'oracle-1',
+  color_identity: [],
+  legalities: {},
+  games: [],
   ...over,
 })
 
@@ -255,7 +261,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     const { container } = render(<CardDetail boards={oneCardDeck} />)
 
     // AC 12: everything the panel draws is already in hand at the moment of hover, because
-    // `CardSummary` carries all four text fields and `seedCardSummaries` put them there for
+    // `CardSummary` carries all four text fields and `seedDeckCards` put them there for
     // free. The hydration request below is still in flight and nothing is waiting for it.
     expect(screen.getByText('Atraxa, Praetors’ Voice')).toBeVisible()
     expect(screen.getByText(/Legendary Creature/)).toBeVisible()

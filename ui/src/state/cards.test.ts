@@ -23,7 +23,7 @@ import {
   hydrateCard,
   resetCardAttempts,
   resetCardCache,
-  seedCardSummaries,
+  seedDeckCards,
   useCardStore,
 } from './cards'
 
@@ -45,6 +45,12 @@ const summary = (id: string, name: string): CardSummary => ({
   colors: [],
   rarity: 'uncommon',
   set_code: 'cmr',
+  set_name: 'Test Set',
+  collector_number: '1',
+  oracle_id: 'oracle-1',
+  color_identity: [],
+  legalities: {},
+  games: [],
 })
 
 const deckCard = (id: string, name: string): DeckCardSummary => ({
@@ -135,23 +141,28 @@ describe('the cache distinguishes never-seen, summary-known, loading and hydrate
   })
 
   it('is keyed by the printing uuid, so two ids are two entries (AC 1)', () => {
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring'), deckCard(ARCANE_SIGNET, 'Arcane Signet')])
+    seedDeckCards([deckCard(SOL_RING, 'Sol Ring'), deckCard(ARCANE_SIGNET, 'Arcane Signet')])
 
     expect(Object.keys(useCardStore.getState().cards).sort()).toEqual(
       [SOL_RING, ARCANE_SIGNET].sort(),
     )
   })
 
-  it('lets a summary-known consumer render name, cost and type line with NO request', () => {
+  it('lets a deck-seeded consumer render the WHOLE record with NO request', async () => {
     // `EXPERIENCE.md`: "name and cost are known at hover time and render immediately, the rest
-    // fills in place — no spinner". This assertion is that sentence, mechanically.
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
+    // fills in place — no spinner". With the deck detail embedding whole cards there is nothing
+    // left to fill in: the entry is hydrated at seed time and a hover issues nothing.
+    seedDeckCards([deckCard(SOL_RING, 'Sol Ring')])
 
     const entry = entryOf(SOL_RING)
-    expect(entry?.status).toBe('summary')
+    expect(entry?.status).toBe('hydrated')
     expect(entry).toMatchObject({
-      summary: { name: 'Sol Ring', mana_cost: '{1}', type_line: 'Artifact' },
+      card: { name: 'Sol Ring', mana_cost: '{1}', type_line: 'Artifact' },
     })
+
+    const reader = hydratingReader()
+    await hydrateCard(SOL_RING, reader.read)
+    expect(reader.read).not.toHaveBeenCalled()
   })
 
   it('distinguishes STILL LOADING from UNKNOWN CARD as two values, not two absences', async () => {
@@ -169,20 +180,15 @@ describe('the cache distinguishes never-seen, summary-known, loading and hydrate
     expect(entryOf(SOL_RING)).toBeDefined()
   })
 
-  it('keeps a known summary visible WHILE the full record is loading', async () => {
-    // The skeleton-vs-placeholder policy: the rest fills in *place*. A tile that was drawable
-    // before the hover must not flash empty during it.
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
+  it('carries a loading entry for an id OUTSIDE the deck, which is what a hover there does', () => {
+    // The skeleton-vs-placeholder policy still applies to the agent views' arbitrary ids: nothing
+    // seeded them, so `loading` is a real state there and it is a VALUE, not an absence.
     const pendingRead = deferredReader()
-    const inFlight = hydrateCard(SOL_RING, pendingRead.read)
+    void hydrateCard(SOL_RING, pendingRead.read)
 
-    expect(entryOf(SOL_RING)).toMatchObject({
-      status: 'loading',
-      summary: { name: 'Sol Ring' },
-    })
+    expect(entryOf(SOL_RING)).toMatchObject({ status: 'loading', summary: null })
 
     pendingRead.settle({ kind: 'card', card: fullCard(SOL_RING, 'Sol Ring') })
-    await inFlight
   })
 
   it('reaches hydrated, and hydrated carries the full record', async () => {
@@ -200,21 +206,21 @@ describe('the cache distinguishes never-seen, summary-known, loading and hydrate
 // ===================== AC 5, AC 6: seeding is free ======================================
 
 describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => {
-  // `seedCardSummaries` takes no reader — it has nothing to inject — so the ONLY honest request
+  // `seedDeckCards` takes no reader — it has nothing to inject — so the ONLY honest request
   // count here is the network door itself. A spy on an unwired local mock would be vacuous: an
   // implementation that fired-and-forgot `hydrateCard(id)` per seeded id (default reader, global
   // `fetch`) would sail past it. The global stub is what makes these two assertions falsifiable.
-  it('populates the summary tier for every id with no reader at all', () => {
+  it('populates the HYDRATED tier for every id with no reader at all', () => {
     const fetchSpy = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetchSpy)
 
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring'), deckCard(ARCANE_SIGNET, 'Arcane Signet')])
+    seedDeckCards([deckCard(SOL_RING, 'Sol Ring'), deckCard(ARCANE_SIGNET, 'Arcane Signet')])
 
-    // The whole argument of the story's measurement: 38,182 bytes in ONE request the app already
-    // makes, against 212,436 bytes in 99 it would otherwise have to.
+    // The whole argument: the deck detail already carried both whole cards, so the app pays ONE
+    // request for the deck and none for its cards.
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(entryOf(SOL_RING)?.status).toBe('summary')
-    expect(entryOf(ARCANE_SIGNET)?.status).toBe('summary')
+    expect(entryOf(SOL_RING)?.status).toBe('hydrated')
+    expect(entryOf(ARCANE_SIGNET)?.status).toBe('hydrated')
   })
 
   it('walks no deck issuing per-card reads — 99 seeded ids cost 0 requests (AC 6)', () => {
@@ -222,69 +228,83 @@ describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => 
     vi.stubGlobal('fetch', fetchSpy)
     const deck = Array.from({ length: 99 }, (_, i) => deckCard(idAt(i + 100), `Card ${i}`))
 
-    seedCardSummaries(deck)
+    seedDeckCards(deck)
 
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(Object.keys(useCardStore.getState().cards)).toHaveLength(99)
   })
 
-  it('leaves a HYDRATED id hydrated — seeding never downgrades a paid-for request', async () => {
+  it("REPLACES a hydrated entry with the payload's card — a refetch is never stale", async () => {
+    // The deck detail is the server's current row for the printing. After a reimport changes a
+    // card's text or legalities, the next deck refetch (or reconnect) carries the new record —
+    // and it must land, not lose to whatever an earlier read produced.
     const reader = hydratingReader()
     await hydrateCard(SOL_RING, reader.read)
+    expect(entryOf(SOL_RING)).toMatchObject({ status: 'hydrated', card: { id: SOL_RING } })
 
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
+    seedDeckCards([
+      {
+        ...deckCard(SOL_RING, 'Sol Ring'),
+        card: { ...deckCard(SOL_RING, 'Sol Ring').card, oracle_text: 'ERRATA' },
+      },
+    ])
 
-    expect(entryOf(SOL_RING)?.status).toBe('hydrated')
+    expect(entryOf(SOL_RING)).toMatchObject({
+      status: 'hydrated',
+      card: { id: SOL_RING, oracle_text: 'ERRATA' },
+    })
+    // Still hydrated, so the next hydrateCard call issues nothing.
+    await hydrateCard(SOL_RING, reader.read)
+    expect(reader.read).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves an UNKNOWN id unknown, and does not re-arm it', async () => {
-    // If seeding reset the tier, a deck refetch would defeat AC 11: the id would be re-requested
-    // the moment anything re-read the deck.
+  it('ANSWERS a previously refused id, and still re-asks nothing (AC 11)', async () => {
+    // The payload is the answer the failed read wanted: an id that 404'd or 503'd earlier is
+    // carried whole by the deck detail, so it becomes hydrated rather than staying refused — and
+    // hydrated is exactly the tier `hydrateCard` returns from without issuing anything, so a deck
+    // refetch still cannot re-arm a request loop.
     const refusing = readerAnswering({ kind: 'error', reason: 'card_not_found' })
     await hydrateCard(SOL_RING, refusing.read)
-
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
-
     expect(entryOf(SOL_RING)?.status).toBe('unknown')
+
+    seedDeckCards([deckCard(SOL_RING, 'Sol Ring')])
+
+    expect(entryOf(SOL_RING)).toMatchObject({ status: 'hydrated', card: { name: 'Sol Ring' } })
     await hydrateCard(SOL_RING, refusing.read)
     expect(refusing.read).toHaveBeenCalledTimes(1)
   })
 
-  it('fills in the summary of an id that was refused, so the tile can still be named', async () => {
-    const refusing = readerAnswering({ kind: 'error', reason: 'database_unavailable' })
-    await hydrateCard(SOL_RING, refusing.read)
-
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
-
-    expect(entryOf(SOL_RING)).toMatchObject({
-      status: 'unknown',
-      summary: { name: 'Sol Ring' },
-    })
-  })
-
-  it('is keyed on the deck row card_id, and an empty deck is a no-op', () => {
-    seedCardSummaries([])
+  it('skips a malformed row rather than writing an unreadable hydrated entry', () => {
+    // `deckOf` validates the envelope, not the rows, so a row without a usable `card_id` or
+    // without a `card` object can arrive inside a valid-looking 200.
+    seedDeckCards([
+      { ...deckCard(SOL_RING, 'Sol Ring'), card_id: '' },
+      { ...deckCard(ARCANE_SIGNET, 'Arcane Signet'), card: null } as unknown as DeckCardSummary,
+    ])
 
     expect(useCardStore.getState().cards).toEqual({})
   })
 
-  it('keeps a summary seeded WHILE the read was in flight when that read then REFUSES', async () => {
-    // The ordering c4-2 actually produces: a hover starts a hydration on an unseeded id, the
-    // deck fetch lands mid-flight and seeds the name, the read then settles as a 503. The
-    // settled entry must carry the seeded summary, not the null captured before the request —
-    // a tile that became drawable must not go blank because a refusal settled second.
+  it('is keyed on the deck row card_id, and an empty deck is a no-op', () => {
+    seedDeckCards([])
+
+    expect(useCardStore.getState().cards).toEqual({})
+  })
+
+  it('keeps the SEEDED card when a read that was already in flight then REFUSES', async () => {
+    // The ordering the boot actually produces: a hover starts a hydration on an unseeded id, the
+    // deck fetch lands mid-flight and seeds the whole card, the read then settles as a 503. The
+    // refusal must not displace the payload — a tile that became drawable must not go blank
+    // because a 503 settled second.
     const pendingRead = deferredReader()
     const settled = hydrateCard(SOL_RING, pendingRead.read)
 
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
+    seedDeckCards([deckCard(SOL_RING, 'Sol Ring')])
 
     pendingRead.settle({ kind: 'error', reason: 'database_unavailable' })
     await settled
 
-    expect(entryOf(SOL_RING)).toMatchObject({
-      status: 'unknown',
-      summary: { name: 'Sol Ring' },
-    })
+    expect(entryOf(SOL_RING)).toMatchObject({ status: 'hydrated', card: { name: 'Sol Ring' } })
   })
 })
 
@@ -404,10 +424,10 @@ describe('the 100-tile sweep, measured rather than asserted (AC 9)', () => {
     // 99, because that is the number of distinct tiles in the largest real deck on this machine
     // ("Atraxa Counter Cabinet v2 (owned)", measured at `61a787a`: 99 distinct ids, 100 total
     // quantity). The epic's "100-tile grid" is not a round figure someone invented.
+    // Unseeded, because a deck's own cards arrive hydrated and never reach `hydrateCard` at all:
+    // this is the agent-view population, where arbitrary ids are asked for one at a time.
     const deck = Array.from({ length: 99 }, (_, i) => deckCard(idAt(i + 1000), `Card ${i}`))
     const reader = hydratingReader()
-
-    seedCardSummaries(deck)
 
     for (let sweep = 0; sweep < 2; sweep += 1) {
       for (const card of deck) {
@@ -425,7 +445,6 @@ describe('the 100-tile sweep, measured rather than asserted (AC 9)', () => {
   it('holds when the cursor sweeps CONCURRENTLY, which is what a real hover does', async () => {
     const deck = Array.from({ length: 99 }, (_, i) => deckCard(idAt(i + 2000), `Card ${i}`))
     const reader = hydratingReader()
-    seedCardSummaries(deck)
 
     // Two overlapping sweeps launched without awaiting — the shape a cursor crossing a grid
     // twice actually produces, and the one a sequential loop would never exercise.
@@ -620,9 +639,7 @@ describe('the token reaches the consumer intact, in states.ts vocabulary (AC 14)
     expect(entryOf(SOL_RING)).toMatchObject({ reason: null, placeholder: null })
   })
 
-  it('gives a 503 NO placeholder — "unknown card" would be a lie the summary can disprove', async () => {
-    seedCardSummaries([deckCard(SOL_RING, 'Sol Ring')])
-
+  it('gives a 503 NO placeholder — "unknown card" is a lie about a transient refusal', async () => {
     await hydrateCard(
       SOL_RING,
       readerAnswering({ kind: 'error', reason: 'database_unavailable' }).read,
@@ -630,7 +647,7 @@ describe('the token reaches the consumer intact, in states.ts vocabulary (AC 14)
 
     expect(entryOf(SOL_RING)).toMatchObject({
       placeholder: null,
-      summary: { name: 'Sol Ring' },
+      summary: null,
     })
   })
 
@@ -852,8 +869,8 @@ describe('resetCardAttempts gives the budget back, and only the budget (c5-6, Q6
     expect(entry(SOL_RING)?.status).toBe('hydrated')
   })
 
-  it('leaves the summary tier alone as well', async () => {
-    seedCardSummaries([deckCard(ARCANE_SIGNET, 'Arcane Signet')])
+  it('leaves a deck-seeded entry alone as well', async () => {
+    seedDeckCards([deckCard(ARCANE_SIGNET, 'Arcane Signet')])
     // …with a burned id in the same store, so the write really does happen and this assertion is
     // about what the write SPARED rather than about a write that never occurred.
     await burn(SOL_RING)

@@ -73,8 +73,8 @@
  * ================= WHAT THIS MODULE DELIBERATELY DOES NOT DO ============================
  *
  * - **It does not decide a panel.** `panelFor` is not imported. See above.
- * - **It does not read the deck slice.** The id is an ARGUMENT, the way `hydrateDeckCards` takes
- *   card ids — so this module has no opinion about which deck is current and cannot disagree with
+ * - **It does not read the deck slice.** The id is an ARGUMENT, the way `hydrateCard` takes a
+ *   card id — so this module has no opinion about which deck is current and cannot disagree with
  *   `surfaceOf` about it.
  * - **It does not touch `boards`, the card cache or the inspection slice.** This panel draws no
  *   card and starts no hydration.

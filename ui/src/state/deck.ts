@@ -108,7 +108,7 @@ import type { StateKey } from '../components/StatePanel/copy'
 import { PANEL_FOR_REASON, type ClientOnlyState } from '../components/StatePanel/states'
 import { boardsOfDeck, type DeckBoards } from './deckGroups'
 import { panelFor } from './panel'
-import { seedCardSummaries } from './cards'
+import { seedDeckCards } from './cards'
 import { subscribeSystemState, type SystemState } from './systemState'
 
 /**
@@ -500,15 +500,13 @@ export const createDeckBoot = ({
     // is a value" posture (a review finding). Unreachable with the real Pydantic backend;
     // reachable the day the SPA and the backend skew.
     try {
-      // AC 17 — the summaries the payload ALREADY carried become the card cache's summary tier,
-      // at a cost of ZERO requests. Measured on the largest real deck (99 distinct cards):
-      // 38,182 bytes already in hand, against 212,436 bytes over 99 requests to fetch the same
-      // fields again. Called before `settle` so that a consumer re-rendered by the state below
-      // can read a cache that is already warm. The generation check after the await above
-      // guards this too: a stopped or superseded boot discards its payload WITHOUT seeding —
-      // conservative on purpose, since seeding from an abandoned boot would be an unmeasured
-      // optimization sharing a shape with the mid-flight-seed clobber c4-1's review closed.
-      seedCardSummaries(detail.deck.cards)
+      // AC 17 — the whole cards the payload ALREADY carried become HYDRATED cache entries, at a
+      // cost of ZERO requests: the deck detail embeds each row's full `Card`, so no consumer of
+      // this deck ever needs `GET /api/cards/{card_id}`. Called before `settle` so that a
+      // consumer re-rendered by the state below reads a cache that is already warm. The
+      // generation check after the await above guards this too: a stopped or superseded boot
+      // discards its payload WITHOUT seeding.
+      seedDeckCards(detail.deck.cards)
       settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
     } catch {
       settle(deckRefusalState(null))
@@ -528,7 +526,7 @@ export const createDeckBoot = ({
    * The single-request refetch (story c7-3): re-read ONE deck, keep the glass calm about it.
    *
    * The boot's machinery, not a copy of it — same generation slot, same settle guard, same
-   * `seedCardSummaries`-before-settle ordering and the same malformed-row catch. What differs
+   * `seedDeckCards`-before-settle ordering and the same malformed-row catch. What differs
    * is the OUTCOME MAPPING, and every difference is UX-DR35 legislation rather than taste:
    *
    *   - `deck_not_found` settles the boot's own clearing state ({@link deckRefusalState} maps it
@@ -571,7 +569,7 @@ export const createDeckBoot = ({
     try {
       // The same zero-request seeding AC 17 bought the boot, for the same reason: a consumer
       // re-rendered by the settle below reads a cache that is already warm with the new rows.
-      seedCardSummaries(detail.deck.cards)
+      seedDeckCards(detail.deck.cards)
       settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
       // THE ANNOUNCE-ONCE SIGNAL (c7-5, UX-DR45): incremented HERE and nowhere else — beside the
       // one settle that means "a coalesced refetch completed with a new deck". Synchronous with
@@ -585,9 +583,9 @@ export const createDeckBoot = ({
       // A malformed row inside a 200: the boot settles a panel because a cold open has nothing
       // else to show; a refetch leaves the DECK STORE untouched, because the deck already on
       // the glass parsed (UX-DR35). Stated precisely rather than as "dropped whole" (review
-      // correction): `seedCardSummaries` runs BEFORE the derivation that throws, so the card
-      // cache may retain whatever validly-shaped summaries the payload carried. That residue
-      // is additive summary-tier data keyed by card id — the same rows a later successful
+      // correction): `seedDeckCards` runs BEFORE the derivation that throws, so the card
+      // cache may retain whatever validly-shaped rows the payload carried. That residue
+      // is additive data keyed by card id — the same rows a later successful
       // refetch would seed — so it is harmless, and unwinding a cache shared with the agent
       // views to cosmetically purify a dropped outcome would be a second mechanism for zero
       // observable gain.
@@ -658,6 +656,16 @@ export const createDeckBoot = ({
 export type Surface =
   | { readonly kind: 'deck'; readonly detail: DeckDetail; readonly boards: DeckBoards }
   | { readonly kind: 'panel'; readonly panel: StateKey }
+  /**
+   * Nothing yet: the boot has not heard back from `GET /api/active-deck`.
+   *
+   * Not a third kind of content — it is the ABSENCE of a decision, and it carries no `StateKey`
+   * because no copy belongs to a frame nobody is meant to read. `INITIAL_SYSTEM_STATE.panel` is
+   * `no-active-deck` (the honest value once the answer lands and is `null`), and before this arm
+   * existed that panel — hero art included — painted on the first frame of EVERY cold open,
+   * including one that was about to render a deck. This masks it until the read settles.
+   */
+  | { readonly kind: 'booting' }
 
 /**
  * The panel a lost connection draws (story c5-6, Q3, AC 17).
@@ -688,9 +696,10 @@ const DISCONNECTED_PANEL: ClientOnlyState = 'disconnected'
  *      `503 database_not_initialized` must put THEIR panels on the glass, and a rule that let the
  *      poll's opinion win would make that criterion pass only by coincidence — the two routes
  *      usually agree, so the assertion would be vacuous exactly when it mattered.
- *   3. **Else the system panel** (AC 7). `booting` and `none` both land here, so a fresh install
- *      still shows `no-active-deck` with the deck names the poll already fetched, non-clickable,
- *      and `App.test.tsx`'s existing assertions on that panel pass **unmodified**.
+ *   3. **Else the system panel** (AC 7). `none` lands here, so a fresh install shows
+ *      `no-active-deck` with the deck names the poll already fetched, non-clickable. `booting`
+ *      no longer does: it has its own arm above, which renders nothing at all until the
+ *      active-deck read settles.
  *
  * ==== AND NOW THERE IS A FOURTH ARM, ABOVE ALL THREE (c5-6, Q3, Brad 2026-08-08) =======
  *
@@ -729,6 +738,12 @@ const DISCONNECTED_PANEL: ClientOnlyState = 'disconnected'
  */
 export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
   if (system.connection === 'down') return { kind: 'panel', panel: DISCONNECTED_PANEL }
+  // Below the connection arm and above everything else: a backend the app has given up on is a
+  // fact worth a panel whatever the boot is doing, but any OTHER panel chosen before the
+  // active-deck read settles is a guess — and the `no-active-deck` guess draws the Welcome hero,
+  // 420 KB of art, on the way to a deck view that never wanted it. Every settle path of the boot
+  // leaves `'booting'` (`deck`, `none`, `refused`), so this arm cannot latch.
+  if (deck.status === 'booting') return { kind: 'booting' }
   if (deck.status === 'deck') return { kind: 'deck', detail: deck.detail, boards: deck.boards }
   if (deck.status === 'refused') return { kind: 'panel', panel: deck.panel }
   return { kind: 'panel', panel: system.panel }
@@ -738,7 +753,7 @@ export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
  * The mounted `App`'s deck boot, re-driven — or a no-op when nothing is mounted (c5-6, AC 5).
  *
  * ==== WHY A SEAM AND NOT A SECOND BOOT ================================================
- * `createDeckBoot` is already idempotent, generation-guarded, seeds the card summaries and settles
+ * `createDeckBoot` is already idempotent, generation-guarded, seeds the card cache and settles
  * every refusal into a panel; `useDeckState` already re-drives it on the poll-recovery edge with
  * `stop()` then `start()`. So the reconnect refetch is not a new mechanism at all — it is the
  * existing one, driven from a new trigger. Building a second "refetch the deck" path would be a

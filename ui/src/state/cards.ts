@@ -12,23 +12,20 @@
  * later stories consume without opening again: the grid is **c4-4**, the placeholders **c4-3**,
  * the detail panel **c4-5**, the deck bootstrap **c4-2**.
  *
- * ================= THE CACHE IS TWO-TIER, AND THE BULK TIER IS FREE =====================
+ * ================= THE DECK PAYLOAD FILLS THIS CACHE, FOR FREE =========================
  *
- * The story's title is slightly misleading and the measurement is why. `GET /api/deck/{deck_id}`
- * returns `DeckDetail`, whose `cards` is a list of `DeckCardSummary` — **each of which already
- * embeds a full `CardSummary`**: id, name, mana cost, cmc, type line, oracle text, colours,
- * rarity, set code. Measured at `61a787a` on the largest real deck on this machine ("Atraxa
- * Counter Cabinet v2 (owned)", 99 distinct tiles):
+ * `GET /api/deck/{deck_id}` returns `DeckDetail`, whose `cards` is a list of rows **each of which
+ * embeds the whole `Card`** — legalities, `image_uris`, `card_faces` and all. So a deck view's
+ * cards are hydrated by {@link seedDeckCards} out of the one request the deck boot already makes,
+ * and the app issues **zero** `GET /api/cards/{card_id}` for a deck it has open.
  *
- *   | the `CardSummary` fields for all 99 |  38,182 bytes |  **1** request (the deck detail) |
- *   | the full `Card` rows for all 99     | 212,436 bytes | **99** requests                  |
+ * That embedding is what closed a 99-request cold open: the deck detail used to carry a bounded
+ * `CardSummary` per row (no faces, no images, no legalities), so anything that needed a full
+ * record — the flip control, the detail panel — had to sweep the whole deck one id at a time.
  *
- * 5.6× the bytes and 99× the requests. So **hydrating the grid is not this cache's job** —
- * {@link seedCardSummaries} takes the summaries the deck payload already carried and the app
- * never pays that cost. What `GET /api/cards/{card_id}` adds on top is power, toughness,
- * legalities, `card_faces`, `set_name` and `collector_number`, and that is fetched **per id, on
- * demand**, which is exactly what `EXPERIENCE.md`'s Card-detail row describes: *"name and cost are
- * known at hover time and render immediately, the rest fills in place — no spinner"*.
+ * {@link hydrateCard} is still the path for an id the OPEN DECK does not contain: the agent views
+ * hydrate arbitrary thumbnails, and the card route is cacheable (`private, max-age=3600`) so a
+ * repeat within the hour costs no round trip.
  *
  * ================= WHY THIS IS A SECOND `create()` AND STILL ONE CACHE ==================
  *
@@ -61,7 +58,7 @@
  *   and `no_image_data` / `image_fetch_failed` can never be answered by `GET /api/cards/{card_id}`
  *   (they are not in its `error_responses`) — {@link CARD_READ_IS_RETRYABLE} records them anyway,
  *   because a total map over the token union is what makes an eleventh token a typecheck failure.
- * - **It does not fetch a deck.** {@link seedCardSummaries} takes deck cards as an ARGUMENT.
+ * - **It does not fetch a deck.** {@link seedDeckCards} takes deck cards as an ARGUMENT.
  * - **It does not put anything on the glass.** See the FR-13 section below.
  * - **It holds no timer and no retry loop.** See {@link MAX_ATTEMPTS_PER_CARD}.
  *
@@ -397,38 +394,45 @@ const placeholders: Partial<Record<ErrorReason, PlaceholderKey>> = PLACEHOLDER_F
 const spent = (cardId: string): boolean => (attempts.get(cardId) ?? 0) >= MAX_ATTEMPTS_PER_CARD
 
 /**
- * Seed the summary tier from a deck payload (AC 5). **Issues zero requests.**
+ * Seed the cache from a deck payload. **Issues zero requests.**
  *
- * This is the mechanism that makes the 5.6× / 99-request cost in this module's header a cost the
- * app never pays: the summaries already arrived, embedded in the one `GET /api/deck/{deck_id}`
- * that **c4-2** makes, so handing them here is free. c4-2 calls this; c4-1 ships and tests it.
+ * This is what makes the deck detail the only card request a deck view ever makes: every row of
+ * `GET /api/deck/{deck_id}` carries the WHOLE `Card` — legalities, `image_uris`, `card_faces` —
+ * so each one is written straight in as a `hydrated` entry and there is nothing left for a
+ * per-card sweep to fetch. Before the deck detail embedded full cards this seeded a bounded
+ * `summary` tier and `App.tsx` swept the deck for the rest, at one request per distinct id (99 on
+ * the largest real deck).
  *
- * **An existing id's hydration tier is left untouched** — a `hydrated` entry stays hydrated, a
- * `loading` entry stays loading, an `unknown` entry stays unknown. Only the carried summary is
- * refreshed. Downgrading a hydrated card to a summary because its deck was re-read would throw
- * away a request that has already been paid for, and re-arming an `unknown` would defeat AC 11's
- * "not re-requested on every render" the moment a deck refetch happened on a timer.
+ * **The payload's card always wins, hydrated entries included.** Every row is the server's
+ * current record for that printing, read from the same database a per-card request would read,
+ * so it is never less fresh than whatever the cache holds — and after a reimport it is fresher.
+ * A deck refetch or reconnect therefore replaces an already-`hydrated` entry rather than keeping
+ * it; keeping it would leave costs, faces and legalities frozen at whatever the first read saw.
+ * Every other tier — `summary`, `loading`, `unknown`, or no entry at all — is replaced the same
+ * way. (What seeding must never do is *downgrade*: it never has, because it never wrote less
+ * than a whole `Card`.)
+ *
+ * **A malformed row is skipped rather than written.** `deckOf` validates the envelope and not the
+ * rows, so a row without a usable `card_id` or without a `card` object can reach here inside a
+ * valid-looking `200`; writing it would put a `hydrated` entry on the glass that no consumer can
+ * read, which is worse than the id simply being unseen.
  *
  * Args:
  *   deckCards: The `cards` array of a `DeckDetail`, verbatim. Keyed on `card_id` — the deck row's
  *     own column — rather than on the nested `card.id`, because `card_id` is the FK the rest of
  *     the app addresses cards by. A duplicate id (a card in both boards) simply lands twice.
  */
-export const seedCardSummaries = (deckCards: readonly DeckCardSummary[]): void => {
+export const seedDeckCards = (deckCards: readonly DeckCardSummary[]): void => {
   if (deckCards.length === 0) return
 
   useCardStore.setState((state) => {
     const cards: Record<string, CardEntry> = { ...state.cards }
     for (const deckCard of deckCards) {
-      const existing = cards[deckCard.card_id]
-      const summary = deckCard.card
-
-      if (existing === undefined || existing.status === 'summary') {
-        cards[deckCard.card_id] = { status: 'summary', summary }
-        continue
-      }
-      if (existing.status === 'hydrated') continue
-      cards[deckCard.card_id] = { ...existing, summary }
+      const cardId = deckCard?.card_id
+      const card = deckCard?.card
+      if (typeof cardId !== 'string' || cardId === '') continue
+      if (typeof card !== 'object' || card === null) continue
+      cards[cardId] = { status: 'hydrated', card }
     }
     return { cards }
   })
@@ -560,11 +564,17 @@ export const hydrateCard = async (
       outcome = { kind: 'unreachable' }
     }
     // The summary is re-read at settle time, NOT the capture from before the request:
-    // `seedCardSummaries` may have landed while the read was in flight (c4-2's deck fetch
-    // overlapping a hover is the ordinary case), and it updates the `loading` entry's summary.
+    // `seedDeckCards` may have landed while the read was in flight (a deck fetch overlapping a
+    // hover is the ordinary case), and it replaces whatever the `loading` entry carried.
     // Writing the pre-flight capture back would erase a name the deck payload already supplied —
     // a tile that was drawable going blank because a 503 settled second.
-    const entry = entryFor(cardId, outcome, summaryOf(useCardStore.getState().cards[cardId]))
+    const current = useCardStore.getState().cards[cardId]
+    // A REFUSAL NEVER DISPLACES A HYDRATED ENTRY. `seedDeckCards` may have landed while this read
+    // was in flight — a hover on an id the deck detail then delivered — and that payload is a
+    // whole `Card`, strictly better than the `unknown` this outcome would write. Without this the
+    // ordinary "hover, deck lands, 503 settles second" sequence blanks a drawable tile.
+    if (current?.status === 'hydrated' && outcome.kind !== 'card') return current
+    const entry = entryFor(cardId, outcome, summaryOf(current))
     // A read that settles after `resetCardCache` writes nothing: the store it started against no
     // longer exists, and resurrecting its entry would contaminate whatever replaced it.
     if (generation === startedIn) put(cardId, entry)
@@ -582,47 +592,6 @@ export const hydrateCard = async (
     // orphan settling after a reset cannot delete a NEWER in-flight read for the same id.
     if (inFlight.get(cardId) === pending) inFlight.delete(cardId)
   }
-}
-
-/**
- * Hydrate every distinct card in a deck, once (story c4-6, Q1, AC 23).
- *
- * ================= WHY A WHOLE-DECK SWEEP EXISTS AT ALL ================================
- *
- * c4-6's flip control has to render *"when its tile renders"* (`epics-companion-app.md:2043`), and
- * whether a card HAS a back face is a fact only the hydrated record carries: `CardSummary` has
- * neither `card_faces` nor `image_uris`, and until this story the only thing in the app that
- * hydrated was the detail panel, on the one card being looked at. The alternatives were priced in
- * that story's Q1 and both are worse: adding a derived field to `CardSummary` is an MCP-visible
- * schema change (three consumers, an `openapi.json` regeneration, the committed-schema pins, the
- * generated `types.d.ts` and both plugin mirrors), and rendering the control lazily makes the Tab
- * stop UX-DR40 places *"immediately after its own tile"* materialise mid-traverse.
- *
- * ================= WHAT IT COSTS, AS A NUMBER (AC 23) =================================
- *
- * **At most one request per distinct card id, per deck, per tab.** Measured read-only against the
- * shipped database: the largest of the 40 real decks holds **99 distinct ids** (both Atraxa
- * decks), so the ceiling is 99 — and c4-1's measurement of what those requests carry still holds
- * at 212,436 bytes for that deck. Every one of the three refusals {@link hydrateCard} already
- * makes applies here unchanged: a hydrated id asks nothing, a read in flight is JOINED rather than
- * duplicated, and a terminal refusal is never re-asked. Sweeping twice therefore costs nothing.
- *
- * **It is deliberately NOT the cache's decision when to run.** This function issues requests the
- * moment it is called, so WHERE it is called from is the whole of its cost profile — see
- * `App.tsx`, which calls it from an effect, i.e. **after the DOM commit that sets every
- * `<img src>`**. That ordering is what keeps ~99 JSON reads from queueing ahead of ~99 pictures on
- * a six-connection-per-origin browser, and it is React's own sequencing rather than a timer.
- *
- * Args:
- *   cardIds: Every `card_id` in the deck payload, verbatim and in payload order — including the
- *     sideboard, which c4-7 will draw. Duplicates are free (`hydrateCard` dedupes in flight) and
- *     are collapsed here anyway, so a card in two boards costs one request.
- */
-export const hydrateDeckCards = (cardIds: readonly string[]): void => {
-  // `void` on each: the store is the authority and every consumer is already watching it, so there
-  // is nothing to do with the answers and nothing to await. `hydrateCard` never rejects, so there
-  // is no unhandled rejection to swallow either.
-  for (const cardId of new Set(cardIds)) void hydrateCard(cardId)
 }
 
 /**

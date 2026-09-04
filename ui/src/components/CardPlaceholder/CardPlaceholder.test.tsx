@@ -26,7 +26,7 @@
 import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { hydrateCard, resetCardCache, seedCardSummaries, useCardEntry } from '../../state/cards'
+import { hydrateCard, resetCardCache, seedDeckCards, useCardEntry } from '../../state/cards'
 import { PLACEHOLDER_FOR_REASON } from '../StatePanel/states'
 import { CardPlaceholder, CARD_ID_PREFIX_LENGTH } from './CardPlaceholder'
 import { UNKNOWN_CARD_LABEL } from './copy'
@@ -413,6 +413,12 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
       colors: [] as string[],
       rarity: 'rare',
       set_code: 'tst',
+      set_name: 'Test Set',
+      collector_number: '1',
+      oracle_id: 'oracle-1',
+      color_identity: [],
+      legalities: {},
+      games: [],
     },
   })
 
@@ -432,7 +438,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
     // request is made here or anywhere. The hook is a pure selector — it starts NOTHING — and
     // this is the assertion that it nevertheless notices.
     act(() => {
-      seedCardSummaries([summaryOf(NO_IMAGE_CARD)])
+      seedDeckCards([summaryOf(NO_IMAGE_CARD)])
     })
 
     expect(screen.getByText(NO_IMAGE_CARD.name)).toBeVisible()
@@ -461,7 +467,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
     // `entry.placeholder` rather than switching on `entry.reason`.
     render(<Tile cardId={NO_IMAGE_CARD.id} />)
     act(() => {
-      seedCardSummaries([summaryOf(NO_IMAGE_CARD)])
+      seedDeckCards([summaryOf(NO_IMAGE_CARD)])
     })
 
     await act(async () => {
@@ -485,7 +491,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
     // placeholder is the render until c4-4 has an <img>.
     render(<Tile cardId={NO_IMAGE_CARD.id} />)
     act(() => {
-      seedCardSummaries([summaryOf(NO_IMAGE_CARD)])
+      seedDeckCards([summaryOf(NO_IMAGE_CARD)])
     })
 
     for (const reason of ['no_image_data', 'image_fetch_failed'] as const) {

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from sqlalchemy import delete, select
+from sqlalchemy import case, delete, distinct, func, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.base import BaseRepository
-from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry
+from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry, DeckSummary
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +266,67 @@ class DeckRepository(BaseRepository):
         deck_models = result.scalars().all()
 
         return [Deck.model_validate(deck) for deck in deck_models]
+
+    async def list_deck_summaries(self, format_filter: str | None = None) -> list[DeckSummary]:
+        """List every deck's metadata and counts without loading a single card row.
+
+        The count-only counterpart of :meth:`list_decks`: same filter, same
+        ``created_at DESC, id`` order, same values — but the three counts are computed
+        by the database instead of by summing an eager-loaded ``deck_cards`` collection,
+        so listing 52 decks reads 52 rows rather than every card of every deck.
+
+        The aggregates mirror ``DeckSummary._summary_fields`` exactly:
+        ``mainboard_count`` and ``sideboard_count`` are quantity sums split on the
+        ``sideboard`` flag, and ``distinct_cards`` counts distinct ``card_id`` values
+        across **both** boards, so a card held in the mainboard and the sideboard counts
+        once. A deck with no cards outer-joins to nothing and coalesces to three zeroes.
+
+        Args:
+            format_filter: Optional format to filter by (e.g., "standard")
+
+        Returns:
+            List of DeckSummary schemas (empty list if no decks match)
+
+        Example:
+            summaries = await repo.list_deck_summaries()
+        """
+        mainboard = func.coalesce(
+            func.sum(case((DeckCardModel.sideboard.is_(False), DeckCardModel.quantity), else_=0)),
+            0,
+        )
+        sideboard = func.coalesce(
+            func.sum(case((DeckCardModel.sideboard.is_(True), DeckCardModel.quantity), else_=0)),
+            0,
+        )
+        distinct_cards = func.count(distinct(DeckCardModel.card_id))
+
+        stmt = select(DeckModel, mainboard, sideboard, distinct_cards).outerjoin(
+            DeckCardModel, DeckCardModel.deck_id == DeckModel.id
+        )
+
+        if format_filter is not None:
+            stmt = stmt.where(DeckModel.format == format_filter)
+
+        stmt = stmt.group_by(DeckModel.id).order_by(DeckModel.created_at.desc(), DeckModel.id)
+
+        result = await self.session.execute(stmt)
+
+        return [
+            DeckSummary(
+                id=deck.id,
+                name=deck.name,
+                format=deck.format,
+                strategy=deck.strategy,
+                color_identity=deck.color_identity_list,
+                tags=deck.tags_list,
+                mainboard_count=int(main_count),
+                sideboard_count=int(side_count),
+                distinct_cards=int(distinct_count),
+                created_at=deck.created_at,
+                updated_at=deck.updated_at,
+            )
+            for deck, main_count, side_count, distinct_count in result.all()
+        ]
 
     async def find_deck_by_name(self, name: str) -> Deck | None:
         """Find a deck by case-insensitive partial name match.
