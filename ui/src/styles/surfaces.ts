@@ -11,8 +11,7 @@
  * a component's parent is chosen by whoever renders it, in TSX, at runtime — so this is a
  * MECHANISM PLUS ITS PROOF, not a lint gate. `stepsExactlyOne` is unit-tested in both
  * directions here; whether a given component passes its real parent to it is caught by
- * review. The story record says so plainly rather than implying the adjacency half is
- * automated. (Its sibling constraint, `accent-dim` never on `surface-overlay`, IS a real
+ * review; the adjacency half is not automated. (Its sibling constraint, `accent-dim` never on `surface-overlay`, IS a real
  * guard — see tests/token-usage.test.ts.)
  *
  * THE RAMP IS CLOSED AT FOUR. Do not add a fifth surface above `surface-overlay`:
@@ -50,7 +49,7 @@ export function stepsExactlyOne(from: SurfaceName, to: SurfaceName): boolean {
   // 0 - (-1) === 1. The `SurfaceName` type stops that at every call site TypeScript checks —
   // and stops at none of them the moment a value arrives through an `as` cast, a JSON payload
   // or plain JS. A predicate whose whole job is to be trusted must not answer confidently
-  // about a surface that does not exist. (Review finding, Low.)
+  // about a surface that does not exist.
   if (fromIndex === -1 || toIndex === -1) return false
   return toIndex - fromIndex === 1
 }

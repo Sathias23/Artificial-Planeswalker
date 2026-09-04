@@ -1,5 +1,5 @@
 /**
- * The identity refresh, at module level (story 17.1 — the I/O matrix's store rows).
+ * The identity refresh, at module level.
  *
  * Drives {@link refreshInstanceId} through its INJECTED reader — the seam the function declares
  * for exactly this — and asserts what the system slice ends up holding. The wire half (what
@@ -76,8 +76,8 @@ describe('applyInstanceId is change-detected — a re-confirmed id costs no writ
   it('notifies subscribers exactly once when the same id is applied twice', () => {
     // The guard this observes is why a reconnect to the SAME process is free: `App` subscribes
     // to this store selector-less, so an unguarded same-value write would re-render the whole
-    // tree once per reconnect. Deleting the guard would leave every other test green (review
-    // finding) — this count is the assertion that it exists.
+    // tree once per reconnect. Deleting the guard would leave every other test green — this
+    // count is the assertion that it exists.
     const writes: string[] = []
     const unsubscribe = useSystemStore.subscribe((state) => {
       writes.push(state.instanceId ?? '')

@@ -1,34 +1,31 @@
 /**
- * The format-check fixtures every c4-10 test draws from (story c4-10, AC 26, AC 28).
+ * The format-check fixtures every format-check test draws from.
  *
  * ================= WHY ONE MODULE, AND WHY IT IS A PLAIN `.ts` =========================
  *
  * **One**, because two fixture sets claiming to model the same measured corpus drift the moment
  * one of them is corrected — `tests/unit/companion/conftest.py`'s own header records that
- * happening, and c4-9's review replaced four invented rows in a file whose header promised
- * verbatim ones. Three files need these reports (`formatCheck.test.ts`, `FormatCheck.test.tsx`,
+ * happening. Three files need these reports (`formatCheck.test.ts`, `FormatCheck.test.tsx`,
  * and the pins in `formatCheck.fixtures.test.ts`), and they read the same bytes.
  *
- * **A plain `.ts`, not a `.test.ts`** — the c4-10 review's ruling (decision 2a). The first
- * shipped shape held data AND nine pins in one `.test.ts`, and importing a test file registers
- * its describes in every importer's collection: the pins ran THREE times, silently inflating the
- * suite's pass count with duplicates. Data lives here; the pins live in
- * `formatCheck.fixtures.test.ts`, which imports this module and runs once.
+ * **A plain `.ts`, not a `.test.ts`.** Importing a test file registers its describes in every
+ * importer's collection, so data AND pins in one `.test.ts` would run the pins once per
+ * importer, silently inflating the suite's pass count with duplicates. Data lives here; the
+ * pins live in `formatCheck.fixtures.test.ts`, which imports this module and runs once.
  *
  * That classification has a price this header names rather than hides: a plain `src/` module is
  * scanned by the source-level gates a test file is exempt from. The six `detail` strings are
  * **wire data, not copy** — authored by `src/logic/deck_validator.py` and arriving over the
- * network exactly as a card name does (c4-10 Q15) — and the bodies must carry `is_legal` because
+ * network exactly as a card name does — and the bodies must carry `is_legal` because
  * a fixture models the real response shape. So this file is registered BY NAME in the two gates
  * that would otherwise flag it: `tests/copy-rules.test.ts`'s `WIRE_FIXTURE_MODULES` (with the
  * data-not-copy reason) and the `is_legal` scan in `tests/format-check-source.test.ts` (a fixture
  * describing the field is not the app binding it). A NAMED registry entry with a reason, rather
- * than the blanket test-file exemption — which is the direction the review's deferred C4-retro
- * item points the whole category.
+ * than the blanket test-file exemption.
  *
- * ================= EVERY FIXTURE IS REAL, OR SAYS EXACTLY WHAT IS NOT (AC 26) ==========
+ * ================= EVERY FIXTURE IS REAL, OR SAYS EXACTLY WHAT IS NOT ==================
  *
- * Measured read-only at `4e31ea7`, driving the **real ASGI app in-process** against the shipped
+ * Measured read-only, driving the **real ASGI app in-process** against the shipped
  * database. There is no third category: a fixture is either a **verified real** response or
  * **declared synthetic in place**, with the declaration naming what is real about it and what is
  * not. Five of the states this panel must render have **zero** real instances in the corpus, and
@@ -71,9 +68,9 @@ export const ALL_PASS_REPORT: FormatCheckReport = {
 
 /**
  * ✅ **VERIFIED REAL.** `Kotis, the Fangkeeper — 100-card Brawl` — the **only** deck in the corpus
- * with a real legality violation, and the deck the story's own user statement is about.
+ * with a real legality violation.
  *
- * It carries §2's measurement in one body: the size row says `the minimum is 60` on a deck whose
+ * It carries the measurement in one body: the size row says `the minimum is 60` on a deck whose
  * format is **exact-100** (`plugin/skills/format-legality/SKILL.md:77`), and all 18 brawl decks
  * sit at exactly 100, so the sentence is wrong for **45% of the deck table** while no badge flips.
  * `is_legal` is `false` here **and** there is a violation row, which is the ordinary case; the
@@ -101,11 +98,9 @@ export const BRAWL_VIOLATION_REPORT: FormatCheckReport = {
 
 /**
  * ✅ **VERIFIED REAL.** `Iron Man, Modern Marvel — reminder`, a one-card `historic` deck — and the
- * live singular/plural defect this story is the first thing to put in front of a person:
+ * live singular/plural defect:
  * **`'Mainboard has 1 cards; the minimum is 60.'`** It is Python copy, in
- * `deck_validator.py:693`, and it is ledgered rather than fixed here (Python is untouched, AC 46).
- *
- * Also the C3 retro's manual-testing item **C4**, discharged by the eye-check.
+ * `deck_validator.py:693`, and it is ledgered rather than fixed here (Python is untouched).
  */
 export const ONE_CARD_REPORT: FormatCheckReport = {
   is_legal: false,
@@ -135,7 +130,7 @@ export const ONE_CARD_REPORT: FormatCheckReport = {
  * and running the real `format_check` — so the two advisory sentences are the backend's, not
  * invented. What is synthetic is the format string alone.
  *
- * **This is the `is_legal` trap, on demand** (`deferred-work.md:2430-2437`): `is_legal` is `false`
+ * **This is the `is_legal` trap, on demand**: `is_legal` is `false`
  * while **not one row is a violation**. It is the fixture the trap pin drives — and note what the
  * backend does NOT change: `size`, `copy_limit` and `sideboard` keep answering normally, so this
  * is six ordinary rows and never a second layout.
@@ -244,7 +239,7 @@ export const SINGLETON_VIOLATION_REPORT: FormatCheckReport = {
  * ⚠️ And the composite is one step MORE synthetic than its ingredients: the two halves are each
  * real backend output, but **this merged body as a whole was never emitted by any real
  * `format_check` run** — no single request produced these six rows together. The ingredients are
- * real; their union is the synthetic part (c4-10 review).
+ * real; their union is the synthetic part.
  */
 export const MULTI_VIOLATION_REPORT: FormatCheckReport = {
   is_legal: false,

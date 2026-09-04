@@ -1,5 +1,5 @@
 /**
- * The deck announcer's modal gate, at component level (story c7-6, UX-DR45).
+ * The deck announcer's modal gate, at component level (UX-DR45).
  *
  * WHAT IS HERE AND WHAT IS IN `App.test.tsx`. This file drives the two slices directly — the
  * refetch-settle counter and the agent-view status — and asserts what the component makes of
@@ -107,7 +107,7 @@ describe('a settle behind an OPEN agent view is DROPPED, not deferred (c7-6, UX-
     act(() => openAgentView(VIEW))
     settleRefetch(101, 1)
 
-    // THE STORY'S HEADLINE. The counter moved — this is a real settle, not a skipped one — and
+    // THE HEADLINE CLAIM. The counter moved — this is a real settle, not a skipped one — and
     // the region stayed empty behind the dialog.
     expect(seenNow()).toBe(1)
     expect(region()!.textContent).toBe('')

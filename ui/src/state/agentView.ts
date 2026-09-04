@@ -1,65 +1,13 @@
 /**
- * Whether an agent view is on the glass, and what it is showing — the SEVENTH store, and the
- * first whose whole contract is about a thing being *dismissed without being forgotten*
- * (story c6-5, UX-DR34, UX-DR38, AD-12).
+ * Whether an agent view is on the glass, and what it is showing (UX-DR34, UX-DR38, AD-12).
  *
- * ================= THE SPINE SENTENCE, AND WHY THIS SLICE NEEDS NO NEW NARROWING =======
- *
- * `deck.ts` quotes the architecture spine: *"its state comes from exactly two inputs — REST
- * responses and WebSocket messages. Nothing else may write the store."* `inspection.ts:14`
- * narrowed that, in the open, to *"nothing outside the store writes **server-derived**
- * state"*, and `faces.ts` inherited the narrowing unchanged. This slice inherits it too, and
- * it is the first one where BOTH halves are live at once:
- *
- *   - **The content is server-derived** — an agent view exists because the agent pushed one,
- *     and since c6-6 the writer IS a WebSocket message ({@link openSuggestionsPush}, called by
- *     `connection.ts` off `socket.ts`'s dispatch), which is the spine sentence's own second
- *     input. Nothing narrowed.
- *   - **The open/closed status is a person** — Esc, the close pill and a scrim click are
- *     three gestures, and no request can answer whether somebody is still reading.
- *
- * The two live in one slice rather than two because AC 5 is a statement about their
- * RELATIONSHIP: *"dismissal never clears content — the view remains re-openable for the rest
- * of the session"*. Split across two stores, that invariant would have no address; here it is
- * {@link closeAgentView} writing one field and provably not the other.
- *
- * ================= IT IS A SCALAR, AND THAT IS AC 6 EXPRESSED IN THE TYPE ==============
- *
- * UX-DR38 fixes the overlay stack at EXACTLY ONE level deep, permanently — it is one of the
- * four confirmed UX rulings (2026-07-25), not a current simplification. So {@link content} is
- * a single nullable slot rather than an array, and *"nothing else can open over an open
- * view"* stops being a rule anybody has to obey: a second view has nowhere to go. Opening
- * while open REPLACES, which is the only thing a scalar can do and exactly what c6-6's
- * replace-in-place needed of it.
- *
- * A stack would also have needed a `--z-*` token family to order its levels against, which
- * `AppShell.css:246-250` and `deferred-work.md:1473-1482` both refuse for the same reason.
- *
- * ================= WHAT THIS MODULE DELIBERATELY DOES NOT DO ==========================
- *
- * - **It renders nothing.** `containers/AgentView` draws; this decides. It imports no React.
- * - **It does not listen to the socket ITSELF.** `socket.ts` owns the one dispatch switch and
- *   `connection.ts` is the seam that calls {@link openSuggestionsPush} from it — this module
- *   still imports neither, so the store has no opinion about how a frame reached it.
- * - **It holds per-kind retention and unread flags, and they EXTENDED this shape rather than
- *   reshaping it** (c6-8, and this bullet is the prediction it discharges). {@link
- *   AgentViewState.status} and {@link AgentViewState.content} are untouched and remain the
- *   single source of *"what is on the glass"*; {@link AgentViewState.retained} and {@link
- *   AgentViewState.unread} are BOOKKEEPING BESIDE them, never a second open-view mechanism.
- *   UX-DR38's one-overlay scalar therefore still holds by construction — there is exactly one
- *   `content`, and `retained` is a map of things that are NOT on the glass.
- * - **It holds no focus.** Which element focus returns to on dismissal is one container's
- *   private business for the lifetime of one mount, not shared state — `AgentView.tsx` holds
- *   it in a ref, the way `SkipLink` holds `heldFocus`. c6-8's *"close returns focus to the
- *   pill"* needed no state here either: re-opening from a pill MOUNTS the shell, whose mount
- *   effect captures `document.activeElement` — which is the pill.
- * - **It validates no ITEM.** {@link suggestionsViewOf} is total about the payload's SHAPE —
- *   an absent payload, absent items and a blank title all construct a valid view — and says
- *   nothing about whether a `card_id` resolves. That was c6-7's, and c6-7 did it AT THE ROW
- *   rather than here: `SuggestionsView.tsx` types every item field `unknown` and gates it with
- *   `typeof` before use, so a non-string `card_id` or a missing `reason` degrades that entry
- *   alone (FR-13/AD-7: one bad entry degrades, the push never fails wholesale). This store is
- *   deliberately unchanged by that story — `deferred-work.md:209` is closed at the row.
+ * The content is server-derived (a WebSocket push, written via `connection.ts`); the open/closed
+ * status is a person's. Both live in one slice because the invariant is about their relationship:
+ * *"dismissal never clears content — the view remains re-openable for the rest of the session"*
+ * (UX-DR34). `content` is a single slot, not an array, because UX-DR38 fixes the overlay stack at
+ * one level: opening while open REPLACES. This module renders nothing, listens to no socket
+ * itself, holds no focus, and validates no ITEM — each view degrades a bad entry at the row that
+ * renders it (FR-13/AD-7).
  */
 
 import { create } from 'zustand'
@@ -77,33 +25,11 @@ import type {
 } from '../api/schema'
 
 /**
- * **The app's word for each kind of agent view** — the nav pill's label, and the fallback title
- * a view is called when the agent supplies none of its own (stories c6-6 Q7 and c6-8 Task 2).
- *
- * **Copy, and declared as such** — `copy-rules.test.ts`'s `COPY_MODULES` carries this module
- * with that reason. It is the one AUTHORED copy in the state layer, and it is here rather than
- * in a container's `copy.ts` for three reasons that point the same way: `deferred-work.md`'s
- * dialog-accessible-name entry says the guard belongs *"at the point content is constructed"*,
- * which is {@link suggestionsViewOf} below; the nav pill needs the same word for the same kind,
- * so a constant owned by any single container would be the wrong address for the second reader;
- * and Epic 9's three view stories each need their kind's word for a fallback title BEFORE their
- * container exists. c6-6's review kept `SUGGESTIONS_VIEW_TITLE` here explicitly *as the c6-8
- * precedent*, and this table is that precedent honoured: **one word, one owner, four kinds.**
- *
- * Spellings are `EXPERIENCE.md:39-42`'s canonical sentence case. `{typography.label}` uppercases
- * them at render, which is a STYLE and not a spelling — the string a screen reader speaks and
- * the string in this table are the same string, which is why the casing lives in CSS.
- *
- * Names rather than anything assembled from the wire kind (`'tier_list'` de-underscored and
- * title-cased), which was the rejected alternative twice over: a runtime-assembled user-facing
- * string is exactly the residue `copy-rules.test.ts`'s header warns its detector cannot see, and
- * *"Card groups"* is not derivable from `groups` by any rule at all.
- *
- * `satisfies Record<AgentViewKind, string>` is the exhaustiveness gate: a FIFTH agent-view kind
- * added on the Python side reaches {@link AgentViewKind} through the generator and fails
- * `npm run typecheck` here, naming the kind that has no word yet — the same mechanism
- * `socket.ts`'s total dispatch switch uses, applied to vocabulary. `as const` keeps the literal
- * types so {@link SUGGESTIONS_VIEW_TITLE} stays `'Suggestions'` rather than widening to `string`.
+ * The app's word for each kind of agent view — the nav pill's label and the fallback view title.
+ * Authored copy (`copy-rules.test.ts`'s `COPY_MODULES`), homed here because the accessible-name
+ * guard belongs where content is constructed and the pill needs the same word. Names, not strings
+ * assembled from the wire kind: *"Card groups"* is not derivable from `groups`. `satisfies` makes
+ * a fifth kind added on the Python side fail `npm run typecheck` here, naming the missing word.
  */
 export const AGENT_VIEW_LABELS = {
   suggestions: 'Suggestions',
@@ -113,87 +39,40 @@ export const AGENT_VIEW_LABELS = {
 } as const satisfies Record<AgentViewKind, string>
 
 /**
- * The word a `suggestions` view is called when the agent supplies no title of its own (c6-6, Q7).
- *
- * Now READ FROM {@link AGENT_VIEW_LABELS} rather than declared beside it — c6-8's table made
- * this constant the table's `suggestions` entry, so the two can no longer disagree. Kept as a
- * named export because `suggestionsViewOf`'s fallback and three test files name it, and because
- * *"the word THIS kind falls back to"* is a different claim from *"the word this kind is called
- * in the nav"* even while they are the same string.
+ * The word a `suggestions` view is called when the agent supplies no title. Read from
+ * {@link AGENT_VIEW_LABELS} so the two cannot disagree; kept as a named export because the
+ * fallback in `suggestionsViewOf` and several tests name it.
  */
 export const SUGGESTIONS_VIEW_TITLE = AGENT_VIEW_LABELS.suggestions
 
 /**
- * What the shell draws, plus what the two stories after this one need in order to draw more.
- *
- * Deliberately NOT a wire shape, and that survives c6-6 rather than being relaxed by it: the
- * envelope arrives at {@link suggestionsViewOf} and leaves as this, so nothing downstream holds
- * a frame. The FIELDS are `schema.ts`-typed — `SuggestionItem` is the generated model through
- * the alias, never a hand-written row — which is the half of the rule that matters, because a
- * hand-written item shape is precisely what would drift from the Python side unnoticed.
- *
- * ==== WHY IT RETAINS THREE FIELDS THIS STORY NEVER RENDERS =============================
- * `id`, `ts` and `kind` are all read by code that does not exist yet, and each has a named
- * reader: `id` keys the shell's replace effect (`AgentView.tsx` — a repeat push is a new
- * envelope, and identity is what tells the shell to re-announce); `ts` IS the nav pill's time
- * and c6-8 renders it (UX-DR28 puts the push time on the pill, and the view header carries
- * none); `kind` IS c6-8's kind-switching discriminant and this story's empty-line noun selector in
- * the empty-push line. Retaining them cost one object field each and is what MADE c6-8's
- * *"re-hydrated against current card data"* possible without a second push — the ids and reasons are here, and the
- * ART is always re-fetched rather than retained.
+ * The fields every kind of view carries. NOT a wire shape — nothing downstream holds a frame — but
+ * every item type is the generated model through its alias, so it cannot drift from the Python
+ * side. `id`, `ts` and `kind` are retained though the shell renders none of them: they key the
+ * replace effect, the pill time (UX-DR28) and the kind switch.
  */
 interface AgentViewContentBase {
-  /**
-   * The envelope's `id` — **opaque, for identity and de-duplication, and carrying NO ordering**
-   * (`types.d.ts:1049-1051` is emphatic about it; producers may mint a UUID4). It is the
-   * REPLACE KEY: `AgentView.tsx` keys its replace effect on this, so two pushes are the same
-   * push exactly when the wire says they are.
-   */
+  /** The envelope's `id` — opaque identity, NO ordering. The REPLACE KEY. */
   readonly id: string
-  /** The envelope's `ts` — the ordering key, timezone-aware. Rendered as c6-8's pill time. */
+  /** The envelope's `ts` — the ordering key, timezone-aware. Rendered as the pill time. */
   readonly ts: string
-  /** The view's heading (`DESIGN.md:471` — title in `{typography.heading}`). */
+  /** The view's heading. */
   readonly title: string
-  /**
-   * The summary count beside the title, or `null` when the view has nothing to count. Nullable
-   * rather than defaulting to `0`, because *"0 suggestions"* and *"a view that does not count
-   * things"* are different sentences and the header renders them differently. A push of a
-   * counting kind always counts — `0` is a REAL count and renders, which is the empty-push state.
-   */
+  /** The count beside the title, or `null` for a view that counts nothing. `0` is real and renders. */
   readonly count: number | null
 }
 
 /**
- * What the shell draws — **a per-kind discriminated union since story 16.1**, which is the one
- * structural change that story makes to this slice.
- *
- * c6-8 widened `kind` to the closed four-member enum while `items` stayed
- * `readonly SuggestionItem[]`, which was honest exactly as long as `suggestions` was the only
- * kind whose items anything could render. The moment a second kind carries a DIFFERENT item
- * shape (`SwapItem` is `{out_card_id, in_card_id, rationale, …}`, nothing like a suggestion),
- * one flat `items` type is a lie in one direction or the other. So the union now says which
- * items belong to which kind, and every view's props derive from its own arm by narrowing
- * (`Extract<AgentViewContent, {kind: 'swaps'}>`-style) — never from wire types, which
- * `wire-contract.test.ts` bans outside `src/api/`.
- *
- * All four kinds now carry real item types (story 16.3 widened `groups`, the last arm, exactly
- * as 16.1 widened `swaps` and 16.2 widened `tier_list`) — each in the same commit as the view
- * that renders it and the dispatch arm that delivers it, so no kind is ever *acceptable*
- * before something can display it.
- *
- * Every field stays `schema.ts`-typed — `SuggestionItem`/`SwapItem` are the generated models
- * through their aliases, never hand-written rows — which is the half of the wire rule that
- * matters, because a hand-written item shape is precisely what would drift from the Python side
- * unnoticed. The retention rationale of the pre-16.1 shape (why `id`, `ts` and `kind` are kept)
- * is unchanged and lives on {@link AgentViewContentBase} and the arms.
+ * What the shell draws — a per-kind discriminated union, because one flat `items` type is a lie
+ * the moment two kinds carry different item shapes. Every view's props derive from its own arm by
+ * narrowing, never from wire types, which `wire-contract.test.ts` bans outside `src/api/`.
  */
 export type AgentViewContent =
   | (AgentViewContentBase & {
       readonly kind: 'suggestions'
       /**
-       * The pushed rows, drawn by `SuggestionsView`, which also hydrates each unique `card_id`
-       * itself (nothing seeds an agent-supplied id). Empty is legal and is not an error
-       * (`types.d.ts`: *"the view skips an empty push rather than rejecting it"*).
+       * The pushed rows, drawn by `SuggestionsView`, which hydrates each unique `card_id` itself.
+       * Empty is legal: *"the view skips an empty push rather than rejecting it"*.
        */
       readonly items: readonly SuggestionItem[]
     })
@@ -205,100 +84,55 @@ export type AgentViewContent =
   | (AgentViewContentBase & {
       readonly kind: 'tier_list'
       /**
-       * The pushed tiers, drawn by `TierListView` (story 16.2), which hydrates every unique
-       * card id across all tiers itself. `count` beside this is `items.length` — payload TIERS,
-       * raw: the view's empty-tier skipping is render-only and never rewrites the count.
+       * The pushed tiers, drawn by `TierListView`. `count` is `items.length` — payload TIERS, raw:
+       * the view's empty-tier skipping is render-only and never rewrites the count.
        */
       readonly items: readonly TierItem[]
     })
   | (AgentViewContentBase & {
       readonly kind: 'groups'
       /**
-       * The pushed groups, drawn by `GroupsView` (story 16.3), which hydrates every unique
-       * card id across all groups itself. `count` beside this is `items.length` — payload
-       * GROUPS, raw: the view's empty-group skipping is render-only and never rewrites it.
+       * The pushed groups, drawn by `GroupsView`. `count` is `items.length` — payload GROUPS,
+       * raw: the view's empty-group skipping is render-only and never rewrites it.
        */
       readonly items: readonly GroupItem[]
     })
 
 /**
- * The slice. Two fields, and the whole of AC 5 is that one verb writes one of them.
- *
- * A flat shape rather than `deck.ts`'s wrapped-union trick, for `inspection.ts:144-148`'s
- * reason verbatim: zustand's shallow merge is exactly the semantics wanted here — writing
- * `status` must leave `content` alone, which IS {@link closeAgentView}.
+ * The slice. A flat shape rather than `deck.ts`'s wrapped union because zustand's shallow merge is
+ * exactly the semantics wanted: writing `status` must leave `content` alone.
  */
 export interface AgentViewState {
   /** Whether a view is on the glass. `'closed'` with content is the re-openable state. */
   readonly status: 'open' | 'closed'
   /**
-   * The retained view — the ONE slot (see the header on AC 6). `null` only before the first
-   * push of the session; after that it stays filled, because nothing in this module ever
-   * writes it back to `null` (AC 5, UX-DR34).
-   *
-   * Still a SCALAR after c6-8, and that is UX-DR38 expressed in the type rather than in a rule
-   * anybody has to obey: {@link retained} beside it is a map, but nothing reads a second entry
-   * of it onto the glass — `App.tsx`'s overlay conditional is `content`, singular, unchanged.
+   * The ONE slot (UX-DR38). `null` only before the first push of the session; nothing in this
+   * module ever writes it back to `null` (UX-DR34).
    */
   readonly content: AgentViewContent | null
   /**
-   * **The last view of each kind, kept so a pill can put it back** (c6-8, AC 4).
-   *
-   * `Partial` rather than a full `Record` with nulls, because *"this kind has never pushed"* is
-   * an ABSENT key and not a present empty one: the nav's quiet state (AC 1) is literally
-   * `retained[kind] === undefined`, and a `Record<AgentViewKind, AgentViewContent | null>`
-   * would make it a value anybody could forget to check. Keys accumulate and are never deleted
-   * — the session-long re-openability UX-DR34 promises is exactly this map not shrinking.
-   *
-   * {@link content} is not a duplicate of `retained[content.kind]`, it is the SAME OBJECT: one
-   * `setState` writes both slots from one reference, so no render can read a view from the map
-   * that differs from the one on the glass. Re-opening reads the map back into `content`, which
-   * is why *"the same content"* in AC 4 is an object identity rather than a deep comparison.
-   *
-   * The ITEMS ride along, unhydrated. That is what makes AC 4's *"re-hydrated against current
-   * card data"* possible with no second push — the ids and reasons are here, and the ART was
-   * never retained by anybody (`cards.ts` owns it, and re-mounting the view re-asks).
+   * The last view of each kind, so a pill can put it back. `Partial` because *"never pushed"* is
+   * an ABSENT key; keys are never deleted (UX-DR34). `content` is the SAME OBJECT as
+   * `retained[content.kind]`, so re-opening is an identity. Items ride along unhydrated.
    */
   readonly retained: Partial<Record<AgentViewKind, AgentViewContent>>
   /**
-   * **Which retained views have something the person has not seen** (c6-8, AC 3).
-   *
-   * `Partial<Record<K, true>>` rather than `Record<K, boolean>` or a `Set`: `true` is the only
-   * inhabited value, so *"unread"* is key presence and *"read"* is key absence — there is no
-   * `false` to write, and therefore no way to write `false` where `delete` was meant. A `Set`
-   * would have been the other honest spelling and was rejected only because zustand's shallow
-   * merge compares by reference either way, and a plain object keeps this slice serialisable
-   * beside its three siblings.
-   *
-   * **It has exactly ONE setter, and that is the whole feature** (see {@link openAgentView}): a
-   * push always auto-opens its own view, so its own kind is read on arrival; dismissal is
-   * Brad's own act, so UX-DR34 forbids it marking anything unread; which leaves DISPLACEMENT —
-   * a push of a different kind arriving while another kind's view is open — as the only event
-   * that can leave content unseen. Opening a view (by push or by pill) clears its flag.
+   * Which retained views the person has not seen. `Partial<Record<K, true>>`: *"unread"* is key
+   * presence, so there is no `false` to write where `delete` was meant. Exactly ONE setter
+   * ({@link openAgentView}): dismissal never marks unread (UX-DR34), so DISPLACEMENT by a push of
+   * another kind is the only event that can leave content unseen.
    */
   readonly unread: Partial<Record<AgentViewKind, true>>
   /**
-   * **The session's last {@link HISTORY_CAP} pushes overall, newest first** (story 17.2, FR-18,
-   * the ruled 2026-08-22 session-history home).
-   *
-   * `retained` beside it keeps the LATEST per kind; this keeps the last twenty regardless of
-   * kind, which is what makes an older push of an already-re-pushed kind reachable at all. The
-   * entries hold the SAME `AgentViewContent` references the other two slots hold — no payload
-   * copy, no divergence, and art is never retained (hydration owns it), so twenty entries are a
-   * few KB. Per-tab, in-memory, cleared only by {@link resetAgentView} — a refresh starts empty,
-   * exactly as `retained` does.
-   *
-   * ⚠️ ORDERED BY ENVELOPE `ts`, NEVER BY `id` (ruling recorded in the spec, 2026-08-22): `id`
-   * is opaque identity/dedupe only — `types.d.ts:1049-1051` is emphatic that it carries NO
-   * ordering, and producers may mint a UUID4. An UNPARSEABLE `ts` falls back to the entry's
-   * ARRIVAL position (the front, where a new arrival goes) rather than sorting anywhere — a
-   * malformed `ts` must never silently reorder the list. At the cap the oldest entry drops
-   * silently. See {@link historyWith} for the one function that writes this shape.
+   * The session's last {@link HISTORY_CAP} pushes overall, newest first (FR-18) — the SAME
+   * references the other slots hold. Ordered by envelope `ts`, never by `id` (opaque); an
+   * unparseable `ts` falls back to arrival position rather than silently reordering. See
+   * {@link historyWith}, the one writer of this shape.
    */
   readonly history: readonly AgentViewContent[]
 }
 
-/** The retention capacity FR-18's ruling fixes: the last 20 pushes overall (story 17.2). */
+/** The retention capacity FR-18 fixes: the last 20 pushes overall. */
 export const HISTORY_CAP = 20
 
 /** The state before any agent has pushed anything. Exported so tests can restore it. */
@@ -310,81 +144,23 @@ export const INITIAL_AGENT_VIEW: AgentViewState = {
   history: [],
 }
 
-/**
- * A seventh `create()` and still no second state library (AD-12). `store-writes.test.ts`'s
- * `STORES` table names this module as the one writer.
- */
+/** One store, no second state library (AD-12); `store-writes.test.ts` names this module its writer. */
 export const useAgentViewStore = create<AgentViewState>(() => INITIAL_AGENT_VIEW)
 
 /**
- * Forget everything, including the retained content. **For tests only**, and the docstring
- * says so for the reason `resetInspection` and `resetFaces` say so: the store is module-level,
- * so a view left open by one test is what the next one starts from.
- *
- * This is the ONLY function in this module that clears {@link AgentViewState.content}, and it
- * is unreachable from the app — which is what keeps AC 5 true of every production path.
+ * Forget everything, including the retained content. **For tests only** — the store is
+ * module-level. This is the ONLY function that clears `content`, and it is unreachable from the
+ * app, which is what keeps UX-DR34 true of every production path.
  */
 export const resetAgentView = (): void => {
   useAgentViewStore.setState(INITIAL_AGENT_VIEW, true)
 }
 
 /**
- * Show a view (AC 6). Opening while one is already open REPLACES it at the STATE level — the
- * scalar's only possible behaviour, and the half of the replace-in-place contract this store
- * can honestly claim. The other half is `AgentView.tsx`'s: `App.tsx` renders `<AgentView>` with
- * NO `key`, so a content swap reconciles as a prop update on the same instance and the shell
- * stays mounted across it — which is deliberate rather than incidental. A remount would replay
- * the ENTRY BLOOM in place of the crossfade AC 2 specifies, and would re-capture the
- * return-focus target while focus sits inside the view. c6-6 supplies the missing RE-FIRES
- * instead: an effect keyed on {@link AgentViewContent.id} that re-focuses the heading, mutates
- * its live region and drives the crossfade. This store only guarantees the DATA is correct the
- * instant a consumer reads it.
- *
- * ==== AND SINCE c6-8 IT IS ALSO THE WHOLE KIND-SWITCHING STATE MACHINE (AC 5) ==========
- *
- * Three writes in one `setState`, and the third is the only place in the app that can mark
- * anything unread:
- *
- *   1. **Retain.** `retained[content.kind] = content` — the pill's re-open path (AC 4). With
- *      one exception since the pre-cut R3 guard: a HISTORY REVISIT of a non-latest entry
- *      (`content` already filed in `history` but not the object `retained[kind]` holds) leaves
- *      `retained` untouched — revisiting an old envelope must not corrupt latest-per-kind.
- *   2. **Read.** `unread[content.kind]` is cleared, because this push is ON THE GLASS the
- *      instant this write lands. A push is never unread against itself.
- *   3. **Displace.** If a view of a DIFFERENT kind is currently open, that kind is marked
- *      unread — *"the view switches to the new kind and the previous kind's pill is marked
- *      unread"* (UX-DR34, AC 5). This is what makes *"a push is never silently swallowed"*
- *      true: the displaced view is not lost, it is not on the glass, and the person is told
- *      where it went.
- *
- * The displacement test is `status === 'open' && content.kind !== previous.kind`, and BOTH
- * halves are load-bearing. Without the status check, a push arriving while the view is CLOSED
- * would mark the closed kind unread — but a closed view was dismissed by Brad, and UX-DR34 is
- * explicit that dismissal is never unread. Without the kind check, c6-6's same-kind replace
- * would mark the kind it is replacing *in place* as unread, which is a pill saying *"you
- * haven't seen this"* about the thing being looked at.
- *
- * A same-kind push is therefore untouched by all of this: steps 1 and 2 rewrite the same key,
- * step 3 does not fire, and c6-6's replace-in-place behaves exactly as it shipped.
- *
- * Args:
- *   content: What the shell draws. Written together with the status, the retention and the
- *     unread bookkeeping in ONE `setState`, so no render can ever observe `status: 'open'`
- *     beside stale content — or a pill that is unread and open at the same time.
- */
-/**
- * The envelope's `ts` as a comparable instant, or `null` when it is absent, non-string or
- * unparseable.
- *
- * Reachable in all three bad shapes: `agentEventOf` validates only the `kind` discriminant
- * (`client.ts:701-716`), so a frame with `ts: "yesterday"` — or no `ts` at all, or a non-string
- * one — reaches the store typed as an ISO string. Typed `unknown` and `typeof`-guarded
- * (review finding 5, 2026-08-22) because the `Date` constructor is a trap on exactly the
- * non-string shapes: `new Date(null)` is EPOCH 0 and a numeric `ts` is milliseconds — both
- * would sort a malformed push as decades old and silently drop it at the cap, instead of
- * taking the arrival-position fallback the ordering ruling requires. `pushTimeLabel` degrades
- * the DISPLAY of the same field; this degrades its ORDERING, and both fall back rather than
- * throw.
+ * The envelope's `ts` as a comparable instant, or `null` when absent, non-string or unparseable
+ * (all reachable: `agentEventOf` validates only `kind`). `typeof`-guarded because `new Date(null)`
+ * is EPOCH 0 and a number is milliseconds — either would sort a malformed push as decades old and
+ * silently drop it at the cap instead of taking the arrival-position fallback.
  */
 const instantOf = (ts: unknown): number | null => {
   if (typeof ts !== 'string') return null
@@ -393,23 +169,11 @@ const instantOf = (ts: unknown): number | null => {
 }
 
 /**
- * `history` with `content` filed into it — the ONE function that writes the shape (story 17.2).
- *
- * Three arms, in order:
- *
- *   1. **Same reference already present** → the ARRAY ITSELF, untouched. This is what makes a
- *      re-open (`reopenAgentView`, `reopenPush` — both route through {@link openAgentView})
- *      a no-op for history: revisiting a push is not a new push, and returning the same
- *      reference is what keeps `useAgentViewHistory`'s subscribers from re-rendering on it
- *      (zustand compares slices by reference).
- *   2. **Same `id`, different object** → REPLACED IN PLACE. `id` is identity on the wire, so a
- *      re-push of the same envelope is the same push — c6-6's replace-in-place, at the list.
- *   3. **New id** → INSERTED newest-first by envelope `ts` — **never by `id`** (opaque, carries
- *      no ordering — `types.d.ts:1049-1051`). An unparseable `ts` — on the arrival OR on an
- *      existing entry — falls back to ARRIVAL position: a malformed `ts` must never silently
- *      reorder the list, so the walk stops at the first entry it cannot rank. At the cap the
- *      oldest (last) entry drops silently — including the arrival itself, if it is older than
- *      all twenty.
+ * `history` with `content` filed into it. The same reference already present returns the ARRAY
+ * ITSELF (a re-open is not a new push, and the stable reference spares history subscribers); the
+ * same `id` on a different object is REPLACED IN PLACE; a new id is INSERTED newest-first by `ts`,
+ * stopping at the first entry it cannot rank, and the oldest drops silently at the cap — the
+ * arrival itself included, if it is older than all twenty.
  */
 const historyWith = (
   history: readonly AgentViewContent[],
@@ -435,6 +199,15 @@ const historyWith = (
   return inserted.length > HISTORY_CAP ? inserted.slice(0, HISTORY_CAP) : inserted
 }
 
+/**
+ * Show a view. Opening while one is open REPLACES it (the shell's half of replace-in-place is
+ * `AgentView.tsx`'s `id`-keyed effect on a `key`-less instance). Three writes in ONE `setState`,
+ * so no render observes `status: 'open'` beside stale content or a pill both unread and open:
+ * retain (except on a HISTORY REVISIT of a non-latest entry, which must not corrupt
+ * latest-per-kind); clear this kind's unread; and mark the displaced kind unread only if a view of
+ * a DIFFERENT kind is currently OPEN (UX-DR34) — without the status check a dismissed view would
+ * be marked unread, without the kind check a same-kind replace would mark the thing being looked at.
+ */
 export const openAgentView = (content: AgentViewContent): void => {
   useAgentViewStore.setState((state) => {
     const displaced =
@@ -442,22 +215,14 @@ export const openAgentView = (content: AgentViewContent): void => {
         ? state.content.kind
         : null
     // Rebuilt rather than mutated: zustand compares slices by reference, so a pill subscribed
-    // to `unread` must see a NEW object or it will not re-render. Same for `retained`. The
-    // history append lives HERE too (story 17.2) — the one-writer rule and the one existing
-    // `setState` — and `historyWith` returns the SAME array for a re-open, so a revisit
-    // re-renders no history subscriber.
+    // to `unread` must see a NEW object or it will not re-render. Same for `retained`.
     const unread = { ...state.unread }
     delete unread[content.kind]
     if (displaced !== null) unread[displaced] = true
-    // A HISTORY REVISIT OF A NON-LATEST ENTRY MUST NOT REWRITE THE RETAINED SLOT (pre-cut R3):
-    // `retained[kind]` is the latest-per-kind contract the kind pills re-open from, and identity
-    // here is REFERENCE identity — the latest entry for a kind holds the SAME object as
-    // `retained[kind]` (`ts` is unsafe to rank, `id` carries no order — see `historyWith`). An
-    // entry already filed in `history` that is NOT that object is an older envelope being
-    // revisited: the view opens it, but the retained slot — and with it the pills' recency —
-    // stays exactly where the newest push left it. Everything not in history (a fresh push, a
-    // kind-pill reopen of the retained object itself — a harmless self-assignment) retains as
-    // before.
+    // Identity here is REFERENCE identity — the latest entry for a kind holds the SAME object as
+    // `retained[kind]` (`ts` is unsafe to rank and `id` carries no order). An entry already filed
+    // in `history` that is NOT that object is an older envelope being revisited: the view opens
+    // it, but the retained slot — and the pills' recency — stays where the newest push left it.
     const revisit = state.history.includes(content) && content !== state.retained[content.kind]
     return {
       status: 'open',
@@ -470,38 +235,11 @@ export const openAgentView = (content: AgentViewContent): void => {
 }
 
 /**
- * Put a retained view back on the glass from its nav pill (c6-8, AC 4).
- *
- * **A no-op unless that kind has pushed this session**, which is the store half of AC 1's quiet
- * pill: the container disables a pill with no retained content, and this refuses the same call
- * again here, so *"nothing happens"* is true whether a caller respects the disabled attribute
- * or not. It never invents content and never re-requests: everything it needs was retained by
- * {@link openAgentView} when the push arrived, which is what *"nothing is re-requested from the
- * agent"* means in AC 4.
- *
- * ==== WHAT IT DELIBERATELY DOES NOT DO ================================================
- *
- * **It does not displace anything.** Re-opening cannot be a kind switch, because a pill cannot
- * be clicked while a view is open — the scrim covers the header and the focus trap holds Tab
- * inside the dialog (UX-DR38's one-level stack). So there is no *"previous kind"* to mark
- * unread here, and writing the displacement branch twice would be encoding a state the UI
- * cannot reach. Kind switching while open is push-driven ONLY, and it lives in
- * {@link openAgentView} alone.
- *
- * **It re-uses {@link openAgentView} rather than re-implementing it** — same three writes,
- * with `retained[kind]` supplying the content instead of the wire. The retention rewrite is a
- * self-assignment and the unread clear is the point: *"the accent unread dot until its view is
- * opened"* (AC 3) is discharged by opening, by either route.
- *
- * **It re-opens by MOUNTING.** `App.tsx` renders the overlay only while a view is open, so this
- * write remounts `AgentView` — entry bloom, focus-to-heading and the return-focus capture (which
- * grabs the pill, since the pill is what was just clicked) all re-fire with no code of their own,
- * and `SuggestionsView`'s `items`-keyed hydration effect re-runs against the CURRENT card cache,
- * which is where AC 4's *"stale ids degrade to unknown-card placeholders"* comes from. None of
- * that is this function's doing; all of it is why this function can be four lines.
- *
- * Args:
- *   kind: Which pill was activated.
+ * Put a retained view back on the glass from its nav pill. A no-op unless that kind has pushed
+ * this session; never re-requests. A pill cannot be clicked while a view is open, so this cannot
+ * displace anything and kind switching stays in {@link openAgentView} alone. Remounting the
+ * overlay re-runs the view's hydration against the CURRENT card cache, so stale ids degrade to
+ * unknown-card placeholders with no code here.
  */
 export const reopenAgentView = (kind: AgentViewKind): void => {
   const retained = useAgentViewStore.getState().retained[kind]
@@ -510,25 +248,10 @@ export const reopenAgentView = (kind: AgentViewKind): void => {
 }
 
 /**
- * Put ONE push from the session history back on the glass, by envelope `id` (story 17.2) —
- * {@link reopenAgentView}'s four-line shape, keyed on identity rather than kind, and the verb
- * a history-popover entry activates.
- *
- * **A no-op for an id history does not hold**, for the sibling's reason: the popover only
- * renders entries that exist, and this refuses the same call again here, so *"nothing
- * happens"* is true whether a caller respects the rendered list or not. It never invents
- * content and never re-requests: the entry IS the retained `AgentViewContent` reference, so
- * re-opening mounts the shell and re-hydrates against the CURRENT card cache exactly as a
- * kind-pill re-open does — stale printing UUIDs degrade to unknown-card placeholders through
- * machinery this story does not touch.
- *
- * It delegates to {@link openAgentView}, which files the entry back into `content` and
- * `retained[kind]` (the on-the-glass invariant: one object in all three slots) and — because
- * the entry is the SAME reference already in `history` — leaves the history array untouched,
- * so a revisit never duplicates and never reorders (`historyWith`, arm 1).
- *
- * Args:
- *   id: The envelope `id` of the entry that was activated.
+ * Put ONE push from the session history back on the glass, by envelope `id` — the verb a
+ * history-popover entry activates. A no-op for an id history does not hold. The entry IS the
+ * retained reference, so {@link openAgentView} leaves the history array untouched: a revisit never
+ * duplicates and never reorders.
  */
 export const reopenPush = (id: string): void => {
   const entry = useAgentViewStore.getState().history.find((held) => held.id === id)
@@ -537,35 +260,11 @@ export const reopenPush = (id: string): void => {
 }
 
 /**
- * One `suggestions` envelope → one {@link AgentViewContent}. **Total, by construction.**
- *
- * ==== WHY DEFENCE IS MANDATORY HERE AND NOT MERELY PRUDENT (Q6's ruling) ================
- * Two independent reasons, and either one alone would be enough:
- *
- * 1. **The generated type says so.** `SuggestionsPayload.title` and `.items` are BOTH optional
- *    (`types.d.ts:1108-1111`) — for honest, well-formed wires, because an agent that found
- *    nothing sends no items and an agent that named nothing sends no title. So the `?? []` is
- *    the ordinary path, not the malformed one.
- * 2. **`agentEventOf` validates only `kind`** (`client.ts:701-716`). A frame of
- *    `{"kind":"suggestions"}` with no `payload` at all arrives here typed as a full event, and
- *    a `TypeError` thrown on this path would be an uncaught exception inside a socket message
- *    handler: the socket survives it, and the store write behind it does not. Q6 ruled the
- *    narrower stays kind-only (its documented register) and the defence lives HERE.
- *
- * What it does NOT check is any field of any ITEM — see the module header. This function is
- * total about the payload's shape and silent about its contents.
- *
- * The title fallback is the same guard wearing its accessibility hat, and it is applied here
- * because `deferred-work.md`'s dialog-accessible-name entry asks for it *"at the point content
- * is constructed"*: `aria-labelledby` points at the heading, so a blank title is a
- * `role="dialog"` with no discernible name. `.trim()` rather than a truthiness check — `' '` is
- * a title that renders nothing while passing `!== ''`.
- *
- * Args:
- *   event: The frame, exactly as `socket.ts` narrowed it.
- *
- * Returns:
- *   Content the shell can draw, for every input the wire admits.
+ * One `suggestions` envelope → one {@link AgentViewContent}. Total by construction: the payload's
+ * `title` and `items` are optional for honest wires, and `agentEventOf` validates only `kind`, so a
+ * payload-less frame arrives typed as a full event and a `TypeError` here would be an uncaught
+ * exception inside a socket handler. The title fallback guards the dialog's accessible name;
+ * `.trim()` because `' '` renders nothing while passing `!== ''`. It checks no field of any ITEM.
  */
 export const suggestionsViewOf = (event: SuggestionsEvent): AgentViewContent => {
   const rawItems: unknown = event.payload?.items
@@ -583,19 +282,8 @@ export const suggestionsViewOf = (event: SuggestionsEvent): AgentViewContent => 
 }
 
 /**
- * One `swaps` envelope → one {@link AgentViewContent}. **Total, by construction** — the
- * structural clone of {@link suggestionsViewOf}, and every clause of that function's defence
- * argument applies verbatim: the generated payload fields are optional for honest wires, the
- * narrower is kind-only, a `TypeError` here would be an uncaught exception inside a socket
- * message handler, and the blank-title fallback is the dialog's accessible name being guarded
- * *"at the point content is constructed"*. What it does NOT check is any field of any ITEM —
- * that is `SwapsView`'s, at the row that renders it, exactly as c6-7 homed the same duty.
- *
- * Args:
- *   event: The frame, exactly as `socket.ts` narrowed it.
- *
- * Returns:
- *   Content the shell can draw, for every input the wire admits.
+ * One `swaps` envelope → one {@link AgentViewContent}; {@link suggestionsViewOf}'s defence applies
+ * verbatim. Item fields are `SwapsView`'s to degrade, at the row that renders them.
  */
 export const swapsViewOf = (event: SwapsEvent): AgentViewContent => {
   const rawItems: unknown = event.payload?.items
@@ -613,24 +301,8 @@ export const swapsViewOf = (event: SwapsEvent): AgentViewContent => {
 }
 
 /**
- * One `tier_list` envelope → one {@link AgentViewContent}. **Total, by construction** — the
- * third structural sibling of {@link suggestionsViewOf}, and every clause of that function's
- * defence argument applies verbatim: the generated payload fields are optional for honest
- * wires, the narrower is kind-only, a `TypeError` here would be an uncaught exception inside a
- * socket message handler, and the blank-title fallback is the dialog's accessible name being
- * guarded *"at the point content is constructed"*. What it does NOT check is any field of any
- * ITEM — a tier with a bad letter or missing name is `TierListView`'s to degrade, at the row
- * that renders it, exactly as c6-7 homed the same duty.
- *
- * `count` is `items.length` — payload TIERS, raw, matching how both prior kinds count their own
- * payload items. The view skips *empty* tiers at render; that skipping is render-only and this
- * count deliberately does not anticipate it.
- *
- * Args:
- *   event: The frame, exactly as `socket.ts` narrowed it.
- *
- * Returns:
- *   Content the shell can draw, for every input the wire admits.
+ * One `tier_list` envelope → one {@link AgentViewContent}; {@link suggestionsViewOf}'s defence
+ * applies verbatim. `count` is payload TIERS, raw — the view's empty-tier skipping is render-only.
  */
 export const tierListViewOf = (event: TierListEvent): AgentViewContent => {
   const rawItems: unknown = event.payload?.items
@@ -648,27 +320,9 @@ export const tierListViewOf = (event: TierListEvent): AgentViewContent => {
 }
 
 /**
- * One `groups` envelope → one {@link AgentViewContent}. **Total, by construction** — the
- * fourth and last structural sibling of {@link suggestionsViewOf}, and every clause of that
- * function's defence argument applies verbatim: the generated payload fields are optional for
- * honest wires, the narrower is kind-only, a `TypeError` here would be an uncaught exception
- * inside a socket message handler, and the blank-title fallback is the dialog's accessible
- * name being guarded *"at the point content is constructed"*. What it does NOT check is any
- * field of any ITEM — a group with a blank title or missing rationale is `GroupsView`'s to
- * degrade, at the section that renders it, exactly as c6-7 homed the same duty.
- *
- * The title it falls back to is the PAYLOAD-LEVEL header, distinct from each group's own
- * `title` — the two live at different levels and a push may carry both.
- *
- * `count` is `items.length` — payload GROUPS, raw, matching how all three prior kinds count
- * their own payload items. The view skips *empty* and *malformed* groups at render; that
- * skipping is render-only and this count deliberately does not anticipate it.
- *
- * Args:
- *   event: The frame, exactly as `socket.ts` narrowed it.
- *
- * Returns:
- *   Content the shell can draw, for every input the wire admits.
+ * One `groups` envelope → one {@link AgentViewContent}; {@link suggestionsViewOf}'s defence
+ * applies verbatim. The fallback title is the PAYLOAD-LEVEL header, distinct from each group's
+ * own `title`. `count` is payload GROUPS, raw — the view's skipping is render-only.
  */
 export const groupsViewOf = (event: GroupsEvent): AgentViewContent => {
   const rawItems: unknown = event.payload?.items
@@ -686,200 +340,95 @@ export const groupsViewOf = (event: GroupsEvent): AgentViewContent => {
 }
 
 /**
- * A `suggestions` push arrived: build the content and show it (AC 1, UX-DR34).
- *
- * **The one verb `connection.ts` calls**, and the reason the composition seam needs no
- * `setState` and no store name of its own — `redriveDeckBoot` is the shipped precedent for
- * exactly this shape, and `store-writes.test.ts:112-113` is what would report the alternative.
- *
- * *"Its view opens automatically"* is the confirmed 2026-07-25 ruling, so there is no branch
- * here on whether a view is already open: opening over an open view REPLACES (the scalar), and
- * opening from closed opens. One verb covers both because the store cannot express anything
- * else — and a push arriving while the view is CLOSED with retained content is an open, not a
- * replace, which is what makes it re-run the shell's mount effects (bloom, focus, capture).
+ * A `suggestions` push arrived: build the content and show it (UX-DR34). The one verb
+ * `connection.ts` calls for this kind, so the composition seam needs no `setState` of its own. A
+ * view opens automatically on arrival, so there is no branch on whether one is already open.
  */
 export const openSuggestionsPush = (event: SuggestionsEvent): void => {
   openAgentView(suggestionsViewOf(event))
 }
 
-/**
- * A `swaps` push arrived: build the content and show it (story 16.1) — the second verb
- * `connection.ts` calls, in {@link openSuggestionsPush}'s exact shape and for its exact
- * reasons: no branch on whether a view is already open (opening over an open view REPLACES,
- * which is all the scalar can do), and the composition seam still holds no `setState` and
- * names no store.
- */
+/** A `swaps` push arrived: build the content and show it, in {@link openSuggestionsPush}'s shape. */
 export const openSwapsPush = (event: SwapsEvent): void => {
   openAgentView(swapsViewOf(event))
 }
 
-/**
- * A `tier_list` push arrived: build the content and show it (story 16.2) — the third verb
- * `connection.ts` calls, in {@link openSuggestionsPush}'s exact shape and for its exact
- * reasons: no branch on whether a view is already open (opening over an open view REPLACES,
- * which is all the scalar can do), and the composition seam still holds no `setState` and
- * names no store.
- */
+/** A `tier_list` push arrived: build the content and show it, in {@link openSuggestionsPush}'s shape. */
 export const openTierListPush = (event: TierListEvent): void => {
   openAgentView(tierListViewOf(event))
 }
 
-/**
- * A `groups` push arrived: build the content and show it (story 16.3) — the fourth and last
- * verb `connection.ts` calls, in {@link openSuggestionsPush}'s exact shape and for its exact
- * reasons: no branch on whether a view is already open (opening over an open view REPLACES,
- * which is all the scalar can do), and the composition seam still holds no `setState` and
- * names no store.
- */
+/** A `groups` push arrived: build the content and show it, in {@link openSuggestionsPush}'s shape. */
 export const openGroupsPush = (event: GroupsEvent): void => {
   openAgentView(groupsViewOf(event))
 }
 
 /**
- * Dismiss the view — Esc, the close pill, or a click on the scrim (AC 4, AC 5).
- *
- * **It writes `status` and NOTHING ELSE, and that is the whole of UX-DR34.** *"Dismissal never
- * clears content — the view remains re-openable for the rest of the session."* zustand's
- * shallow merge is what makes the omission load-bearing rather than an oversight, so the
- * absence of `content` from this object is the feature; `agentView.test.ts` asserts the
- * retention directly so a later `setState({ status: 'closed', content: null })` cannot pass.
- *
- * Idempotent, like `clearPin`: closing a closed view is a no-op, not an error.
- *
- * **c6-8 added two fields and this verb still writes neither**, which is the same omission
- * doing twice the work. It does not clear `retained` — that would delete the thing the nav pill
- * exists to put back, and UX-DR34's *"re-openable for the rest of the session"* would survive
- * only until the first dismissal. And it does not SET `unread` — dismissal is Brad's own act, so
- * a pill that grew an unread dot the moment he closed the view would be telling him he has not
- * seen the thing he just closed. Both are asserted directly in `agentView.test.ts`, so a later
- * `setState({ status: 'closed', content: null, retained: {} })` cannot pass.
+ * Dismiss the view — Esc, the close pill, or a scrim click. It writes `status` and NOTHING ELSE,
+ * which is the whole of UX-DR34: zustand's shallow merge makes the omission load-bearing. It does
+ * not clear `retained` and does not SET `unread`; `agentView.test.ts` asserts all three. Idempotent.
  */
 export const closeAgentView = (): void => {
   useAgentViewStore.setState({ status: 'closed' })
 }
 
 /**
- * The content of the view that is CURRENTLY SHOWING, or `null` when nothing is.
- *
- * One derivation, exported, so `App.tsx`'s *"is there an overlay"* and any later consumer's
- * *"what am I drawing"* can never disagree — `targetIdOf`'s idiom in `inspection.ts:210`.
- *
- * The returned reference is STABLE: it is either the stored `content` object or `null`, never
- * a fresh object. zustand v5 matches React's referential default, so a selector that built
- * `{ status, content }` here would re-render its consumer on every unrelated store write and,
- * worse, could loop.
+ * The content of the view CURRENTLY SHOWING, or `null`. One derivation, exported, so consumers
+ * cannot disagree. The reference is STABLE (the stored object or `null`): zustand v5 compares by
+ * reference, so a selector building a fresh object would re-render on every write and could loop.
  */
 export const openViewOf = (state: AgentViewState): AgentViewContent | null =>
   state.status === 'open' ? state.content : null
 
 /**
- * What the overlay slot should show, or `null` for *"render nothing"*.
- *
- * `App.tsx` turns that `null` into an ABSENT `overlay` prop rather than a falsy one —
- * `AppShell.tsx:134-139`'s click-swallower warning is about exactly the difference.
+ * What the overlay slot should show, or `null` for *"render nothing"* — which `App.tsx` turns
+ * into an ABSENT `overlay` prop rather than a falsy one (see `AppShell.tsx`'s click-swallower).
  */
 export const useOpenAgentView = (): AgentViewContent | null => useAgentViewStore(openViewOf)
 
 /**
- * **Is a view on the glass right now** — a BOOLEAN, and the distinction from
- * {@link useOpenAgentView} beside it is the whole reason this exists (story c7-6).
- *
- * `DeckAnnouncer` needs one bit: *"is something modal covering the deck"*, so that a coalesced
- * refetch settling behind an open view is dropped rather than spoken over a person reading a
- * dialog about something else. Reading that bit through `useOpenAgentView` would subscribe the
- * announcer to the CONTENT OBJECT — a fresh reference on every push, carrying items, title and
- * count — and break the *"NARROWED TO PRIMITIVES, one field per subscription"* discipline that
- * component's own selectors are written under. A primitive compares by value, so a second
- * `suggestions` push while a view is already open re-renders the announcer not at all.
- *
- * **`status` alone is a sound reading of "a view is showing".** All four writers move it —
- * {@link openAgentView} to `'open'`, {@link reopenAgentView} and {@link openSuggestionsPush}
- * through it, {@link closeAgentView} to `'closed'` — and `status: 'open'` beside a null
- * `content` is unreachable: `openAgentView` writes both in ONE `setState`, which is the
- * invariant {@link openViewOf} already leans on for its own narrowing. So this hook and that
- * one can never disagree about whether something is showing; they disagree only about how much
- * of it a subscriber has to look at.
+ * Is a view on the glass right now — a BOOLEAN, so `DeckAnnouncer`'s one bit does not re-render
+ * on every push. `status` alone is sound: `status: 'open'` beside a null `content` is unreachable
+ * because `openAgentView` writes both in ONE `setState`.
  */
 export const useAgentViewIsOpen = (): boolean =>
   useAgentViewStore((state) => state.status === 'open')
 
 /**
- * Whether this kind has ever pushed this session (c6-8, AC 1/AC 2) — the pill's quiet-vs-active
- * signal, kept independent of whether that push's `ts` happened to be well-formed.
- *
- * **`retained[kind] !== undefined`, not any field on it — least of all `ts`.** `agentEventOf`
- * validates only the `kind` discriminant (`client.ts:701-716`), so a malformed frame can retain
- * with `ts` absent or unparseable; the pill must still read as *pushed* in that case, because the
- * content is real and was already shown once. Deciding activeness from `.ts` presence instead
- * (as {@link useAgentViewPushTime} alone once did) collapses "pushed, timestamp unreadable" into
- * "never pushed" — a malformed `ts` would then make a session's retained view permanently
- * unreachable via its pill after the next dismissal, which is exactly what UX-DR34's *"the view
- * remains re-openable for the rest of the session"* forbids. A bad `ts` degrades only the time
- * this pill shows, via {@link useAgentViewPushTime} and `pushTimeLabel` — never the pill's own
- * reachability.
- *
- * Args:
- *   kind: Which pill is asking.
+ * Whether this kind has ever pushed this session — the pill's quiet-vs-active signal. Key
+ * presence, not any field on the entry — least of all `ts`: a malformed frame can retain with
+ * `ts` unparseable, and deciding from it would make that view unreachable via its pill after the
+ * next dismissal (UX-DR34). A bad `ts` degrades only the time shown.
  */
 export const useAgentViewHasPush = (kind: AgentViewKind): boolean =>
   useAgentViewStore((state) => state.retained[kind] !== undefined)
 
 /**
- * When this kind last pushed (the envelope's `ts`), or `null` if it never has or that push's
- * `ts` was absent (c6-8, AC 2).
- *
- * **Time only, not activeness** — {@link useAgentViewHasPush} answers "quiet or active", this
- * answers "what time to show on an active pill", and the two can disagree: a retained push with
- * no readable `ts` is active (per `useAgentViewHasPush`) with no time (per this hook). Splitting
- * them is what keeps a malformed `ts` a display-only degradation instead of a reachability bug.
- *
- * A STRING, not the content object, for `usePinnedId`'s reason: the pill renders the time and
- * nothing else from the retained view, and a selector returning the object would re-render every
- * pill whenever any view's ITEMS changed. Primitives compare by value, so a push to `swaps`
- * cannot re-render the `suggestions` pill — which is the *"a push re-renders only the affected
- * pill"* property this story asked the selectors for.
- *
- * Args:
- *   kind: Which pill is asking.
+ * When this kind last pushed (the envelope's `ts`), or `null` if it never has or the `ts` was
+ * absent. Time only, not activeness — the split keeps a malformed `ts` a display-only degradation.
+ * A STRING, not the content object, so a push to `swaps` cannot re-render the `suggestions` pill.
  */
 export const useAgentViewPushTime = (kind: AgentViewKind): string | null =>
   useAgentViewStore((state) => state.retained[kind]?.ts ?? null)
 
 /**
- * Whether this kind's retained view has been displaced unseen (c6-8, AC 3) — the accent dot.
- *
- * `=== true` rather than a truthiness coercion, so the boolean this returns is a real boolean
- * for every input including a kind with no entry: `undefined` would otherwise leak out of a
- * function typed `boolean` on the one path that matters most (a kind that never pushed).
- *
- * Args:
- *   kind: Which pill is asking.
+ * Whether this kind's retained view has been displaced unseen — the accent dot. `=== true` rather
+ * than a truthiness coercion, so a kind with no entry yields a real `false`, not `undefined`.
  */
 export const useAgentViewUnread = (kind: AgentViewKind): boolean =>
   useAgentViewStore((state) => state.unread[kind] === true)
 
 /**
- * The session's push history, newest first (story 17.2) — what the history popover renders.
- *
- * **The STORED ARRAY REFERENCE, never a derivation.** This is the one selector hook in the file
- * that returns a non-primitive, and it is safe for exactly one reason: the array is rebuilt
- * ONLY inside {@link openAgentView} (via `historyWith`), and a re-open of an entry already held
- * returns the same reference — so zustand's referential comparison re-renders a subscriber
- * exactly when the list genuinely changed. A selector that filtered, sliced or mapped here
- * would mint a fresh array every read and loop, which is the discipline `openViewOf`'s
- * docstring set for this store.
+ * The session's push history, newest first — what the history popover renders. The STORED ARRAY
+ * REFERENCE, never a derivation: a selector that filtered or mapped here would mint a fresh array
+ * every read and loop.
  */
 export const useAgentViewHistory = (): readonly AgentViewContent[] =>
   useAgentViewStore((state) => state.history)
 
 /**
- * How many pushes the session history holds (story 17.2) — the History pill's quiet bit.
- *
- * A PRIMITIVE, deliberately, beside the array hook above: the pill itself renders none of the
- * entries, only "quiet or active" (`count === 0` is quiet — the same shape as
- * `useAgentViewHasPush`'s absent-key reading), so subscribing it to the array would re-render
- * the pill on every push for a bit that moves once per session. The popover, which does render
- * entries, takes the array hook — one subscription per consumer, each as narrow as its render.
+ * How many pushes the session history holds — the History pill's quiet bit. A PRIMITIVE beside
+ * the array hook, because the pill renders no entries and must not re-render on every push.
  */
 export const useAgentViewHistoryCount = (): number =>
   useAgentViewStore((state) => state.history.length)

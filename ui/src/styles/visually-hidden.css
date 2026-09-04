@@ -1,12 +1,9 @@
 /* THE VISUALLY-HIDDEN UTILITY — in the accessibility tree, at a size no reader sees.
 
-   ==== THIS FILE EXISTS BECAUSE A TRIGGER FIRED, AND THE TRIGGER WAS WRITTEN DOWN ==========
-   `ManaCurve.css:141-165` declined to promote at the SECOND instance and said exactly what would
-   make it right: *"two instances is not a pattern, and `card-geometry.css` was promoted at c4-3
-   only because four stories consumed it. Recorded as a third-instance trigger: whoever writes the
-   third visually-hidden block promotes it to `src/styles/`."* c4-9 and c4-10 each asserted it had
-   not fired. **c4-11's skip link is the third**, so this is that promotion, in the commit that
-   caused it — and the two existing copies now COMPOSE this class rather than repeating it.
+   ==== WHY THIS IS A SHARED FILE ===========================================================
+   Three consumers need the same block — `CardDetail`'s announcement region, `ManaCurve`'s
+   alternative table and `SkipLink` — and three instances is a pattern where two is not, so the
+   block is declared once here and every consumer COMPOSES this class rather than repeating it.
 
    The precedent for the shape is `card-geometry.css` one directory over: a rule several
    components inherit is declared once globally and consumed BY CLASS NAME, so no component
@@ -20,10 +17,10 @@
    keeps it in the tree and takes it off the glass.
 
    `1px` and not `0`: a zero-sized element is dropped from the accessibility tree by some engines,
-   which is the one direction no jsdom test can see. Both existing copies carry the same citation
-   and it is the escape this file's `px` literals need — DESIGN.md specifies NO visually-hidden
-   treatment for any component, so there is no artefact value to cite and the cited source is
-   **the platform, not the design system** (the c2-6 AC 18 ruling on geometry literals).
+   which is the one direction no jsdom test can see. That platform behaviour is the escape this
+   file's `px` literals need — DESIGN.md specifies NO visually-hidden treatment for any
+   component, so there is no artefact value to cite and the cited source is
+   **the platform, not the design system**.
 
    ==== WHAT IT DELIBERATELY DOES NOT CARRY ==============================================
    **No `pointer-events: none`.** Only one of the three consumers needs it — the announcement

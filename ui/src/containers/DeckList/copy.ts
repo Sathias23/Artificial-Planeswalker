@@ -1,19 +1,19 @@
 /**
- * Every word the deck list panel authors (story c4-7, AC 4, AC 19, AC 20, AC 21, AC 36).
+ * Every word the deck list panel authors.
  *
  * **NO IMPORTS, and that is load-bearing rather than incidental.** `tests/` belongs to the
  * `nodenext` TypeScript project and `src/` to the `bundler` one, so a `ui/tests` file may import
- * an app module only if that module is itself import-free — measured at c3-9, where importing one
- * with extensionless relative imports produced twelve `TS2835` errors with `npm test` green
- * throughout. This module stays import-free exactly as the four copy modules before it do.
+ * an app module only if that module is itself import-free — importing one with extensionless
+ * relative imports produces `TS2835` errors that `npm test` does not see. This module stays
+ * import-free exactly as every other copy module does.
  *
- * ================= WHAT THAT COSTS, AND WHERE THE COST IS PAID (Q5, AC 19) =============
+ * ================= WHAT THAT COSTS, AND WHERE THE COST IS PAID =========================
  *
- * AC 19 wants {@link GROUP_LABELS} coupled to `deckGroups.ts`'s `TypeGroup` **in both
- * directions**, so that a tenth group and a widening to `string` are both `tsc` failures. The
- * obvious spelling — `satisfies Record<TypeGroup, string>` — needs an `import type` of that union,
- * and `import type` does not help: `TS2835` is a RESOLUTION error, raised against the module
- * specifier, and it fires whether or not the import is erased at emit.
+ * {@link GROUP_LABELS} is coupled to `deckGroups.ts`'s `TypeGroup` **in both directions**, so
+ * that a tenth group and a widening to `string` are both `tsc` failures. The obvious spelling —
+ * `satisfies Record<TypeGroup, string>` — needs an `import type` of that union, and `import type`
+ * does not help: `TS2835` is a RESOLUTION error, raised against the module specifier, and it
+ * fires whether or not the import is erased at emit.
  *
  * So the map is declared here, plainly, and the coupling is asserted in `DeckList.tsx`, which
  * imports both. That is `CardPlaceholder`'s shape exactly — an import-free `copy.ts` beside a
@@ -27,8 +27,7 @@
  * Card names, type lines, mana costs and quantities are **data** — they arrive from the wire and
  * no author wrote them. Moving them here to make the module look complete would be the opposite
  * of what the copy guard is for: `COPY_MODULES` is a claim about where AUTHORED WORDS live, and a
- * module that also held card names would make that claim meaningless (decide-once rule 15,
- * *"card data is not copy"*).
+ * module that also held card names would make that claim meaningless: card data is not copy.
  *
  * The GROUP labels below sit on the copy side of that line even though they are named after data,
  * and the distinction is worth stating because it is the one a later reader will question:
@@ -39,7 +38,7 @@
  */
 
 /**
- * The panel's title, and therefore its `<section>`'s accessible name (AC 4).
+ * The panel's title, and therefore its `<section>`'s accessible name.
  *
  * Sourced, not invented: `EXPERIENCE.md:36` names this surface *"Deck list panel"* in the P0
  * component table and `:87` calls its unit a *"Deck row"*. The word "panel" is dropped because
@@ -53,11 +52,11 @@
 export const DECK_LIST_TITLE = 'Deck list'
 
 /**
- * The commander section's label (Q4, AC 20).
+ * The commander section's label.
  *
- * Specified in NO artefact. `deckGroups.ts` partitions the board and `CardGrid.tsx:27` explicitly
- * hands the labelling here — *"a labelled commander section is c4-7's, with the rest of the
- * labelling"* — but neither DESIGN.md nor EXPERIENCE.md gives the words. Singular because a deck
+ * Specified in NO artefact. `deckGroups.ts` partitions the board and `CardGrid` draws it
+ * unlabelled, so this is the only place the word appears — and neither DESIGN.md nor
+ * EXPERIENCE.md gives it. Singular because a deck
  * has one commander in 15 of the 16 real decks that have any; the partner/background case renders
  * two rows under the same heading, which reads correctly either way, where "Commanders" would
  * read wrongly for the common case.
@@ -65,17 +64,15 @@ export const DECK_LIST_TITLE = 'Deck list'
 export const COMMANDER_LABEL = 'Commander'
 
 /**
- * The sideboard section's label (Q4, AC 21).
+ * The sideboard section's label.
  *
- * Also specified in no artefact, and also handed here by name — `deckGroups.ts:188`, *"the
- * sideboard, ungrouped — c4-7 decides whether it draws groups there"*, and
- * `CardGrid.test.tsx:98`, *"does NOT render the sideboard … and c4-7 owns them"*. 41 rows across
- * 5 real decks.
+ * Also specified in no artefact. `CardGrid` deliberately does not draw the sideboard, so this
+ * panel is where its 41 rows across 5 real decks appear at all.
  */
 export const SIDEBOARD_LABEL = 'Sideboard'
 
 /**
- * The type-group headings, keyed by `deckGroups.ts`'s `TypeGroup` (Q5, AC 19).
+ * The type-group headings, keyed by `deckGroups.ts`'s `TypeGroup`.
  *
  * ================= PLURAL, BECAUSE THE ARTEFACT'S ONE EXAMPLE IS ======================
  *

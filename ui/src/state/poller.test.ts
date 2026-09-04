@@ -1,5 +1,5 @@
 /**
- * The poll's schedule, its retry contract and its elapsed clock (story c3-9, AC 3, AC 6, AC 7).
+ * The poll's schedule, its retry contract and its elapsed clock.
  *
  * EVERY assertion runs on fake timers and nothing sleeps for real time — a suite that waited out
  * a 60-second threshold would take a minute per case and would be deleted by the third person to
@@ -96,7 +96,7 @@ describe('the backoff grows and then STOPS growing (AC 3)', () => {
     await vi.advanceTimersByTimeAsync(16_000)
     expect(at).toEqual([0, 2_000, 6_000, 14_000, 30_000])
 
-    // THE CLAMP HALF, from the same schedule (AC 26). 16 s × 2 is 32 s, and the next gap is 30 s;
+    // THE CLAMP HALF, from the same schedule. 16 s × 2 is 32 s, and the next gap is 30 s;
     // an unclamped backoff would have been silent here and for the two hours after it, while
     // every "it retries" assertion above stayed green. This is probe (a)'s target.
     await vi.advanceTimersByTimeAsync(POLL_CEILING_MS)
@@ -381,10 +381,9 @@ describe('an unreachable backend claims no state and keeps trying', () => {
     await vi.advanceTimersByTimeAsync(POLL_BASE_MS + 4_000)
 
     // No update at all: `fetch` rejecting produced no response, so no state was decided.
-    // `disconnected` — the panel that describes a lost backend — is c5-6's by
-    // `CLIENT_ONLY_STATES`, and this story must not claim it. **It still does not, after c5-6**:
-    // the socket writes a different field and `surfaceOf` composes the two, which is exactly the
-    // two-writers race that ruling was chosen to avoid.
+    // `disconnected` — the panel that describes a lost backend — belongs to the socket loop by
+    // `CLIENT_ONLY_STATES`, and the poller must not claim it: the socket writes a different field
+    // and `surfaceOf` composes the two, which is what keeps two writers from racing for one slot.
     expect(updates).toEqual([])
     expect(at).toEqual([0, 2_000, 6_000])
 

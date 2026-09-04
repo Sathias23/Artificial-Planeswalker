@@ -24,7 +24,7 @@ import {
 } from './inspection'
 
 /**
- * The inspection slice (story c4-5, AC 3, AC 4, AC 5, AC 8, AC 9, AC 17, AC 19, AC 20).
+ * The inspection slice.
  *
  * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
@@ -73,7 +73,7 @@ afterEach(() => {
 
 describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () => {
   it('resolves to nothing at all before a deck exists', () => {
-    // Not a bug and not an empty state: `App` mounts the panel only for a loaded deck (Q14), so
+    // Not a bug and not an empty state: `App` mounts the panel only for a loaded deck, so
     // this is the shape the slice holds for the one paint before `setDefaultTarget` runs.
     expect(targetIdOf(useInspectionStore.getState())).toBeNull()
   })
@@ -101,7 +101,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
 
     expect(targetIdOf(useInspectionStore.getState())).toBe('id-Forest')
     // …and the hover is still REMEMBERED rather than discarded, which is what makes release
-    // hand control back to wherever the cursor actually is (AC 20).
+    // hand control back to wherever the cursor actually is.
     expect(useInspectionStore.getState().hoveredId).toBe('id-Llanowar Elves')
   })
 
@@ -131,7 +131,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
   })
 
   it('clears the hover only for the card that still holds it', () => {
-    // THE RACE THIS EXISTS FOR (Q8's one addition), per modality: `mouseleave` on the tile
+    // THE RACE THIS EXISTS FOR, per modality: `mouseleave` on the tile
     // being left and `mouseenter` on the tile being reached both fire, and the losing tile's
     // is free to land second. An unkeyed clear would then erase the winner's target and the
     // panel would snap back to the cold-open card in the middle of a sweep.
@@ -152,7 +152,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
   })
 
   it('clears BOTH transients at once on a deck transition', () => {
-    // `clearTransientTargets` is the boards effect's verb (review 2026-08-05): a hover or a
+    // `clearTransientTargets` is the boards effect's verb: a hover or a
     // focus pointing into a deck that left the glass is stale whichever modality set it.
     setHovered('id-A')
     setFocused('id-B')
@@ -165,10 +165,10 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
 
 describe('hover and focus are TWO slots, resolved by recency (PR #44 P1, UX-DR14)', () => {
   it('a mouse-leave cannot strand a still-focused tile', () => {
-    // THE REPORTED DEFECT, found independently by the review's edge-case layer and by Greptile:
-    // Tab-focus tile A, sweep the mouse over B and away. With one shared slot the leave erased
-    // A's target and the panel snapped to the cold-open card while A still drew its focus ring
-    // — the one case where "hover OR keyboard focus" parity has both at once.
+    // THE DEFECT THIS PREVENTS: Tab-focus tile A, sweep the mouse over B and away. With one
+    // shared slot the leave erased A's target and the panel snapped to the cold-open card while
+    // A still drew its focus ring — the one case where "hover OR keyboard focus" parity has both
+    // at once.
     setDefaultTarget('id-Atraxa')
     setFocused('id-A')
     setHovered('id-B')
@@ -276,7 +276,7 @@ describe('an unknown card cannot become the inspection target (AC 17, UX-DR22)',
   })
 
   it('does NOT refuse an id the cache has never seen', () => {
-    // `undefined` means "never seen" and nothing else (c4-1 AC 4). A slice that refused on
+    // `undefined` means "never seen" and nothing else. A slice that refused on
     // absence would refuse every card on the very first hover of a cold open, before any
     // hydration had run — the FR-13 posture inverted.
     setHovered('id-brand-new')
@@ -328,7 +328,7 @@ describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)'
   })
 
   it('counts the SIDEBOARD as membership — a sideboard pin evicts when its card leaves', () => {
-    // A sideboard card is pinnable (DeckList rows) and is "in the deck's list" in R9's words —
+    // A sideboard card is pinnable (DeckList rows) and counts as "in the deck's list" —
     // deliberately asymmetric with `coldOpenTargetOf`, which draws only what the grid draws.
     togglePin('id-Pithing Needle')
     const departing = boardsOf([
@@ -438,8 +438,9 @@ describe('the selectors return primitives, which is the whole of Q7', () => {
     const pinned = renderHook(() => usePinnedId())
 
     expect(target.result.current).toBe('id-Atraxa')
-    // The pinned subscription is the ID, not a boolean: AC 23's "announces exactly once" needs
-    // the panel to see a pin MOVING between two cards, which `true` → `true` cannot express.
+    // The pinned subscription is the ID, not a boolean: the panel's "announces exactly once"
+    // requirement needs it to see a pin MOVING between two cards, which `true` → `true` cannot
+    // express.
     expect(pinned.result.current).toBeNull()
 
     act(() => togglePin('id-Forest'))
@@ -449,7 +450,8 @@ describe('the selectors return primitives, which is the whole of Q7', () => {
   })
 
   it('re-renders a tile only when ITS liveness changed', () => {
-    // THE MEASUREMENT Q7 RULED ON. Under zustand v5 there is no equality-function argument and
+    // THE MEASUREMENT BEHIND THE PRIMITIVE SELECTORS. Under zustand v5 there is no
+    // equality-function argument and
     // the comparison is React's referential default, so a selector returning `{ targetId,
     // pinned }` re-renders every subscriber on every hover — all 99 tiles, on the sweep the
     // whole card cache exists to make cheap. A boolean re-renders exactly the two tiles whose

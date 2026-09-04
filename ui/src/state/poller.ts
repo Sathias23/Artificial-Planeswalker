@@ -1,7 +1,7 @@
 /**
- * The poll that makes a fresh install come alive on its own (story c3-9, FR-22, AC 3/6/7).
+ * The poll that makes a fresh install come alive on its own (FR-22).
  *
- * The backend half of FR-22 has been done since **c1-6**: `deps.get_session` re-probes readiness
+ * The backend half of FR-22 is in place: `deps.get_session` re-probes readiness
  * on **every** request and never caches, *"because a database created while the backend is
  * running must be picked up with no restart, which a remembered `True` would break as surely as a
  * remembered `False`"*. So `GET /api/decks` flips from `503` to `200` by itself the moment the
@@ -15,7 +15,7 @@
  *
  * ================= THE RETRY DECISION IS `RETRIES_QUIETLY`, READ AT RUNTIME =============
  *
- * `states.ts` has held the retry contract since c2-9 and it is **not uniform**:
+ * `states.ts` holds the retry contract and it is **not uniform**:
  * `database-not-initialized` and `database-updating` retry; `no-active-deck`,
  * `database-updating-stalled` and `internal-error` do not. Its docstring gives the reason for the
  * load-bearing `false`: `internal_error` is deterministic, so *"a quiet retry loop would hammer a
@@ -29,19 +29,15 @@
  * retry itself"*, and a `fetch` rejection produced no state — the panel does not change, so there
  * is nothing to look up. It is retried on the same backoff because a lost backend is transient by
  * nature. The panel that actually describes one — `disconnected`, *"Lost the companion backend"* —
- * is **c5-6's** by `CLIENT_ONLY_STATES`, whose condition is the WebSocket backoff reaching its
- * announcement threshold, and this story may not claim it.
+ * is `CLIENT_ONLY_STATES`'s, whose condition is the WebSocket backoff reaching its
+ * announcement threshold, and this poller may not claim it.
  *
- * **THE RESIDUE THAT LEFT IS CLOSED (c5-6, 2026-08-08).** It read *"a backend down at first load
- * shows the initial panel, quietly retrying"* — ledgered at dw:3451, confirmed live at Block I and
- * judged worse than recorded, because the panel it showed was `no-active-deck`, whose copy is
- * actionable and wrong about a backend that is not running. `src/state/socket.ts` now supplies the
- * missing signal: sixty seconds and four failed attempts after a cold open against nothing, the
- * connection reads `'down'` and `surfaceOf` puts the true panel on the glass. **This poller is
- * unchanged** — it still claims no state for an `unreachable`, which is what made the two halves
- * composable instead of racing.
+ * `src/state/socket.ts` supplies that signal: sixty seconds and four failed attempts after a
+ * cold open against nothing, the connection reads `'down'` and `surfaceOf` puts the true panel
+ * on the glass. This poller claims no state for an `unreachable`, which is what makes the two
+ * halves composable instead of racing.
  *
- * ================= THE NUMBERS, WITH THEIR ARITHMETIC (Q2, Q3) ==========================
+ * ================= THE NUMBERS, WITH THEIR ARITHMETIC ==================================
  *
  * Each constant carries the sum that produced it, in the manner of `FETCH_SPACING_SECONDS`.
  * They are not tuned against a benchmark — there is one client and one localhost backend — they
@@ -89,7 +85,7 @@ export const POLL_CEILING_MS = 30_000
 
 /**
  * How long `database_unavailable` must answer CONTINUOUSLY before the stalled panel replaces the
- * updating one (Q3 — this story's only new number, held open by `EXPERIENCE.md:66` since c2-9).
+ * updating one (`EXPERIENCE.md:66`).
  *
  * 60 s. At the schedule above that is at least six consecutive refusals with the last two a full
  * ceiling apart (t = 0, 2, 6, 14, 30, 60 s), so a single slow write burst cannot escalate: the
@@ -97,8 +93,8 @@ export const POLL_CEILING_MS = 30_000
  * *"Reads haven't resumed for a while"* and tells the user to check whether an import is actually
  * running — a claim that is only worth making once "a while" is long enough to be true.
  *
- * **`database_not_initialized` never escalates, at any elapsed time**, and that is the whole
- * subject of Q3 rather than an omission. A multi-minute first build is that token's NORMAL case,
+ * **`database_not_initialized` never escalates, at any elapsed time**, and that is deliberate
+ * rather than an omission. A multi-minute first build is that token's NORMAL case,
  * and its own copy already promises the wait; escalating it would call a working import stalled,
  * in the one panel whose entire subject is whether the words are true. The clock below is armed
  * by `database_unavailable` and by nothing else.
@@ -241,14 +237,14 @@ export const createPoller = ({
     // No response arrived, so nothing was decided: the panel stands and no update is emitted.
     if (outcome.kind === 'unreachable') return
 
-    // A `200` is `no-active-deck` and its deck list. **c4-2 has now shipped the deck view, and
-    // this line did NOT change** — which is the interesting half. This poll answers *"is the
-    // backend serving decks, and what are they called"*; whether a DECK is on the glass is a
-    // different question, answered by `GET /api/active-deck` in `src/state/deck.ts`, and
-    // `surfaceOf` is the one place the two are reconciled. So the decision below is still made
-    // and is simply not rendered when a deck outranks it — honest and cheap, and it keeps this
-    // file's single subject intact. What the deck view DOES still depend on here is the deck
-    // NAMES: they are what the `no-active-deck` panel lists, and nothing else fetches them.
+    // A `200` is `no-active-deck` and its deck list, even when a deck is on the glass. This
+    // poll answers *"is the backend serving decks, and what are they called"*; whether a DECK
+    // is on the glass is a different question, answered by `GET /api/active-deck` in
+    // `src/state/deck.ts`, and `surfaceOf` is the one place the two are reconciled. So the
+    // decision below is still made and is simply not rendered when a deck outranks it — honest
+    // and cheap, and it keeps this file's single subject intact. What the deck view DOES depend
+    // on here is the deck NAMES: they are what the `no-active-deck` panel lists, and nothing
+    // else fetches them.
     //
     // An empty array is the ordinary fresh-install answer, not an edge case, and renders nothing
     // extra.

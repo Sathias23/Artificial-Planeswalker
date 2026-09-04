@@ -3,20 +3,20 @@ import type { ReactNode } from 'react'
 import './StatChip.css'
 
 /**
- * StatChip — a micro label over a numeric value, with an optional delta (story c2-7, UX-DR11).
+ * StatChip — a micro label over a numeric value, with an optional delta (UX-DR11).
  *
- * PRESENTATION-ONLY (AC 5): no state, no hook, no fetch, no store, no event handler.
+ * PRESENTATION-ONLY: no state, no hook, no fetch, no store, no event handler.
  *
- * THE 17px VALUE HAS NO `font-size` (AC 7, Q1). DESIGN.md's `components.stat-chip.value-size`
+ * THE 17px VALUE HAS NO `font-size`. DESIGN.md's `components.stat-chip.value-size`
  * is 17px and the mock writes it as `font: var(--type-numeric); fontSize: 17` — which is a
  * lint ERROR here, measured: the `font-*` allowed-list admits only CSS-wide keywords, so the
- * one declaration this component's spec is built around has no legal spelling. The ruling: the
+ * one declaration this component's spec is built around has no legal spelling. So the
  * size comes from a ROLE TOKEN plus the numeric companion — `--type-heading` is `500 17px/1.3`
  * against `--type-numeric`'s `500 13px/1.4`, so it is the same weight at the size DESIGN.md
  * asks for, and `font-variant-numeric: var(--type-numeric-features)` restores the tabular
  * digits the heading role does not carry. See StatChip.css, where it is one rule block.
  *
- * THE DELTA IS TINTED BY NUMERIC SIGN (Q6), never by a string prefix. The mock's
+ * THE DELTA IS TINTED BY NUMERIC SIGN, never by a string prefix. The mock's
  * `String(delta).startsWith('-')` is wrong three ways at once: `-0` stringifies to "0", a
  * Unicode minus is not a hyphen, and anything pre-formatted defeats it entirely. A FORMATTED
  * delta ("+$1.20") is a real future need and is deferred to its first consumer, which will add
@@ -26,7 +26,7 @@ import './StatChip.css'
 export interface StatChipProps {
   /**
    * The micro label above the value. A `ReactNode`, unlike Panel's `title` — recorded, not
-   * accidental (review ruling 2026-07-29): Q4 typed `title` as `string` because it doubles as
+   * accidental: `title` is typed `string` because it doubles as
    * the region's `aria-label`, which must be a string in a hook-free component. This slot is
    * never an accessible name, so markup costs nothing. Emptiness is the CALLER's problem — a
    * chip is only mounted to show a stat, so an empty label is caller error, not a state this

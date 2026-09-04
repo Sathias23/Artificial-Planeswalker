@@ -1,11 +1,11 @@
 /**
- * The Scryfall mana-cost scanner, tested against the MEASURED corpus (story c2-8, AC 6-9).
+ * The Scryfall mana-cost scanner, tested against the MEASURED corpus.
  *
- * WHY THIS FILE IS THE PRIMARY GATE AND NOT A SECONDARY ONE. Every other component in Epic C2
+ * WHY THIS FILE IS THE PRIMARY GATE AND NOT A SECONDARY ONE. Every other primitive component
  * can be wrong only in how it LOOKS, and jsdom cannot see that anyway. This one can be wrong in
- * what it SAYS: a cost that renders, looks fine, and is missing a symbol. The epic's own AC
- * names that failure mode — "silent dropping is what makes a cost wrong without looking wrong" —
- * and the composition reference ships it, in one line:
+ * what it SAYS: a cost that renders, looks fine, and is missing a symbol — silent dropping is
+ * what makes a cost wrong without looking wrong — and the composition reference ships exactly
+ * that, in one line:
  *
  *     const parts = String(cost).match(/\d+|[WUBRGC]/gi) || []
  *
@@ -14,13 +14,13 @@
  * Phyrexian half gone, and `{X}`, `{S}`, `{L}`, `{D}`, `{Y}`, `{Z}` and `{HW}` as NOTHING AT
  * ALL. Those exact four defects are pinned as regression tests at the bottom of this file.
  *
- * THE CORPUS IS THE DATABASE, NOT THE EPIC. The epic names four cases; the shipped card table
- * has NINE families. Three-part hybrid Phyrexian (`{R/W/P}`, Nahiri) and colourless hybrid
+ * THE CORPUS IS THE DATABASE, NOT THE DESIGN NOTES. The obvious cases are four; the shipped
+ * card table has NINE families. Three-part hybrid Phyrexian (`{R/W/P}`, Nahiri) and colourless hybrid
  * (`{C/W}`, Ulalek) both break a parser that assumes `/` splits a symbol into exactly two
  * colours, and both are real. So is a seven-digit `{1000000}` (Gleemax) and a five-part
  * ` // ` split card (Who // What // When // Where // Why).
  *
- * AND THE STRUCTURAL CLAIM (AC 8), which is the one that actually keeps this honest: the
+ * AND THE STRUCTURAL CLAIM, which is the one that actually keeps this honest: the
  * scanner is TOTAL. It consumes the whole string, so anything it does not recognise comes back
  * as an `unknown` or `text` token rather than being skipped. That is proven here with a symbol
  * family INVENTED for the test (`{Q/W/E}`), which no enumeration in parse.ts mentions — a guard
@@ -113,12 +113,10 @@ describe('the scanner is total (AC 8)', () => {
 
   it('treats undefined, null and the empty string identically (AC 4)', () => {
     // The absent cost arrives as `''` from this repo's own data — 5,943 lands carry the empty
-    // string and `mana_cost` is never NULL. The wire type is NOT nullable either: c3-2 measured
-    // it, and it was already non-null at c3-1 (`mana_cost: string` on both `Card` and
-    // `CardSummary`, from the schemas' NULL-coercing validators). All three spellings are still
-    // handled because `parseManaCost` is exported with a `string | null | undefined` parameter
-    // for callers the wire does not constrain. (Third copy of that prediction; the AC 22 row 8
-    // inventory named only `ManaCost.tsx` and `parse.ts`, and the review caught this one.)
+    // string and `mana_cost` is never NULL. The wire type is NOT nullable either (`mana_cost:
+    // string` on both `Card` and `CardSummary`, from the schemas' NULL-coercing validators). All
+    // three spellings are still handled because `parseManaCost` is exported with a
+    // `string | null | undefined` parameter for callers the wire does not constrain.
     expect(parseManaCost(undefined)).toEqual([])
     expect(parseManaCost(null)).toEqual([])
     expect(parseManaCost('')).toEqual([])
@@ -139,7 +137,7 @@ describe('the nine measured families (AC 6)', () => {
     expect(oneSymbol('{0}')).toMatchObject({ colours: [], glyph: '0', phyrexian: false })
     expect(oneSymbol('{16}')).toMatchObject({ colours: [], glyph: '16' })
     // Seven glyphs in ONE symbol. A pip whose width is pinned equal to its height cannot hold
-    // it, which is why AC 16 asks the pip to grow rather than clip.
+    // it, which is why the pip grows rather than clips.
     expect(oneSymbol('{1000000}')).toMatchObject({ colours: [], glyph: '1000000' })
   })
 
@@ -207,7 +205,7 @@ describe('the nine measured families (AC 6)', () => {
 
   it('three-part hybrid Phyrexian: {R/W/P} — TWO colours plus a marker (AC 9)', () => {
     // Nahiri, the Unforgiving. The family that breaks any parser assuming `/` splits a symbol
-    // into exactly two colours — and the one the epic's four examples never mention.
+    // into exactly two colours — and the one the obvious four examples never mention.
     for (const raw of ['{R/W/P}', '{G/U/P}', '{G/W/P}', '{R/G/P}']) {
       const symbol = oneSymbol(raw)
       expect(symbol.colours, `${raw} should carry exactly two colours`).toHaveLength(2)
@@ -235,9 +233,7 @@ describe('the // separator, in up to five parts (AC 7)', () => {
     for (const separator of separators) {
       expect(separator.raw).toBe(' // ')
     }
-    // And the symbols still arrive in order, all TEN of them — two per part. (This assertion
-    // was written as nine and MEASURED at ten; the count is pinned rather than described for
-    // exactly that reason.)
+    // And the symbols still arrive in order, all TEN of them — two per part.
     const symbols: ManaSymbolToken[] = []
     for (const token of tokens) {
       if (token.kind === 'symbol') symbols.push(token)
@@ -392,8 +388,8 @@ describe('the colour order is a shared, checkable datum', () => {
     // The parser reports what it READ. Canonicalising is a CONSUMER'S decision, made per
     // consumer: the accessible-name formatter keeps this written order ("green or white"),
     // while ManaPip's class canonicalises to WUBRG so fifteen classes serve thirty spellings —
-    // a recorded deviation from Q3's symbol-order gradient (review 2026-07-29). Sorting HERE
-    // would take the choice away from both.
+    // a deliberate deviation from a symbol-order gradient. Sorting HERE would take the choice
+    // away from both.
     expect(oneSymbol('{G/W}').colours).toEqual(['g', 'w'])
     expect(oneSymbol('{W/B}').colours).toEqual(['w', 'b'])
   })

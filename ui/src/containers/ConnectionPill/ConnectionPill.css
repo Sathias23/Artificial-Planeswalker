@@ -1,4 +1,4 @@
-/* The connection pill (story c5-7, UX-DR29, UX-DR40, UX-DR46, UX-DR47,
+/* The connection pill (UX-DR29, UX-DR40, UX-DR46, UX-DR47,
    `DESIGN.md:479` + `components.connection-pill`, `EXPERIENCE.md:43`, `:97`, `:155`).
 
    NO COMPOSITION REFERENCE EXISTS FOR THIS COMPONENT. `DESIGN.md:445` lists what the imported
@@ -7,16 +7,16 @@
    `components.connection-pill` frontmatter block and the `:479` bullet are the whole source;
    there is no arrangement to read and no drift table to write.
 
-   THE MATERIAL IS FOUR DECLARATIONS AND THEY ARE ALL QUOTED (AC 16). `background:
+   THE MATERIAL IS FOUR DECLARATIONS AND THEY ARE ALL QUOTED. `background:
    {colors.surface-panel}`, `border: 1px solid {colors.border-hairline}`, `radius: {rounded.pill}`,
    `dot-size: 8px` — every one resolves to a token that already exists, which is why the token
-   inventory count does not move for this story. A `--connection-pill-*` token would have to earn
+   inventory count does not move for it. A `--connection-pill-*` token would have to earn
    both pins (`tokens.test.ts:321`, `token-usage.test.ts:1170`) and there is nothing here to spend
    it on.
 
    ALL THREE STATUS COLOURS ARE SPENT HERE, BY SPECIFICATION, and that is pre-authorised rather
    than smuggled: `token-usage.test.ts:1012-1016` names this component while explaining why the
-   calm-surface allowlist is SCOPED — *"c5-7's connection pill spends all three status colours by
+   calm-surface allowlist is SCOPED — *"the connection pill spends all three status colours by
    specification. A repo-wide ban would be false."* This file is deliberately NOT in
    `CALM_STYLESHEETS`; the state panel is, and that is the surface UX-DR30 protects.
 
@@ -27,7 +27,7 @@
    ==== NOTHING IN THIS FILE MOVES, UNDER ANY SETTING ==================================
    `tokens.css:305-312` bans `animation-iteration-count` other than 1, the `infinite` keyword and
    the alternate directions across every stylesheet in `ui/`, and names **this component** as the
-   reason that ban exists: *"The connection pill (c5-7) is the component this exists to protect."*
+   reason that ban exists: *"The connection pill is the component this exists to protect."*
    So: no `animation`, and no `transition` either — not on the dot, not on the focus ring, not on
    the border. There is consequently NOTHING to register in the reduced-motion inventory at the
    foot of `tokens.css`, which is the cheapest correct answer to a motion requirement (the
@@ -41,24 +41,23 @@
    RULE BLOCK, so the companion cannot be split off — and an uppercased `SULTAI MIDRANGE` destroys
    the mixed-case name this pill exists to show.
 
-   This is c4-3's lesson arriving a third time; c4-10 hit the identical wall with the format
-   check's server-authored sentence (*"'PYM PARTICLES' IS NOT LEGAL IN BRAWL."*) and resolved it
-   the same way: keep the role for the LABEL, give the DATA a case-preserving role, and
-   distinguish the two by TIER instead. The shipped precedent for exactly this pairing is in the
-   shell's own header — `.app-shell-kicker` is micro/uppercase/tertiary and `.app-shell-deck-name`
-   beside it is not. `DESIGN.md:479` carries the amendment, made in this commit, the way
-   `:236-237` (c4-10) and the empty-deck-line bullet (c4-12) carry theirs. */
+   The format check hit the identical wall with its server-authored sentence (*"'PYM PARTICLES'
+   IS NOT LEGAL IN BRAWL."*) and resolved it the same way: keep the role for the LABEL, give the
+   DATA a case-preserving role, and distinguish the two by TIER instead. The shipped precedent for
+   exactly this pairing is in the shell's own header — `.app-shell-kicker` is
+   micro/uppercase/tertiary and `.app-shell-deck-name` beside it is not. `DESIGN.md:479` carries
+   the amendment, the way `:236-237` and the empty-deck-line bullet carry theirs. */
 
 /* ==== THE PILL ========================================================================
-   `position: fixed`, and this is the ruled shape rather than a convenience (c5-7 Q1, dw:4597).
+   `position: fixed`, and this is deliberate rather than a convenience.
    The element's DOM position — a sibling between `</main>` and `<footer>` — is what makes it the
    last Tab stop before the footer links; this rule is what makes it render bottom-left, in the
    other column from the deck rows, which is where `DESIGN.md:479` and `EXPERIENCE.md:43` put it.
    The two artefacts were never in conflict: one was describing Tab order and the other the screen.
 
-   ANCHORED AT ONE CORNER, NOT FOUR, and `shell.test.ts` was written knowing this component was
-   coming: its full-window-layer guard is value-aware precisely so *"a pill pinned to one corner"*
-   stays silent (`:482-489`, and `fixtures/css/shell-violation.css:256` is that shape as a probe).
+   ANCHORED AT ONE CORNER, NOT FOUR, and `shell.test.ts`'s full-window-layer guard is value-aware
+   precisely so *"a pill pinned to one corner"* stays silent (`:482-489`, and
+   `fixtures/css/shell-violation.css:256` is that shape as a probe).
    `bottom` and `left` alone leave both axes released at their far ends, so this is not a level of
    the overlay stack and UX-DR38's one-level-deep rule is untouched. No `z-index` either: a
    positioned element already paints above the in-flow footer, and declaring a level would invite
@@ -101,7 +100,7 @@
 
      No `cursor: pointer` — the header's "STILL NO `onClick`" argument is about the affordance,
      not just the ARIA attributes: a hand cursor promises a click does something, and the
-     tooltip (story 17.1) reveals on hover and focus, never on click. The UA default for a
+     tooltip reveals on hover and focus, never on click. The UA default for a
      focusable `<button>` with no pointer styling is fine as-is. */
   font: inherit;
 }
@@ -179,7 +178,7 @@
   font: var(--type-body);
 }
 
-/* ==== THE TOOLTIP (story 17.1, UX-DR29, UX-DR39, WCAG 1.4.13) =========================
+/* ==== THE TOOLTIP (UX-DR29, UX-DR39, WCAG 1.4.13) =====================================
    `position: fixed` at the pill's own `left`, anchored FLUSH above the pill's box — flush is
    1.4.13's hoverable clause made structural: with no dead gap between the two boxes the pointer
    can travel from pill to tooltip without a mousemove landing on neither, which is what would
@@ -195,8 +194,8 @@
    `--surface-overlay` / `--border-hairline` / `--radius-sm` / `--type-body` on
    `--text-secondary`: the overlay surface because the tooltip floats above the pill's panel
    surface, and body-on-secondary because the port and the instance id are DATA — an id may not
-   take `--type-micro` (uppercase transform destroys the case an identifier is identified by;
-   c4-3's lesson, third arrival at this component). No `--accent-dim` may enter this file now
+   take `--type-micro` (uppercase transform destroys the case an identifier is identified
+   by). No `--accent-dim` may enter this file now
    that it paints `--surface-overlay` (`token-usage.test.ts`'s cross-block rule) — nothing here
    spends any accent at all, which the file header already requires.
 

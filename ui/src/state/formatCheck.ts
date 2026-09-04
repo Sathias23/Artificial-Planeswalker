@@ -1,8 +1,8 @@
 /**
  * The active deck's format check: the one read that fetches it, and the one writer of its slice
- * (story c4-10, AD-12, AD-16, UX-DR21, FR-13).
+ * (AD-12, AD-16, UX-DR21, FR-13).
  *
- * ================= WHY THIS IS A SIXTH STORE AND NOT A FIELD ON THE DECK (Q5) ===========
+ * ================= WHY THIS IS A SIXTH STORE AND NOT A FIELD ON THE DECK ================
  *
  * Every other C4 panel derives from `boards`, already in the store. This one needs a request of
  * its own — `GET /api/deck/{deck_id}/format-check` — and there were four places it could have
@@ -21,34 +21,32 @@
  *      so it drives this module and this module makes the request.
  *
  * A sixth store is the honest shape: a value with its own lifetime, its own single writer and its
- * own reset, sitting BESIDE the deck rather than inside it. `store-writes.test.ts` moves 5 → 6.
+ * own reset, sitting BESIDE the deck rather than inside it.
  *
- * ================= ONE READ PER SETTLED DETAIL — c7-3 AMENDED Q7's RULING ===============
+ * ================= ONE READ PER SETTLED DETAIL ==========================================
  *
  * `App.tsx` drives {@link loadFormatCheck} from an effect keyed on the **`DeckDetail` object's
- * identity** — overturning, at c7-3 and by ledger (this header named that story from the day it
- * shipped; `deferred-work.md` carried the stale-forever entry), the c4-10 Q7 ruling that keyed
- * it on the deck id STRING. The old ruling was request-thrift from before any staleness signal
- * existed: an id string cannot say "the decklist changed", so the panel went stale forever after
- * any agent edit. `deck.ts` now settles a fresh `detail` exactly once per completed boot AND
- * once per coalesced `deck_changed` refetch, which makes detail identity precisely the staleness
- * signal this route lacked. The amended pin is still a COUNT — one format-check request per
- * settled detail, asserted in `App.test.tsx` — so a render, a poll transition or a socket status
- * change still issue nothing; what changed is that a re-boot or a refetch of the same deck now
- * honestly re-asks a route whose answer may have changed. (Side effect, priced: reconnect and
- * duplicate-`active_deck_changed` re-drives re-ask the ~5 ms route once each.)
+ * identity**, not on the deck id STRING: an id string cannot say "the decklist changed", so
+ * keying on it would leave the panel stale forever after any agent edit. `deck.ts` settles a
+ * fresh `detail` exactly once per completed boot AND once per coalesced `deck_changed` refetch,
+ * which makes detail identity precisely the staleness signal this route needs. The pin is a
+ * COUNT — one format-check request per settled detail, asserted in `App.test.tsx` — so a
+ * render, a poll transition or a socket status change issue nothing, while a re-boot or a
+ * refetch of the same deck honestly re-asks a route whose answer may have changed. (Side
+ * effect, priced: reconnect and duplicate-`active_deck_changed` re-drives re-ask the ~5 ms
+ * route once each.)
  *
- * **There is still no refetch IN THIS MODULE, and no timer.** The refetch trigger is the deck
- * slice's, the debounce is c7-3's supersede-and-restart coalescing (one settle per burst, so one
- * re-ask here), and this module remains one read per call with its generation guard unchanged.
- * Half-building a trigger here would be the second coalescing rule Q7 warned about.
+ * **There is no refetch IN THIS MODULE, and no timer.** The refetch trigger is the deck
+ * slice's, the debounce is the deck slice's supersede-and-restart coalescing (one settle per
+ * burst, so one re-ask here), and this module is one read per call with a generation guard.
+ * Half-building a trigger here would be a second coalescing rule.
  *
- * **And no retry.** `readFormatCheck` issues one request; nothing here asks again. The c3-2 trap
+ * **And no retry.** `readFormatCheck` issues one request; nothing here asks again. The trap
  * (a backend with no database answers `database_not_initialized` to an id that can never succeed)
  * applies to every path-parameter route, and this one has a second reason: a refused read draws
  * NOTHING, so a retry would be spending requests to repair a screen nobody can see is broken.
  *
- * ================= A REFUSAL IS SILENT, AND THAT IS A RULING (Q6, AC 12) ================
+ * ================= A REFUSAL IS SILENT, DELIBERATELY ====================================
  *
  * `ui/README.md:1263-1286` records two precedents that point in opposite directions — *"a card
  * refusal never puts a panel on the glass"* (FR-13: one tile must not take down a view) and *"a
@@ -57,7 +55,7 @@
  * rule's premise fails; but this is a P0 panel rather than one tile among a hundred, so the first
  * rule's premise fails too. `surfaceOf` has no arm for it and nothing upstream rules it.
  *
- * **Ruled: follow the CARD precedent.** `'refused'` renders `null`, exactly as `ManaCurve` and
+ * **It follows the CARD precedent.** `'refused'` renders `null`, exactly as `ManaCurve` and
  * `ColourDistribution` render `null` for an empty derivation — the right column loses its third
  * panel and keeps its first two. Routing this through `panelFor` would replace a working deck view
  * with *"The companion hit a bug"* because one auxiliary read failed, which is FR-13 inverted.
@@ -66,9 +64,7 @@
  *
  * ⚠️ **The declared cost, stated rather than discovered: the failure is INVISIBLE.** A user whose
  * format check never loads sees a right column with two panels and no way to tell that a third
- * was meant to be there. That is ledgered in `deferred-work.md` with a named home (Epic 7's
- * refetch, or c8-6), because it is the honest price of not putting a bug panel over a working
- * deck.
+ * was meant to be there. It is the honest price of not putting a bug panel over a working deck.
  *
  * ================= WHAT THIS MODULE DELIBERATELY DOES NOT DO ============================
  *
@@ -99,7 +95,7 @@ import type { FormatCheckReport } from '../api/schema'
 export type FormatCheckState =
   /** No deck, or a deck whose read has not started. The cold-open state and the no-deck state. */
   | { readonly status: 'idle' }
-  /** A read is in flight. Renders NOTHING — never a skeleton (Q6). */
+  /** A read is in flight. Renders NOTHING — never a skeleton. */
   | { readonly status: 'loading' }
   /** A report arrived. The ONE arm that draws. */
   | { readonly status: 'report'; readonly report: FormatCheckReport }
@@ -115,8 +111,8 @@ export type FormatCheckState =
 export const INITIAL_FORMAT_CHECK_STATE: FormatCheckState = { status: 'idle' }
 
 /**
- * The slice, holding the union **under a key** rather than as the store's own shape — `deck.ts`'s
- * ruling, and for the reason a probe found there: zustand's `setState` MERGES by default, so a
+ * The slice, holding the union **under a key** rather than as the store's own shape — for
+ * `deck.ts`'s reason: zustand's `setState` MERGES by default, so a
  * store whose shape IS the union accepts `setState({ status: 'idle' })` and keeps the `report` of
  * the state before it. A merge of one key replaces that key's value wholesale, so no member's
  * fields can outlive it and no call site has a replace flag to forget.
@@ -196,8 +192,7 @@ export const loadFormatCheck = async (
     // No request, and `'refused'` rather than `'idle'`: the panel draws nothing either way, but
     // "we asked about an id that cannot be addressed" is a settled answer and `'idle'` would say
     // the read never happened. `trim()` and not `=== ''` — `deckPath('  ')` is
-    // `/api/deck/%20%20/format-check`, a request guaranteed to 404, which is the second-lock
-    // weakness `createDeckBoot`'s review closed.
+    // `/api/deck/%20%20/format-check`, a request guaranteed to 404 — a second-lock weakness.
     applyFormatCheckState({ status: 'refused' })
     return
   }

@@ -1,6 +1,6 @@
 /**
  * Which face of a double-faced card the app is showing — the fifth slice, and the SECOND whose
- * input is a person rather than the wire (story c4-6, FR-04, FR-19, UX-DR15, AD-11, AD-12).
+ * input is a person rather than the wire (FR-04, FR-19, UX-DR15, AD-11, AD-12).
  *
  * ================= THE SPINE SENTENCE, ALREADY NARROWED — THIS SLICE INHERITS IT =======
  *
@@ -11,13 +11,13 @@
  * response can contradict it. It carries no deck, no card record, no wire token and no error —
  * one non-negative integer per id, and nothing is ever sent anywhere.
  *
- * ================= WHY IT IS A STORE AND NOT REACT STATE IN THE TILE (Q4) ==============
+ * ================= WHY IT IS A STORE AND NOT REACT STATE IN THE TILE ===================
  *
  * UX-DR15 asks for five things at once, and only a module-scope store satisfies all five:
  * *keyed by Scryfall printing uuid · per tab · in memory · resets on a page refresh · and applies
  * **everywhere the printing appears***. That last clause is the one a `useState` in `CardTile`
- * fails outright: the same printing is drawn by a grid tile and by the detail panel today, and by
- * Epic 6's agent-view thumbnails from c6-5 — three subtrees, two of which are not mounted inside
+ * fails outright: the same printing is drawn by a grid tile, by the detail panel and by
+ * the agent-view thumbnails — three subtrees, two of which are not mounted inside
  * the first. A value that two subtrees must agree on is exactly what a store is for, which is the
  * argument `inspection.ts` makes for its own four ids.
  *
@@ -62,7 +62,7 @@ import { create } from 'zustand'
  * One non-negative integer per printing: which face is showing.
  *
  * **An ABSENT id means the front face**, and that is load-bearing rather than a convenience: the
- * front-face URL must stay byte-identical to the one c4-4 shipped (AC 13 — `face=0` is never
+ * front-face URL must stay byte-identical to the unflipped one (`face=0` is never
  * spelled, because a spelled default is a second browser-cache entry for a warm picture). Absent
  * and stored-`0` therefore have to resolve to the same value, which is what {@link useFaceIndex}'s
  * `?? 0` does. `??` and never `||`, for `inspection.ts`'s reason applied to a number: `0` is a
@@ -100,23 +100,20 @@ export const resetFaces = (): void => {
 }
 
 /**
- * Show this printing's next face (AC 6, AC 13, Q3).
+ * Show this printing's next face.
  *
  * **An INDEX cycled modulo the count, not a boolean toggle**, and the distinction is recorded
- * rather than defended as generality. Measured at Task 0 against the shipped corpus: **all 2,778
+ * rather than defended as generality. Measured against the shipped corpus: **all 2,778
  * cards that get a flip control have exactly two imaged faces**, so this modulo is a two-state
- * toggle for every printing that exists today — and the ledger's warning that *"a `[front, back]`
- * destructuring is wrong for three real cards"* (`deferred-work.md:2032`) is corrected on the
- * record, because all three of those cards are split cards with ZERO imaged faces and no control.
+ * toggle for every printing that exists today (the three real cards a `[front, back]`
+ * destructuring would be wrong for are split cards with ZERO imaged faces and no control).
  * The index is still the honest spelling: the route's `face` is an unbounded non-negative integer
  * over the list `resolve_face_images` returns, which is a list of IMAGES rather than of faces.
  *
  * **A count that cannot support a flip writes nothing at all.** `Number.isInteger` and an
- * explicit `<= 1` refusal, never `count &&` — the c2-7 decide-once ruling's family, one member
- * stricter: `isInteger` refuses everything `isFinite` refuses PLUS the fraction, which matters
- * here because a modulo by `1.5` is expressible arithmetic (review 2026-08-06 corrected this
- * sentence, which named `Number.isFinite` while the code below said `isInteger`): `x % 0`,
- * `x % NaN` and `x % 1.5` produce `NaN` or a fraction, and either would reach the wire as
+ * explicit `<= 1` refusal, never `count &&`: `isInteger` refuses everything `isFinite` refuses
+ * PLUS the fraction, which matters here because a modulo by `1.5` is expressible arithmetic —
+ * `x % 0`, `x % NaN` and `x % 1.5` produce `NaN` or a fraction, and either would reach the wire as
  * `?face=NaN`. Refusing is a NO-OP rather than a correction, so a card already showing its back
  * face stays there: a snap to the front arriving from a guard is the same defect UX-DR15 names.
  *
@@ -138,7 +135,7 @@ export const flipCard = (cardId: string, imagedFaceCount: number): void => {
 }
 
 /**
- * Which face this printing is showing — **0 for a card nobody has flipped** (AC 10, AC 13).
+ * Which face this printing is showing — **0 for a card nobody has flipped**.
  *
  * A PRIMITIVE, so zustand v5's referential comparison re-renders exactly the components whose
  * number changed — the flipped tile and, when it is the inspection target, the detail panel —
@@ -154,7 +151,7 @@ export const useFaceIndex = (cardId: string): number =>
   useFaceStore((state) => state.faces[cardId] ?? 0)
 
 /*
-   THERE IS NO IMPERATIVE `readFaceIndex`, AND THAT IS A DECISION RATHER THAN AN OMISSION.
+   THERE IS NO IMPERATIVE `readFaceIndex`, AND THAT IS DELIBERATE RATHER THAN AN OMISSION.
    `cards.ts` exports one because the inspection slice has to answer "is this card inspectable"
    inside an EVENT HANDLER, which is not a render. Nothing needs a face index outside a render:
    the three readers (the control's `aria-pressed`, the tile's `<img>` and the panel's face-first

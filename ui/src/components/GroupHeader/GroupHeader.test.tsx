@@ -1,6 +1,5 @@
 /**
- * Group header — the type-group divider ("CREATURES 24") over a hairline rule (story c2-7,
- * UX-DR12, AC 4 / 5 / 6 / 15 / 16).
+ * Group header — the type-group divider ("CREATURES 24") over a hairline rule (UX-DR12).
  *
  * The rule and the uppercase are CSS, and jsdom applies none — `text-transform: uppercase`
  * does not change `textContent`, so an assertion on "CREATURES" would be asserting the
@@ -37,7 +36,7 @@ describe('Group header semantics (AC 4, AC 15, UX-DR44)', () => {
     // The literal reading of UX-DR44 ("panel titles AND type-group headers h2") makes a deck
     // list panel's title and its "CREATURES" divider siblings at the same level. That is the
     // spec's choice, taken as written and recorded here rather than quietly "corrected" to an
-    // h3; c4-7 may home a correction if it reads wrong in a real screen reader.
+    // h3.
     render(<GroupHeader label="Creatures" count={1} />)
 
     expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument()
@@ -48,7 +47,7 @@ describe('Group header counts (AC 16)', () => {
   it('RENDERS "0" for count={0}', () => {
     // "CREATURES 0" is the honest state of an empty group and the exact state a deck being
     // built passes through. `{count && <span>{count}</span>}` renders the bare string `0` and
-    // `count ? … : null` drops it — the c2-6 falsy-value family in a numeric prop.
+    // `count ? … : null` drops it — the falsy-value family in a numeric prop.
     const { container } = render(<GroupHeader label="Creatures" count={0} />)
 
     expect(within(container).getByText('0')).toBeInTheDocument()

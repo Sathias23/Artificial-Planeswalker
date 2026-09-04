@@ -21,9 +21,9 @@ import { ORACLE_SCROLLER_LABEL, PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } f
 import { resetDeckMemory } from './deckMemory'
 
 /**
- * The persistent card detail panel (story c4-5, AC 7–AC 26, AC 30).
+ * The persistent card detail panel.
  *
- * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST (AC 37) ====================
+ * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
  * An undeclared limit reads as coverage, so the four things this file provably cannot say come
  * before anything it can:
@@ -31,30 +31,30 @@ import { resetDeckMemory } from './deckMemory'
  *   **HOVER APPEARANCE.** `fireEvent.mouseEnter` DISPATCHES the event and jsdom evaluates no CSS
  *   at all, so what a hover WIRES is provable here and what it LOOKS like is not. The pinned
  *   ring, the live ring, the overlay surface and the clamp on the oracle block are all source
- *   claims (`tests/token-usage.test.ts`, `tests/shell.test.ts`) plus **Task 7's** eye-check.
+ *   claims (`tests/token-usage.test.ts`, `tests/shell.test.ts`) plus **the eye-check**.
  *
  *   **THE REDUCED-MOTION MEDIA QUERY.** jsdom does not evaluate media queries into computed
  *   style, so a test that mounted this panel and read a duration would report the UNREDUCED
- *   value and pass for the wrong reason. What this story ships is stronger than a fallback and
+ *   value and pass for the wrong reason. What ships is stronger than a fallback and
  *   is asserted as source: there is no `transition` and no `animation` in either of this
  *   component's stylesheets, at any setting.
  *
  *   **THE ACCESSIBLE NAME AS A SCREEN READER PHRASES IT.** `dom-accessibility-api` computes a
  *   name; a real reader announces one, with its own pauses and its own handling of an em dash.
  *   The exact strings are pinned here and against the artefact in
- *   `tests/pin-announcement-copy.test.ts`; how they SOUND is the epic manual-testing checklist's.
+ *   `tests/pin-announcement-copy.test.ts`; how they SOUND is the manual-testing checklist's.
  *
  *   **THE `size=large` CACHE RACE.** jsdom loads no images, fires no `load`/`error` and reports
  *   `naturalWidth: 0` always, so `useCardArt`'s settle is inert in both directions here. What
  *   this file proves is that it does not fire WRONGLY; that it fires rightly — and that the
  *   detail render is COLD on first inspection even when the grid is warm, because `?size=large`
- *   is a different cache key — is Task 7's, against a real browser.
+ *   is a different cache key — is the eye-check's, against a real browser.
  *
  * ================= HOW HYDRATION IS DRIVEN, AND WHY ====================================
  *
  * `fetch` is stubbed to a promise that never settles. That is not a way of avoiding the network,
  * it is the state most of these assertions are ABOUT: a read in flight, with the summary tier
- * already on screen behind it (AC 12, AC 13). Tests that need the hydrated tier seed a
+ * already on screen behind it. Tests that need the hydrated tier seed a
  * `'hydrated'` entry directly, which `hydrateCard` returns from without issuing anything.
  */
 
@@ -118,8 +118,8 @@ beforeEach(() => {
   resetInspection()
   resetDeckMemory()
   resetCardCache()
-  // A read that never settles: the `'loading'` tier, which is the state AC 12 and AC 13 are
-  // about. `hydrateCard` never rejects, so nothing here needs a catch.
+  // A read that never settles: the `'loading'` tier, which is the state most assertions here
+  // are about. `hydrateCard` never rejects, so nothing here needs a catch.
   vi.stubGlobal(
     'fetch',
     vi.fn(() => new Promise(() => {})),
@@ -137,7 +137,7 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
 
     // BY ROLE AND ACCESSIBLE NAME, because that is what the panel IS to a screen reader. The
     // `<section aria-label>` and the `<h2>` both come from the `Panel` primitive with no ARIA
-    // written by hand, which is the whole reason c2-7 shaped it that way.
+    // written by hand, which is the whole reason it is shaped that way.
     expect(screen.getByRole('region', { name: PANEL_TITLE })).toBeVisible()
     expect(screen.getByRole('heading', { level: 2, name: PANEL_TITLE })).toBeVisible()
     expect(container.querySelector('.panel-overlay')).not.toBeNull()
@@ -160,7 +160,7 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     const { container } = render(<CardDetail boards={oneCardDeck} />)
     const region = screen.getByRole('region', { name: PANEL_TITLE })
 
-    // THE DEFECT THE UX GATE FOUND AND CLOSED (H4/C1): with `aria-live` on this panel, sweeping
+    // THE DEFECT THIS CLOSES: with `aria-live` on this panel, sweeping
     // a cursor across a 60-card grid fires one polite announcement per card and floods the
     // queue. Asserted on the panel AND on everything inside it, because a live region nested
     // anywhere in here would have the identical effect.
@@ -182,15 +182,14 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(container.querySelector('[aria-modal]')).toBeNull()
 
-    // ==== NARROWED AT c4-11, NOT DELETED (AC 22, Q8) ==================================
-    // This read `container.querySelector('[tabindex]')` and had to change, because c4-11 gives
-    // `.card-detail-oracle` a `tabindex="0"` under the WCAG 2.1.1 mandate at
-    // `deferred-work.md:3875-3883`. THE REASON IT IS WRITTEN DOWN rather than the assertion simply
-    // relaxed: what this line protects is the NOT-A-MODAL claim, and a modal is made of a focus
-    // TRAP — the `[tabindex]` sweep was only ever a cheap proxy for one. Deleting it would drop
-    // the claim; leaving it would forbid the fix. So it is scoped to "no `[tabindex]` OUTSIDE the
-    // oracle scroller", and the two attributes that would actually make this a modal keep their
-    // own unconditional assertions above.
+    // ==== SCOPED, NOT DELETED ==========================================================
+    // A bare `container.querySelector('[tabindex]')` sweep would fail, because
+    // `.card-detail-oracle` carries `tabindex="0"` under WCAG 2.1.1. What this line protects is
+    // the NOT-A-MODAL claim, and a modal is made of a focus TRAP — the `[tabindex]` sweep is only
+    // a cheap proxy for one. Deleting it would drop the claim; leaving it unscoped would forbid
+    // the scroller. So it is scoped to "no `[tabindex]` OUTSIDE the oracle scroller", and the two
+    // attributes that would actually make this a modal keep their own unconditional assertions
+    // above.
     //
     // The exception is named by SELECTOR rather than counted, so a second focusable element
     // smuggled into the panel fails this even though the count would still be one.
@@ -203,13 +202,12 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     expect(tabbables[0].getAttribute('tabindex')).toBe('0')
     expect(tabbables[0].getAttribute('aria-label')).toBe(ORACLE_SCROLLER_LABEL)
 
-    // THE NON-VACUITY ANCHOR (AC 32). This fixture must actually RENDER oracle text — a card with
-    // none renders no scroller at all, under which every assertion above would be checking an
-    // empty list and passing by looking at nothing. That is the "vacuous fixture" shape this
-    // epic's reviews have caught in four consecutive stories.
+    // THE NON-VACUITY ANCHOR. This fixture must actually RENDER oracle text — a card with none
+    // renders no scroller at all, under which every assertion above would be checking an empty
+    // list and passing by looking at nothing. That is the "vacuous fixture" shape.
     expect(tabbables).toHaveLength(1)
     // TRIMMED, so a fixture whose oracle text degraded to whitespace cannot satisfy "actually
-    // renders oracle text" (code review 2026-08-07).
+    // renders oracle text".
     expect(tabbables[0].textContent?.trim()).not.toBe('')
   })
 })
@@ -217,8 +215,8 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
 describe('the cold-open target, with no interaction at all (AC 8, AC 9, Q15)', () => {
   it('targets the first card the GRID draws, and the two agree', () => {
     // THE CROSS-CHECK THAT MAKES `coldOpenTargetOf` A SECOND WRITING RATHER THAN A SECOND RULE
-    // (AD-12). `CardGrid` is not edited by this story, so its flattening expression is
-    // necessarily repeated in the slice; what keeps the two from drifting is this — render the
+    // (AD-12). `CardGrid`'s flattening expression is repeated in the slice; what keeps the two
+    // from drifting is this — render the
     // grid over the same boards and compare against the id of the tile it actually produced.
     const boards = boardsOf([
       row('id-Forest', { name: 'Forest', type_line: 'Basic Land — Forest' }),
@@ -260,7 +258,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
 
-    // AC 12: everything the panel draws is already in hand at the moment of hover, because
+    // Everything the panel draws is already in hand at the moment of hover, because
     // `CardSummary` carries all four text fields and `seedDeckCards` put them there for
     // free. The hydration request below is still in flight and nothing is waiting for it.
     expect(screen.getByText('Atraxa, Praetors’ Voice')).toBeVisible()
@@ -287,9 +285,9 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     // and this is the rendered half.
     expect(img.getAttribute('src')).not.toMatch(/scryfall/i)
     expect(img.getAttribute('src')!.startsWith('/')).toBe(true)
-    // `alt=""` — Q13's divergence from UX-DR48's literal words, following its own logic: the
+    // `alt=""` — a divergence from UX-DR48's literal words, following its own logic: the
     // name is beneath the art in the same panel, so the image is not the only carrier and the
-    // name is announced ONCE (c4-4's Q4 ruling).
+    // name is announced ONCE.
     expect(img.getAttribute('alt')).toBe('')
     expect([...container.textContent.matchAll(/Atraxa, Praetors’ Voice/g)]).toHaveLength(1)
   })
@@ -300,14 +298,14 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
 
     /* The DOM half of the geometry claim and ALL it carries: this box inherits
        `aspect-ratio: 63 / 88` and `border-radius: var(--radius-card)` from the ONE declaration
-       in card-geometry.css. That the box is 63:88 ON SCREEN is Task 7's — jsdom applies no CSS.
+       in card-geometry.css. That the box is 63:88 ON SCREEN is the eye-check's — jsdom applies
+       no CSS.
 
-       A BLOCK COMMENT, DELIBERATELY, and c4-3 predicted this exact repair while c4-4 performed
-       it: CARD_SHAPED's markup half strips block comments only (CSS has no line comments, so
-       that is all a STYLESHEET needs) while it also scans `.tsx`, where a `//` line comment
-       naming the token fires the guard on prose. Its declared instruction is "the repair is to
-       move the prose into a block comment, never to delete the explanation" — followed here,
-       in the second file to trip it. */
+       A BLOCK COMMENT, DELIBERATELY: CARD_SHAPED's markup half strips block comments only (CSS
+       has no line comments, so that is all a STYLESHEET needs) while it also scans `.tsx`, where
+       a `//` line comment naming the token fires the guard on prose. Its declared instruction is
+       "the repair is to move the prose into a block comment, never to delete the explanation" —
+       followed here. */
     const art = container.querySelector('.card-detail-art')!
     expect(art.classList.contains('card-shape')).toBe(true)
   })
@@ -355,7 +353,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
 
   it('falls back to the top-level record per FIELD, not per record', () => {
     // A single-faced card is the other 92% of the corpus, and for it hydration adds nothing
-    // DRAWABLE — which is Q1's real finding and the reason the fallback matters. A face that
+    // DRAWABLE — which is the reason the fallback matters. A face that
     // carried a name but no type line is expressible on this wire (every field is optional AND
     // nullable), so the fallback is per field.
     seedHydrated(
@@ -387,9 +385,9 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     seedHydrated(ATRAXA, record(ATRAXA))
     const { container } = render(<CardDetail boards={oneCardDeck} />)
 
-    // `types.d.ts:325`: "There is no price data of any kind in this record." Brad ruled at c3-2
-    // Q4 that the endpoint ships NO price field rather than a permanently-null one, so the AC is
-    // satisfied by absence — and an absence can only be asserted at the type. The day someone
+    // `types.d.ts:325`: "There is no price data of any kind in this record." The endpoint ships
+    // NO price field rather than a permanently-null one, so the requirement is satisfied by
+    // absence — and an absence can only be asserted at the type. The day someone
     // adds a `prices` field to the wire, this line stops compiling and the decision gets made
     // again rather than sliding in.
     type PriceKeys = Extract<keyof Card, 'prices' | 'price'>
@@ -409,7 +407,7 @@ describe('a card with no picture, and a card the app does not know (AC 16, AC 17
     })
 
     // The same 79-card population as the grid — measured, `large` and `normal` are missing for
-    // exactly the same set, so no new no-image population appears at this story's size. The
+    // exactly the same set, so no new no-image population appears at this size. The
     // `<img>` is REMOVED rather than hidden: an element with a failed `src` still draws the
     // browser's own glyph, which is the one thing AD-11 promises never happens.
     expect(container.querySelector('img')).toBeNull()
@@ -478,7 +476,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
 
     // A CLASS, not a computed style — jsdom applies none. The ring itself is
     // `--shadow-pinned-ring` in CardDetailChrome.css and `tests/tokens.test.ts` holds its VALUE
-    // to DESIGN.md; that it is VISIBLE is Task 7's.
+    // to DESIGN.md; that it is VISIBLE is the eye-check's.
     expect(frame.classList.contains('is-pinned')).toBe(false)
     expect(screen.queryByRole('button', { name: UNPIN_LABEL })).toBeNull()
 
@@ -490,8 +488,8 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     const unpin = screen.getByRole('button', { name: UNPIN_LABEL })
     expect(unpin.tagName).toBe('BUTTON')
     expect(unpin.getAttribute('type')).toBe('button')
-    // In the panel's own header, which is the Tab stop c4-11's enumerated order does not yet
-    // contain — written down here and in the module header so c4-11 inherits it.
+    // In the panel's own header, which is the Tab stop UX-DR40's enumerated order does not
+    // contain — written down here and in the module header.
     expect(unpin.closest('.panel-header')).not.toBeNull()
   })
 
@@ -524,13 +522,11 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     })
     expect(useInspectionStore.getState().pinnedId).toBeNull()
 
-    // THE HALF THIS SUITE STILL DOES NOT TEST, AND NO LONGER CANNOT (AC 37). UX-DR39 layers Esc
-    // — an open agent view closes first, then a pin — and this file said "no overlay exists
-    // until c6-5, so there is nothing here to be layered against" until c6-5 built one. The
-    // layering now has real coverage, deliberately NOT here: `AgentView.test.tsx` owns the phase
-    // mechanism and `App.test.tsx`'s c6-5 block owns the end-to-end keystroke, because both need
-    // the overlay mounted and this file renders `CardDetail` alone. What this suite still proves
-    // is its own half — the bubble listener releases the pin when nothing is above it.
+    // THE HALF THIS SUITE DOES NOT TEST. UX-DR39 layers Esc — an open agent view closes first,
+    // then a pin — and the layering is covered deliberately NOT here: `AgentView.test.tsx` owns
+    // the phase mechanism and `App.test.tsx` owns the end-to-end keystroke, because both need
+    // the overlay mounted and this file renders `CardDetail` alone. What this suite proves is
+    // its own half — the bubble listener releases the pin when nothing is above it.
   })
 
   it('lets the pin outlive the panel, and stops listening when it does (AC 5, Q6)', () => {
@@ -543,13 +539,13 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     //
     // The pin SURVIVES, which is `EXPERIENCE.md:90` — "the pinned target survives closing the
     // view" — and the whole reason the slice is a module-scope store rather than state inside
-    // this component or a context under the left column (Q6). c6-5's agent view mounts and
-    // unmounts over this panel; a pin set inside it has to still be here afterwards.
+    // this component or a context under the left column. The agent view mounts and unmounts
+    // over this panel; a pin set inside it has to still be here afterwards.
     expect(useInspectionStore.getState().pinnedId).toBe(ATRAXA)
 
     // The LISTENER does not, because it is on `document` rather than on this subtree. One that
     // outlived its panel would release a pin for a component that is no longer on screen —
-    // invisible today, and exactly the kind of thing c6-5 would inherit as a mystery.
+    // invisible today, and exactly the kind of thing the agent view would inherit as a mystery.
     act(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     })
@@ -586,7 +582,8 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     const { container } = render(<CardDetail boards={oneCardDeck} />)
     const region = container.querySelector('[aria-live]')!
 
-    // The flood H4/C1 closed: one announcement per hovered card across a 60-card grid. Five
+    // The flood the not-a-live-region rule closes: one announcement per hovered card across a
+    // 60-card grid. Five
     // hovers here, and the region never acquires a character.
     for (const id of [ATRAXA, 'id-Other', ATRAXA, 'id-Other', ATRAXA]) {
       act(() => setHovered(id))
@@ -601,8 +598,8 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
 
     // Activating unpin UNMOUNTS the activated element, and a removed activeElement drops
     // keyboard focus to <body> — Tab would restart from the top of the page. The hand-off
-    // target is the panel's <h2>: the one element c4-11's skip link already aims at, so both
-    // stories converge on a single focus home.
+    // target is the panel's <h2>: the one element the skip link aims at too, so both converge
+    // on a single focus home.
     const unpin = screen.getByRole('button', { name: UNPIN_LABEL })
     act(() => {
       unpin.focus()
@@ -611,7 +608,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     const title = screen.getByRole('heading', { name: PANEL_TITLE })
     expect(document.activeElement).toBe(title)
 
-    // The panel AT REST carries no `[tabindex]` (AC 25's not-a-modal claim): the attribute is
+    // The panel AT REST carries no `[tabindex]` here (the not-a-modal claim): the attribute is
     // imperative, and it leaves with the focus.
     act(() => title.blur())
     expect(title.hasAttribute('tabindex')).toBe(false)
@@ -661,10 +658,9 @@ describe('the deck transition is where an inspection dies (review 2026-08-05, am
     // even a control to notice it by: a hovered tile unmounted by the reload fires no
     // `mouseleave`, so `hoveredId` would keep pointing at the removed card.
     //
-    // SURVIVES THE c7-4 RULE CHANGE UNCHANGED, and honestly: eviction is now the R9 membership
-    // transition rather than the retired reference comparison, and ATRAXA genuinely satisfies
-    // it — in the departing deck's list, absent from deck B's. The transients' unconditional
-    // clear on replacement is status quo no ruling overturned.
+    // NON-VACUOUS UNDER THE MEMBERSHIP RULE: eviction is a membership transition rather than a
+    // reference comparison, and ATRAXA genuinely satisfies it — in the departing deck's list,
+    // absent from deck B's. The transients' clear on replacement is unconditional.
     seedSummary(ATRAXA)
     seedSummary('id-Elves', { name: 'Llanowar Elves', type_line: 'Creature — Elf Druid' })
     const view = render(<CardDetail boards={oneCardDeck} />)
@@ -740,9 +736,9 @@ describe('the panel updates in place on hover AND on focus (AC 10, UX-DR14)', ()
     expect(screen.getByRole('region', { name: PANEL_TITLE })).toBe(region)
     expect(container.querySelector('[aria-live]')).toBe(live)
 
-    // The slice is location-agnostic (AC 4): a deck row and an agent-view thumbnail arrive
-    // through the same verbs. Keyboard focus arrives through ITS OWN verb and slot
-    // (PR #44 P1), and the panel answers it identically — `CardTile.test.tsx` proves the
+    // The slice is location-agnostic: a deck row and an agent-view thumbnail arrive
+    // through the same verbs. Keyboard focus arrives through ITS OWN verb and slot,
+    // and the panel answers it identically — `CardTile.test.tsx` proves the
     // tile's handlers reach both; this proves the panel follows both.
     act(() => setFocused(ATRAXA))
     expect(within(region).getByText('Atraxa, Praetors’ Voice')).toBeVisible()
@@ -750,14 +746,14 @@ describe('the panel updates in place on hover AND on focus (AC 10, UX-DR14)', ()
 })
 
 /**
- * The panel follows the FACE (story c4-6, AC 6, AC 10, AC 11, AC 12, AC 13).
+ * The panel follows the FACE.
  *
  * ================= WHAT THESE CANNOT CARRY ============================================
  *
  * The panel's copy of the control is asserted here as an element, a name and a place in the DOM.
  * Its 28px disc, its 32px hit box, its 0.65 → 1.0 opacity and the 3D rotation of the art behind
- * it are all unevaluated in jsdom — source claims in `FlipControl.css` and `tokens.css`, measured
- * by eye at Task 8. That `?size=large&face=1` is a fourth distinct browser-cache key is likewise
+ * it are all unevaluated in jsdom — source claims in `FlipControl.css` and `tokens.css`, checked
+ * by eye. That `?size=large&face=1` is a fourth distinct browser-cache key is likewise
  * a browser fact: jsdom loads no images at all.
  */
 describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
@@ -822,7 +818,7 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     expect(screen.getByText('{T}: Add {U}.')).toBeVisible()
 
     // A flip made through the STORE, which is how a click on the tile in the OTHER COLUMN reaches
-    // this panel: one answer, two readers (AC 10). The panel's own control is exercised below.
+    // this panel: one answer, two readers. The panel's own control is exercised below.
     act(() => flipCard(PATHWAY, 2))
 
     expect(screen.getByText('Murkwater Pathway')).toBeVisible()
@@ -840,8 +836,8 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     const { container } = render(<CardDetail boards={pathwayDeck} />)
     const srcOf = (selector: string) => container.querySelector(selector)!.getAttribute('src')
 
-    // FRONT: `size=large` and NO `face=`, so the panel's front render is byte-identical to the one
-    // c4-5 shipped and the warm cache is not split (AC 13).
+    // FRONT: `size=large` and NO `face=`, so the panel's front render is the plain `size=large`
+    // cache key and the warm cache is not split.
     expect(srcOf('.is-front')).toBe(`/api/card-image/${PATHWAY}?size=large`)
     // BACK: both parameters, in a stable order — a second ordering would be a second cache key for
     // one picture, which is the whole reason the builder composes them as a list.
@@ -877,7 +873,7 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     fireEvent.click(screen.getByRole('button', { name: FLIP_LABEL }))
 
     // Against the SLICE's whole state: the panel's own control is inside a clickable-looking box
-    // and must still touch none of the inspection verbs (decide-once rule 15).
+    // and must still touch none of the inspection verbs: a flip is not an inspection.
     expect(useInspectionStore.getState()).toEqual(before)
     expect(screen.getByText('Murkwater Pathway')).toBeVisible()
   })

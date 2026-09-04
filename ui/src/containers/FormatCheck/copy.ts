@@ -1,24 +1,24 @@
 /**
- * Every word the format check panel authors (story c4-10, AC 15, AC 16, AC 35, Q1, Q3, Q15).
+ * Every word the format check panel authors.
  *
  * **NO IMPORTS, and that is load-bearing rather than incidental.** `tests/` belongs to the
  * `nodenext` TypeScript project and `src/` to the `bundler` one, so a `ui/tests` file may import
- * an app module only if that module is itself import-free — measured at c3-9, where importing one
+ * an app module only if that module is itself import-free — measured: importing one
  * with extensionless relative imports produced twelve `TS2835` errors with `npm test` green
  * throughout. `import type` does not help: `TS2835` is a RESOLUTION error raised against the
  * specifier, and it fires whether or not the import is erased at emit. So both maps below are
  * declared plainly here and held to their wire unions in `FormatCheck.tsx`, which has both halves
  * in scope — `CardPlaceholder`'s shape exactly, and `DeckList`'s before it.
  *
- * ================= WHAT IS COPY HERE, AND WHAT EMPHATICALLY IS NOT (Q15) ================
+ * ================= WHAT IS COPY HERE, AND WHAT EMPHATICALLY IS NOT ======================
  *
  * **The six `detail` sentences are DATA.** They are authored by `src/logic/deck_validator.py` and
  * arrive over the wire exactly as a card name does — `Every card is legal in standard.`,
  * `'Pym Particles' is not legal in brawl.` — with card names, counts and format names all
  * interpolated by Python. Moving them here to make the module look complete would be the opposite
  * of what the copy guard is for: `COPY_MODULES` is a claim about where AUTHORED WORDS live, and a
- * module that also held the backend's sentences would make that claim meaningless (decide-once
- * rule 14, the argument `DeckList/copy.ts:25-31` makes verbatim about card names).
+ * module that also held the backend's sentences would make that claim meaningless (the argument
+ * `DeckList/copy.ts:25-31` makes about card names).
  *
  * The six LABELS below are copy, and the line is the same one `GROUP_LABELS` sits on: the wire
  * says `'copy_limit'`, a machine token, and **nothing anywhere on the wire says `'Copy limit'`**.
@@ -27,7 +27,7 @@
  */
 
 /**
- * The panel's title, and therefore its `<section>`'s accessible name (AC 4).
+ * The panel's title, and therefore its `<section>`'s accessible name.
  *
  * Sourced, not invented: `DESIGN.md:423` names the component *"Format check (the legality row)"*
  * and `:401` lists *"Format check"* among the composition reference's demonstrated components;
@@ -42,12 +42,12 @@
 export const FORMAT_CHECK_TITLE = 'Format check'
 
 /**
- * The six row labels, keyed by the wire's `FormatCheckName` (Q3, AC 15).
+ * The six row labels, keyed by the wire's `FormatCheckName`.
  *
  * ================= THE MOCK SUPPLIES FIVE OF THE SIX, AND ONE OF THOSE IS WRONG =========
  *
- * Read out of the composition reference rather than remembered, because the story's own context
- * had it slightly wrong and the difference decides one of these entries. The mock's table is:
+ * Read out of the composition reference rather than remembered, because the exact wording decides
+ * one of these entries. The mock's table is:
  *
  * ```js
  * {label: 'Standard',             value: 'legal',         tone: 'positive'},
@@ -58,11 +58,11 @@ export const FORMAT_CHECK_TITLE = 'Format check'
  * {label: 'Rotation exposure',    value: '11 cards',      tone: 'caution'}
  * ```
  *
- * **The first slot holds a FORMAT STRING, not a label.** That is unusable here for two reasons
- * and both are rulings elsewhere in this story: Q14 keeps every format string out of this panel's
- * own chrome (this report's `format` is the NORMALISED value while `DeckBadges` renders the
- * STORED one 24px away, and a label built from one of them would be the only place in the app
- * that invites the comparison), and a label that changed per deck would not be copy at all. So
+ * **The first slot holds a FORMAT STRING, not a label.** That is unusable here for two reasons:
+ * every format string is kept out of this panel's own chrome (this report's `format` is the
+ * NORMALISED value while `DeckBadges` renders the STORED one 24px away, and a label built from one
+ * of them would be the only place in the app that invites the comparison), and a label that
+ * changed per deck would not be copy at all. So
  * `'Legality'` is authored from `EXPERIENCE.md:37`'s IA row — *"Legality, size, copy limit,
  * sideboard, banned, rotation exposure"* — and NOT spelled `'Format legality'`, because the panel
  * above it is already titled *Format check* and the word would be said twice.
@@ -75,7 +75,7 @@ export const FORMAT_CHECK_TITLE = 'Format check'
  * labelled could therefore never fire for a restricted card, in any format, ever. `'Banned cards'`
  * is what the row actually reports, and it matches the backend's own `_unanswerable` subject —
  * *"so banned cards could not be checked"* — so the label and the sentence beneath it agree.
- * `EXPERIENCE.md:37` carries the matching correction in this commit.
+ * `EXPERIENCE.md:37` carries the matching correction.
  *
  * The other four are the mock verbatim. Sentence case, no periods, `DECK_LIST_TITLE`'s voice;
  * uppercasing is not done here and is not done at all — unlike a group header, these labels are
@@ -96,14 +96,14 @@ export const CHECK_LABELS = {
 }
 
 /**
- * What the badge SAYS, keyed by the wire's `FormatCheckStatus` (Q1, AC 16, AC 31).
+ * What the badge SAYS, keyed by the wire's `FormatCheckStatus`.
  *
  * ================= WHY THE STATUS WORD, AND NOT THE MOCK'S SIX VALUES ==================
  *
  * The mock puts short derived values in this slot — `'60 / 60'`, `'no violations'`, `'11 cards'`,
  * `'none'`, `'legal'`, `'15 / 15'` — and **not one of them is on the wire**. Computing them means
- * re-deriving construction rules in TypeScript, which is precisely the fifth declared hole in
- * c3-3's own rule guard: `find_rule_violations`
+ * re-deriving construction rules in TypeScript, which is precisely the declared hole in the
+ * backend's own rule guard: `find_rule_violations`
  * (`tests/unit/companion/test_routes_format_check.py:844-1011`) enforces that `format_check`
  * reimplements no rule, and **declares in writing that it cannot see TypeScript**
  * (`ui/README.md:1149`). A `'no violations'` computed here would be a construction rule living
@@ -118,7 +118,7 @@ export const CHECK_LABELS = {
  *      says that field is *"domain vocabulary, not presentation: mapping these onto a visual tone
  *      is the consuming shell's job"* — which is exactly what this map and `TONE_FOR_STATUS` are,
  *      and nothing more.
- *   2. **Colour is never the sole carrier** (AC 31, UX-DR26/UX-DR29). The word rides beside the
+ *   2. **Colour is never the sole carrier** (UX-DR26/UX-DR29). The word rides beside the
  *      tone, so the row reads the same in greyscale — the rule those two decision records state
  *      for the tier letter and the connection dot, applied here.
  *   3. **It is never empty**, which is load-bearing: `Badge` renders `null` for empty content
@@ -133,7 +133,7 @@ export const CHECK_LABELS = {
  * ⚠️ **The honest cost, recorded rather than smoothed over: `Advisory` is a word many players will
  * not parse.** It is the backend's own vocabulary and it means *"this could not be answered"*
  * rather than *"this failed"* — a distinction the badge alone cannot make. That is why the
- * `detail` sentence renders beneath the label (Q2) instead of the row being a label and a pill:
+ * `detail` sentence renders beneath the label instead of the row being a label and a pill:
  * the sentence is what says *"Rotation exposure cannot be checked: the local card data carries no
  * set release dates."*, and without it this word would be the whole message.
  */

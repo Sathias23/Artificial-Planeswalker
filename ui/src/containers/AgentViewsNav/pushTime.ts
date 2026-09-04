@@ -1,5 +1,5 @@
 /**
- * The push time, formatted for a nav pill (story c6-8, AC 2, Q4).
+ * The push time, formatted for a nav pill.
  *
  * A module of its own rather than a function beside the component, and the reason is mechanical:
  * `react-refresh/only-export-components` fails a `.tsx` that exports anything but components, and
@@ -22,8 +22,8 @@ const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute
 /**
  * The last push's time as the pill shows it, or `null` if it cannot be shown.
  *
- * **Absolute local hour and minute, static.** Q4 rejected relative time (*"2m ago"*) rather than
- * overlooking it: a self-updating clock is a timer, a cadence ruling and a new re-render source,
+ * **Absolute local hour and minute, static.** Relative time (*"2m ago"*) is rejected rather than
+ * overlooked: a self-updating clock is a timer, a cadence decision and a new re-render source,
  * and UX-DR43 asks for an update *when a new push replaces it* — which a static render of `ts`
  * already gives, because a new push writes a new `ts`. The unread dot carries recency at a
  * glance; this carries when.

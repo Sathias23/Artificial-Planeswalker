@@ -1,7 +1,7 @@
-/* FlipControl — the DFC flip control's chrome (story c4-6, FR-04, FR-19, UX-DR7, UX-DR15,
+/* FlipControl — the DFC flip control's chrome (FR-04, FR-19, UX-DR7, UX-DR15,
    UX-DR40, UX-DR41, UX-DR46, UX-DR47, DESIGN.md:386, `components.dfc-flip`).
 
-   ==== WHY THIS FILE IS **NOT** IN CARD_SHAPED, WHICH IS THE WHOLE OF AC 5 ==============
+   ==== WHY THIS FILE IS **NOT** IN CARD_SHAPED ===========================================
    `tests/token-usage.test.ts`'s CARD_SHAPED allowlist cuts both ways: membership declares that a
    file draws CARDS, and it therefore also BANS a chrome radius inside it. DESIGN.md gives
    `components.dfc-flip.radius` as `{rounded.pill}`, so `--radius-pill` and a card-shaped file are
@@ -14,7 +14,7 @@
 
    ==== ONE FILE, TWO MOUNTS, AND NO VARIANT ============================================
    UX-DR15 requires the detail panel to carry "its own copy of the control at the same spec". It is
-   the SAME COMPONENT mounted twice (Q5), and it needs no positioning variant: both parents are
+   the SAME COMPONENT mounted twice, and it needs no positioning variant: both parents are
    already `position: relative` boxes whose top-left corner is the card's top-left — the tile's
    `.card-tile-frame` and the panel's `.card-detail-art` — so one absolute rule serves both. A
    `variant` prop would have been two chances to drift on a spec with a dozen rules.
@@ -32,9 +32,8 @@
    THE FLIP'S 3D Y-ROTATION IS ALSO IN THIS FILE, at the bottom, and that is a decision the
    `.card-faces` block states in full: the machinery is the FLIP's rather than either surface's,
    so the shared classes live beside the control that drives them — NOT in CardTile.css or
-   CardDetailChrome.css (review 2026-08-06 corrected this sentence, which first claimed the
-   opposite of what the same file's own `.card-faces` comment says). Both rotation selectors are
-   registered in tokens.css's block. Nothing here pulses, loops or alternates. */
+   CardDetailChrome.css. Both rotation selectors are registered in tokens.css's block. Nothing here
+   pulses, loops or alternates. */
 
 /* PINNED TOP-LEFT INSIDE `{spacing.2}` — DESIGN.md spells the distance ("inside 8px") and
    `--space-2` IS 8px, so the token is the value rather than a coincidence near it. Positioned
@@ -47,8 +46,8 @@
    the extra ring of hit area is the transparent `::after` below, which paints nothing and extends
    only what the pointer can reach. UX-DR47's floor is 24 × 24, and 28 clears it on the DISC
    ALONE — the pseudo-element takes the reachable box to 32 × 32, which is DESIGN.md's number
-   rather than the floor. (AC 17 asks for that to be MEASURED, not asserted from this comment;
-   jsdom reports zeroes for every rectangle, so the measurement is Task 8's.)
+   rather than the floor. (That is MEASURED in a real browser, not asserted from this comment;
+   jsdom reports zeroes for every rectangle.)
 
    `z-index: 3` — above the tile's own hover raise of `2` (CardTile.css) so a popped card cannot
    paint over its own control, and far below the overlay layer's `20` (AppShell.css:237, UX-DR38),
@@ -78,8 +77,8 @@
 
   /* The `components.dfc-flip` block, verbatim: `{colors.scrim}` background, `{colors.text-primary}`
      foreground, `1px solid {colors.border-strong}` from DESIGN.md, and `{rounded.pill}`. That 1px
-     is a GEOMETRY LITERAL — there is no `--border-width-*` family to point at — so per the c2-8
-     decide-once ruling it is cited beside the value rather than tokenised. */
+     is a GEOMETRY LITERAL — there is no `--border-width-*` family to point at — so it is cited
+     beside the value rather than tokenised. */
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--scrim);
@@ -127,7 +126,7 @@
    `:where()` contributes ZERO, so `:where(.card-tile-frame, .card-detail-art):hover
    .flip-control` is (0,2,0) — exactly what `.flip-control:hover` is. Without it the descendant
    forms would be (0,3,0) and would outrank every later `.flip-control:…` rule in this file,
-   which is the cascade trap c4-4 recorded when it tried to hover the grid item.
+   which is the cascade trap a descendant hover rule on the grid item falls into.
 
    `:focus-within` rather than `:has(:focus-visible)`, deliberately: this is an OPACITY change on
    a control, not a focus indicator, so a control becoming fully visible after its tile is clicked
@@ -146,7 +145,7 @@
   color: var(--accent-bright);
 }
 
-/* THE FOCUS RING IS THE OVER-ART COMPOSITE, AND THAT IS A RULING (Q13, AC 16, gate finding M5/C4).
+/* THE FOCUS RING IS THE OVER-ART COMPOSITE, AND THAT IS DELIBERATE.
    No artefact rules on this control's indicator. DESIGN.md gives the tile
    `{components.card-tile.focus-ring-over-art}` "because a tile's focus indicator sits over
    arbitrary card art rather than a known surface", and the ARITHMETIC says the same is true here
@@ -158,19 +157,19 @@
    admits `none` or a comma-list of var(--shadow-…) / var(--glow) and nothing else, so the
    two-ring value cannot be written here at all.
 
-   THE OUTLINE IS AUTHORED SO THAT IT COINCIDES WITH THE RING'S INNER BAND — c4-4's repair,
-   applied to a pill instead of a card. `outline: none` is banned in all four spellings (UX-DR46,
-   and stylelint enforces it), so the UA ring cannot be removed; it can only be REPLACED, and an
-   authored outline at offset 0 occupies the same pixels as the composite's first band instead of
-   stacking into a second ring. `:focus-visible`, never `:focus` — the shipped idiom, and a mouse
-   click must not leave a ring behind it. */
+   THE OUTLINE IS AUTHORED SO THAT IT COINCIDES WITH THE RING'S INNER BAND — CardTile.css's
+   repair, applied to a pill instead of a card. `outline: none` is banned in all four spellings
+   (UX-DR46, and stylelint enforces it), so the UA ring cannot be removed; it can only be REPLACED,
+   and an authored outline at offset 0 occupies the same pixels as the composite's first band
+   instead of stacking into a second ring. `:focus-visible`, never `:focus` — the shipped idiom,
+   and a mouse click must not leave a ring behind it. */
 .flip-control:focus-visible {
   box-shadow: var(--shadow-focus-ring-over-art);
   outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: 0;
 }
 
-/* ==== THE FLIP ITSELF: TWO STACKED FACES AND ONE 3D Y-ROTATION (Q10, AC 14) ===========
+/* ==== THE FLIP ITSELF: TWO STACKED FACES AND ONE 3D Y-ROTATION ========================
    DESIGN.md gives one clause — "Flip animation: 3D Y-rotation over {components.dfc-flip.flip}"
    (`--motion-glide` at `--ease-glide`) — and nothing else: no degrees, no perspective, no
    midpoint rule. Each of those is a decision, recorded here:
@@ -207,11 +206,9 @@
 /* `[data-flipped]` is PRESENT only on a card that actually has a second face, and the
    ATTRIBUTE-PRESENCE selector here is what makes that scoping real: `transform-style` and the
    armed transition sit on the 42 flippable rows in the 40 real decks instead of putting a 3D
-   rendering context and a transform transition on all ninety-nine tiles. (Review 2026-08-06:
-   the first spelling put both on bare `.card-faces` while this comment claimed they were
-   scoped — the attribute gated only the rotation. Now the selector does what the sentence
-   says.) The value-keyed selector below is then the flip itself, so the presence selector is
-   also the "is this card flippable" switch, with no second class to keep in step. */
+   rendering context and a transform transition on all ninety-nine tiles. The value-keyed
+   selector below is then the flip itself, so the presence selector is also the "is this card
+   flippable" switch, with no second class to keep in step. */
 .card-faces[data-flipped] {
   transform-style: preserve-3d;
   transition: transform var(--motion-glide) var(--ease-glide);

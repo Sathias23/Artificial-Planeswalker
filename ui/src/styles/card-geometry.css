@@ -1,4 +1,4 @@
-/* THE CARD SHAPE — 63:88 at the printed-card corner radius (story c4-3, UX-DR4, UX-DR36).
+/* THE CARD SHAPE — 63:88 at the printed-card corner radius (UX-DR4, UX-DR36).
 
    ONE CLASS, ONE DECLARATION OF EACH VALUE, FOR EVERY CARD-SHAPED THING IN THE APP. Read
    DESIGN.md:362 in full, because both halves of it are load-bearing: "Tiles, thumbnails,
@@ -7,29 +7,27 @@
    radius, and cards never borrow a chrome radius — cards must be the ONLY card-shaped things on
    screen, and they must ACTUALLY be card-shaped."
 
-   ==== WHY THIS IS A FILE OF ITS OWN AND NOT A COMPONENT STYLESHEET (c4-3 Q2) ==============
-   Four stories draw this rectangle: c4-3 draws the placeholder and the loading well, c4-4 the
-   tile, c4-5 the detail art, c4-6 the flipped face. The epic's own criterion for the placeholder
-   is that it occupies "exactly the same footprint" as a real card face so layout never reflows
-   when art arrives (UX-DR36) — which is a claim about two components being IDENTICAL, and a
-   claim of that kind is only structurally true when there is ONE declaration. Three copies of
-   `aspect-ratio` and `border-radius` are three places for c4-4 to drift from c4-3.
+   ==== WHY THIS IS A FILE OF ITS OWN AND NOT A COMPONENT STYLESHEET ========================
+   Four components draw this rectangle: the placeholder and the loading well, the tile, the
+   detail art, the flipped face. The placeholder's own criterion is that it occupies "exactly the
+   same footprint" as a real card face so layout never reflows when art arrives (UX-DR36) — which
+   is a claim about two components being IDENTICAL, and a claim of that kind is only structurally
+   true when there is ONE declaration. Three copies of `aspect-ratio` and `border-radius` are
+   three places for the tile to drift from the placeholder.
 
-   A TOKEN WAS NOT AVAILABLE, and that is measured rather than assumed: tests/tokens.test.ts:265
+   A TOKEN IS NOT AVAILABLE, and that is measured rather than assumed: tests/tokens.test.ts
    asserts SET EQUALITY over an inventory derived from DESIGN.md's `colors` / `typography` /
-   `rounded` / `spacing` / `motion` / `focus` / `elevation` frontmatter blocks, pinned at **69**
-   (this read `65`, its c4-4 value — corrected at c4-12's conformance sweep)
-   tokens. `components.card-tile.aspect` is in none of those blocks, so `--card-aspect` cannot be
-   added without failing that gate. (`--radius-card` IS a token, and this file is its first
-   consumer — it had zero before this story.)
+   `rounded` / `spacing` / `motion` / `focus` / `elevation` frontmatter blocks.
+   `components.card-tile.aspect` is in none of those blocks, so `--card-aspect` cannot be
+   added without failing that gate. (`--radius-card` IS a token, and this file consumes it.)
 
    IT LIVES IN src/styles/ RATHER THAN INSIDE ONE COMPONENT, and the precedent is in this repo
    already: src/index.css's box-sizing reset is global for exactly this reason, in its own words —
-   "every component from c2-7 onwards inherits the same hazard the moment it sizes and pads
-   itself, which is why the reset is global and lives here rather than in the shell's own
-   stylesheet". The alternative — c4-3 owning the class and c4-4/c4-5/c4-6 importing a stylesheet
-   from another component's directory — breaks the directory-per-component convention for three
-   later stories instead of none. So this file is @imported by src/index.css beside fonts and
+   "every component inherits the same hazard the moment it sizes and pads itself, which is why
+   the reset is global and lives here rather than in the shell's own stylesheet". The
+   alternative — the placeholder owning the class and the other three consumers importing a
+   stylesheet from another component's directory — breaks the directory-per-component convention
+   three times instead of none. So this file is @imported by src/index.css beside fonts and
    tokens, and A CONSUMER NEEDS NO IMPORT AT ALL: it writes `className="card-shape"` and inherits
    the geometry.
 
@@ -44,11 +42,11 @@
    No background, no border, no shadow, no clipping and no size. Those are the CONSUMER's, and
    they differ per consumer by specification: the placeholder is `--surface-overlay` with a
    `--border-strong` hairline, the loading well is `--surface-well` with no border at all
-   (DESIGN.md:389), and c4-4's tile carries the rest-shadow and the live ring.
+   (DESIGN.md:389), and the tile carries the rest-shadow and the live ring.
 
    `overflow: hidden` is NOT here, and that is a decision rather than an omission: clipping is a
    statement about CONTENT (does a long name clip, does art clip to the corners), not about
-   shape, and a shared class that silently clipped would make c4-4's `<img>` behave differently
+   shape, and a shared class that silently clipped would make the tile's `<img>` behave differently
    depending on whether its author knew. Each consumer declares its own — CardPlaceholder.css
    does, for the 141-character name the corpus really contains.
 
@@ -57,7 +55,7 @@
 
 .card-shape {
   /* 63:88 is the printed card. Written as a ratio rather than a padding-top percentage hack:
-     `aspect-ratio` needs no wrapper element, so a card-shaped box is one element and c4-4's
+     `aspect-ratio` needs no wrapper element, so a card-shaped box is one element and the tile's
      `<img>` can BE the box rather than sit inside a spacer. */
   aspect-ratio: 63 / 88;
 

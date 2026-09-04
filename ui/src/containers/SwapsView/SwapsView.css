@@ -1,4 +1,4 @@
-/* ==== THE SWAPS VIEW'S BODY (story 16.1) ================================================
+/* ==== THE SWAPS VIEW'S BODY ==============================================================
 
    Written against DESIGN.md's `components.swap-row` block, which — unlike the suggestion row —
    shipped complete: background `{colors.surface-overlay}`, border `1px solid
@@ -6,7 +6,7 @@
    `{colors.positive}`, arrow `{colors.accent}`. The component row beneath it adds the anatomy:
    labels ABOVE the tiles, tints on the LABELS ONLY and never on the art, rationale in
    `{typography.body}` `{colors.text-secondary}` right of the pair, confidence beneath. The
-   price/curve StatChips that row also names do not ship: the wire carries no price by ruling
+   price/curve StatChips that row also names do not ship: the wire carries no price, deliberately
    (`types.d.ts`'s SwapItem docstring), so confidence is the one chip datum that exists and it
    renders as a real `StatChip`, which brings its own listed stylesheet.
 
@@ -78,8 +78,8 @@
    ABOVE the thumbnail (DESIGN.md: "'Out · N copies' … above the out tile").
 
    No hover tint and no live marker, deliberately: DESIGN.md's swap-row specifies neither (the
-   suggestion row's `live-background`/`live-rule` pair is that block's own amendment, absent
-   here), and an invented one would need a citation this artefact cannot give. The keyboard
+   suggestion row's `live-background`/`live-rule` pair is that block's own, absent here), and
+   an invented one would need a citation this artefact cannot give. The keyboard
    affordance is the focus ring below; the pointer feedback is the detail panel itself. */
 .swap-tile {
   display: flex;
@@ -125,14 +125,12 @@
 /* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
    against the row's body line-height gives the slot a readable HEIGHT without spending a px —
    expressed in line units because this tile has no two-text-line neighbour to stretch against.
-   ⚠️ THE WIDTH HALF OF THE FIRST SPELLING WAS FALSE (recorded 2026-08-23, with the tier list's
-   repair): this comment claimed the child "derives its WIDTH from the height through
-   `card-shape`'s own 63:88", and no such derivation exists — an `aspect-ratio` box with no
-   in-flow content has no intrinsic width, which is why the tier strip's identical slot
-   collapsed to slivers and now carries DESIGN.md's `thumb-width: 176px` instead. This tile's
-   sizing is deliberately NOT fixed here (words only — a follow-up candidate, with GroupsView's
-   twin). Nothing here declares `aspect-ratio` or a card radius (see the header — this file is
-   not in CARD_SHAPED).
+   The child does NOT derive its WIDTH from that height through `card-shape`'s 63:88: an
+   `aspect-ratio` box with no in-flow content has no intrinsic width, which is why the tier
+   strip's identical slot collapsed to slivers and carries DESIGN.md's `thumb-width: 176px`
+   instead. This tile's width is not fixed here (a follow-up candidate, with GroupsView's twin).
+   Nothing here declares `aspect-ratio` or a card radius (see the header — this file is not in
+   CARD_SHAPED).
 
    `position: relative` is the containing block for the image, which lies OVER the well rather
    than replacing it, so the layout is settled before the first byte arrives. */
@@ -184,8 +182,8 @@
    of the pair". It WRAPS rather than truncating: the wire caps it at 600 characters and the
    artefact never says "one-line" of it (the suggestion reason's clause is that row's own), so
    the words the agent actually said stay readable and the row's height follows the content.
-   `min-height: 1lh` keeps a malformed item's empty line from collapsing the column (the
-   suggestion row's Greptile-P1 fix, inherited). `overflow-wrap` so one 600-character token
+   `min-height: 1lh` keeps a malformed item's empty line from collapsing the column (inherited
+   from the suggestion row). `overflow-wrap` so one 600-character token
    cannot widen the column past its track. */
 .swap-row-rationale {
   min-width: 0;

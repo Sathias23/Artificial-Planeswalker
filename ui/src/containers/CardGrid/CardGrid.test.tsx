@@ -6,25 +6,25 @@ import { CardGrid } from './CardGrid'
 import { EMPTY_DECK_LINE } from './copy'
 
 /**
- * The card-art grid (story c4-4, AC 12–AC 16).
+ * The card-art grid.
  *
- * ================= WHAT THIS SUITE CANNOT CARRY (AC 29) ================================
+ * ================= WHAT THIS SUITE CANNOT CARRY ========================================
  *
  * jsdom applies no stylesheet and has no layout engine, so **not one assertion here is about
  * the grid as a grid**: that the track is `repeat(auto-fill, minmax(176px, 1fr))` and that the
  * gap is `var(--space-panel-gap)` are SOURCE claims, asserted POSITIVELY in
- * `tests/shell.test.ts`'s "ships the blessed track and the token gap" test (review 2026-08-04 —
- * this header's first spelling pointed at the ban-shaped guards, which only refuse bad forms
- * and would have stayed green through a drift to a different good-looking one). The
- * content-floored-track ban and the px-literal DESIGN.md citation check are the negative half.
- * That it actually reflows between 1100px and 2560px on a real screen is **Task 7's**.
+ * `tests/shell.test.ts`'s "ships the blessed track and the token gap" test — positively, because
+ * the ban-shaped guards only refuse bad forms and would stay green through a drift to a
+ * different good-looking one. The content-floored-track ban and the px-literal DESIGN.md
+ * citation check are the negative half. That it actually reflows between 1100px and 2560px on a
+ * real screen is a browser eye-check's.
  *
  * What IS provable here is the thing the derivation exists to protect: which cards reach the
  * glass, in which order, and from which board.
  *
  * THE FIXTURES GO THROUGH `boardsOf` RATHER THAN BEING HAND-BUILT `DeckBoards`. A hand-built
- * board would let this file assert an order the real derivation never produces — the c4-2 probe
- * (b) lesson exactly: the obvious fixtures do not discriminate the rule they appear to test.
+ * board would let this file assert an order the real derivation never produces: the obvious
+ * fixtures do not discriminate the rule they appear to test.
  */
 
 const deckCard = (
@@ -83,8 +83,8 @@ describe('the grid renders the store’s answer, not a second one (AC 15)', () =
   })
 
   it('draws a group’s tiles in the derivation’s WITHIN-group order — ascending cmc', () => {
-    // The DeckList suite's probe-e lesson, applied here: every other fixture in this file puts
-    // one card per group, so nothing else would notice a within-group reorder. The payload is
+    // Every other fixture in this file puts one card per group, so nothing else would notice a
+    // within-group reorder. The payload is
     // deliberately in DESCENDING cmc; `boardsOf` sorts ascending (ties alphabetical) and this
     // component must render that answer verbatim.
     render(
@@ -122,20 +122,20 @@ describe('the three boards each have a home or a named owner (AC 14)', () => {
 
   it('does NOT render the sideboard — 41 rows across 5 real decks, and c4-7 owns them', () => {
     // The boundary, asserted rather than left to "not mentioned". The art grid is the DECK; the
-    // sideboard mixed in would inflate every count a reader takes off the screen. c4-7's deck
-    // list draws it, from the same `boards.sideboard` this component ignores.
+    // sideboard mixed in would inflate every count a reader takes off the screen. The deck list
+    // draws it, from the same `boards.sideboard` this component ignores.
     render(<CardGrid boards={boardsOf(MIXED)} />)
     expect(screen.queryByText('Duress')).toBeNull()
-    // …and it is IGNORED rather than lost: the derivation still carries it, so c4-7 has it.
+    // …and it is IGNORED rather than lost: the derivation still carries it for the deck list.
     expect(boardsOf(MIXED).sideboard.map((entry) => entry.card.name)).toEqual(['Duress'])
   })
 
   it('loses no mainboard card — conservation, at the render', () => {
     const boards = boardsOf(MIXED)
     render(<CardGrid boards={boards} />)
-    // DERIVED from the boards, not restated from the fixture (review 2026-08-04 — the first
-    // spelling was `commander.length + 4 - 1`, a magic-number census of MIXED that a fixture
-    // edit would silently re-mean). The identity is the derivation's own conservation claim:
+    // DERIVED from the boards, not restated from the fixture: a magic-number census of MIXED
+    // (`commander.length + 4 - 1`) would be silently re-meant by a fixture edit. The identity is
+    // the derivation's own conservation claim:
     // everything the commander and mainboard boards carry reaches the glass, nothing else does.
     const carried = boards.commander.length + boards.mainboard.flatMap((g) => g.cards).length
     expect(carried).toBeGreaterThan(0)
@@ -161,7 +161,7 @@ describe('the structure (AC 13, AC 16)', () => {
 
   it('sits in an UNTITLED panel, which invents no name (Q6)', () => {
     render(<CardGrid boards={boardsOf(MIXED)} />)
-    // c2-7's ruling: an unnamed `<section>` has no role at all, which is right — a generic
+    // An unnamed `<section>` has no role at all, which is right — a generic
     // invented title would add an identical entry to every landmark list. The counts a reader
     // needs are already in the `h1` and `DeckBadges`; a panel title would be the third copy.
     expect(screen.queryByRole('region')).toBeNull()
@@ -193,7 +193,7 @@ describe('an empty deck reaches this story, and c4-12’s copy landed here (c4-1
   it('renders the line in place of the list, as the untitled panel’s only child', () => {
     const { container } = render(<CardGrid boards={boardsOf([])} />)
 
-    // THE `<ul>` IS GONE, NOT EMPTIED (AC 3). A `<p>` inside a `<ul>` is invalid against UX-DR44,
+    // THE `<ul>` IS GONE, NOT EMPTIED. A `<p>` inside a `<ul>` is invalid against UX-DR44,
     // and an empty list left beside the sentence announces "list, 0 items" BEFORE the sentence
     // explaining why. `queryByRole('list')` is the assertion that notices the difference; a
     // `toHaveLength(0)` on `li` would pass for either shape.
@@ -213,7 +213,7 @@ describe('an empty deck reaches this story, and c4-12’s copy landed here (c4-1
   it('keeps the panel untitled and adds no landmark, exactly as a full grid does', () => {
     render(<CardGrid boards={boardsOf([])} />)
 
-    // c4-4's untitled ruling survives the empty state. A titled panel here would put a NEW entry
+    // The panel stays untitled in the empty state. A titled panel here would put a NEW entry
     // in a screen-reader user's landmark list that appears only when a deck is empty — a surface
     // that grows a landmark by having less in it.
     expect(screen.queryByRole('region')).toBeNull()
@@ -222,10 +222,10 @@ describe('an empty deck reaches this story, and c4-12’s copy landed here (c4-1
 
   it('renders NO line for a deck that has only a sideboard — the named residue (Q1)', () => {
     // THE STATE NO ARTEFACT DESCRIBES, PINNED SO THE CHOICE IS VISIBLE. `deckIsEmpty` is
-    // sideboard-INCLUSIVE (c4-11's ruling, and because "This deck is empty" would be false copy
-    // over a deck with cards in it), so a sideboard-only deck is not empty — and this grid draws
-    // commander + mainboard only, so it has no tiles either. The honest render is the empty `<ul>`
-    // c4-4 shipped, with no sentence.
+    // sideboard-INCLUSIVE (because "This deck is empty" would be false copy over a deck with
+    // cards in it), so a sideboard-only deck is not empty — and this grid draws commander +
+    // mainboard only, so it has no tiles either. The honest render is the empty `<ul>`, with no
+    // sentence.
     //
     // Unreachable from live data — 0 of 42 decks have zero mainboard rows and at least one
     // sideboard row — so it is recorded rather than answered with invented copy. This fixture is

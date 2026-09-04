@@ -1,5 +1,5 @@
 /**
- * The format check panel (story c4-10, AC 4–6, 14–20, 22–33).
+ * The format check panel.
  *
  * ⚠️ **Role queries here are scoped through the panel, never `getByRole('banner')`.** `aria-query`
  * maps `<header>` to `banner` unconditionally, so every titled `Panel` is a phantom `banner` in
@@ -7,7 +7,7 @@
  * reports Chrome's own number beside it.
  *
  * Every fixture comes from `src/state/formatCheck.fixtures.ts`, where each one declares
- * whether it is a verified real response or synthetic and how it was produced (AC 26).
+ * whether it is a verified real response or synthetic and how it was produced.
  */
 
 import { fireEvent, render, screen, within } from '@testing-library/react'
@@ -75,9 +75,8 @@ describe('exactly six rows, in the payload’s order, never sorted (AC 14, AC 5,
   it('renders one list item per row, six of them', async () => {
     await showing(ALL_PASS_REPORT)
 
-    // SCOPED to this panel (AC 5). `App.test.tsx:647` predicted this story by name as the one
-    // that would break a document-wide `getAllByRole('listitem')`; the scoping it added at c4-7
-    // holds, and this is the panel's own count beside the grid's and the deck list's.
+    // SCOPED to this panel: a document-wide `getAllByRole('listitem')` would count the grid's and
+    // the deck list's items too. This is the panel's own count beside theirs.
     expect(within(panel()).getAllByRole('listitem')).toHaveLength(6)
   })
 
@@ -211,7 +210,7 @@ describe('the detail sentence is on the glass — the whole of the user statemen
   it('renders the banned-card sentence the two-slot row could not tell', async () => {
     await showing(BRAWL_VIOLATION_REPORT)
 
-    // THE STORY'S OWN USER STATEMENT, made true: "I find out about a banned card". Rendered to
+    // THE PANEL'S WHOLE POINT, made true: "I find out about a banned card". Rendered to
     // `DESIGN.md:423`'s letter — a label and a right-aligned Badge — this sentence appears
     // NOWHERE, on the one deck in forty that has a real legality violation.
     expect(within(panel()).getByText("'Pym Particles' is not legal in brawl.")).toBeVisible()
@@ -228,9 +227,9 @@ describe('the detail sentence is on the glass — the whole of the user statemen
   it('renders the size sentence a brawl deck sees, minimum and all (AC 28)', async () => {
     await showing(BRAWL_VIOLATION_REPORT)
 
-    // §2's finding, on the glass: a PASS sentence naming a minimum forty cards below the format's
-    // real one, for 18 of 40 decks. This is also why "detail only when status !== 'pass'" was
-    // rejected — it would hide exactly this.
+    // A PASS sentence naming a minimum forty cards below the format's real one, for 18 of 40
+    // decks. This is also why "detail only when status !== 'pass'" was rejected — it would hide
+    // exactly this.
     expect(within(panel()).getByText('Mainboard has 100 cards; the minimum is 60.')).toBeVisible()
   })
 
@@ -273,9 +272,9 @@ describe('the formatless report: six rows, no second layout, nothing negative (Q
     await showing(report)
 
     expect(within(panel()).getAllByRole('listitem')).toHaveLength(6)
-    // Both advisory sentences reach the glass — the reading of `format_recognized` that Q8 asks
-    // for, performed by this suite against the real field rather than by a decorative branch in
-    // the component (see FormatCheck.tsx's header for why the component does not read it).
+    // Both advisory sentences reach the glass — the only reading of `format_recognized` there is,
+    // performed by this suite against the real field rather than by a decorative branch in the
+    // component (see FormatCheck.tsx's header for why the component does not read it).
     const legality = report.rows.find((row) => row.check === 'legality')!
     const banned = report.rows.find((row) => row.check === 'banned')!
     expect(within(panel()).getByText(legality.detail)).toBeVisible()
@@ -337,7 +336,7 @@ describe('the three silent states draw nothing (Q6, AC 12)', () => {
     await loadFormatCheck('deck-1', () => Promise.resolve(outcome))
     const { container } = render(<FormatCheck />)
 
-    // The CARD precedent, not the deck one (Q6): the deck is still on the glass, so routing this
+    // The CARD precedent, not the deck one: the deck is still on the glass, so routing this
     // through `panelFor` would replace a working view with "The companion hit a bug" because one
     // auxiliary read failed — FR-13 inverted. The declared cost is that the failure is silent.
     expect(container).toBeEmptyDOMElement()
@@ -359,7 +358,7 @@ describe('display-only, literally (AC 6, UX-DR21, UX-DR40, UX-DR47)', () => {
     const view = await showing(BRAWL_VIOLATION_REPORT)
     const before = view.container.innerHTML
 
-    // `fireEvent` is the suite's only DOM-event idiom (c4-5 Q9). Clicking a row must be inert:
+    // `fireEvent` is the suite's only DOM-event idiom. Clicking a row must be inert:
     // this panel touches the inspection slice not at all — no `setHovered`, no `togglePin`.
     for (const row of view.container.querySelectorAll('.format-check-row')) fireEvent.click(row)
 
@@ -370,7 +369,7 @@ describe('display-only, literally (AC 6, UX-DR21, UX-DR40, UX-DR47)', () => {
     const view = await showing(ALL_PASS_REPORT)
 
     // `CardDetail`'s single polite region stays the only one. Nothing here moves after first
-    // paint: there is no refetch (Q7) and this panel derives nothing from the hydration sweep.
+    // paint: there is no refetch and this panel derives nothing from the hydration sweep.
     expect(view.container.querySelectorAll('[aria-live]')).toHaveLength(0)
     expect(view.container.querySelectorAll('[role="status"], [role="alert"]')).toHaveLength(0)
   })

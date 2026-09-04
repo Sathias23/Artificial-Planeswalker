@@ -5,7 +5,7 @@ import { AgentView } from './AgentView'
 import { AGENT_VIEW_KICKER, CLOSE_PILL_LABEL } from './copy'
 
 /**
- * The agent view shell (story c6-5, AC 1..AC 7).
+ * The agent view shell.
  *
  * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
@@ -16,21 +16,21 @@ import { AGENT_VIEW_KICKER, CLOSE_PILL_LABEL } from './copy'
  *     elevation or that the body is the only thing that scrolls.** `toHaveClass` proves the
  *     class was EMITTED, not that anything was painted. Those claims are held by
  *     `token-usage.test.ts` and `shell.test.ts` reading the stylesheet as source, and finally
- *     by Brad's eye (the C6 manual checklist — Block J is ruled NOT RUN until then).
+ *     by eye on the manual checklist.
  *   - **Nothing here proves the bloom animates.** What is asserted is the STATE the animation
  *     transitions out of, which is the half a source reader and a stylesheet gate can both see.
  *   - **Pressing Tab moves nothing.** So the trap is asserted as the handler's arithmetic —
  *     given which element holds focus, which element does it move focus to — and never by
  *     tabbing and looking. A test that "tabbed to the end" would be asserting its own
  *     `fireEvent` calls.
- *   - **`@testing-library/user-event` is not installed, deliberately** (c4-11 Q11). `fireEvent`
+ *   - **`@testing-library/user-event` is not installed, deliberately.** `fireEvent`
  *     and hand-dispatched events only.
  *
  * ================= WHY ESC IS DISPATCHED AT AN ELEMENT AND NOT AT `document` ===========
  *
  * `CardDetail.test.tsx:508-525` dispatches its Esc on `document`, which is correct for a suite
  * with ONE listener in it. It would be wrong here, and the reason is the whole mechanism this
- * story exists to land: when an event's target IS `document`, every listener on `document` runs
+ * shell exists to land: when an event's target IS `document`, every listener on `document` runs
  * in the AT_TARGET phase — capture and bubble alike, in registration order — and
  * `stopPropagation()` does not stop a sibling listener on the same node. A test that dispatched
  * there would prove nothing about layering and could pass or fail on import order.
@@ -38,8 +38,8 @@ import { AGENT_VIEW_KICKER, CLOSE_PILL_LABEL } from './copy'
  * Dispatching at an ELEMENT is also what really happens: a `keydown` targets whatever has focus.
  * `document` is then a genuine ancestor, capture runs before the target and bubble after it, and
  * `stopPropagation()` in the capture listener means the bubble listener is never reached. That
- * is the property `CardDetail.tsx:89-101` and `inspection.ts:55-67` have declared since c4-5 and
- * called untestable for want of an overlay. It is tested below.
+ * is the property `CardDetail.tsx:89-101` and `inspection.ts:55-67` declare, and it is tested
+ * below.
  */
 
 const TITLE = 'Suggestions for Atraxa Counter Cabinet'
@@ -65,10 +65,10 @@ function Harness({
   decoy?: boolean
   /**
    * A state panel occupying the left column behind the view — `StatePanel.tsx:115-126`'s
-   * headline element, which is the only part of it ARM 3 queries for (c6-6, AC 5).
+   * headline element, which is the only part of it ARM 3 queries for.
    */
   panel?: boolean
-  /** Which push is showing. A CHANGE of this while `open` stays true is a replace (c6-6). */
+  /** Which push is showing. A CHANGE of this while `open` stays true is a replace. */
   pushId?: string
   title?: string
   count?: number | null
@@ -97,8 +97,8 @@ function Harness({
               shell's own only focusable is the close pill, so with an inert body the pill is
               both ends of the trap at once and "wrapping to the first" is indistinguishable
               from doing nothing at all. With these, the two ends are DIFFERENT elements and a
-              handler that no-opped would fail. They are also c6-7's real shape, confirmed by
-              that story: each suggestion row IS a single `<button>`, so a view of six rows puts
+              handler that no-opped would fail. They are also the suggestions view's real
+              shape: each suggestion row IS a single `<button>`, so a view of six rows puts
               six focusables in the trap between the close pill's two ends. */}
           <button type="button" data-testid="body-first">
             body first
@@ -156,9 +156,9 @@ describe('the chrome is the shell DESIGN.md specifies (AC 1)', () => {
   })
 
   it('renders an arbitrary child and knows nothing about it (content-agnostic)', () => {
-    // The claim that made c6-7 able to add suggestion rows without editing this component —
-    // and it held: that story's diff touches neither `AgentView.tsx` nor `AgentView.css`. The
-    // body renders what it is handed, and nothing in the shell mentions a suggestion.
+    // The claim that lets `SuggestionsView` render suggestion rows without editing this
+    // component. The body renders what it is handed, and nothing in the shell mentions a
+    // suggestion.
     render(<Harness />)
     expect(screen.getByTestId('fixture')).toBeInTheDocument()
     expect(document.querySelector('.agent-view-body')).toContainElement(
@@ -359,7 +359,7 @@ describe('focus returns where it came from on close (AC 4, UX-DR39, UX-DR46)', (
   })
 
   it('does NOT override a CONNECTED restore target just because a panel is showing (UX-DR46)', () => {
-    // The boundary of the ruling, and the alternative Brad rejected. *"Focus returns to the
+    // The boundary of the fallback, and the rejected alternative. *"Focus returns to the
     // element focused before the view took it"* is not overridden by a panel appearing behind
     // the view — the panel arm is a FALLBACK for a target that no longer exists, and a rule
     // that always chose the panel would be this component reversing a decision it did not make.
@@ -449,9 +449,8 @@ describe('Tab cycles within the view (AC 2, UX-DR44)', () => {
 
   it('leaves every other key alone', () => {
     // The trap is a Tab handler and nothing else — an over-eager one would eat keys a list may
-    // want. c6-7's rows shipped with NO `onKeyDown` at all (UX-DR40 rules out a roving-tabindex
-    // composite, and `deferred-work.md:49` records that a row handler would never see Escape
-    // anyway), so nothing in a suggestions view competes for a key today.
+    // want. Suggestion rows ship with NO `onKeyDown` at all (UX-DR40 rules out a roving-tabindex
+    // composite, and a row handler would never see Escape anyway), so nothing in a suggestions view competes for a key today.
     render(<Harness />)
     const dialog = screen.getByRole('dialog')
     const heading = screen.getByRole('heading', { level: 2, name: TITLE })
@@ -519,7 +518,7 @@ describe('the three dismissal gestures (AC 4)', () => {
     // The symmetric paper cut: a press that lands on the scrim — a misaimed click near the
     // shell's edge — and releases over panel content still fires `click` on their common
     // ancestor, the scrim. Requiring BOTH ends of the gesture to be the scrim closes this
-    // side too, not just the one Q3 named.
+    // side too, not just the panel-to-scrim one above.
     const onClose = vi.fn()
     render(<Harness onClose={onClose} />)
     const scrim = document.querySelector('.agent-view-scrim') as HTMLElement
@@ -561,8 +560,8 @@ describe('the three dismissal gestures (AC 4)', () => {
   })
 
   it('ignores an Esc that is cancelling an IME composition', () => {
-    // `CardDetail.tsx:371-375`'s guards, inherited: reachable the moment Epic 6 puts a text
-    // input on the page.
+    // `CardDetail.tsx:371-375`'s guards, inherited: reachable the moment a text input lands on
+    // the page.
     const onClose = vi.fn()
     render(<Harness onClose={onClose} />)
 
@@ -602,10 +601,10 @@ describe('the three dismissal gestures (AC 4)', () => {
 
 describe('Esc closes the view and NOTHING ELSE — the layering (UX-DR39, EXPERIENCE.md:141)', () => {
   /**
-   * THE TEST `CardDetail.tsx:99-101` AND `inspection.ts:65-67` HAVE PROMISED SINCE c4-5.
+   * THE TEST `CardDetail.tsx:99-101` AND `inspection.ts:65-67` PROMISE.
    *
-   * Both files say, verbatim, *"no overlay exists yet, so this story cannot test the
-   * layering"*. This is the overlay, and this is the layering.
+   * Both files declare the layering untestable without an overlay. This is the overlay, and
+   * this is the layering.
    *
    * The stand-in below is a document BUBBLE `keydown` listener — which is precisely what
    * `CardDetail` registers (`CardDetail.tsx:369-380`), same receiver, same event, same phase.
@@ -634,7 +633,7 @@ describe('Esc closes the view and NOTHING ELSE — the layering (UX-DR39, EXPERI
   })
 
   it('holds even when focus sits on <body>, which is why it is not element-scoped', () => {
-    // The hole the first written form of this contract had (found at review 2026-08-05): a
+    // The hole the first written form of this contract had: a
     // `keydown` targeting `<body>` never passes through the overlay's subtree, so a handler
     // scoped to the overlay could not pre-empt anything. A document capture listener sees it.
     const onClose = vi.fn()
@@ -674,7 +673,7 @@ describe('Esc closes the view and NOTHING ELSE — the layering (UX-DR39, EXPERI
 })
 
 // =====================================================================================
-// c6-6 — A SECOND PUSH REPLACES THE CONTENT IN PLACE
+// A SECOND PUSH REPLACES THE CONTENT IN PLACE
 // =====================================================================================
 
 describe('a replace re-fires what a remount would have, and nothing it must not (c6-6, AC 2)', () => {
@@ -733,7 +732,7 @@ describe('a replace re-fires what a remount would have, and nothing it must not 
   })
 
   it('does NOT re-run the entry bloom — the crossfade is a different motion', () => {
-    // A `key` on `<AgentView>` would remount and replay the 480 ms fade-plus-rise. AC 2 asks for
+    // A `key` on `<AgentView>` would remount and replay the 480 ms fade-plus-rise. A replace is
     // a 240 ms opacity crossfade, which is the reason `App.tsx` carries no key and this
     // assertion is what would fail if one were added.
     const { rerender } = openedAndSettled()
@@ -826,9 +825,10 @@ describe('a replace re-fires what a remount would have, and nothing it must not 
   })
 
   it('leaves the RESTORE TARGET untouched, so closing after a replace still returns focus', () => {
-    // Landmine 4, as an assertion. At replace time focus is inside the view, so a mechanism that
-    // re-captured `document.activeElement` would remember the heading — and closing would return
-    // focus to the view's own corpse while every other test here stayed green.
+    // The return-focus hazard, as an assertion. At replace time focus is inside the view, so a
+    // mechanism that re-captured `document.activeElement` would remember the heading — and
+    // closing would return focus to the view's own corpse while every other test here stayed
+    // green.
     const { rerender } = render(<Harness open={false} />)
     act(() => screen.getByTestId('outside-a').focus())
     const opener = screen.getByTestId('outside-a')

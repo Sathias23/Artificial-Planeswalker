@@ -9,16 +9,15 @@ import { SuggestionsView } from './SuggestionsView'
 import { EMPTY_PUSH_TEMPLATE, NOUN_PLACEHOLDER, emptyPushLine } from './copy'
 
 /**
- * The suggestions view's body — the empty line (c6-6) and the rows (c6-7).
+ * The suggestions view's body — the empty line and the rows.
  *
  * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
  * jsdom evaluates no stylesheet, so nothing here proves the thumbnail is card-shaped, that the
  * live marker is `--accent` rather than `--accent-dim`, that the confidence is uppercased by its
  * type role, or that the row is 24px tall in any direction. Those are read as SOURCE by
- * `token-usage.test.ts`, `shell.test.ts` and `keyboard-floor.test.ts`, and seen with eyes on the
- * C6 manual checklist (c8-6) — Block J has never been run, so this story ships the app's first
- * real agent-view pixels with no human having looked at them yet.
+ * `token-usage.test.ts`, `shell.test.ts` and `keyboard-floor.test.ts`, and otherwise only seen
+ * with eyes on the manual checklist.
  *
  * jsdom also loads no images: `naturalWidth` is 0 always, `load` and `error` never fire on their
  * own, and `useCardArt`'s cached-settle is inert here in both directions. Art states are driven
@@ -82,7 +81,7 @@ const seedUnknown = (id: string) => {
 /**
  * A refusal with NO placeholder — the picture failed, the card did not.
  *
- * The distinction this suite has to keep straight (c4-1 AC 13): `placeholder: 'unknown-card'`
+ * The distinction this suite has to keep straight: `placeholder: 'unknown-card'`
  * means *the app does not know what this card is*; `null` means *the read did not land and
  * whatever summary exists still stands*. Only the first is uninspectable.
  */
@@ -141,15 +140,9 @@ describe('an empty push renders the artefact’s line (c6-6 AC 4, UX-DR33, AD-7)
   })
 
   it('takes the kind from its PROP rather than assuming one', () => {
-    // Non-vacuity for the assertion above, and the property c6-8 depends on when a second kind
-    // gets a view: a hard-coded `'suggestions'` passes every test above and renders the wrong
-    // noun the day a tier list is empty.
-    //
-    // ✅ THE CAST IS GONE AT c6-8, which is this comment's own prediction discharged. It read
-    // *"the prop's type is deliberately narrow until c6-8 widens it"*, and that story widened
-    // `AgentViewContent['kind']` to the full four-kind view enum so the nav could be generic
-    // over the closed contract. `'tier_list'` is now simply a legal value of a legal type, and
-    // the question this file asked a story early can be asked plainly.
+    // Non-vacuity for the assertion above, and the property every other view kind depends on: a
+    // hard-coded `'suggestions'` passes every test above and renders the wrong noun the day a
+    // tier list is empty.
     render(<SuggestionsView kind="tier_list" items={[]} />)
 
     expect(screen.getByText(emptyPushLine('tier_list'))).toBeInTheDocument()
@@ -311,7 +304,7 @@ describe('the thumbnail (AC 4, AC 6, AC 7, UX-DR36, AD-11, AD-12)', () => {
     const image = container.querySelector('.suggestion-row-image')
     expect(image).not.toBeNull()
     expect(image).toHaveAttribute('src', '/api/card-image/c-1')
-    // Q4: UNSPELLED, so this shares the grid's browser-cache key. `?size=normal` is a SECOND
+    // UNSPELLED, so this shares the grid's browser-cache key. `?size=normal` is a SECOND
     // cache entry for one picture, and a suggested card that later joins the deck would then
     // fetch it twice. `no-scryfall-hosts.test.ts` bans the CDN family across all of `src/`; this
     // asserts the positive form for the one surface that draws agent-supplied ids.
@@ -447,10 +440,9 @@ describe('one bad entry costs one row and never the push (AC 4, FR-13, AD-7, dw:
   })
 
   it('renders a NON-STRING card_id as the unknown placeholder, and never throws', () => {
-    // `deferred-work.md:209`, closed at exactly the point the entry names: "a `card_id` that is
-    // not a string … still passes through untouched … That stays c6-7's, at the row that renders
-    // it." A `TypeError` here is React unmounting the whole dialog — the wholesale failure FR-13
-    // bans — so the gate is a `typeof`, not a `?.`.
+    // The envelope builder lets a `card_id` that is not a string pass through untouched; the row
+    // that renders it is the gate. A `TypeError` here is React unmounting the whole dialog — the
+    // wholesale failure FR-13 bans — so the gate is a `typeof`, not a `?.`.
     const malformed = [
       { card_id: 42, reason: 'A number id.' },
       { card_id: null, reason: 'A null id.' },
@@ -541,7 +533,7 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
 
     fireEvent.focus(row)
     expect(useInspectionStore.getState().focusedId).toBe('c-1')
-    // TWO SLOTS, not one: a `mouseleave` must not erase a still-focused row (PR #44's P1).
+    // TWO SLOTS, not one: a `mouseleave` must not erase a still-focused row.
     expect(useInspectionStore.getState().hoveredId).toBe('c-1')
     expect(useInspectionStore.getState().lastTransient).toBe('focus')
   })
@@ -583,12 +575,12 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(row.tagName).toBe('BUTTON')
     expect(row).toHaveAttribute('type', 'button')
     // No `tabindex` ANYWHERE: nothing in the app carries one (UX-DR40), and the shell's focus
-    // trap mishandles `tabindex="-1"` on natively-focusable elements (`deferred-work.md:45`), so
+    // trap mishandles `tabindex="-1"` on natively-focusable elements, so
     // a roving composite here would be the first content to trip it.
     expect(row).not.toHaveAttribute('tabindex')
     // Enter and Space are the button's own click, which is why the element was chosen. A row
     // `onKeyDown` would also never see Escape while a view is open, because the document-capture
-    // listener calls `stopPropagation()` below React's delegation root (`deferred-work.md:49`).
+    // listener calls `stopPropagation()` below React's delegation root.
     expect(screen.getAllByRole('button')).toHaveLength(1)
   })
 
@@ -629,14 +621,13 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(row).not.toHaveClass('is-live')
     // AND IT IS STILL A BUTTON. Dropping it would make a focused row's control vanish underneath
     // the person as `loading → unknown` lands — inside the shell's focus trap, dropping focus to
-    // `<body>`. Uniform buttons make that state unreachable (Q3).
+    // `<body>`. Uniform buttons make that state unreachable.
     expect(row.tagName).toBe('BUTTON')
     expect(row).not.toBeDisabled()
 
-    // ⚠️ THE NON-VACUITY CONTROL, AND IT IS THE HALF THAT CARRIES THE CLAIM — added because a
-    // plant proved the assertions above are satisfied by a row with NO HANDLERS AT ALL. Every
-    // expectation up to here is an ABSENCE, and unwiring all five verbs produces exactly the
-    // same absences: the third plant (2026-08-11) reddened eight tests and left this one green.
+    // THE NON-VACUITY CONTROL, AND IT IS THE HALF THAT CARRIES THE CLAIM: the assertions above
+    // are satisfied by a row with NO HANDLERS AT ALL. Every expectation up to here is an ABSENCE,
+    // and unwiring all five verbs produces exactly the same absences.
     //
     // So the same row, on the same mount, is driven again with the ONLY thing changed being the
     // cache tier. If the handlers were missing, this hover would set nothing either and the test
@@ -731,7 +722,7 @@ describe('hydration is this view’s own (AC 7, AD-12)', () => {
     const { rerender } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
     expect(cardCalls()).toHaveLength(1)
 
-    // c6-6 ships replace-in-place as a re-fire against a MOUNTED shell, so a second push reaches
+    // Replace-in-place is a re-fire against a MOUNTED shell, so a second push reaches
     // this component as new props on the same instance. A mount-only effect would leave every id
     // of the second push unhydrated — a whole view of silent wells.
     rerender(<SuggestionsView kind="suggestions" items={[OTHER]} />)
@@ -748,7 +739,7 @@ describe('hydration is this view’s own (AC 7, AD-12)', () => {
   it('issues NO request for a malformed id, and lands it on the placeholder anyway', () => {
     // `hydrateCard('')` refuses terminally with `placeholder: 'unknown-card'` and issues nothing:
     // the empty id addresses the collection route rather than a card, so the uuid gate never sees
-    // it. That is what routes a malformed item into the degradation AC 4 already describes,
+    // it. That is what routes a malformed item into the degradation an unknown card already gets,
     // through machinery that already exists — rather than into a new refusal invented at the row.
     const { container } = render(
       <SuggestionsView
@@ -770,8 +761,7 @@ describe('the card shape arrives through the CLASS, never by hand (UX-DR4)', () 
   //
   // The SOURCE half — that this stylesheet spends no `--accent-dim`, no `--radius-card` and no
   // `aspect-ratio` — lives in `tests/token-usage.test.ts` beside the guard whose declared blind
-  // spot is this exact composition, which is also where `AgentView.css:29` said the assertion
-  // would land. It cannot live here: jsdom evaluates no stylesheet at all.
+  // spot is this exact composition. It cannot live here: jsdom evaluates no stylesheet at all.
   it('puts card-shape on the picture, with no inline geometry anywhere', () => {
     seedHydrated('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
@@ -793,8 +783,8 @@ describe('the template is a template (non-vacuity for the gate next door)', () =
     expect(emptyPushLine('suggestions')).toBe(
       "The agent's suggestions came back empty. Nothing to show — ask it for another pass.",
     )
-    // The noun repair's whole point, asserted at the rendered surface: the kind whose wire
-    // literal put an underscore on the glass (16.2's data point) now renders its display noun.
+    // The display-noun table's whole point, asserted at the rendered surface: the kind whose
+    // wire literal would put an underscore on the glass renders its display noun instead.
     expect(emptyPushLine('tier_list')).toBe(
       "The agent's tier list came back empty. Nothing to show — ask it for another pass.",
     )

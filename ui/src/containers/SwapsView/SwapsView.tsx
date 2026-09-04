@@ -20,9 +20,9 @@ import { emptyPushLine } from '../SuggestionsView/copy'
 import './SwapsView.css'
 
 /**
- * What a `swaps` push puts INSIDE the agent view shell (story 16.1) — the second view body,
- * built as `SuggestionsView.tsx`'s structural sibling, and every ruling that file carries
- * applies here unless a line below says otherwise.
+ * What a `swaps` push puts INSIDE the agent view shell — the second view body, built as
+ * `SuggestionsView.tsx`'s structural sibling; every invariant that file carries applies here
+ * unless a line below says otherwise.
  *
  * ================= WHAT IS DIFFERENT, AND WHY (DESIGN.md's swap-row) =====================
  *
@@ -39,9 +39,9 @@ import './SwapsView.css'
  * already made for the card-detail ring and the suggestion row's live marker.
  *
  * The artefact's chip row beneath the rationale names price, curve and confidence. Price and
- * curve do NOT ship, deliberately: the wire carries no price by ruling (`types.d.ts` — the card
- * table has no price column and the importer never reads `prices`), and a curve chip would need
- * the same wire field the same ruling declined. What remains is the one datum the wire does
+ * curve do NOT ship, deliberately: the wire carries no price (`types.d.ts` — the card table has
+ * no price column and the importer never reads `prices`), and a curve chip would need the same
+ * wire field the wire declines to carry. What remains is the one datum the wire does
  * carry — confidence — rendered as a real `StatChip` (label "Confidence", value = the wire
  * token, no delta: a confidence is a reading, not a change since a previous one).
  *
@@ -94,11 +94,11 @@ export type EveryConfidenceTokenRenders = Assert<
  * A tile's card id, or `''` — the app's own value for *"an id the app cannot render"*:
  * `hydrateCard('')` refuses it terminally with the unknown-card placeholder and issues no
  * request, which routes a malformed item into the degradation the matrix already describes.
- * A WHITESPACE-ONLY id folds to `''` too (E16-91, `GroupsView.cardIdsOf`'s gate in the
- * single-id shape): it names nothing the app could ever render, and unlike `''` the
+ * A WHITESPACE-ONLY id folds to `''` too (`GroupsView.cardIdsOf`'s gate in the single-id
+ * shape): it names nothing the app could ever render, and unlike `''` the
  * synchronous unknown guard cannot catch it before the first paint commits
  * `/api/card-image/%20` — so it takes the same terminal unknown-card arm, never a request.
- * A NON-blank id is NOT trimmed, for `SuggestionsView`'s recorded reason: the wire caps the
+ * A NON-blank id is NOT trimmed, for `SuggestionsView`'s reason: the wire caps the
  * id's LENGTH without validating its shape (AD-7), so a padded copy of a real id is not this
  * component's to rewrite.
  */
@@ -144,11 +144,11 @@ const isUnknownCard = (entry: CardEntry | undefined): boolean =>
  * `"Out · N copies"` / `"In · N copies"` — plural always, zero included ("0 copies" is a
  * designed case), no singular form specified anywhere and none invented here.
  *
- * The unknown-row rulings carry over verbatim from `SuggestionRow`: every tile is the same
+ * The unknown-row invariants carry over verbatim from `SuggestionRow`: every tile is the same
  * button (an entry moves `undefined → loading → unknown` while rendered, and a vanishing button
  * would drop focus to `<body>` inside the shell's focus trap), the store's `inspectable()` is
  * what refuses the verbs on a dead id, and the stale-target release effect below is the same
- * Greptile-P1 valve, per tile because targets are per card.
+ * release valve, per tile because targets are per card.
  */
 function SwapTile({
   direction,
@@ -223,7 +223,7 @@ function SwapTile({
               className="card-shape swap-tile-image"
               data-loaded={art === 'shown' ? 'true' : 'false'}
               /* AD-11: the backend proxy, never a CDN host; rendition UNSPELLED so the bytes
-                 share the grid's browser-cache key (SuggestionsView's Q4). */
+                 share the grid's browser-cache key (SuggestionsView's reason). */
               src={cardImageUrl(cardId, undefined, face)}
               /* `alt=""`, EXACTLY (UX-DR48): the tile's accessible name is the label above, and
                  the card's name is the detail panel's to speak. */

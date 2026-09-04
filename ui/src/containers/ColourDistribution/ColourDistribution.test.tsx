@@ -1,23 +1,22 @@
 /**
- * The colour distribution panel, rendered (story c4-9, AC 1–5, AC 15–33).
+ * The colour distribution panel, rendered.
  *
  * ================= WHAT jsdom CANNOT DECIDE HERE, DECLARED FIRST =======================
  *
  * **jsdom has no layout engine**, so `getBoundingClientRect()` is zeroes and a `flex-grow` factor
  * never resolves to a pixel. **Every width assertion below is about the CUSTOM PROPERTY or the
- * class**, never about a rendered band — and the division is sharper here than in c4-8, because
- * this panel's widths are not even percentages: the value crossing the style attribute is a raw
- * pip count and the BROWSER does the division. The pixels, the hairline and the thinnest live
- * segment are AC 38's eye-check, over CDP, against a real engine.
+ * class**, never about a rendered band — and the division is sharper here than for the mana
+ * curve, because this panel's widths are not even percentages: the value crossing the style
+ * attribute is a raw pip count and the BROWSER does the division. The pixels, the hairline and
+ * the thinnest live segment are the eye-check, over CDP, against a real engine.
  *
  * **jsdom applies no stylesheet**, so the hairline, the 14px track, the pill radius and every
  * `--mana-*` fill are read as CSS SOURCE by `tests/token-usage.test.ts` and by eye. Nothing below
  * claims otherwise.
  *
  * **`aria-query` maps `<header>` to `banner` unconditionally**, so every titled `Panel` is a
- * phantom `banner` in jsdom and none in a browser — c4-7 measured Chrome reporting exactly one
- * where jsdom said three, c4-8 took jsdom to four, and **this panel takes it to five** (AC 28).
- * Nothing below queries `getByRole('banner')`.
+ * phantom `banner` in jsdom and none in a browser, and this panel adds one more. Nothing below
+ * queries `getByRole('banner')`.
  */
 
 import { act, render, screen, within } from '@testing-library/react'
@@ -36,7 +35,7 @@ interface RowOptions {
   commander?: boolean
 }
 
-/** A real corpus card, spelled as the wire spells it (AC 14) — `colors` included, verbatim. */
+/** A real corpus card, spelled as the wire spells it — `colors` included, verbatim. */
 const card = (
   name: string,
   manaCost: string,
@@ -181,9 +180,10 @@ describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () =>
 
 describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)', () => {
   it('hides the BAR from the accessibility tree, and names nothing inside it', () => {
-    // THE EXACT INVERSE OF c4-8, where every bar carried `role="img"` and a name. UX-DR18 says
-    // the bar is `aria-hidden` and the legend is the data path, and the reason is measurable:
-    // all 15 adjacent `--mana-*` pairs are under the 3:1 non-text floor, the worst at 1.03:1.
+    // THE EXACT INVERSE OF THE MANA CURVE, where every bar carries `role="img"` and a name.
+    // UX-DR18 says the bar is `aria-hidden` and the legend is the data path, and the reason is
+    // measurable: all 15 adjacent `--mana-*` pairs are under the 3:1 non-text floor, the worst
+    // at 1.03:1.
     const { container } = renderBar()
     const bar = container.querySelector('.colour-bar')
     expect(bar).not.toBeNull()
@@ -200,8 +200,7 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
   })
 
   it('reads EVERY entry — colour, count and percentage — not only the first', () => {
-    // The c4-7 one-pip-run finding, not repeated: a loop asserted on `[0]` proves the first
-    // element and nothing about the others.
+    // A loop asserted on `[0]` proves the first element and nothing about the others.
     const { container } = renderBar()
     const entries = [...container.querySelectorAll('.colour-legend-entry')].map((entry) =>
       [...entry.querySelectorAll('span:not(.mana-pip)')].map((n) => n.textContent),
@@ -270,8 +269,8 @@ describe('the panel is display-only (AC 27, UX-DR40, UX-DR47)', () => {
     const { container } = renderBar()
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(0)
     expect(container.querySelectorAll('button, a, input, select, textarea')).toHaveLength(0)
-    // The inverse of c4-8's seven `role="img"` bars: nothing in this subtree carries a role at
-    // all, so an eighth — or an interactive one — is loud.
+    // The inverse of the mana curve's seven `role="img"` bars: nothing in this subtree carries a
+    // role at all, so an eighth — or an interactive one — is loud.
     expect(container.querySelectorAll('[role]')).toHaveLength(0)
   })
 
@@ -301,9 +300,8 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
   })
 
   it('RE-RENDERS with the real pips when the cache fills — the numbers move after first paint', () => {
-    // The whole of Q2, and the reason "no `aria-live`" is load-bearing: this panel is the epic's
-    // first whose PERCENTAGES change after the deck has painted. Live that is +48 pips across 16
-    // of 40 decks.
+    // The reason "no `aria-live`" is load-bearing: this panel's PERCENTAGES change after the deck
+    // has painted. Live that is +48 pips across 16 of 40 decks.
     const rows = [row(AYARA_DFC), row(card('Lightning Bolt', '{R}', 'Instant', 1, ['R']))]
     const { container } = renderBar(rows)
 
@@ -320,8 +318,7 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
       // `hydrated` helper narrows the same way, and for the same reason: `card_faces` is
       // untyped on the wire so the face literal must widen, but `status` and the shape of the
       // `cards` record stay checked against the union, so a `CardEntry` drift fails `tsc` here
-      // instead of leaving this fixture writing a state the store could never contain
-      // (review 2026-08-06 — the previous spelling was `as never` on everything).
+      // instead of leaving this fixture writing a state the store could never contain.
       useCardStore.setState({
         cards: {
           [AYARA_DFC.id]: {

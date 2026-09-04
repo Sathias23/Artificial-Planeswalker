@@ -67,13 +67,10 @@ jobs:
       # sys.platform with a genuinely different implementation per half (msvcrt vs fcntl).
       # This runner is ubuntu, so the bare run above IS the linux run; without the line
       # below the Windows half is checked by nobody and a Windows-only type error reaches
-      # master green. Closes C1 retro action item 3.
+      # master green.
       #
-      # The epic text for story c2-1 asked for `--platform linux` here. That was written
-      # from a Windows machine, where the bare run is the win32 run; on ubuntu it would be
-      # a pure no-op and the retro's stated success criterion — "a deliberately
-      # Windows-broken singleton.py fails CI" — would still not hold. The success criterion
-      # wins. See the c2-1 Completion Notes.
+      # `--platform win32`, not `--platform linux`: on an ubuntu runner the latter would be a
+      # pure no-op and a deliberately Windows-broken singleton.py would still pass CI.
       - name: Mypy (strict, opposite platform)
         run: uv run mypy src/ --platform win32
 
@@ -94,7 +91,7 @@ jobs:
           # copies at once — leaving this check to certify a plugin with no UI.
           #
           # Checked PER SUBJECT rather than over the bundle directory as a whole, the same lesson
-          # the generated-types check below learned (c2-3 review, 2026-07-27): a joint ls-files
+          # the generated-types check below applies: a joint ls-files
           # over the directory stays non-empty while index.html remains tracked and assets/ slips
           # out of tracking — which is precisely the newly-ignored-Vite-output case above, and
           # ships a plugin whose every page renders blank. index.html without assets/ is not the
@@ -114,7 +111,7 @@ jobs:
           # loop above proves each subject still has SOME tracked file, which is the most a
           # named subject can prove: Vite emits content-hashed chunk names, so no fixed list can
           # name them one by one, and `ls-files -- assets/` stays non-empty while a single newly
-          # ignored chunk drops out (review round 2, 2026-08-20). Ask the complementary question
+          # ignored chunk drops out. Ask the complementary question
           # instead — does the rebuilt bundle hold a file git is ignoring? — because that is the
           # one question `git status --porcelain` below cannot answer about itself: it reports
           # nothing for ignored paths, so the chunk would be missing from the shipped plugin
@@ -133,7 +130,7 @@ jobs:
           fi
 
   # Deliberately NOT folded into the `quality` matrix job: that job is a Python 3.12/3.13
-  # matrix and would install Node twice for no reason. One job, no Node matrix (ruling B5) —
+  # matrix and would install Node twice for no reason. One job, no Node matrix —
   # `node-version: 20` is the declared floor, i.e. the version nobody develops on and
   # therefore the one worth gating. Current Node is covered incidentally by local runs.
   frontend:
@@ -152,7 +149,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # The floor declared by ui/package.json is >=20.19.0; setup-node resolves "20" to
-          # the latest 20.x, which satisfies it. Raising this is an AC 2 decision, not a fix.
+          # the latest 20.x, which satisfies it. Raising this is a Node-floor decision, not a fix.
           node-version: 20
           cache: npm
           cache-dependency-path: ui/package-lock.json
@@ -180,13 +177,12 @@ jobs:
       - name: Vitest gates
         run: npm run test:gates
 
-      # AC 1's committed-lockfile contract, gated where it can actually die. `npm ci` succeeds
+      # The committed-lockfile contract, gated where it can actually die. `npm ci` succeeds
       # even against a lock regenerated without the linux bindings (optional deps are simply
       # absent), and none of the four gates above load the production build path — so without
-      # this step, "a bad lock dies in CI with `Cannot find module @rolldown/binding-…`" was
-      # aspirational, not enforced. Also catches build-only breakage (lightningcss
-      # minification, bundle resolution) before c2-2 starts committing the build output.
-      # (Review round 2, decision D1: a fifth step beyond AC 15's four, by ruling.)
+      # this step, "a bad lock dies in CI with `Cannot find module @rolldown/binding-…`" would
+      # be aspirational, not enforced. Also catches build-only breakage (lightningcss
+      # minification, bundle resolution) before the drift check below compares the output.
       - name: Build
         run: npm run build
 
@@ -194,13 +190,11 @@ jobs:
       # install serves the UI with no Node toolchain. Rebuilt just above; if the result differs
       # from what is committed, someone changed ui/ without rebuilding.
       #
-      # `git status --porcelain`, NOT the `git diff --exit-code` the epic's AC text names. A
-      # deliberate deviation, flagged rather than silently taken (the c1-9 / c2-1 precedent):
-      # Vite emits content-hashed filenames, so a source change produces one DELETION (which
-      # git diff sees) plus one UNTRACKED ADDITION (which it does not). `git diff --exit-code`
-      # would therefore pass on exactly the staleness this step exists to catch. The same AC
-      # sentence says to mirror the plugin/ drift check, and that check's shape — the one
-      # copied here — is `git status --porcelain`.
+      # `git status --porcelain`, NOT `git diff --exit-code`: Vite emits content-hashed
+      # filenames, so a source change produces one DELETION (which git diff sees) plus one
+      # UNTRACKED ADDITION (which it does not). `git diff --exit-code` would therefore pass on
+      # exactly the staleness this step exists to catch. The shape mirrors the plugin/ drift
+      # check above.
       #
       # working-directory: . overrides this job's `defaults.run.working-directory: ui`. Without
       # it, a `src/...` pathspec evaluated from ui/ matches nothing and the check passes
@@ -221,7 +215,7 @@ jobs:
           # answers about what IS tracked, so it stays non-empty while one freshly built chunk
           # slips into a .gitignore match. Asked of the bundle the Build step just wrote, and
           # asked here rather than only downstream, so the source copy fails before the mirror
-          # inherits the hole (review round 2, 2026-08-20).
+          # inherits the hole.
           ignored="$(git ls-files --others --ignored --exclude-standard -- src/companion/app/static/)"
           if [ -n "$ignored" ]; then
             echo "::error::the freshly built bundle holds gitignored files (listed below), so they are not committed and hatchling leaves them out of the wheel — the installed app serves an index referencing chunks that do not ship."
@@ -235,22 +229,21 @@ jobs:
             exit 1
           fi
 
-      # The NODE half of the AD-12 type pipeline (story c2-3). The PYTHON half — that the
+      # The NODE half of the AD-12 type pipeline. The PYTHON half — that the
       # committed ui/src/api/openapi.json still matches what build_app().openapi() produces — is
       # a pytest snapshot test in the `quality` job (tests/unit/companion/test_openapi_contract.py),
       # because this job has Node and no Python dependencies while that one has uv and no Node.
       # Splitting on that boundary adds no toolchain to either job and lets each half fail in the
-      # gate that owns it (c2-3 Decide-once #1).
+      # gate that owns it.
       #
       # `npm run gen:types` rather than a copy of the openapi-typescript invocation: the flags are
       # part of the committed contract, and CI must not be able to drift from what a developer runs.
       - name: Generate TypeScript types from the committed schema
         run: npm run gen:types
 
-      # `git status --porcelain`, NOT the `git diff --exit-code` the epic's AC text names — the
-      # same flagged deviation as the SPA check above, for consistency with the two drift checks
-      # already in this workflow and because porcelain also sees the untracked and newly-ignored
-      # cases git diff cannot.
+      # `git status --porcelain`, NOT `git diff --exit-code` — the same shape as the SPA check
+      # above, for consistency with the two drift checks already in this workflow and because
+      # porcelain also sees the untracked and newly-ignored cases git diff cannot.
       #
       # working-directory: . overrides this job's `defaults.run.working-directory: ui`. The
       # generation step above runs in ui/ (that is where package.json is); the git check needs
@@ -263,8 +256,7 @@ jobs:
           # --porcelain` reports nothing at all for a gitignored or never-committed path, so a
           # missing or newly-ignored types.d.ts would sail through the drift check below while
           # the UI compiled against a file that is not in the repo. Checked PER FILE: a joint
-          # ls-files over both paths stays non-empty while either one slips out of tracking
-          # (c2-3 review, 2026-07-27).
+          # ls-files over both paths stays non-empty while either one slips out of tracking.
           for f in ui/src/api/types.d.ts ui/src/api/openapi.json; do
             if [ -z "$(git ls-files -- "$f")" ]; then
               echo "::error::$f is not tracked — never committed, or became gitignored — so the drift check below cannot see it."
@@ -273,8 +265,7 @@ jobs:
           done
           # And the ignore axis from the other side: the loop above proves both named files are
           # tracked, this proves nothing generated into ui/src/api/ is ignored — the case a
-          # per-file list cannot grow to cover as the pipeline emits more (review round 2,
-          # 2026-08-20).
+          # per-file list cannot grow to cover as the pipeline emits more.
           ignored="$(git ls-files --others --ignored --exclude-standard -- ui/src/api/)"
           if [ -n "$ignored" ]; then
             echo "::error::ui/src/api/ holds gitignored generated files (listed below), so the UI compiles against files that are not in the repo and the drift check cannot see them."
@@ -316,16 +307,15 @@ jobs:
   # contract tests AND several tests that instantiate the real fastembed model (tests/integration/
   # search/, tests/integration/mcp_server/test_semantic_search_tool.py) — a marker run would need
   # network and would download a model, which is what the "no model, no secrets" claim above rests
-  # on. (It does NOT select the twice-sighted test_list_decks_with_strategy_field flake: that test
-  # carries no marker and already runs in the `quality` jobs. The C5 retro and deferred-work.md
-  # both state otherwise; measured 2026-08-09, they are wrong, and R4's premise inherits the error.)
+  # on. (It does NOT select the test_list_decks_with_strategy_field flake: that test carries no
+  # marker and already runs in the `quality` jobs.)
   #
   # Vacuity: a renamed or deleted path exits 4, an empty one exits 5 — both non-zero, so the job
   # cannot pass on nothing. That covers the path disappearing and NOT the test being skipped,
   # gutted, or joined by unrelated files, none of which any check here would see.
   #
-  # Closes epic-c5 action item R1. Needs no DB, model or secret: the backend's engine is lazy
-  # (c1-6), so a boot that never queries never opens cards.db.
+  # Needs no DB, model or secret: the backend's engine is lazy, so a boot that never queries
+  # never opens cards.db.
   companion-integration:
     name: companion real-socket test (windows, py3.12)
     runs-on: windows-latest

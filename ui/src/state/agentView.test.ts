@@ -31,7 +31,7 @@ import {
 } from './agentView'
 
 /**
- * The agent-view slice (story c6-5, AC 5, AC 6).
+ * The agent-view slice.
  *
  * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
@@ -41,7 +41,7 @@ import {
  * writes one field, that the field it does not write is the content, and that the shape admits
  * one view rather than a stack.
  *
- * AC 6 ("nothing opens over an open view") is carried here as a TYPE claim plus the replacement
+ * "Nothing opens over an open view" is carried here as a TYPE claim plus the replacement
  * behaviour below, because the alternative — a stack that this store refuses to push onto — is
  * not expressible: `content` is one nullable slot, so there is no second level for a test to
  * fail to create. That is the intended reading (see the module header), and it is why the
@@ -108,12 +108,11 @@ describe('the session starts with nothing to show', () => {
 
 describe('opening shows the pushed content (AC 6)', () => {
   it('writes the WHOLE slice in one go, so no render sees open-with-stale-content', () => {
-    // Kept as a whole-state `toEqual` at c6-8 rather than relaxed to `toMatchObject`, and that
-    // is the point of it: this is the one assertion in the file that fails when the slice grows
-    // a field, which is exactly the notice a reader wants when a story extends a store. It grew
-    // by two at c6-8 — `retained` and `unread` — and by one more at 17.2 — `history` — and all
-    // are written in the SAME `setState` as `status` and `content`, which is the claim this
-    // test has always made.
+    // Kept as a whole-state `toEqual` rather than relaxed to `toMatchObject`, and that is the
+    // point of it: this is the one assertion in the file that fails when the slice grows a
+    // field, which is exactly the notice a reader wants when a store is extended. `retained`,
+    // `unread` and `history` are all written in the SAME `setState` as `status` and `content`,
+    // which is the claim this test makes.
     openAgentView(SUGGESTIONS)
     expect(useAgentViewStore.getState()).toEqual({
       status: 'open',
@@ -133,7 +132,7 @@ describe('opening shows the pushed content (AC 6)', () => {
   it('REPLACES rather than stacks — the scalar is AC 6 in the type (UX-DR38)', () => {
     // The overlay stack is exactly one level deep, permanently. A second open cannot create a
     // second level because there is nowhere to put one; what it does instead is replace. That
-    // is the STATE half of c6-6's replace-in-place contract and it is the whole of what this
+    // is the STATE half of the replace-in-place contract and it is the whole of what this
     // store can claim — the re-focus, the announcement and the crossfade are `AgentView.tsx`'s,
     // keyed on the `id` these two fixtures deliberately differ in.
     openAgentView(SUGGESTIONS)
@@ -146,7 +145,7 @@ describe('opening shows the pushed content (AC 6)', () => {
 describe('one envelope becomes one view, for every payload the wire admits (c6-6, AC 1, AC 4)', () => {
   it('carries the payload through — title, count and the items themselves', () => {
     // THE DELEGATION CLAIM, and the reason it is asserted on real values rather than on a spy:
-    // c6-4's planted regression was a builder that ignored its argument and minted an empty
+    // the failure to guard against is a builder that ignores its argument and mints an empty
     // shape regardless, which a "was it called" assertion passes with flying colours.
     const content = suggestionsViewOf(
       frame({ title: 'Resilience options', items: [ITEM, ITEM] }, 'push-9'),
@@ -173,8 +172,8 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
     // `agentEventOf` validates only `kind` (`client.ts:701-716`), so `{"kind":"suggestions"}`
     // reaches this function typed as a full event. A `TypeError` here would be an uncaught
     // exception inside a socket message handler: the socket survives, the store write does not,
-    // and the push is silently lost — which is the failure AC 4's "rather than rejecting" is
-    // about, arriving through the wire instead of through the agent.
+    // and the push is silently lost — which is the silent-loss failure the "rather than
+    // rejecting" requirement is about, arriving through the wire instead of through the agent.
     const content = suggestionsViewOf(frame(undefined))
 
     expect(content.items).toEqual([])
@@ -210,8 +209,8 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
     ['whitespace only', '   '],
   ])('falls back to the authored title when the pushed one is %s', (_label, title) => {
     // `aria-labelledby` points at the heading, so a blank title is a `role="dialog"` with no
-    // discernible name — `deferred-work.md`'s entry asks for the guard exactly here, "at the
-    // point content is constructed". `'   '` is the row a truthiness check would pass.
+    // discernible name — so the guard belongs exactly here, at the point content is
+    // constructed. `'   '` is the row a truthiness check would pass.
     const content = suggestionsViewOf(frame({ title, items: [ITEM] }))
 
     expect(content.title).toBe(SUGGESTIONS_VIEW_TITLE)
@@ -271,7 +270,7 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
 })
 
 // =========================================================================================
-// STORY 16.1 — the second builder, in the first one's exact harness
+// THE SECOND BUILDER — in the first one's exact harness
 // =========================================================================================
 
 const SWAP = {
@@ -350,9 +349,9 @@ describe('one swaps envelope becomes one view, for every payload the wire admits
   })
 
   it('DISPLACES an open suggestions view and marks it unread — through the wire verb', () => {
-    // c6-8 proved displacement with a synthetic second kind because no wire path could reach
-    // it; 16.1 is the story that makes the traversal real, so it is re-proven here through the
-    // production verb rather than a hand-built content object.
+    // The store-machine tests below prove displacement with a hand-built second kind; this
+    // re-proves the traversal through the production verb rather than a hand-built content
+    // object, so the wire path itself is covered.
     openSuggestionsPush(frame({ items: [ITEM] }))
     openSwapsPush(swapsFrame({ items: [SWAP] }))
 
@@ -363,7 +362,7 @@ describe('one swaps envelope becomes one view, for every payload the wire admits
 })
 
 // =========================================================================================
-// STORY 16.2 — the third builder, in the same harness
+// THE THIRD BUILDER — in the same harness
 // =========================================================================================
 
 const TIER = {
@@ -451,8 +450,9 @@ describe('one tier_list envelope becomes one view, for every payload the wire ad
   })
 
   it('DISPLACES an open swaps view and marks it unread — through the wire verb', () => {
-    // 16.1 made the first production displacement traversal real; this re-proves the machine
-    // through the third verb, so a kind-switch between the two newest arms is covered too.
+    // The swaps verb above covers the first production displacement traversal; this re-proves
+    // the machine through the third verb, so a kind-switch between the two newest arms is
+    // covered too.
     openSwapsPush(swapsFrame({ items: [SWAP] }))
     openTierListPush(tierFrame({ items: [TIER] }))
 
@@ -463,7 +463,7 @@ describe('one tier_list envelope becomes one view, for every payload the wire ad
 })
 
 // =========================================================================================
-// STORY 16.3 — the fourth and last builder, in the same harness
+// THE FOURTH AND LAST BUILDER — in the same harness
 // =========================================================================================
 
 const GROUP = {
@@ -553,7 +553,7 @@ describe('one groups envelope becomes one view, for every payload the wire admit
 
   it('DISPLACES an open tier-list view and marks it unread — through the wire verb', () => {
     // The last verb's displacement traversal, covering a kind-switch between the two newest
-    // arms exactly as 16.2's twin covered the pair before it.
+    // arms exactly as the tier-list twin above covered the pair before it.
     openTierListPush(tierFrame({ items: [TIER] }))
     openGroupsPush(groupsFrame({ items: [GROUP] }))
 
@@ -621,25 +621,21 @@ describe('the test-only reset is the one thing that forgets (non-vacuity)', () =
 })
 
 // =========================================================================================
-// STORY c6-8 — per-kind retention, the unread state machine, and re-open
+// PER-KIND RETENTION — the unread state machine, and re-open
 // =========================================================================================
 
 /**
  * A view of any kind, constructed by hand.
  *
- * **The synthetic second kind was this story's central honesty, not a shortcut.** Q1 ruled that
- * the nav, the store and the vocabulary go fully four-kind generic while the SOCKET kept
- * dropping the kinds without views at its dispatch switch — because the epic pairs each tool
- * with its view precisely so a push never arrives that the UI cannot display, and accepting one
- * early would recreate that bug from the other side. So AC 5's displacement was proven HERE, at
- * the seam that owns it, with a second kind constructed by hand, before any production path
- * could reach it. Every kind has since gained its wire path (`swaps` at 16.1, `tier_list` at
- * 16.2, `groups` at 16.3 — the socket drops nothing any more), and the wire-verb displacement
- * tests above re-prove the traversals; this fixture stays because the c6-8 machine tests below
- * are about the STORE's state machine, which never needed a wire to be true.
+ * **The hand-built second kind is deliberate, not a shortcut.** The machine tests below are
+ * about the STORE's state machine — per-kind retention, displacement marking a kind unread,
+ * re-open — which is true of the store and never needed a wire to be true, so it is proven
+ * HERE, at the seam that owns it. Every kind also has its wire path (the socket drops nothing),
+ * and the wire-verb displacement tests above re-prove the traversals through the production
+ * verbs.
  *
- * No cast is needed for the kind itself — `AgentViewContent['kind']` widened to the real
- * four-member union at c6-8, so every kind is a legal value of a legal type.
+ * No cast is needed for the kind itself — `AgentViewContent['kind']` is the real four-member
+ * union, so every kind is a legal value of a legal type.
  */
 const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewContent => ({
   id,
@@ -647,7 +643,7 @@ const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewC
   kind,
   title: AGENT_VIEW_LABELS[kind],
   count: 0,
-  // `[]` is a legal member of EVERY arm of 16.1's discriminated union, which is what lets this
+  // `[]` is a legal member of EVERY arm of the discriminated union, which is what lets this
   // fixture stay computed-kind generic with no cast.
   items: [],
 })
@@ -655,13 +651,13 @@ const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewC
 describe('the pill vocabulary is one table with one owner (c6-8, Task 2)', () => {
   it('names all four kinds, in the enum’s order', () => {
     // The order is load-bearing: `AgentViewsNav` derives the pill order from this table's keys
-    // rather than authoring it a second time (Q3), so a reordering here reorders the header.
+    // rather than authoring it a second time, so a reordering here reorders the header.
     expect(Object.keys(AGENT_VIEW_LABELS)).toEqual(['suggestions', 'swaps', 'tier_list', 'groups'])
   })
 
   it('is where the fallback title now comes from — one word, one owner', () => {
-    // c6-6's review kept `SUGGESTIONS_VIEW_TITLE` in this module explicitly AS the c6-8
-    // precedent. This is that precedent honoured rather than a second copy of the word.
+    // `SUGGESTIONS_VIEW_TITLE` is kept in this module as the same word the table owns — one
+    // owner, not a second copy of the word.
     expect(SUGGESTIONS_VIEW_TITLE).toBe(AGENT_VIEW_LABELS.suggestions)
     expect(suggestionsViewOf(frame({}))).toMatchObject({ title: AGENT_VIEW_LABELS.suggestions })
   })
@@ -676,8 +672,8 @@ describe('the pill vocabulary is one table with one owner (c6-8, Task 2)', () =>
     // The empty-push line's noun table lives in `SuggestionsView/copy.ts`, which must stay
     // import-free (the `nodenext`/`bundler` split — its own header), so it cannot derive from
     // this table. THIS test is the tether, from the side that may import both: every kind's
-    // noun is its nav label lowercased — the retro item's own prescription — and the key sets
-    // are identical, so a fifth kind added here without a noun there fails HERE, while a noun
+    // noun is its nav label lowercased, and the key sets are identical, so a fifth kind added
+    // here without a noun there fails HERE, while a noun
     // the artefact never named fails `tests/empty-push-copy.test.ts`'s enumeration gate.
     expect(Object.keys(EMPTY_PUSH_NOUNS)).toEqual(Object.keys(AGENT_VIEW_LABELS))
     for (const [kind, label] of Object.entries(AGENT_VIEW_LABELS)) {
@@ -691,7 +687,7 @@ describe('a push is retained under its own kind (c6-8, AC 4)', () => {
     openAgentView(SUGGESTIONS)
 
     expect(useAgentViewStore.getState().retained.suggestions).toBe(SUGGESTIONS)
-    // The same reference, not a copy — which is what makes AC 4's "the same content" an
+    // The same reference, not a copy — which is what makes "the same content" an
     // identity rather than a deep comparison, and what makes it impossible for the map and the
     // glass to disagree.
     expect(useAgentViewStore.getState().content).toBe(SUGGESTIONS)
@@ -748,7 +744,7 @@ describe('unread has exactly one setter, and it is displacement (c6-8, AC 5)', (
     openAgentView(SUGGESTIONS)
     openAgentView(viewOf('swaps'))
 
-    // AC 5, and the whole of "a push is never silently swallowed": the suggestions view is no
+    // The whole of "a push is never silently swallowed": the suggestions view is no
     // longer on the glass, and the person is told where it went.
     expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
     expect(openViewNow()).toMatchObject({ kind: 'swaps' })
@@ -870,11 +866,11 @@ describe('the c6-8 fields did not reshape the c6-5 ones (UX-DR38, Landmine 15)',
 })
 
 // =========================================================================================
-// STORY c7-6 — the one bit the deck announcer reads
+// THE ANNOUNCER'S BIT — the one boolean the deck announcer reads
 // =========================================================================================
 
 /**
- * `useAgentViewIsOpen`, walked across every writer that can move `status` (story c7-6).
+ * `useAgentViewIsOpen`, walked across every writer that can move `status`.
  *
  * The consumer is `DeckAnnouncer`, whose gate is *"is a modal covering the deck"* and nothing
  * else — so what this block owes is the LIFECYCLE of the boolean rather than a second reading of
@@ -928,7 +924,7 @@ describe('the announcer’s open/closed bit (c7-6)', () => {
   })
 
   it('is a PRIMITIVE, which is why it exists beside `useOpenAgentView` (Design Notes)', () => {
-    // (unchanged by 17.2 — the history hooks below have their own primitive/reference split)
+    // (the history hooks below have their own primitive/reference split)
     // The pair is not a duplication: this one answers with a boolean, its sibling with the
     // content object. `DeckAnnouncer` subscribes to primitives only, one field per subscription,
     // so that a second push while a view is open cannot re-render a region whose sentence has
@@ -950,7 +946,7 @@ describe('the announcer’s open/closed bit (c7-6)', () => {
 })
 
 // =========================================================================================
-// STORY 17.2 — the session history: last 20 pushes overall, newest first
+// THE SESSION HISTORY — last 20 pushes overall, newest first
 // =========================================================================================
 
 /** A view with its own id AND its own ts — history needs both axes to vary independently. */
@@ -984,7 +980,7 @@ describe('every push is filed into the history, newest first by ts (17.2, FR-18)
   })
 
   it('orders by envelope `ts`, NEVER by `id` — an out-of-order arrival files by its clock', () => {
-    // The ruling in the store's own comment: `id` is opaque identity (producers may mint a
+    // As the store's own comment says: `id` is opaque identity (producers may mint a
     // UUID4), so an older push arriving late must sort by `ts` even though its id says nothing.
     openAgentView(pushAt(5))
     openAgentView(pushAt(9))
@@ -1103,7 +1099,7 @@ describe('every push is filed into the history, newest first by ts (17.2, FR-18)
 
 describe('reopenPush puts one specific push back (17.2)', () => {
   it('re-opens the entry by IDENTITY — an older push of an already-re-pushed kind included', () => {
-    // The case the per-kind pills cannot reach and the whole story exists for: two suggestions
+    // The case the per-kind pills cannot reach: two suggestions
     // pushes, and the OLDER one is still reachable through history.
     const older = pushAt(1)
     const newest = pushAt(2)
@@ -1115,7 +1111,7 @@ describe('reopenPush puts one specific push back (17.2)', () => {
 
     expect(useAgentViewStore.getState().status).toBe('open')
     expect(useAgentViewStore.getState().content).toBe(older)
-    // The retained slot is NOT rewritten (pre-cut R3): `retained[kind]` is latest-per-kind, and
+    // The retained slot is NOT rewritten: `retained[kind]` is latest-per-kind, and
     // a revisit of an older envelope must not corrupt it — the kind pill keeps re-opening the
     // newest push even while an older one is on the glass.
     expect(useAgentViewStore.getState().retained.suggestions).toBe(newest)
@@ -1182,8 +1178,8 @@ describe('the history hooks (17.2)', () => {
   })
 
   it('useAgentViewHistoryCount is a primitive that tracks the length', () => {
-    // Unmounted before the store write, then re-rendered fresh — the c7-6 block's idiom, so no
-    // subscribed hook receives an update outside `act`.
+    // Unmounted before the store write, then re-rendered fresh — the announcer block's idiom,
+    // so no subscribed hook receives an update outside `act`.
     const { result: empty, unmount } = renderHook(() => useAgentViewHistoryCount())
     expect(empty.current).toBe(0)
     unmount()

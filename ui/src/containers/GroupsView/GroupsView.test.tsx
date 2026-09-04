@@ -11,14 +11,14 @@ import { GroupsView } from './GroupsView'
 import { emptyPushLine } from '../SuggestionsView/copy'
 
 /**
- * The groups view's body (story 16.3) — `TierListView.test.tsx`'s harness, on the fourth and
- * last view kind. The same disclaimers apply: jsdom evaluates no stylesheet (the divider, the
- * measure and the badge chrome are read as SOURCE by `token-usage.test.ts` and the shell
- * guards) and loads no images (art states are driven manually). What this file proves is the
- * BRANCH and the WIRING — which element renders for which input, which handler reaches which
- * store verb, that an empty or malformed group is skipped while its neighbours render, that
- * one bad card id costs exactly one thumbnail of one group, and that the quantity badge obeys
- * EXPERIENCE.md:94's in-deck-only gate.
+ * The groups view's body — `TierListView.test.tsx`'s harness, on the fourth and last view
+ * kind. The same disclaimers apply: jsdom evaluates no stylesheet (the divider, the measure and
+ * the badge chrome are read as SOURCE by `token-usage.test.ts` and the shell guards) and loads
+ * no images (art states are driven manually). What this file proves is the BRANCH and the
+ * WIRING — which element renders for which input, which handler reaches which store verb, that
+ * an empty or malformed group is skipped while its neighbours render, that one bad card id
+ * costs exactly one thumbnail of one group, and that the quantity badge obeys EXPERIENCE.md:94's
+ * in-deck-only gate.
  */
 
 // Typed through the ALIAS (`schema.ts` is the one home for a wire-derived shape — declaring a
@@ -530,8 +530,8 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(deadTile.tagName).toBe('BUTTON')
     expect(deadTile).not.toBeDisabled()
 
-    // The non-vacuity control (the plant-3 lesson): the same tile, re-armed, proves the
-    // handlers were wired all along and the STORE did the refusing.
+    // The non-vacuity control: the same tile, re-armed, proves the handlers were wired all
+    // along and the STORE did the refusing.
     act(() => seedHydrated('c-group-1'))
     fireEvent.mouseEnter(tilesOf(sectionAt(container, 0))[0])
     expect(useInspectionStore.getState().hoveredId).toBe('c-group-1')

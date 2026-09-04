@@ -4,33 +4,32 @@ import { describe, expect, it } from 'vitest'
 import { useCardArt } from './useCardArt'
 
 /**
- * The art state machine's re-arming, at the hook (stories c4-4, c4-5, c4-6 Q7).
+ * The art state machine's re-arming, at the hook.
  *
- * ================= WHY THIS FILE EXISTS, AND IT IS AN EVASION PROBE'S DOING ============
+ * ================= WHY THIS FILE EXISTS ================================================
  *
- * This module had no test of its own: its three states are exercised through `CardTile` and
- * `CardDetail`, which is the honest place for "the well shows before load" and "a failed image
- * becomes a placeholder". **c4-6's probe (g) proved that is not enough.** Reverting the hook's key
- * from `(cardId, face)` back to `cardId` alone — undoing Q7's whole repair — left the ENTIRE
- * SUITE GREEN, and the reason is a real interaction between two of this story's own rulings:
+ * The hook's three states are exercised through `CardTile` and `CardDetail`, which is the honest
+ * place for "the well shows before load" and "a failed image becomes a placeholder". That is not
+ * enough for the KEY: reverting it from `(cardId, face)` back to `cardId` alone leaves the ENTIRE
+ * SUITE GREEN, because of a real interaction between two decisions:
  *
- *   Q10 ruled the flip is TWO STACKED `<img>` ELEMENTS, so the tile and the panel each call this
- *   hook twice — once per face — and each call keeps its own state. The FRONT call's face is
- *   always `0` and the BACK call's face is always `1` for every printing that exists (all 2,778
+ *   The flip is TWO STACKED `<img>` ELEMENTS, so the tile and the panel each call this hook
+ *   twice — once per face — and each call keeps its own state. The FRONT call's face is always
+ *   `0` and the BACK call's face is always `1` for every printing that exists (all 2,778
  *   flip-control cards have exactly two imaged faces, measured). So neither consumer ever hands
- *   ONE hook instance a changed face, and the component tests could not see the key at all.
+ *   ONE hook instance a changed face, and the component tests cannot see the key at all.
  *
- * The repair is still correct and still needed — the key is what makes the hook right for a card
- * with three imaged faces (where the back element's `face` really does move), and for any later
+ * The key is still correct and still needed — it is what makes the hook right for a card with
+ * three imaged faces (where the back element's `face` really does move), and for any later
  * consumer that swaps faces in a single element rather than stacking them. But a guard whose
  * subject is invisible is not a guard, so the claim is asserted HERE, where the face can actually
- * be changed. Recorded rather than quietly fixed, per AC 27.
+ * be changed.
  *
  * ================= WHAT THIS CANNOT CARRY =============================================
  *
  * jsdom loads no images, fires no `load`/`error` and reports `naturalWidth: 0` always, so
  * `settleIfCached` is INERT here in both directions — the warm-cache race this module exists for
- * is a browser fact and is checked by eye at each story's Task 8. Events below are DISPATCHED
+ * is a browser fact and is checked by eye in a browser. Events below are DISPATCHED
  * through the returned handlers, never awaited.
  */
 
@@ -83,7 +82,7 @@ describe('the verdict belongs to the PICTURE, which is a card AND a face (c4-6 Q
 
   it('does NOT re-arm when neither moved — a re-render is not a new picture', () => {
     // The silent half. `onError` fires once per `src`, and the backend answers a remembered
-    // failure from memory for up to 300 s (c3-8): "a tile that retries in a loop will be answered
+    // failure from memory for up to 300 s: "a tile that retries in a loop will be answered
     // from memory and change nothing". A hook that re-armed on every render would restart that
     // loop on every parent update.
     const { result, rerender } = renderHook(({ face }) => useCardArt('one-card', face), {

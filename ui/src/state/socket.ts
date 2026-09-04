@@ -1,12 +1,9 @@
 /**
  * The browser's connect/reconnect loop: one socket per tab, a fresh ticket per attempt, and a
- * backoff that never gives up (story c5-6, FR-11, NFR-04, AD-5, AD-6).
+ * backoff that never gives up (FR-11, NFR-04, AD-5, AD-6).
  *
- * The backend half of this channel has been complete since **c5-5** — c5-2 mints the tickets,
- * c5-3 accepts the upgrade, c5-4 broadcasts, c5-5 ingests — and `test_ws.py:130` names the shape
- * this file finally performs, in the test that has been describing it since c5-2:
- * *"mint, upgrade, mint, upgrade"*. **This is the first client-side socket code in the
- * repository.**
+ * The backend half of this channel — mint, upgrade, broadcast, ingest — is complete, and
+ * `test_ws.py:130` names the shape this file performs: *"mint, upgrade, mint, upgrade"*.
  *
  * Framework-free on purpose, in `poller.ts`'s exact register: no React, no store import, no
  * module-level state, both external effects INJECTED. So every timing assertion in
@@ -48,15 +45,14 @@
  * handler here and it does exactly one thing: back off, re-mint, retry. Any branch on *why* would
  * be a branch on information this loop provably does not have.
  *
- * ================= "EXHAUSTED" IS AN ANNOUNCEMENT, NOT A STOP (Q2, Brad 2026-08-08) =====
+ * ================= "EXHAUSTED" IS AN ANNOUNCEMENT, NOT A STOP ==========================
  *
  * The epic says the Disconnected panel appears when "the client gives up", and
- * `RETRIES_QUIETLY.disconnected = true` — a contract shipped at c2-9 — says the state keeps
- * retrying. Both are honoured, and the reconciliation is the ruling: **the threshold below is
- * when the panel is ANNOUNCED, not when the loop stops.** The backoff continues at the 30 s
- * ceiling for as long as the tab is open, and a reconnect that later succeeds clears the panel
- * with no reload — which is the entire point of this story (AC 9). A true stop would rebuild the
- * needs-a-manual-refresh defect the story exists to kill, three ledger entries over.
+ * `RETRIES_QUIETLY.disconnected = true` says the state keeps retrying. Both are honoured:
+ * **the threshold below is when the panel is ANNOUNCED, not when the loop stops.** The backoff
+ * continues at the 30 s ceiling for as long as the tab is open, and a reconnect that later
+ * succeeds clears the panel with no reload. A true stop would rebuild the needs-a-manual-refresh
+ * defect this loop exists to kill.
  *
  * The map is READ rather than paraphrased, exactly as `poller.ts` reads it: see
  * {@link keepsRetrying} below, and the flip-the-entry test in `socket.test.ts` that proves the
@@ -124,8 +120,8 @@ export const SOCKET_CEILING_MS = 30_000
 /**
  * How long the socket must have been down CONTINUOUSLY before the Disconnected panel is shown.
  *
- * 60 s, the two-gate escalation shape `poller.ts` already uses (Q2's ruling, and the reason it
- * was ruled rather than invented). At the schedule above that is at least six consecutive failed
+ * 60 s, the two-gate escalation shape `poller.ts` already uses. At the schedule above that is
+ * at least six consecutive failed
  * attempts with the last two a full ceiling apart (t = 0, 2, 6, 14, 30, 60 s), so a backend
  * restart — which is over in a second or two — never reaches it, and the panel keeps meaning
  * what its copy says: *"Lost the companion backend."*
@@ -164,8 +160,8 @@ export const DISCONNECTED_MIN_FAILURES = 4
  *   milliseconds either.
  * - `down` — the two gates above have both been satisfied. **The loop is still retrying**; this
  *   value means *say so*, not *stop*. `surfaceOf` reads it and puts the Disconnected panel on the
- *   glass; the connection pill (**shipped at c5-7**) reads the same field for the same reason,
- *   and renders its negative dot beside that panel rather than instead of it.
+ *   glass; the connection pill reads the same field for the same reason, and renders its
+ *   negative dot beside that panel rather than instead of it.
  *
  * A union rather than a boolean pair (`connected` + `exhausted`) for `DeckState`'s reason: two
  * booleans are two invariants that can disagree, and `{connected: true, exhausted: true}` has no
@@ -173,12 +169,11 @@ export const DISCONNECTED_MIN_FAILURES = 4
  */
 export type ConnectionStatus = 'live' | 'reconnecting' | 'down'
 
-// `SystemEventKind` used to live here — the kind-only union {@link AgentSocketOptions.onSystemEvent}
-// carried before c7-3 widened the callback to the whole envelope. It is GONE rather than kept
-// exported: its one external consumer was `socket.test.ts`'s harness, `schema.ts`'s `SystemEvent`
-// now owns the pair (both spellings of the system/view partition live in that file, both derived),
-// and an exported alias with no consumer is exactly the drift surface the alias-lands-with-its-
-// consumer rule exists to prevent. A caller wanting the kinds writes `SystemEvent['kind']`.
+// There is deliberately no kind-only `SystemEventKind` alias exported here: `schema.ts`'s
+// `SystemEvent` owns the pair (both spellings of the system/view partition live in that file, both
+// derived), and an exported alias with no consumer is exactly the drift surface the
+// alias-lands-with-its-consumer rule exists to prevent. A caller wanting the kinds writes
+// `SystemEvent['kind']`.
 
 export interface AgentSocketOptions {
   /**
@@ -190,7 +185,7 @@ export interface AgentSocketOptions {
   readonly onStatus: (status: ConnectionStatus) => void
   /**
    * A socket opened that follows at least one failure — i.e. a RE-connect, not the first connect
-   * of the tab (AC 5). The caller refetches (`connection.ts`).
+   * of the tab. The caller refetches (`connection.ts`).
    *
    * The distinction is the whole reason this is a separate callback from `onStatus('live')`: the
    * boot has already run by the time the first socket opens, so re-driving on it would double
@@ -206,10 +201,8 @@ export interface AgentSocketOptions {
    * is leaving instead of the one it is switching to"*. See `connection.ts` for what each one
    * does.
    *
-   * **It carries the WHOLE EVENT since c7-3**, where it used to carry the bare kind. This
-   * docstring reserved that seam in writing — *"the payload is deliberately never read"* — and
-   * c7-3 is the story that overturns exactly half of the ruling: `deck_changed`'s `deck_id` is
-   * now read (by `connection.ts`, never here) to choose between a single-deck refetch and a full
+   * **It carries the WHOLE EVENT**, not the bare kind: `deck_changed`'s `deck_id` is read (by
+   * `connection.ts`, never here) to choose between a single-deck refetch and a full
    * re-drive, while `active_deck_changed`'s payload stays deliberately unread, because the boot
    * asks `GET /api/active-deck` first and so can never fetch the deck being left. Carrying the
    * envelope rather than a second `deckId` parameter keeps this module payload-blind: it hands
@@ -218,65 +211,57 @@ export interface AgentSocketOptions {
    */
   readonly onSystemEvent: (event: SystemEvent) => void
   /**
-   * A `suggestions` push arrived (story c6-6, AC 1). The caller opens its view
+   * A `suggestions` push arrived. The caller opens its view
    * (`connection.ts` → `openSuggestionsPush`).
    *
-   * **It carries the WHOLE EVENT, as {@link AgentSocketOptions.onSystemEvent} now also does —
+   * **It carries the WHOLE EVENT, as {@link AgentSocketOptions.onSystemEvent} also does —
    * for a different reason worth keeping apart.** The system kinds carry their envelope because
-   * c7-3's refetch branch reads ONE routing field (`deck_changed`'s `deck_id`) out of it; this
+   * the refetch branch reads ONE routing field (`deck_changed`'s `deck_id`) out of it; this
    * one carries the envelope because the payload IS the content: the title, the items and the
    * `id` that makes a repeat push identifiable are all in it, and an `id`-only callback would
    * force the caller to hold a second copy of the frame to look them up in.
    *
-   * Every agent-view kind now has a callback of its own (`groups`, the last, landed at 16.3)
-   * — and the shape is still one callback per renderable kind rather than
-   * `onViewEvent(kind, payload)`, which is c6-8's deliberate ruling honoured to the end (Q1,
-   * Brad 2026-08-12): the epic's preamble rules that a kind must not become *acceptable*
-   * before something can display it, because a push the UI silently cannot draw breaks
-   * never-silently-swallowed from the other side. So each view story widened this signature
-   * alongside the view that can receive what it carries — {@link AgentSocketOptions.onSwaps}
-   * at 16.1, {@link AgentSocketOptions.onTierList} at 16.2, {@link AgentSocketOptions.onGroups}
-   * at 16.3 — and no kind is dropped anywhere any more.
+   * Every agent-view kind has a callback of its own, and the shape is one callback per
+   * renderable kind rather than `onViewEvent(kind, payload)`, deliberately: a kind must not
+   * become *acceptable* before something can display it, because a push the UI silently cannot
+   * draw breaks never-silently-swallowed from the other side. So each callback is added
+   * alongside the view that can receive what it carries, and no kind is dropped anywhere.
    */
   readonly onSuggestions: (event: SuggestionsEvent) => void
   /**
-   * A `swaps` push arrived (story 16.1). The caller opens its view
+   * A `swaps` push arrived. The caller opens its view
    * (`connection.ts` → `openSwapsPush`).
    *
    * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
    * the payload IS the content, and an `id`-only callback would force the caller to hold a
-   * second copy of the frame to look the title, items and replace key up in. This is the first
-   * widening the c6-8 comment above promised — one callback, added in the same story as the
-   * view that renders what it carries.
+   * second copy of the frame to look the title, items and replace key up in.
    */
   readonly onSwaps: (event: SwapsEvent) => void
   /**
-   * A `tier_list` push arrived (story 16.2). The caller opens its view
+   * A `tier_list` push arrived. The caller opens its view
    * (`connection.ts` → `openTierListPush`).
    *
    * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
    * the payload IS the content, and an `id`-only callback would force the caller to hold a
-   * second copy of the frame to look the title, items and replace key up in. The second
-   * widening the c6-8 comment above promised — one callback, added in the same story as the
-   * view that renders what it carries.
+   * second copy of the frame to look the title, items and replace key up in.
    */
   readonly onTierList: (event: TierListEvent) => void
   /**
-   * A `groups` push arrived (story 16.3). The caller opens its view
+   * A `groups` push arrived. The caller opens its view
    * (`connection.ts` → `openGroupsPush`).
    *
    * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
    * the payload IS the content, and an `id`-only callback would force the caller to hold a
-   * second copy of the frame to look the title, items and replace key up in. The LAST widening
-   * the c6-8 comment above promised — with it, every kind in the closed six-member event enum
-   * is delivered somewhere, and the dispatch switch below contains no drop arm at all.
+   * second copy of the frame to look the title, items and replace key up in. With it, every
+   * kind in the closed six-member event enum is delivered somewhere, and the dispatch switch
+   * below contains no drop arm at all.
    */
   readonly onGroups: (event: GroupsEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */
   readonly mint?: () => Promise<SessionOutcome>
   /**
-   * Injected so tests need no network AND so this module never names the socket constructor —
-   * Q1's ruling (Brad, 2026-08-08). `posture.test.ts:322-342` asserts the network-door list is
+   * Injected so tests need no network AND so this module never names the socket constructor:
+   * `posture.test.ts:322-342` asserts the network-door list is
    * exactly `['src/api/client.ts']` and its family regex includes the constructor's name, so the
    * identifier appearing anywhere in this file would make it the app's second door. The door
    * stays one and hands out this factory; see `AgentSocketHandlers` in `client.ts`.
@@ -306,9 +291,9 @@ export interface AgentSocket {
 }
 
 /**
- * The panel whose retry contract governs this loop (AC 17).
+ * The panel whose retry contract governs this loop.
  *
- * Typed `ClientOnlyState` rather than `StateKey`, which is dw:3500's disposition made mechanical:
+ * Typed `ClientOnlyState` rather than `StateKey`:
  * this is the second of the two places in the app that names a panel produced by a client-side
  * condition, and the type is what stops either of them drifting onto a wire-sourced one. See
  * `CLIENT_ONLY_STATES` in `states.ts` for why the consumption is type-level rather than runtime.
@@ -393,12 +378,11 @@ export const createAgentSocket = ({
   /**
    * Whether the loop keeps scheduling once the panel is up — READ from the contract, not assumed.
    *
-   * The shipped value is `true`, so this returns `true` and the loop is endless, which is Q2's
-   * ruling. What the read buys is that the ruling is not a second copy of the contract: flipping
+   * The shipped value is `true`, so this returns `true` and the loop is endless. What the read
+   * buys is that this is not a second copy of the contract: flipping
    * `RETRIES_QUIETLY.disconnected` to `false` makes this loop stop retrying behind the panel,
-   * which is exactly what the map would then be saying. `copy-tails.test.ts`'s fourth tail —
-   * declined at c3-9 and re-homed here by name because there was no mechanism to check it
-   * against — is checkable because of this line.
+   * which is exactly what the map would then be saying. `copy-tails.test.ts`'s fourth tail is
+   * checkable because of this line.
    */
   const keepsRetrying = (status: ConnectionStatus): boolean =>
     status !== 'down' || retriesQuietly[DISCONNECTED_PANEL]
@@ -452,7 +436,7 @@ export const createAgentSocket = ({
   const succeed = (gen: number): void => {
     if (gen !== generation || !live) return
     // Read BEFORE the reset, because the reset is what destroys the evidence: "did this open
-    // follow a failure" is the whole of the re-drive's trigger (AC 5).
+    // follow a failure" is the whole of the re-drive's trigger.
     const reconnected = failures > 0
     failures = 0
     failingSince = null
@@ -462,10 +446,10 @@ export const createAgentSocket = ({
   }
 
   /**
-   * One frame arrived. **The one total switch over the six-kind closed enum** (AC 11, AD-6).
+   * One frame arrived. **The one total switch over the six-kind closed enum** (AD-6).
    *
    * `null` is a frame this build could not read — non-JSON, an unknown kind, the wrong shape —
-   * and it is IGNORED: no close, no throw, no state change (AC 13). The socket stays open because
+   * and it is IGNORED: no close, no throw, no state change. The socket stays open because
    * a malformed frame says nothing about the connection, and `ws.py:284` says the same thing from
    * the other side about client chatter.
    */
@@ -474,7 +458,7 @@ export const createAgentSocket = ({
     if (event === null) return
 
     switch (event.kind) {
-      // THE WHOLE EVENT since c7-3 (the kind before it): the shared case arms narrow `event` to
+      // THE WHOLE EVENT: the shared case arms narrow `event` to
       // exactly the `SystemEvent` union, so the callback's envelope and the switch's narrowing
       // are the same type by construction. What each kind DOES with its payload is
       // `connection.ts`'s decision — this module still reads nothing but the discriminant.
@@ -482,35 +466,33 @@ export const createAgentSocket = ({
       case 'deck_changed':
         onSystemEvent(event)
         return
-      // THE FIRST AGENT VIEW WITH SOMEWHERE TO GO (story c6-6, AC 1). The whole event, not its
-      // kind — the payload IS the content. `connection.ts` turns it into an open view; this
-      // module still knows nothing about a store.
+      // THE FIRST AGENT VIEW WITH SOMEWHERE TO GO. The whole event, not its kind — the payload
+      // IS the content. `connection.ts` turns it into an open view; this module still knows
+      // nothing about a store.
       case 'suggestions':
         onSuggestions(event)
         return
-      // THE SECOND AGENT VIEW WITH SOMEWHERE TO GO (story 16.1). Same shape as the arm above:
-      // the whole event, because the payload is the content, and `connection.ts` decides what a
-      // store does with it.
+      // THE SECOND AGENT VIEW WITH SOMEWHERE TO GO. Same shape as the arm above: the whole
+      // event, because the payload is the content, and `connection.ts` decides what a store
+      // does with it.
       case 'swaps':
         onSwaps(event)
         return
-      // THE THIRD AGENT VIEW WITH SOMEWHERE TO GO (story 16.2). Same shape as the two arms
-      // above: the whole event, because the payload is the content, and `connection.ts` decides
-      // what a store does with it.
+      // THE THIRD AGENT VIEW WITH SOMEWHERE TO GO. Same shape as the two arms above: the whole
+      // event, because the payload is the content, and `connection.ts` decides what a store
+      // does with it.
       case 'tier_list':
         onTierList(event)
         return
-      // THE FOURTH AND LAST AGENT VIEW WITH SOMEWHERE TO GO (story 16.3). Same shape as its
-      // three siblings — and with it the drop arm this switch carried since c6-8 is GONE:
+      // THE FOURTH AND LAST AGENT VIEW WITH SOMEWHERE TO GO. Same shape as its three siblings:
       // every kind the enum admits is delivered somewhere, and the `never` arm below is the
       // only non-delivering path left.
       case 'groups':
         onGroups(event)
         return
       default: {
-        // A seventh kind is a COMPILE failure naming the kind, not a runtime fallthrough — the
-        // mechanism that caught c3-2's seventh reason token and c3-4's eighth, applied to the
-        // event vocabulary. `AGENT_EVENT_KINDS` in `client.ts` is the narrower's half of the
+        // A seventh kind is a COMPILE failure naming the kind, not a runtime fallthrough.
+        // `AGENT_EVENT_KINDS` in `client.ts` is the narrower's half of the
         // same guarantee, so a new kind cannot even reach this switch unrecognised.
         const unhandled: never = event
         return unhandled
@@ -519,7 +501,7 @@ export const createAgentSocket = ({
   }
 
   /**
-   * `delay → mint → open`, once. Every await is followed by a generation re-check (AC 4).
+   * `delay → mint → open`, once. Every await is followed by a generation re-check.
    *
    * The delay is not in this function — it is the `setTimeout` that called it — which is what
    * makes the ordering structural: there is no code path on which a ticket is minted and then

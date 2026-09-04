@@ -1,25 +1,21 @@
-/* Panel — the universal container (story c2-7, UX-DR9, DESIGN.md "Containers & chrome").
+/* Panel — the universal container (UX-DR9, DESIGN.md "Containers & chrome").
 
    THE MOCK IS A SOURCE OF ARRANGEMENT, NOT OF VALUES. `_ds/_ds_bundle.js`'s Panel is written
    entirely in inline styles (an ESLint error here) and four of its values are DRIFT that
    DESIGN.md's own prose corrects three sections later. Each one is snapped below with a
    comment naming what it replaces, so a reviewer comparing against the composition reference
-   sees a decision rather than a discrepancy (AC 9).
+   sees a decision rather than a discrepancy.
 
-   GEOMETRY LITERALS ARE A DOCUMENTED NON-BAN, inherited from AppShell.css (c2-6 AC 18) and
-   enforced as a GATE over every component stylesheet since that story's review round. There
-   are two here — the hairline border and the live dot — and each carries its DESIGN.md
-   citation beside the value. Neither can be a token: `declaredTokens.size` is pinned (**69** as of c4-7; this comment read
-   `64`, its value when c2-7 shipped, and is corrected at c4-12's conformance sweep) and
-   tests/tokens.test.ts asserts every name byte-for-byte against DESIGN.md's frontmatter, so
-   adding one is not available (AC 23).
+   GEOMETRY LITERALS ARE A DOCUMENTED NON-BAN, inherited from AppShell.css and enforced as a
+   GATE over every component stylesheet. There are two here — the hairline border and the live
+   dot — and each carries its DESIGN.md citation beside the value. Neither can be a token:
+   `declaredTokens.size` is pinned and tests/tokens.test.ts asserts every name byte-for-byte
+   against DESIGN.md's frontmatter, so adding one is not available.
 
    WHAT NO TEST HERE CAN PROVE: that any of it LOOKS right. jsdom applies no stylesheet and has
-   no layout engine, and this story ships NO ON-SCREEN CONSUMER of the panel at all — nothing
-   imports it yet. Appearance is checked at the first consuming story (c2-9's state panel,
-   c4-7's deck list, c4-10's format check) and carried on the epic manual-testing checklist
-   (AC 21). It is not dev-verified here, and pretending otherwise with a getComputedStyle()
-   assertion would be a test that passes for the wrong reason. */
+   no layout engine. Appearance is an eye-check at the consuming surfaces (the deck list, the
+   format check); pretending otherwise with a getComputedStyle() assertion would be a test that
+   passes for the wrong reason. */
 
 /* ==== THE PANEL SURFACE ================================================================
    DESIGN.md: "{components.panel.background} inside {components.panel.border} at
@@ -30,8 +26,8 @@
    makes the RESTING panel the only element casting a shadow, inverting the hierarchy.
 
    `overflow: hidden` IS LEGAL HERE, and this note exists so the next reader does not "fix" it.
-   c2-6's clip ban covers the shell ROOTS and `.app-shell-columns` — the one scroller, where a
-   horizontal clip would bury the overflow its own AC forbids. A panel is neither: it is a
+   The clip ban covers the shell ROOTS and `.app-shell-columns` — the one scroller, where a
+   horizontal clip would bury the overflow the shell forbids. A panel is neither: it is a
    nested box, and the clip is load-bearing, because it is what makes the header's rule stop at
    the `--radius-lg` corner instead of poking out square. */
 .panel {
@@ -44,15 +40,15 @@
 }
 
 /* UX-DR1's ramp, stepped EXACTLY one level. DESIGN.md's `level="overlay"` panel — the card
-   detail panel (c4-5) and everything inside an agent view. */
+   detail panel and everything inside an agent view. */
 .panel-overlay {
   background: var(--surface-overlay);
 }
 
-/* UX-DR9's live state. Elevation only; the title colour and the dot are below. No transition
-   (AC 18): animating the change into this state is c7-5's, together with the reduced-motion
-   fallback it has to register in tokens.css. A motion with no registered fallback is an
-   incomplete story (Decide-once #3), which is why this one is not smuggled in early. */
+/* UX-DR9's live state. Elevation only; the title colour and the dot are below. No transition:
+   animating the change into this state belongs to the code that first sets `live`, together
+   with the reduced-motion fallback it has to register in tokens.css. A motion with no
+   registered fallback is incomplete, which is why this one is not smuggled in early. */
 .panel-live {
   box-shadow: var(--shadow-raise);
 }
@@ -76,7 +72,7 @@
   border-bottom: 1px solid var(--border-hairline);
 }
 
-/* AC 13 — the label role NEVER travels without its two companions, and this is a gate rather
+/* The label role NEVER travels without its two companions, and this is a gate rather
    than a convention (`findRoleWithoutCompanions` in tests/token-usage.test.ts). The `font`
    shorthand cannot carry `letter-spacing` or `text-transform`, so a bare `font:
    var(--type-label)` renders 11px lowercase text at default tracking: legible, plausible, and
@@ -94,7 +90,7 @@
 
 /* UX-DR9 — `live` swaps the title to --accent. NOT --accent-dim, anywhere in this file: a
    panel at `level="overlay"` puts its own title on --surface-overlay, where --accent-dim is
-   2.70:1 and fails the 3:1 non-text floor (UX-DR6, AC 14). The `findAccentDimOnOverlay` guard
+   2.70:1 and fails the 3:1 non-text floor (UX-DR6). The `findAccentDimOnOverlay` guard
    is same-block only and could not see that pairing, so not writing the token at all is the
    fix rather than trusting the gate. */
 .panel-live .panel-title {
@@ -117,9 +113,9 @@
   box-shadow: var(--glow);
 }
 
-/* AC 12 — the numeric role and its companion in the SAME rule block, which is the decide-once
-   ruling and the shape `findUnpairedNumericRole` enforces. This is one of that guard's first
-   real consumers: the `font` shorthand resets `font-variant-numeric`, so the role applied
+/* The numeric role and its companion in the SAME rule block, which is the shape
+   `findUnpairedNumericRole` enforces: the `font` shorthand resets `font-variant-numeric`, so
+   the role applied
    alone renders PROPORTIONAL digits and a column of counts stops lining up (UX-DR3). */
 .panel-count {
   color: var(--text-tertiary);

@@ -1,6 +1,6 @@
 /**
  * The words. This module is the ONLY place a state panel's user-facing prose lives, and every
- * byte of it is `EXPERIENCE.md`'s (story c2-9, AC 3, AC 8, AC 10).
+ * byte of it is `EXPERIENCE.md`'s.
  *
  * WHY A MODULE AND NOT STRINGS IN THE COMPONENT. `ui/tests/copy.test.ts` reads `EXPERIENCE.md`
  * — the artefact itself, not a copy of it — and asserts every headline and body byte for byte,
@@ -16,11 +16,10 @@
  * State panel renders THREE slots: headline, guidance body, and **the concrete next action on
  * its own line** in `--type-body-strong` `--accent`. There is no separately-written
  * next-action string anywhere in the design artefacts, so either the copy stops being verbatim
- * or the action line is carved out of the Body — and only the second is compatible with the
- * epic's own AC.
+ * or the action line is carved out of the Body — and only the second keeps the copy verbatim.
  *
- * Brad's ruling (Q3, 2026-07-29): **split the Body at sentence boundaries and gate the split
- * by concatenation, in SOURCE order.** Each sentence is tagged with the slot it renders into;
+ * So: **split the Body at sentence boundaries and gate the split by concatenation, in SOURCE
+ * order.** Each sentence is tagged with the slot it renders into;
  * re-joining the parts IN ORDER must reproduce `EXPERIENCE.md`'s Body exactly, which
  * `copy.test.ts` asserts per state. Nothing is written here that EXPERIENCE.md did not write —
  * the panel merely knows which sentence is the action.
@@ -34,24 +33,22 @@
  *
  *   The action line is OPTIONAL. `database-updating` has none, because there genuinely is no
  *   action — "Reads will resume automatically — nothing to do here" is the whole state, and
- *   inventing an action for it would be the one thing this story exists to prevent. A panel
+ *   inventing an action for it would be the one thing this module exists to prevent. A panel
  *   with no action line is a real state, not a defect (see `actionOf`).
  *
  *   The guidance may be EMPTY. `no-active-deck` is a single sentence and that sentence is the
  *   action, so its guidance is the empty string and the panel renders no guidance paragraph.
  *
- * ================= THE TWO STATES THIS STORY WROTE ======================================
+ * ================= EVERY STATE IS IN THE ARTEFACT, INCLUDING THE LATE ONES ===============
  *
- * `internal-error` and `database-updating-stalled` did not exist in `EXPERIENCE.md` before
- * this story. They were WRITTEN INTO IT (AC 10, Brad's rulings Q4 and Q5) rather than authored
- * here, because a panel whose copy lives only in TypeScript is a panel with no contract — and
- * the C1 retro action item at `sprint-status.yaml:470` names EXPERIENCE.md copy specifically.
- * The verbatim gate covers all six with no special case.
+ * `internal-error` and `database-updating-stalled` were WRITTEN INTO `EXPERIENCE.md` rather
+ * than authored here, because a panel whose copy lives only in TypeScript is a panel with no
+ * contract. The verbatim gate covers all six with no special case.
  */
 
 /**
  * The panel vocabulary. NOT the wire vocabulary — the mapping between the two is `states.ts`,
- * and landmine 4 of this story is that they are not the same set in either direction.
+ * and they are not the same set in either direction.
  */
 export type StateKey =
   | 'no-active-deck'
@@ -118,12 +115,10 @@ export const STATE_COPY: Record<StateKey, StateCopy> = {
   'database-updating-stalled': {
     row: 'Database updating, stalled',
     headline: 'Card database still updating.',
-    // The c1-6 corrupt-database ruling (Q5, Brad 2026-07-29). A durably corrupt cards.db
-    // answers `database_unavailable` forever, so the row above — "nothing to do here" — is
-    // FALSE for it, with no repair path. The backend cannot tell 200ms of mid-import from a
-    // month of garbage; the distinguisher is elapsed time on the CLIENT. This story ships the
-    // copy and the panel only: **c3-9 owns the threshold and the switch** (it owns the
-    // polling), and until it lands nothing selects this state.
+    // The corrupt-database case. A durably corrupt cards.db answers `database_unavailable`
+    // forever, so the row above — "nothing to do here" — is FALSE for it, with no repair path.
+    // The backend cannot tell 200ms of mid-import from a month of garbage; the distinguisher is
+    // elapsed time on the CLIENT, and the polling layer owns the threshold and the switch.
     body: [
       guidance("Reads haven't resumed for a while."),
       action(
@@ -145,15 +140,15 @@ export const STATE_COPY: Record<StateKey, StateCopy> = {
   'internal-error': {
     row: 'Internal error',
     headline: 'The companion hit a bug.',
-    // AD-16's sixth reason token, added by the c1-4 review ruling, shipped with no UI state and
-    // homed HERE by name. Checked against UX-DR33 line by line: second-person,
+    // AD-16's sixth reason token, homed HERE by name. Checked against UX-DR33 line by line:
+    // second-person,
     // terminal-literate, names the command without apology, NEVER BLAMES (the companion hit
     // it — not you, and not "something"), concrete next action, no exclamation mark, no emoji.
     //
     // "Restart" is a MANUAL, deterministic action and deliberately not a retry: that is the
-    // distinction `ui/src/api/types.d.ts:67-69` draws between this token and
-    // `database_unavailable`, and it is a property of this panel rather than of a fetch layer
-    // that does not exist yet. See `states.ts` for the declaration c3-9 is held to.
+    // distinction `ui/src/api/types.d.ts` draws between this token and
+    // `database_unavailable`, and it is a property of this panel rather than of the fetch layer.
+    // See `states.ts` for the declaration the wiring is held to.
     body: [
       action('Restart the companion in your terminal (`artificial-planeswalker companion`).'),
       guidance("The traceback is in that terminal — it's what a bug report needs."),
@@ -186,25 +181,18 @@ export const actionOf = (copy: StateCopy): string =>
 
 /**
  * A copy string split on its own BACKTICK markup, so the command chip is DERIVED from the copy
- * rather than authored per state (AC 11).
+ * rather than authored per state.
  *
- * Measured over the four original bodies at 109a7d9: the only backticked run in any of them is
- * `initialize_database`. Deriving the chip from the markup rather than hard-coding that one
- * string is what let the two states c2-9 added — one of which carries
- * `artificial-planeswalker companion` — need no bespoke renderer, and it is what keeps
- * **c4-3's** future copy from needing one either.
- *
- * (Re-homed from c3-2 to c4-3, 2026-07-31: c3-2 ships the `card_not_found` token and records its
- * destination, but no copy string and no renderer at all. The unknown-card placeholder — and the
- * `"Unknown card"` string that `copy-rules.test.ts`'s `COPY_MODULES` already homes there — is
- * c4-3's.)
+ * Deriving the chip from the markup rather than hard-coding `initialize_database` is what lets a
+ * state carrying a different command — `artificial-planeswalker companion` — need no bespoke
+ * renderer, and what keeps any future copy from needing one either.
  *
  * ODD indices are the code runs, which is a property of `split` on a delimiter rather than an
  * assumption about the input: `'a `b` c'` yields `['a ', 'b', ' c']`. An UNPAIRED backtick
  * therefore leaves a trailing odd segment, which renders as a chip — accepted deliberately
  * over throwing, because the verbatim gate is what catches malformed copy and a panel that
  * renders nothing at all is strictly worse than one that renders an over-eager chip. A string
- * with NO backtick yields a single even segment and therefore no chip, without error (AC 11).
+ * with NO backtick yields a single even segment and therefore no chip, without error.
  */
 export const splitOnCode = (text: string): { readonly code: boolean; readonly text: string }[] =>
   text

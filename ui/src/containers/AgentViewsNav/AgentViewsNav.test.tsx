@@ -21,20 +21,18 @@ import {
 import { pushTimeLabel } from './pushTime'
 
 /**
- * The agent-views nav's pills (story c6-8).
+ * The agent-views nav's pills.
  *
  * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
  * jsdom evaluates no stylesheet, so nothing here proves a quiet pill is `text-tertiary`, that the
  * unread dot is 8px and `--accent`, that the labels are uppercased by their type role, or that a
  * pill clears 24px in either direction. Those are read as SOURCE by `token-usage.test.ts`,
- * `shell.test.ts` and `keyboard-floor.test.ts`, and are seen with eyes on the C6 manual checklist
- * (c8-6) — this story adds the header pills to the app's unviewed-pixels surface, extending the
- * declaration c6-7 made about the rows.
+ * `shell.test.ts` and `keyboard-floor.test.ts`, and are seen by eye on the manual checklist.
  *
  * jsdom also renders no tooltip and runs no sequential focus navigation: `title` is asserted as
  * an attribute, never as a thing that appears, and *"the pills sit ahead of the grid in the Tab
- * order"* (AC 6) is a DOM-order claim proved in `App.test.tsx` against the whole document, not
+ * order"* is a DOM-order claim proved in `App.test.tsx` against the whole document, not
  * here against a nav rendered alone.
  *
  * What this file proves is the BRANCH and the WIRING: which element renders for which store
@@ -43,13 +41,13 @@ import { pushTimeLabel } from './pushTime'
  * ================= HOUSE RULES OBSERVED ==============================================
  *
  * Every behavioural assertion pairs with a non-vacuity control, and every absence-only assertion
- * has its positive twin in the same suite — c6-7's plant-3 lesson, where a test that only checked
- * *"X is not there"* was satisfied by a component with no handlers wired at all. `fireEvent`
+ * has its positive twin in the same suite: a test that only checks *"X is not there"* is
+ * satisfied by a component with no handlers wired at all. `fireEvent`
  * only; vitest globals are OFF, so `describe`/`it`/`expect` are imported.
  */
 
 const contentOf = (kind: AgentViewKind, over: Partial<AgentViewContent> = {}): AgentViewContent =>
-  // Cast since 16.1 made `AgentViewContent` a per-kind discriminated union: `items: []` is a
+  // Cast because `AgentViewContent` is a per-kind discriminated union: `items: []` is a
   // legal member of every arm, but a computed `kind` cannot select one for the compiler.
   ({
     id: `push-${kind}`,
@@ -79,8 +77,8 @@ describe('the nav renders one pill per kind, in enum order (AC 1, AC 6, Q3)', ()
     // Q3 took the wire enum's order over the mock's and the IA table's. `PILL_ORDER` derives it
     // from the vocabulary table's declaration order rather than authoring it a second time, so
     // this assertion is what keeps that derivation honest: a reordered table reorders the glass.
-    // History renders LAST, outside the map (2026-08-22 ruling: immediately after the Card
-    // groups pill), which is also the proof it is not keyed into the kind enum.
+    // History renders LAST, outside the map (immediately after the Card groups pill), which is
+    // also the proof it is not keyed into the kind enum.
     render(<AgentViewsNav />)
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
       'Suggestions',
@@ -118,8 +116,8 @@ describe('a kind with no push this session is QUIET (AC 1, Q2)', () => {
     const pill = pillFor('swaps')
     expect(pill.getAttribute('title')).toBe(QUIET_TOOLTIP)
     // The description is a real element, resolved through the id — not merely an attribute that
-    // points somewhere. A dangling `aria-describedby` is silence, which is the failure Q2's
-    // ruling exists to prevent.
+    // points somewhere. A dangling `aria-describedby` is silence, which is the failure the
+    // dual delivery exists to prevent.
     const describedBy = pill.getAttribute('aria-describedby')
     expect(describedBy).toBeTruthy()
     expect(document.getElementById(describedBy!)?.textContent).toBe(QUIET_TOOLTIP)
@@ -195,7 +193,7 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
     const time = container.querySelector('time')!
     expect(time.getAttribute('datetime')).toBe(ts)
     // Computed through the same formatter, never asserted as bytes: jsdom inherits the host's TZ
-    // and ICU build, so a literal '14:32' here would be a machine-dependent test (Landmine 6).
+    // and ICU build, so a literal '14:32' here would be a machine-dependent test.
     expect(time.textContent).toBe(pushTimeLabel(ts))
     expect(time.textContent).toBeTruthy()
   })
@@ -299,7 +297,7 @@ describe('clicking an active pill re-opens its view (AC 4)', () => {
   })
 
   it('re-opens the LAST push of that kind after a replace', () => {
-    // c6-6's replace-in-place, seen from the nav: retention holds one view per kind, the newest.
+    // Replace-in-place, seen from the nav: retention holds one view per kind, the newest.
     openAgentView(contentOf('suggestions', { id: 'first' }))
     const second = contentOf('suggestions', { id: 'second' })
     openAgentView(second)
@@ -325,7 +323,7 @@ describe('clicking an active pill re-opens its view (AC 4)', () => {
 })
 
 // =========================================================================================
-// STORY 17.2 — the History pill and its popover
+// THE HISTORY PILL AND ITS POPOVER
 // =========================================================================================
 
 /** A push with its own id and ts, so history rows can be told apart. */

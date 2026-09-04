@@ -1,6 +1,6 @@
 /* THE SKIP LINK — hidden until it is the thing you reached, then a chip at the window's top-left.
 
-   Story c4-11, AC 1, AC 3, AC 8, UX-DR31, UX-DR40, UX-DR47, `DESIGN.md:418` + `:300-304`.
+   UX-DR31, UX-DR40, UX-DR47, `DESIGN.md:418` + `:300-304`.
 
    ==== DESIGN.md GIVES THIS COMPONENT NO NUMBERS, AND SAYS SO ITSELF =====================
    `DESIGN.md:410` lists the skip link among the components with **no visual precedent**, and the
@@ -19,8 +19,8 @@
 
 /* AT REST IT IS THE SHARED CLIP-RECT AND NOTHING ELSE.
 
-   The element carries `visually-hidden` (promoted to `src/styles/` in this commit — c4-11 is the
-   THIRD instance, the trigger `ManaCurve.css:141-165` wrote down) plus this class. So there is no
+   The element carries `visually-hidden` (the shared clip-rect rule in `src/styles/`) plus this
+   class. So there is no
    geometry here at all: the base rule below only undoes the `<button>` UA chrome that would
    otherwise flash for one frame between focus and the reveal painting.
 
@@ -37,9 +37,9 @@
   cursor: pointer;
 }
 
-/* ON FOCUS IT BECOMES THE CHIP (AC 3).
+/* ON FOCUS IT BECOMES THE CHIP.
 
-   `:focus-visible`, NEVER `:focus` (decide-once ruling 7). A link that is only reachable by Tab
+   `:focus-visible`, NEVER `:focus`. A link that is only reachable by Tab
    always matches `:focus-visible`, so nothing is lost — and the two are not interchangeable here:
    `.skip-link` is a real `<button>`, and a `:focus` reveal would leave the chip painted on the
    screen after a MOUSE click on it, which is the stray-indicator problem `:focus-visible` exists
@@ -49,10 +49,10 @@
    ==== EVERY PROPERTY THE CLIP-RECT SET IS EXPLICITLY UNDONE =============================
    `width`/`height: auto`, `overflow: visible`, `clip-path: none`. Undoing the clip WITHOUT
    undoing the 1px box would reveal a 1px chip — visible, focusable, and unreadable — which is the
-   quiet way this AC passes in source and fails on screen. `position` is re-declared as `fixed`
+   quiet way this reveal passes in source and fails on screen. `position` is re-declared as `fixed`
    rather than left as the clip-rect's `absolute`, which is the geometry decision below.
 
-   ==== position: fixed, AND WHY IT IS NOT A SECOND OVERLAY (Q9) ==========================
+   ==== position: fixed, AND WHY IT IS NOT A SECOND OVERLAY ===============================
    `absolute` is unavailable: `.app-shell` carries NO `position` (measured — `AppShell.css:51-57`
    is `display:flex; flex-direction:column; gap; height:100dvh; padding`), so an absolute box would
    resolve against the initial containing block anyway, and ADDING `position: relative` to the
@@ -76,11 +76,10 @@
    reachable when the view is closed. Above 0 so the chip paints over the header it overlaps.
    Neither number is in any artefact; the reason is the constraint, and it is written here.
 
-   ==== THE 24×24 FLOOR IS LOAD-BEARING, NOT DECORATIVE (AC 8, UX-DR47) ==================
+   ==== THE 24×24 FLOOR IS LOAD-BEARING, NOT DECORATIVE (UX-DR47) ========================
    24px — DESIGN.md's global rule "a ≥ 24×24px hit area" (`:462`), and the same requirement
    applied to a link's hit box at `:419`. BOTH axes, so `min-width` sits beside `min-height` —
-   `Footer.css:83-89`'s both-axes idiom, with the citations corrected in this same commit (they
-   had drifted to `:375`/`:418`).
+   `Footer.css:83-89`'s both-axes idiom.
 
    It is a real floor rather than a formality: `--type-body-strong` is `700 14px/1.5`, a **21px**
    line box — UNDER the 24px minimum on its own. The padding below lifts the box clear of it
@@ -108,7 +107,7 @@
   color: var(--accent);
   font: var(--type-body-strong);
 
-  /* THE STANDARD RING, KNOWN-SURFACE TIER (`DESIGN.md:418`, AC 3, AC 16). The chip paints its own
+  /* THE STANDARD RING, KNOWN-SURFACE TIER (`DESIGN.md:418`). The chip paints its own
      `--surface-panel` background, so there is no card art under it and the over-art composite
      would be the wrong treatment — this takes the same two declarations `.deck-row`,
      `.card-detail-unpin` and `.footer-attribution-link` carry. Measured: `--focus-ring` `#b3baff`
@@ -119,7 +118,7 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* NO MOTION, DELIBERATELY (AC 27, AC 28, UX-DR42).
+/* NO MOTION, DELIBERATELY (UX-DR42).
 
    The reveal is a state change with no transition, following `Footer.css:18-21`'s precedent —
    ship it motionless. That is not timidity: a skip link that FADES in is a skip link a fast

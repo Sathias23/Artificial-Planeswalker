@@ -1,36 +1,36 @@
-/* FormatCheck — six checks, one row each (story c4-10, UX-DR5, UX-DR21, UX-DR30, UX-DR40,
-   UX-DR44, UX-DR47, DESIGN.md "Deck data" → "Format check").
+/* FormatCheck — six checks, one row each (UX-DR5, UX-DR21, UX-DR30, UX-DR40, UX-DR44, UX-DR47,
+   DESIGN.md "Deck data" → "Format check").
 
    DESIGN.md:423 is the whole visual spec: "label in {typography.body} {colors.text-secondary},
    `Badge` right-aligned, over {components.legality-row.rule}." The third element — the wire's
-   `detail` sentence — is an AMENDMENT made in this commit (Q2); see the row block below.
+   `detail` sentence — is an AMENDMENT to it; see the row block below.
 
-   NOT CARD-SHAPED, AND ASSERTED IN BOTH DIRECTIONS (AC 25, UX-DR4). This file draws text rows:
+   NOT CARD-SHAPED, AND ASSERTED IN BOTH DIRECTIONS (UX-DR4). This file draws text rows:
    no `--radius-card`, no `aspect-ratio`, no card face anywhere. It is deliberately absent from
    tests/token-usage.test.ts's CARD_SHAPED allowlist — membership is a DECLARATION that a file
    draws cards — and the exclusivity gate runs the other way too: nothing here may carry the
    chrome radius a card-shaped file would. It styles only its own `.format-check-*` classes and
-   never reaches into a `.card-shape` descendant, so `deferred-work.md:3587-3596`'s cross-file
-   collision stays hypothetical here as it did in DeckList.css.
+   never reaches into a `.card-shape` descendant, so a cross-file collision with a card-shaped
+   stylesheet cannot arise here, as it cannot in DeckList.css.
 
-   NO `--mana-*` TOKEN APPEARS ANYWHERE IN THIS FILE (AC 25, UX-DR7). Those are data ink for
+   NO `--mana-*` TOKEN APPEARS ANYWHERE IN THIS FILE (UX-DR7). Those are data ink for
    curve bars, pips and colour-identity dots; a colour-identity dot beside a legality row is
    exactly the misuse, and MANA_DATA_INK keeps its two entries.
 
-   THIS FILE IS NOT IN `CALM_STYLESHEETS`, AND THAT IS THE RULING RATHER THAN AN OMISSION
-   (AC 33). token-usage.test.ts:1002-1021 says so naming this story: "c4-10's format check maps a
-   violation to `negative` and MUST spend that token. The scope is the rule, not a loophole." What
+   THIS FILE IS NOT IN `CALM_STYLESHEETS`, AND THAT IS DELIBERATE RATHER THAN AN OMISSION.
+   token-usage.test.ts:1002-1021 says so: the format check maps a violation to `negative` and MUST
+   spend that token; the scope is the rule, not a loophole. What
    UX-DR30 bans is error STYLING on a calm surface — a red panel fill, an alert icon, an
    exclamation mark, an illustration — and none of those is here: the only semantic colour in this
    panel is inside a `Badge`, from `Badge.css`, at 12% wash strength, on a row that is otherwise
    ordinary text. This stylesheet declares no colour of its own beyond the two text tiers below.
 
-   NO FOCUS RULE, BECAUSE THERE IS NOTHING TO FOCUS (ruling 9, AC 6). Every element here is
+   NO FOCUS RULE, BECAUSE THERE IS NOTHING TO FOCUS. Every element here is
    display-only — no button, no link, no `tabindex` — so `:focus-visible` would have no subject
    and `outline: none` appears nowhere in any of its four spellings. Stated rather than left as an
    absence, because a reader checking the focus-ring gate will look for it.
 
-   NOTHING ANIMATES (AC 30). UX-DR42's exhaustive inventory has no format-check row and this story
+   NOTHING ANIMATES. UX-DR42's exhaustive inventory has no format-check row and this file
    adds none; there is no `transition`, no `animation` and no `transform` in this file, so the
    reduced-motion block in tokens.css needs no entry and the shipped-motion pin holds at 4. */
 
@@ -45,7 +45,7 @@
   list-style: none;
 }
 
-/* THE ROW (AC 22, AC 24, Q2, Q10, Q11).
+/* THE ROW.
 
    TWO COLUMNS AND TWO LINES. The label and the badge share the first line; the `detail` sentence
    spans both columns on the second. `grid-template-columns: minmax(0, 1fr) auto` and NEVER a bare
@@ -53,21 +53,21 @@
    MIN-CONTENT, so a long label would widen its column past its share instead of yielding. `auto`
    on the badge track is what lets the pill take exactly the width its word needs.
 
-   THE PADDING REPLACES DESIGN.md's OWN FRONTMATTER VALUE, AND THE REFUSAL IS THE POINT (Q10).
+   THE PADDING REPLACES DESIGN.md's OWN FRONTMATTER VALUE, AND THE REFUSAL IS THE POINT.
    `components.legality-row.padding` reads '9px 2px'. Neither 9 nor 2 is on the 4/8/12/16/24/32/48
    scale, UX-DR5 names the mock's "18/14/9/7px one-offs" as drift rather than spec — `9` is in
    that enumerated list — and the stylelint allowed-list refuses both outright, measured: this is
    a build FAILURE, not a preference. `var(--space-2) var(--space-1)` (8px / 4px) is the nearest
    scale pair in both axes. Panel.css:63-69 ('10px 14px' → 8/12) and Badge.css:52-54 ('2px 9px' →
    4/8, the same two numbers) have already made this exact repair with the citation written
-   inline; DESIGN.md:237 carries the matching amendment, made in this commit.
+   inline; DESIGN.md:237 carries the matching amendment.
 
-   NO TOKEN IS ADDED for it, and that is deliberate rather than lazy:
-   `validation-report-2026-07-25.md:75` already records this component family as OVER-TOKENISED,
-   and both spacing values resolve to existing scale tokens. Both token pins hold at 69.
+   NO TOKEN IS ADDED for it, and that is deliberate rather than lazy: this component family is
+   already OVER-TOKENISED, and both spacing values resolve to existing scale tokens. Both token
+   pins hold at 69.
 
-   NO `px` LITERAL SHIPS IN THIS FILE AT ALL — so ruling 7's "every px literal carries a
-   DESIGN.md:NNN citation within 60 characters" is satisfied by not being triggered, which is
+   NO `px` LITERAL SHIPS IN THIS FILE AT ALL — so the rule that every px literal carries a
+   DESIGN.md:NNN citation within 60 characters is satisfied by not being triggered, which is
    stated here rather than left as a silent absence. (The hairline below is the one exception and
    it carries its citation, exactly as GroupHeader.css and Panel.css write theirs.) */
 .format-check-row {
@@ -78,10 +78,10 @@
   padding: var(--space-2) var(--space-1);
 }
 
-/* THE HAIRLINE, AND WHY THE LAST ROW DOES NOT GET ONE (AC 22, AC 25, Q11).
+/* THE HAIRLINE, AND WHY THE LAST ROW DOES NOT GET ONE.
    The mock puts `border-bottom` on all six. A rule under the LAST row sits inside a Panel whose
    body already has 12px of padding, so it draws a line to nowhere and reads as a truncated list —
-   cheap to avoid, and ruled here so it is not discovered at the eye-check. `:not(:last-child)`
+   cheap to avoid here, and easy to miss until the eye-check. `:not(:last-child)`
    rather than a `:first-child` reset, so the rule is stated once and the exception is visible in
    the selector. */
 .format-check-row:not(:last-child) {
@@ -90,7 +90,7 @@
   border-bottom: 1px solid var(--border-hairline);
 }
 
-/* THE LABEL (AC 23). DESIGN.md:423: "label in {typography.body} {colors.text-secondary}".
+/* THE LABEL. DESIGN.md:423: "label in {typography.body} {colors.text-secondary}".
    `min-width: 0` is what lets the grid track's `minmax(0, 1fr)` minimum actually apply — a grid
    item defaults to `min-width: auto`, floored at min-content, so without this the longest label
    ("Rotation exposure", the widest of the six) would quietly widen the column. */
@@ -100,14 +100,14 @@
   font: var(--type-body);
 }
 
-/* "Badge right-aligned" — by the ROW'S GRID, not by a margin (c4-10 review). The row's
+/* "Badge right-aligned" — by the ROW'S GRID, not by a margin. The row's
    `minmax(0, 1fr) auto` track list does the whole job: column one absorbs the free space, so this
-   wrapper's content-sized `auto` column already hugs the right edge. The first draft carried
-   GroupHeader.css's `margin-left: auto` here too — but that is a FLEX idiom, and inside a grid
-   cell sized `auto` to its content an auto margin has no free space to consume and is inert; the
-   source guard now bans the dead declaration so it cannot return wearing its old caption. The
-   wrapper exists so the alignment lives here instead of on the primitive: `Panel` and `Badge` have
-   no `className` prop and a consumer may not restyle either (ruling 12).
+   wrapper's content-sized `auto` column already hugs the right edge. Not GroupHeader.css's
+   `margin-left: auto`: that is a FLEX idiom, and inside a grid cell sized `auto` to its content an
+   auto margin has no free space to consume and is inert; the source guard bans the dead
+   declaration so it cannot return wearing that caption. The wrapper exists so the alignment lives
+   here instead of on the primitive: `Panel` and `Badge` have no `className` prop and a consumer
+   may not restyle either.
 
    `display: flex` so the wrapper hugs the pill rather than adding a line box of its own beneath
    it, which would break the first line's vertical centring against a two-line label. */
@@ -115,7 +115,7 @@
   display: flex;
 }
 
-/* THE DETAIL SENTENCE (AC 18, AC 23, Q2) — THE AMENDMENT THIS STORY MAKES TO DESIGN.md:423.
+/* THE DETAIL SENTENCE — THE AMENDMENT TO DESIGN.md:423.
 
    The wire carries three fields and DESIGN.md's row has two slots, so rendered to the letter the
    one real legality violation in forty decks draws a label and a red pill while the words
@@ -125,17 +125,17 @@
    being squeezed into the label column beside the badge — the worst realistic case is a 158-char
    DFC name in a singleton violation, and the corpus worst is 240 with the `(+N more)` suffix.
 
-   ⚠️ `--type-body`, NOT `--type-micro` — A STATED DEVIATION FROM Q2's PROPOSAL, FOUND BY A GATE
-   RATHER THAN BY TASTE. The story proposed `--type-micro` at `--text-tertiary`, and that is not
-   available for a SENTENCE: `--type-micro` carries an uppercase companion, DERIVED (not listed)
+   ⚠️ `--type-body`, NOT `--type-micro` — DECIDED BY A GATE RATHER THAN BY TASTE. `--type-micro`
+   at `--text-tertiary` is the obvious choice for a secondary line, and it is not available for a
+   SENTENCE: `--type-micro` carries an uppercase companion, DERIVED (not listed)
    from DESIGN.md's own `textTransform: uppercase` key on that role, and
    `findRoleWithoutCompanions` in tests/token-usage.test.ts reads the BLOCK and fails a micro role
    applied without it. That is the guard working — `Footer.css:29-35` records the same derivation
    and accepts its consequence, which is why the legal attribution renders as 10px ALL-CAPS.
 
    Repeating that here would render **"'PYM PARTICLES' IS NOT LEGAL IN BRAWL."** — destroying the
-   card name, the one piece of information this panel exists to carry, in the row the story's own
-   user statement is about. The alternatives were priced: writing `text-transform: none` is what
+   card name, the one piece of information this panel exists to carry, in the row the panel
+   exists for. The alternatives were priced: writing `text-transform: none` is what
    the gate exists to refuse; amending the micro role's `textTransform` key would flip the footer
    and every other micro consumer app-wide, off one panel's needs; and a new token moves both
    token pins for a value that already exists.
@@ -152,7 +152,7 @@
 
    NO ELLIPSIS AND NO CLAMP. `overflow-wrap: anywhere` lets a long unbroken card name break rather
    than push the row wider than the 452px column — the `.app-shell-columns` scroller is the app's
-   ONE scroll container (ruling 13) and a row that overflowed horizontally would be the thing that
+   ONE scroll container and a row that overflowed horizontally would be the thing that
    breaks it. Truncating instead would hide the card name, which is the same failure as not
    rendering the sentence at all. */
 .format-check-detail {

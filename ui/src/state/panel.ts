@@ -1,21 +1,19 @@
 /**
- * The one place a wire value becomes a `StateKey` (story c3-9, AC 2, AC 8; Q5).
+ * The one place a wire value becomes a `StateKey`.
  *
  * ================= WHY THIS IS A BOUNDARY AND NOT A `switch` ============================
  *
- * `PANEL_FOR_REASON` has existed since **c2-9** and has never had a runtime consumer — the whole
- * of `states.ts` is tree-shaken out of the bundle today. It is a total map over `ErrorReason`,
- * proved total by `satisfies` at typecheck time rather than by a test, and three of its docstrings
- * say *"the wiring that reads this map is c3-9's"*. This file is that wiring. A `switch` here
- * would be a second copy of a decision already made, and the compiler would not notice when the
- * eleventh token arrived.
+ * `PANEL_FOR_REASON` is a total map over `ErrorReason`, proved total by `satisfies` at
+ * typecheck time rather than by a test, and this file is its one runtime consumer. A `switch`
+ * here would be a second copy of a decision already made, and the compiler would not notice
+ * when the eleventh token arrived.
  *
  * ================= WHY IT IS TOTAL, AND WHAT THAT PREVENTS ==============================
  *
  * `STATE_COPY[state]` at `StatePanel.tsx:104` has **no fallback branch**: an unrecognised key
  * yields `undefined` and `copy.headline` throws — an unhandled render exception, which is
- * precisely the error screen this story exists to ban. TypeScript guarded that until now because
- * `App.tsx` passed a literal; the moment a value arrives from the wire, the type system is
+ * precisely the error screen this boundary exists to ban. TypeScript guards that for a literal
+ * `state` prop; the moment a value arrives from the wire, the type system is
  * looking at `string` and the guarantee is gone.
  *
  * So the totality is proved HERE, at the one place values enter, and `StatePanel` gains **no**
@@ -26,7 +24,7 @@
  *      companion"*). `RETRIES_QUIETLY` already forbids retrying it, so a skewed build is not
  *      hammered behind a calm panel.
  *   2. **A token that maps to `null`.** Six do, and every one of them is classified in
- *      `states.ts` as either a named non-panel destination (**c4-3's**) or no UI response at all.
+ *      `states.ts` as either a named non-panel destination or no UI response at all.
  *      Neither classification has anywhere to go on a whole-screen poll: `invalid_request` and
  *      `payload_too_large` are both declared on `GET /api/decks`, and either one arriving means
  *      the SPA sent a request it should never have sent. That is a client bug, which is what

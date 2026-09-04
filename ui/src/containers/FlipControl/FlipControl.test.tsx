@@ -17,39 +17,39 @@ import { FlipControl } from './FlipControl'
 import { FLIP_LABEL } from './copy'
 
 /**
- * The DFC flip control (story c4-6, AC 1–AC 8, AC 11, AC 13, AC 16, AC 17).
+ * The DFC flip control.
  *
- * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST (AC 26) ====================
+ * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
  * jsdom has no layout engine, applies no stylesheet, evaluates no media query and loads no
  * images. Everything this file does NOT assert follows from those four facts, and each of them is
- * a Task 8 eye-check item rather than a coverage gap:
+ * a browser eye-check item rather than a coverage gap:
  *
  *   **THE 3D ROTATION IS NOT HERE AND CANNOT BE.** `transform-style: preserve-3d`,
  *   `backface-visibility` and a `rotateY` are all unevaluated in jsdom, and
  *   `getComputedStyle(el).transform` returns the empty string — which would PASS FOR THE WRONG
- *   REASON, the trap this epic has now recorded eight times. The motion is a SOURCE claim in
- *   `tests/token-usage.test.ts` (its selector must be registered `none !important`) plus Task 8.
+ *   REASON. The motion is a SOURCE claim in `tests/token-usage.test.ts` (its selector must be
+ *   registered `none !important`) plus the eye-check.
  *
  *   **THE OPACITY IS NOT HERE.** `0.65` at rest, `1.0` on tile hover or focus, and the
  *   `--accent-bright` glyph tint on the control's own hover are three stylesheet claims about a
  *   property jsdom never computes. What IS asserted here is the CLASS the rules hang on.
  *
- *   **THE HIT BOX IS NOT HERE.** UX-DR47's ≥ 24 × 24 is a MEASUREMENT (AC 17), and
+ *   **THE HIT BOX IS NOT HERE.** UX-DR47's ≥ 24 × 24 is a MEASUREMENT, and
  *   `getBoundingClientRect` reports zeroes for everything in jsdom. The arithmetic is stated in
- *   `FlipControl.css` beside its DESIGN.md citation and measured in a real browser at Task 8.
+ *   `FlipControl.css` beside its DESIGN.md citation and measured in a real browser.
  *
  *   **THE FLIP AS A SCREEN READER ANNOUNCES IT.** `aria-pressed` is asserted as an attribute
- *   below; how a real reader phrases "Flip card, pressed" is the epic manual-testing checklist's.
+ *   below; how a real reader phrases "Flip card, pressed" is the manual-testing checklist's.
  *
  *   **THE WARM/COLD `?face=` RACE.** `?face=1` is a different browser-cache key, so the first
  *   flip of any card is always a cold fetch. jsdom fires no `load` and no `error`, so
  *   `useCardArt`'s re-arm is provable here only as "the `src` changed"; that the well appears and
- *   then clears is Task 8's.
+ *   then clears is the eye-check's.
  *
  * ================= THE FIXTURES ARE THE FOUR MEASURED SHAPES ===========================
  *
- * Re-measured read-only at Task 0 against the shipped database (38,261 cards):
+ * Measured read-only against the shipped database (38,261 cards):
  *
  *   A — top-level `image_uris`, no `card_faces`          35,036   ordinary card        no control
  *   B — top-level `image_uris` + faces with NO images        368   split / adventure    no control
@@ -144,7 +144,7 @@ describe('who gets a control, and who does not (AC 1, AC 2)', () => {
     expect(control).toBeVisible()
     // A REAL `<button>` (UX-DR47, unconditional) — not a `tabIndex` on a div, which
     // `jsx-a11y/no-static-element-interactions` makes an ESLint error. It is focusable by BEING a
-    // button, so nothing sets `tabindex` and nothing needs to (AC 8's mechanism).
+    // button, so nothing sets `tabindex` and nothing needs to.
     expect(control.tagName).toBe('BUTTON')
     expect(control.getAttribute('type')).toBe('button')
     expect(control.getAttribute('tabindex')).toBeNull()
@@ -184,14 +184,13 @@ describe('who gets a control, and who does not (AC 1, AC 2)', () => {
   })
 
   it('renders NOTHING for a PARTIALLY imaged card — one picture is not a flip (probe (c))', () => {
-    // ADDED BECAUSE AN EVASION PROBE PASSED, AND RECORDED RATHER THAN QUIETLY FIXED (AC 27).
-    // Probe (c) weakened the predicate from `imagedFaces < 2` to `imagedFaces < 1` and the WHOLE
-    // SUITE STAYED GREEN — because no fixture had a card with EXACTLY ONE imaged face, so the
-    // difference between "has pictures" and "has pictures to flip BETWEEN" was never exercised.
-    // Measured read-only: 0 such rows exist today (a card's faces either all carry images or none
-    // do), which is precisely why the gap was invisible — and it is the population
-    // `deferred-work.md:2765-2770` already has an open entry for, so it is latent rather than
-    // impossible. A control on such a card would render and then flip to a `404 no_image_data`.
+    // THE MUTATION THIS TEST EXISTS FOR. Weakening the predicate from `imagedFaces < 2` to
+    // `imagedFaces < 1` leaves the rest of the SUITE GREEN — no other fixture has a card with
+    // EXACTLY ONE imaged face, so the difference between "has pictures" and "has pictures to flip
+    // BETWEEN" is exercised nowhere else. Measured read-only: 0 such rows exist today (a card's
+    // faces either all carry images or none do), which is precisely why the gap is invisible, and
+    // the population is latent rather than impossible. A control on such a card would render and
+    // then flip to a `404 no_image_data`.
     hydrate(PATHWAY, {
       image_uris: null,
       card_faces: [face('Imaged', { image_uris: IMAGES }), face('Unimaged')],
@@ -217,12 +216,12 @@ describe('who gets a control, and who does not (AC 1, AC 2)', () => {
   })
 
   it('renders nothing for a card the app has not hydrated yet, and everything once it has', () => {
-    // THE DECLARED RESIDUE OF Q1, ASSERTED RATHER THAN HIDDEN. `CardSummary` carries neither
+    // A KNOWN WINDOW, ASSERTED RATHER THAN HIDDEN. `CardSummary` carries neither
     // `card_faces` nor `image_uris`, so between the grid's first paint and the deck sweep landing
     // there is a window in which a flippable tile has no control. The sweep (`hydrateDeckCards`,
     // fired from `App.tsx` after the DOM commit) is what closes it; the alternative that would
-    // close it at render time is a wire-schema change with an MCP blast radius, priced in the
-    // story record. The second half of this test is the closing.
+    // close it at render time is a wire-schema change with an MCP blast radius. The second half of
+    // this test is the closing.
     const { container, rerender } = render(<FlipControl cardId={PATHWAY} />)
     expect(container.firstChild).toBeNull()
 
@@ -233,8 +232,8 @@ describe('who gets a control, and who does not (AC 1, AC 2)', () => {
 
   it('renders nothing for a card whose read was REFUSED, without touching a wire token', () => {
     // An `unknown` entry has no `card`, so the predicate has no faces to count and answers 0. No
-    // `switch (entry.reason)` and no read of `entry.placeholder` is involved — c4-1 AC 13's ban
-    // holds here by construction rather than by discipline.
+    // `switch (entry.reason)` and no read of `entry.placeholder` is involved — the ban on
+    // branching on wire tokens holds here by construction rather than by discipline.
     useCardStore.setState((state) => ({
       cards: {
         ...state.cards,
@@ -258,7 +257,7 @@ describe('what it looks like, to the extent jsdom can see it (AC 3, AC 4)', () =
     render(<FlipControl cardId={PATHWAY} />)
     // A CLASS, not a computed style — jsdom applies none. The material (scrim, `blur(6px)`,
     // `1px solid var(--border-strong)`, `--radius-pill`, 0.65 → 1.0) is a source claim in
-    // FlipControl.css and an eye-check at Task 8.
+    // FlipControl.css and a browser eye-check.
     expect(screen.getByRole('button', { name: FLIP_LABEL })).toHaveClass('flip-control')
   })
 
@@ -314,10 +313,10 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
 
   it('is a toggle button, so the face is state rather than an announcement (AC 11, Q11)', () => {
     // UX-DR45 enumerates the live regions — the connection pill, the agent-view heading and the
-    // panel's separate polite pin region — and a flip is not among them; c4-5's H4/C1 finding is
-    // that transient changes must not flood the queue. `aria-pressed` gives a keyboard user the
-    // state with no region and no second string, and the NAME stays static: a name that named the
-    // target face would be card DATA in a read-aloud attribute, which rule 16 forbids.
+    // panel's separate polite pin region — and a flip is not among them; transient changes must
+    // not flood the queue. `aria-pressed` gives a keyboard user the state with no region and no
+    // second string, and the NAME stays static: a name that named the target face would be card
+    // DATA in a read-aloud attribute, which the copy rules forbid.
     hydrateFlippable()
     render(<FlipControl cardId={PATHWAY} />)
     const control = screen.getByRole('button', { name: FLIP_LABEL })
@@ -419,7 +418,7 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
 describe('the same printing shows the same face everywhere it appears (AC 10)', () => {
   it('keeps two mounts of the control in step, because the state is not theirs', () => {
     // UX-DR15's "applies everywhere the printing appears", proven with the two mounts that exist
-    // today — the tile's and the panel's — standing in for Epic 6's thumbnails. One store, two
+    // today — the tile's and the panel's — standing in for any later mount. One store, two
     // readers: a `useState` in the control would make this test unwritable.
     hydrateFlippable()
     const first = render(<FlipControl cardId={PATHWAY} />)

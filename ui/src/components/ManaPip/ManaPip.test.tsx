@@ -1,13 +1,13 @@
 /**
- * ManaPip's DOM contract (story c2-8, AC 1, 12, 16, 18).
+ * ManaPip's DOM contract.
  *
  * WHAT THIS FILE CANNOT PROVE, stated before the first assertion so nobody writes the tempting
  * version of it: jsdom applies NO stylesheet. There is no fill here, no circle, no gradient and
  * no size. A `getComputedStyle(pip).background` assertion would read the empty string and pass
- * for the wrong reason, which is the exact vacuity trap c2-6's review found. Every CLAIM about
+ * for the wrong reason — the vacuity trap. Every CLAIM about
  * appearance is read as CSS SOURCE in `ui/tests/token-usage.test.ts` (which colour classes
- * exist, and which properties may spend a `--mana-*`), or checked by eye at the first consuming
- * story — c4-3 / c4-7 / c4-9 (AC 21).
+ * exist, and which properties may spend a `--mana-*`), or checked by eye on the consuming
+ * surfaces — the card placeholders, the deck row, the colour legend.
  *
  * So what is left for this file is what a USER PERCEIVES through the accessibility tree and the
  * text layer: what is announced, what is not, and what text the glyph slot carries. Assertions
@@ -49,11 +49,9 @@ describe('the glyph slot (AC 1, AC 16)', () => {
   it('shows the seven-digit Gleemax cost in full, unclipped and untruncated (AC 16)', () => {
     // The DOM half of AC 16. Whether it FITS is a layout question jsdom cannot answer — the
     // stylesheet answers it with min-width + a pill radius and no `overflow: hidden`, and the
-    // grow-not-clip guard in ui/tests/token-usage.test.ts reads exactly that source (added at
-    // review 2026-07-29 — the first draft of this comment CLAIMED a source read that did not
-    // exist, which is c2-7's StatChip failure mode in a comment's clothing). What this asserts
-    // is the half that would otherwise be a truncating `.slice(0, 3)` nobody noticed: the text
-    // arrives whole.
+    // grow-not-clip guard in ui/tests/token-usage.test.ts reads exactly that source. What this
+    // asserts is the half that would otherwise be a truncating `.slice(0, 3)` nobody noticed:
+    // the text arrives whole.
     render(<ManaPip glyph="1000000" />)
     expect(screen.getByText('1000000')).toBeInTheDocument()
   })
@@ -79,7 +77,7 @@ describe('the accessibility posture (AC 15, Q4)', () => {
     render(<ManaPip colours={['g']} label="green" />)
     // BY ROLE AND NAME, which is what a screen-reader user actually reaches. An `aria-label`
     // on a bare <span> is name-PROHIBITED on role="generic" and may be ignored outright, so
-    // the role is not decoration — it is what makes the name exist at all (landmine 17).
+    // the role is not decoration — it is what makes the name exist at all.
     expect(screen.getByRole('img', { name: 'green' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'green' })).not.toHaveAttribute('aria-hidden')
   })

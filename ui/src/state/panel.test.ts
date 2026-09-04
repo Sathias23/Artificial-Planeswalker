@@ -1,14 +1,14 @@
 /**
- * The boundary that makes `StatePanel` safe to hand a wire value (story c3-9, AC 2, AC 8).
+ * The boundary that makes `StatePanel` safe to hand a wire value.
  *
  * Two claims, and they are different claims:
  *
- *   **AC 2** — the panel comes from the TOKEN, not from the status. Proved by discrimination
+ *   **First** — the panel comes from the TOKEN, not from the status. Proved by discrimination
  *   rather than by inspection: the two database tokens share one status and produce two panels,
  *   so no implementation that read `response.status` could pass this file. That is AD-16's
  *   *"nothing in the SPA keys off a bare status code"* made executable for the first time.
  *
- *   **AC 8** — the function is TOTAL. Not "handles the cases we thought of": every string, plus
+ *   **Second** — the function is TOTAL. Not "handles the cases we thought of": every string, plus
  *   `null`, has an answer, and the three routes to `internal-error` are asserted separately
  *   because they are three different mistakes (an unknown token, a token with no panel, and no
  *   token at all).
@@ -23,8 +23,8 @@ import { panelFor } from './panel'
 describe('the panel comes from the token, never from the status (AC 2)', () => {
   it('gives two DIFFERENT panels to the two tokens that share status 503', () => {
     // The whole of AD-16 in three lines. Both of these arrive as `503`; a client keyed on the
-    // status could not tell them apart, and the fresh-install path — the story's headline —
-    // would show "Card database is updating." to someone who has never built a database.
+    // status could not tell them apart, and the fresh-install path would show "Card database is
+    // updating." to someone who has never built a database.
     expect(panelFor('database_not_initialized')).toBe('database-not-initialized')
     expect(panelFor('database_unavailable')).toBe('database-updating')
     expect(panelFor('database_not_initialized')).not.toBe(panelFor('database_unavailable'))

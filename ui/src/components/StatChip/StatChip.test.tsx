@@ -1,13 +1,12 @@
 /**
- * StatChip — a micro label over a numeric value, with an optional delta (story c2-7, UX-DR11,
- * AC 3 / 5 / 6 / 7 / 12 / 16).
+ * StatChip — a micro label over a numeric value, with an optional delta (UX-DR11).
  *
- * THE DELTA'S SIGN CONTRACT IS THE WHOLE OF THIS FILE (Q6). The tint is chosen by NUMERIC
+ * THE DELTA'S SIGN CONTRACT IS THE WHOLE OF THIS FILE. The tint is chosen by NUMERIC
  * SIGN, never by a string prefix: the mock's `String(delta).startsWith('-')` is wrong for
  * `-0`, wrong for a Unicode minus, and wrong for anything pre-formatted. Which COLOUR each
  * sign produces is a CSS claim jsdom cannot see, so what is asserted here is the class and the
  * rendered text — the colours are read from the CSS source and checked by eye at the first
- * consuming story (AC 21).
+ * consuming story.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -29,11 +28,11 @@ describe('StatChip structure (AC 3)', () => {
     expect(container.querySelector('.stat-chip-delta')).toBeNull()
   })
 
-  // The mock's `minWidth: 76` is NOT reproduced (AC 11) — but that is a CSS-source claim, and
+  // The mock's `minWidth: 76` is NOT reproduced — but that is a CSS-source claim, and
   // a DOM assertion here cannot fail for it: jsdom applies no stylesheet, so a `min-width` in
-  // StatChip.css would never reach any attribute this file can read. The review (2026-07-29)
-  // found exactly that test here, passing vacuously, and moved the assertion to
-  // ui/tests/shell.test.ts where the CSS source is actually read.
+  // StatChip.css would never reach any attribute this file can read. Such a test would pass
+  // vacuously; the assertion lives in ui/tests/shell.test.ts where the CSS source is actually
+  // read.
 })
 
 describe('StatChip delta, tinted by numeric sign (AC 6, Q6)', () => {
@@ -61,7 +60,7 @@ describe('StatChip delta, tinted by numeric sign (AC 6, Q6)', () => {
     expect(delta).toHaveTextContent('0')
     expect(delta).not.toHaveTextContent('+0')
     expect(delta).toHaveClass('stat-chip-delta-neutral')
-    // The AC 16 family, arriving in a second numeric prop: `{delta && …}` would have dropped
+    // The falsy-value family, arriving in a second numeric prop: `{delta && …}` would have dropped
     // this element entirely, and `delta ? 'positive' : 'negative'` would have tinted a zero
     // RED — a no-change reading presented as a regression.
     expect(delta).not.toHaveClass('stat-chip-delta-negative')

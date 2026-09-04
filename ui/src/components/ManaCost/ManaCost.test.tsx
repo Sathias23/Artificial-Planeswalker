@@ -1,11 +1,11 @@
 /**
- * ManaCost's DOM contract (story c2-8, AC 2, 3, 4, 7, 15, 17, 18).
+ * ManaCost's DOM contract.
  *
  * THE SAME LIMIT ManaPip.test.tsx states, for the same reason: jsdom applies no stylesheet, so
  * there is no wrapping, no gap and no colour here. What IS decidable in the DOM is the thing
  * this component can get catastrophically wrong — WHICH SYMBOLS SURVIVE — and that is what
  * every assertion below is about. Assertions go by ROLE and by TEXT, with ManaPip.test.tsx's
- * one narrow class exception (review 2026-07-29): `.mana-pip` / `.mana-pip-*` selectors are the
+ * one narrow class exception: `.mana-pip` / `.mana-pip-*` selectors are the
  * MECHANISM by which a symbol reaches a token at all, so counting pips and reading their colour
  * classes is asserting what survives, not how it is styled. Nothing here asserts a style.
  */
@@ -76,7 +76,7 @@ describe('nothing is silently dropped (AC 3, AC 7)', () => {
     expect(container.textContent).toContain('//')
     // ORDER is asserted over the child SEQUENCE, not textContent — colour pips contribute no
     // text, so a textContent check would pass a renderer that dropped, duplicated or reordered
-    // the two {B} pips around the separator (review 2026-07-29). Class-by-class, in order:
+    // the two {B} pips around the separator. Class-by-class, in order:
     const wrapper = container.firstElementChild
     expect(wrapper).not.toBeNull()
     expect([...wrapper!.children].map((child) => child.className)).toEqual([

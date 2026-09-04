@@ -1,26 +1,24 @@
-/* The two-column application shell (story c2-6, UX-DR8) — the first component stylesheet in
-   the app, and therefore the one that sets how the rest are written.
+/* The two-column application shell (UX-DR8) — the first component stylesheet in the app, and
+   therefore the one that sets how the rest are written.
 
-   GEOMETRY LITERALS ARE A NAMED, DOCUMENTED NON-BAN (AC 18). Everything in ui/ that CAN come
+   GEOMETRY LITERALS ARE A NAMED, DOCUMENTED NON-BAN. Everything in ui/ that CAN come
    from a token MUST: spacing, colour, radius, shadow, type and duration are all gated, and
    this file obeys every one of those. What is left over is pure geometry — a track width, a
    breakpoint, a stacking level, a viewport height — and there is no token family to point at.
    Adding one is not available either: tests/token-usage.test.ts pins `declaredTokens.size` at
    64 and tests/tokens.test.ts asserts every token name byte-for-byte against DESIGN.md's
    frontmatter, which contains no layout-width token. So the literals below are literals BY
-   NECESSITY, not by laziness. The rule the later stories inherit (c2-9's 480px state-panel
-   max-width, c4-4's 176px grid minimum) is: a geometry literal is
-   allowed, and it carries a comment naming its source and why it is not a token. It is a
-   documented exception rather than a ban, because an unenforceable ban is worse than a stated
-   one. ui/README.md carries the same rule in the ban table, as a named non-ban.
+   NECESSITY, not by laziness. The rule every other stylesheet inherits (the 480px state-panel
+   max-width, the 176px grid minimum) is: a geometry literal is allowed, and it carries a
+   comment naming its source and why it is not a token. It is a documented exception rather
+   than a ban, because an unenforceable ban is worse than a stated one. ui/README.md carries
+   the same rule in the ban table, as a named non-ban.
 
-   THE PREDICTION THAT WAS WRONG, corrected in story c2-7 rather than left standing. This note
-   used to name "c2-7's 17px StatChip value" as a future geometry literal. It is not one: the
-   value is spent through `font-size`, which IS gated — the font-* allowed-list admits only
-   CSS-wide keywords, so `font-size: 17px` is a lint error no citation could rescue. The
-   boundary the mistake found is worth keeping: a geometry literal is a value with NO token
-   family to point at, and a type size has one. The answer there is a different ROLE token
-   (StatChip ships `font: var(--type-heading)`, which is 500 17px/1.3), never an exception.
+   A type size is NOT a geometry literal: it is spent through `font-size`, which IS gated — the
+   font-* allowed-list admits only CSS-wide keywords, so `font-size: 17px` is a lint error no
+   citation could rescue. A geometry literal is a value with NO token family to point at, and a
+   type size has one. The answer there is a different ROLE token (StatChip ships
+   `font: var(--type-heading)`, which is 500 17px/1.3), never an exception.
 
    THE FOUR NUMBERS THAT DEFINE THE COMPOSITION are pinned by ui/tests/shell.test.ts, so a
    later edit that "tidies" one of them fails rather than drifting: the 452px track, the
@@ -29,37 +27,34 @@
    WHAT NO TEST HERE CAN PROVE: that it LOOKS like the composition reference at 1720px. jsdom
    has no layout engine — it computes no grid tracks, resolves no media queries and returns no
    box geometry — so a getComputedStyle() assertion about widths would be vacuous by
-   construction. That half is on the epic's manual-testing checklist, and the story record
-   says so plainly. */
+   construction. That half is a manual eye-check. */
 
 /* ==== THE SHELL ROOT ===================================================================
-   Q2's ruling in its mechanical form: the shell owns the window height, so the footer is
-   LITERALLY always in the window rather than pinned there by a second mechanism. UX-DR32 and
+   The shell owns the window height, so the footer is LITERALLY always in the window rather
+   than pinned there by a second mechanism. UX-DR32 and
    NFR-08 make the attribution a release condition, which is why this is a mechanism and not a
    preference.
 
    `100dvh`, not `100vh`: `vh` is the LARGE viewport height, so on a mobile browser with
    retracting chrome a `100vh` shell is taller than the window and the page scrolls — which
    takes the footer out of the window in exactly the state it is supposed to survive. `dvh`
-   tracks the live viewport. (src/index.css's `body { min-height: 100vh }` was removed in this
-   story for the same reason: two height mechanisms, disagreeing.)
+   tracks the live viewport. (src/index.css deliberately has no `body { min-height: 100vh }`
+   for the same reason: two height mechanisms, disagreeing.)
 
    This height is only correct because of the `box-sizing: border-box` reset in
    src/index.css. Under the CSS default of `content-box` this element would be
    100dvh + 64px tall — the gutter padding added to the declared height, not inside it — and
    the window would scroll. That failure presents as a footer bug and is not one.
 
-   `min-width: 1100px` — THE STATED FLOOR, ENFORCED (c5-7 review find, 2026-08-08, Greptile).
-   DESIGN.md has always said *"the app targets a window from ~1100px... up to ~2560px"*, and the
-   `width < 1100px` breakpoint below has re-stacked the columns on that promise since c2-1 — but
-   nothing made the floor TRUE below it. `ConnectionPill.css`'s fixed footer clearance assumes a
-   single-line, `--space-3`-padded `.footer-attribution` (measured 37px at every width from
-   1100px up), which the floor now guarantees; below it the paragraph wraps to two or three
-   lines and grows past that assumption, so the fixed pill visually covers part of the
-   attribution text — a defect against NFR-08's release condition, confirmed with a real
-   browser at 700px and 480px (jsdom resolves no layout, so no test caught it; this is the
-   `--space-3` claim earning its own eye-check, which nobody had performed below 1100px until
-   this finding). A horizontal scrollbar below the floor is the honest failure mode for a
+   `min-width: 1100px` — THE STATED FLOOR, ENFORCED. DESIGN.md says *"the app targets a window
+   from ~1100px... up to ~2560px"*, and the `width < 1100px` breakpoint below re-stacks the
+   columns on that promise — but only the floor makes it TRUE below it. `ConnectionPill.css`'s
+   fixed footer clearance assumes a single-line, `--space-3`-padded `.footer-attribution`
+   (measured 37px at every width from 1100px up), which the floor guarantees; below it the
+   paragraph wraps to two or three lines and grows past that assumption, so the fixed pill
+   visually covers part of the attribution text — a defect against NFR-08's release condition,
+   confirmed with a real browser at 700px and 480px (jsdom resolves no layout, so no test can
+   catch it). A horizontal scrollbar below the floor is the honest failure mode for a
    mouse-first, desktop-target app (EXPERIENCE.md's own posture) — cheaper and more predictable
    than a second reflow tier this app never designed for. */
 .app-shell {
@@ -73,7 +68,7 @@
 
 /* ==== HEADER ==========================================================================
    DESIGN.md: "product kicker + deck name (left), format/size badges, and the agent-view nav
-   (right)". `flex-shrink: 0` is AC 11's mechanism, stated rather than relied upon: the header
+   (right)". `flex-shrink: 0` is the footer-pinning mechanism, stated rather than relied upon: the header
    and footer keep their content height and `.app-shell-columns` is the only child that gives
    ground, which is what makes the footer's visibility a property of the layout instead of a
    property of how much content happens to be on screen. */
@@ -88,7 +83,7 @@
    `data-updating` lands and eases OUT when it clears — a transition on the attribute state
    alone would snap in one direction. Duration and easing are tokens; under reduced motion the
    zeroed `--motion-glide` makes the ease instant and the tokens.css media block replaces the
-   veil itself with the static "Updating…" line (c7-4, UX-DR42). */
+   veil itself with the static "Updating…" line (UX-DR42). */
 .app-shell-identity {
   display: flex;
   flex-direction: column;
@@ -97,25 +92,25 @@
   transition: opacity var(--motion-glide) var(--ease-glide);
 }
 
-/* THE REFETCH SHIMMER, AS A NON-ANIMATED VEIL (c7-4, UX-DR35, UX-DR42). The identity block
+/* THE REFETCH SHIMMER, AS A NON-ANIMATED VEIL (UX-DR35, UX-DR42). The identity block
    dims for exactly as long as the re-read is in flight and recovers on its settle — an honest
    persistent signal with NOTHING that loops or pulses (stylelint bans `infinite`/`alternate`
    and pins iteration counts at 1 repo-wide), no `@keyframes` (whose rules the reduced-motion
    CSS reader cannot neutralise — AgentView.css carries that argument), and no `transform`
    (token-usage's 5-entry shipped-motion pin does not move). 0.55 is a geometry-style literal
-   by necessity: opacity has no token family (the AC 18 note at the top of this file), and it
+   by necessity: opacity has no token family (the geometry-literal note at the top of this file), and it
    is chosen to read as "muted, still legible" over `--bg` — the kicker and h1 keep their own
    colour tokens underneath it. */
 .app-shell-identity[data-updating='true'] {
   opacity: 0.55;
 }
 
-/* The static reduced-motion text (c7-4, UX-DR42): HIDDEN at every setting by default — the
+/* The static reduced-motion text (UX-DR42): HIDDEN at every setting by default — the
    ONLY rule that shows it lives in tokens.css's reduced-motion block, which is the single
    registration point every motion fallback uses. The micro companions are declared beside the
    role token because the `font` shorthand carries neither tracking nor transform —
-   `.app-shell-kicker` above is the pattern, with `--text-secondary` (not tertiary): the AC
-   names the passing tier for a line that is the whole signal when motion is off. */
+   `.app-shell-kicker` above is the pattern, with `--text-secondary` (not tertiary): the
+   passing tier, for a line that is the whole signal when motion is off. */
 .app-shell-updating {
   display: none;
   font: var(--type-micro);
@@ -131,8 +126,8 @@
   text-transform: uppercase;
 }
 
-/* The `h1` is STRUCTURAL; its content is provisional (Q3). c4-2 replaces the string through
-   the `deckName` prop — nothing about the element, its level or its position moves. */
+/* The `h1` is STRUCTURAL; its content is a prop. The deck arm supplies the string through
+   `deckName` — nothing about the element, its level or its position moves. */
 .app-shell-deck-name {
   margin: 0;
   font: var(--type-display);
@@ -140,8 +135,8 @@
   color: var(--text-primary);
 }
 
-/* AC 15b — both right-hand slots reserved, with their alignment already decided, so c2-7 and
-   c6-8 FILL the header rather than restructuring it. `margin-left: auto` on the nav is what
+/* Both right-hand slots reserved, with their alignment already decided, so the badges and the
+   nav FILL the header rather than restructuring it. `margin-left: auto` on the nav is what
    pushes it to the far right and leaves the badges beside the identity block. */
 .app-shell-badges {
   display: flex;
@@ -159,29 +154,28 @@
 }
 
 /* ==== THE TWO COLUMNS, AND THE ONE SCROLLER ===========================================
-   `minmax(0, 1fr)`, NEVER a bare `1fr` (AC 2). This is the single highest-value line in the
+   `minmax(0, 1fr)`, NEVER a bare `1fr`. This is the single highest-value line in the
    file. `1fr` is shorthand for `minmax(auto, 1fr)`, and `auto` floors at MIN-CONTENT — so one
    unbreakable child (a long card name, a wide table, a `<pre>`) pushes the track past its
-   share and the whole grid overflows the window. That is the horizontal-scroll defect AC 5
-   forbids, arriving through the one spelling that looks correct. `minmax(0, …)` floors the
+   share and the whole grid overflows the window. That is the forbidden horizontal-scroll
+   defect, arriving through the one spelling that looks correct. `minmax(0, …)` floors the
    track at zero and lets the children scroll or wrap instead. ui/tests/shell.test.ts fails on
    a bare `<number>fr` in any grid template in any shipped stylesheet.
 
    452px — DESIGN.md, "Layout & Spacing": "Right column (452px fixed) — card detail, deck
-   list, format check, stacked." Not a token: see the AC 18 note at the top of this file.
+   list, format check, stacked." Not a token: see the geometry-literal note at the top of this file.
 
-   `min-height: 0` (AC 12) is the second highest-value line, and the one whose symptom points
+   `min-height: 0` is the second highest-value line, and the one whose symptom points
    somewhere else entirely. A flex child defaults to `min-height: auto`, which refuses to
    shrink below its content — so this region would never become smaller than what it holds,
    its `overflow` would never engage, and the PAGE would scroll instead. The footer then
-   leaves the window and AC 11 fails silently on exactly the long decks the attribution has to
-   survive.
+   leaves the window, silently, on exactly the long decks the attribution has to survive.
 
    `overflow-y: auto` here is the app's ONE legitimate scroll container. The guard in
    ui/tests/shell.test.ts bans `hidden`/`clip` on the root elements AND on this scroller —
-   the one element where a horizontal clip would bury AC 5's overflow — but it fires on the
-   clipping VALUES, so this `auto` line, c4-5's panel and c6-5's overlay (which legitimately
-   clip, and are not roots) are all unaffected. */
+   the one element where a horizontal clip would bury the overflow — but it fires on the
+   clipping VALUES, so this `auto` line, the card-detail panel and the agent-view overlay
+   (which legitimately clip, and are not roots) are all unaffected. */
 .app-shell-columns {
   display: grid;
   flex: 1;
@@ -192,7 +186,7 @@
   overflow-y: auto;
 }
 
-/* ONE TRACK WHEN THE RIGHT COLUMN IS EMPTY (17.5). The shell sets `data-single` on the grid and
+/* ONE TRACK WHEN THE RIGHT COLUMN IS EMPTY. The shell sets `data-single` on the grid and
    renders no second column, so the Welcome surface (and any other single-column state) is not
    parked beside a dead 452px track. Same shape as the <1100px collapse below, driven by state
    rather than by width. */
@@ -211,16 +205,16 @@
   min-width: 0;
 }
 
-/* AC 3 / UX-DR8 — below ~1100px the right column DROPS BENEATH the left rather than
+/* UX-DR8 — below ~1100px the right column DROPS BENEATH the left rather than
    compressing. Source order already puts left before right, so collapsing to a single track
    is the whole change.
 
    THE CONTEXT RANGE FORM IS MANDATORY, not a style preference: `@media (max-width: 1099px)`
    is a stylelint error (`media-feature-range-notation`, from stylelint-config-standard) and
-   fails `npm run lint`. Measured, and proven again in this story's evasion probes.
+   fails `npm run lint`. Measured.
 
    1100px — DESIGN.md: "The app targets a window from ~1100px (below which the right column
-   drops beneath the left) up to ~2560px". Not a token: see the AC 18 note at the top. */
+   drops beneath the left) up to ~2560px". Not a token: see the geometry-literal note at the top. */
 @media (width < 1100px) {
   .app-shell-columns {
     grid-template-columns: minmax(0, 1fr);
@@ -228,50 +222,46 @@
 }
 
 /* ==== FOOTER ==========================================================================
-   The slot c2-6 held open, FILLED by story c2-10: `App.tsx` passes `<Footer />` into the
-   `footer` prop, and `src/components/Footer/Footer.css` owns everything DESIGN.md assigns to
-   `components.footer-attribution` — foreground, background, border-top and type.
+   `App.tsx` passes `<Footer />` into the `footer` prop, and `src/components/Footer/Footer.css`
+   owns everything DESIGN.md assigns to `components.footer-attribution` — foreground,
+   background, border-top and type.
 
-   THIS RULE IS LAYOUT ONLY, AND THAT IS A RULING (c2-10 Q2, Brad 2026-07-30). It previously
-   set `font: var(--type-micro)` with its two companions and `color: var(--text-tertiary)`.
-   c2-10's AC requires `--text-secondary` (9.3:1) because the attribution is legally
-   load-bearing and gets a passing tier rather than a muted one — so the two stylesheets would
-   have carried two single-class `color` declarations of EQUAL SPECIFICITY, resolved by import
-   order. This repo has already been bitten once by a cascade it did not model (c2-6's
-   last-wins finding), so rather than add a second rule and reason about which wins, the
-   appearance was moved out wholesale. The shell keeps the window; the component keeps the ink.
+   THIS RULE IS LAYOUT ONLY. The attribution requires `--text-secondary` (9.3:1) because it is
+   legally load-bearing and gets a passing tier rather than a muted one — so a `color` here
+   and a `color` in Footer.css would be two single-class declarations of EQUAL SPECIFICITY,
+   resolved by import order. Rather than add a second rule and reason about which wins, the
+   appearance lives in the component wholesale. The shell keeps the window; the component
+   keeps the ink.
 
-   `flex-shrink: 0` STAYS, and it is the reason this rule still exists: it is AC 11's
-   mechanism, the same one the header carries, and it is what makes `.app-shell-columns` the
-   only child that gives ground. That is a layout property of the SLOT, not of whatever fills
-   it — a later story swapping the footer's contents must not be able to unpin it.
+   `flex-shrink: 0` is the reason this rule exists: it is the footer-pinning mechanism, the
+   same one the header carries, and it is what makes `.app-shell-columns` the only child that
+   gives ground. That is a layout property of the SLOT, not of whatever fills it — swapping
+   the footer's contents must not be able to unpin it.
 
-   An empty `footer` renders nothing since 17.5 (the placeholder line this rule used to sit
-   beside is gone); the slot is FILLED by App.tsx, not deleted (c2-9's decide-once ruling). */
+   An empty `footer` renders nothing; the slot is FILLED by App.tsx, not deleted. */
 .app-shell-footer {
   flex-shrink: 0;
 }
 
 /* ==== THE OVERLAY SLOT ================================================================
-   AC 7 — a full-window slot inset by the gutter, so Epic 6 ADDS the agent view rather than
-   restructuring the shell for it (UX-DR8). The element is conditional (AC 9); this rule is
-   the reservation.
+   A full-window slot inset by the gutter, so the agent view is ADDED rather than the shell
+   restructured for it (UX-DR8). The element is conditional; this rule is the reservation.
 
-   `fixed`, NOT `absolute` (AC 8), and this is the one decision in the file most likely to be
+   `fixed`, NOT `absolute`, and this is the one decision in the file most likely to be
    "corrected" by someone reading the composition reference. That reference is a fixed
    1720×1440 slab with `overflow: hidden`, where `absolute` and `fixed` coincide — its own
    agent-view overlay is `position: absolute; inset: 0` of that slab. A REAL document is
    taller than the window, so `absolute` would size this to the DOCUMENT: it would scroll away
    with the page and put its 32px inset nowhere near the window edge. "Takes the whole window"
-   means fixed. Copying the mock here is the single most likely way to hand c6-5 a broken
-   foundation, which is why the reasoning is recorded where c6-5 will read it.
+   means fixed. Copying the mock here is the single most likely way to hand the agent view a
+   broken foundation, which is why the reasoning is recorded here.
 
    `inset: var(--space-gutter)` is the 32px of UX-DR8's "inset by {spacing.6}" — a real
-   token, so this is not a geometry literal at all. THE GUTTER TOKEN, not `--space-6` (review
-   round, 2026-07-28 — a deliberate deviation from AC 7's literal spelling, recorded in the
-   story): the two are the same 32px today, but the overlay's whole contract is that its
-   inset coincides with the shell's own frame, and an overlay pinned to `--space-6` would
-   silently stop aligning with the frame if the gutter were ever retuned.
+   token, so this is not a geometry literal at all. THE GUTTER TOKEN, not `--space-6` — a
+   deliberate deviation from UX-DR8's literal spelling: the two are the same 32px today, but
+   the overlay's whole contract is that its inset coincides with the shell's own frame, and an
+   overlay pinned to `--space-6` would silently stop aligning with the frame if the gutter
+   were ever retuned.
 
    z-index 20 — the value the composition reference uses, and UX-DR38 fixes the stack at
    EXACTLY ONE level deep, so there is no second layer for it to be ordered against and no
@@ -284,14 +274,14 @@
   z-index: 20;
 }
 
-/* AC 9's last line of defence, and the half `filled()` cannot reach (Greptile, PR #23).
+/* The click-swallower's last line of defence, and the half `filled()` cannot reach.
    The component refuses to mount this wrapper for every empty shape a CALLER can express —
    null, false, "", " ", [], an empty Set, an empty Fragment — but whether an arbitrary child
    renders anything is not decidable without rendering it: `overlay={<AgentView />}` is filled
    by every static measure, and `AgentView` may still `return null`.
 
    When that happens the wrapper mounts with no child nodes at all, and a full-window FIXED
-   element containing nothing is exactly AC 9's click-swallower: invisible, and it eats every
+   element containing nothing is exactly the click-swallower: invisible, and it eats every
    pointer event on the page, presenting as "the app stopped responding to clicks".
 
    `:empty` matches an element with no children — not even text — so this rule fires in

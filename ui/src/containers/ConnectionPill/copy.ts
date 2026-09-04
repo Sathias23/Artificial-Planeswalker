@@ -1,5 +1,5 @@
 /**
- * The connection pill's words (story c5-7, AC 12; Q3, Brad 2026-08-08).
+ * The connection pill's words.
  *
  * ================= THESE STRINGS WERE SPECIFIED NOWHERE ================================
  *
@@ -8,10 +8,10 @@
  * three states as *"live (WS open) · reconnecting (backoff in progress) · backend gone (retries
  * exhausted)"*, which is a vocabulary for the SPEC's readers, not copy for the glass. So unlike
  * `StatePanel/copy.ts` (transcribed from EXPERIENCE.md) or `Footer/copy.ts` (transcribed from
- * DESIGN.md), this module **authors** its strings, and Q3 is where they were decided rather than
- * smuggled in as literals. The chosen strings were written into `EXPERIENCE.md`'s connection-pill
- * row in the same commit, and `tests/connection-pill-copy.test.ts` gates them against it — the
- * c2-9 / c2-10 / c4-3 precedent, applied to copy that had no artefact until this story wrote one.
+ * DESIGN.md), this module **authors** its strings rather than smuggling them in as literals. The
+ * chosen strings are written into `EXPERIENCE.md`'s connection-pill row, and
+ * `tests/connection-pill-copy.test.ts` gates them against it — the same shape every other copy
+ * module takes: copy is gated against whatever artefact carries it.
  *
  * ================= WHY THESE WORDS, AGAINST UX-DR33's VOICE RULES ======================
  *
@@ -24,13 +24,12 @@
  *   and `tokens.css:305-312` ban a pulse repo-wide, *naming this component as the reason the ban
  *   exists*. A trailing "…" is that same promise made in text. The word alone is the whole claim.
  *
- *   **`down` carries the retrying-quietly note (AC 5), and it is TRUE rather than reassuring.**
- *   `EXPERIENCE.md:67`'s disconnected row ends *"Retrying-quietly note in the connection pill"* —
- *   the last clause of that row nothing mirrored, and `copy-tails.test.ts` deliberately asserted it
- *   to be unasserted until this story. It is honest because c5-6's loop genuinely keeps retrying
- *   behind the Disconnected panel forever: `RETRIES_QUIETLY.disconnected === true`, and `socket.ts`
- *   reads that map to decide whether to keep scheduling. If that entry ever flips, the note becomes
- *   a lie and `copy-tails.test.ts` fails — which is the point of mirroring it there.
+ *   **`down` carries the retrying-quietly note, and it is TRUE rather than reassuring.**
+ *   `EXPERIENCE.md:67`'s disconnected row ends *"Retrying-quietly note in the connection pill"*,
+ *   and this string is what mirrors it. It is honest because the socket loop genuinely keeps
+ *   retrying behind the Disconnected panel forever: `RETRIES_QUIETLY.disconnected === true`, and
+ *   `socket.ts` reads that map to decide whether to keep scheduling. If that entry ever flips, the
+ *   note becomes a lie and `copy-tails.test.ts` fails — which is the point of mirroring it there.
  *
  * ================= WHAT IS DATA AND NOT COPY =========================================
  *
@@ -47,8 +46,8 @@
  */
 
 /**
- * The word each connection status is named by. **The dot never carries the state alone** (AC 4,
- * UX-DR29) — this map is the half that makes that true, and it is TOTAL over `ConnectionStatus`
+ * The word each connection status is named by. **The dot never carries the state alone**
+ * (UX-DR29) — this map is the half that makes that true, and it is TOTAL over `ConnectionStatus`
  * rather than defaulted, so a fourth status added to the union has no entry and `tsc` says so.
  *
  * Keyed by the CODE's vocabulary (`'down'`), not the artefacts' (*"backend gone"*, *"disconnected"*)
@@ -73,7 +72,7 @@ export const DECK_SEPARATOR = '—'
 
 /**
  * The pill's whole text, and therefore also its accessible name and the string its live region
- * announces (AC 4, AC 6, AC 10).
+ * announces.
  *
  * ONE BUILDER, THREE CONSUMERS, and that is deliberate: the visible text, the button's accessible
  * name and the announcement must be the same sentence or a screen-reader user is told something
@@ -88,7 +87,7 @@ export const DECK_SEPARATOR = '—'
  * hears (an em dash between words is voiced as a pause or not at all).
  * `ConnectionPill.test.tsx` pins both forms rather than asserting a sameness that is not true.
  *
- * `deckName === null` is the honest absence: **no placeholder and no "undefined"** (AC 6). A
+ * `deckName === null` is the honest absence: **no placeholder and no "undefined"**. A
  * pill with no deck loaded reads `Connected`, full stop.
  *
  * Args:
@@ -105,7 +104,7 @@ export const pillText = (status: keyof typeof CONNECTION_WORDS, deckName: string
     : `${CONNECTION_WORDS[status]} ${DECK_SEPARATOR} ${deckName}`
 
 /**
- * What the tooltip says before any backend has confirmed an identity (story 17.1).
+ * What the tooltip says before any backend has confirmed an identity.
  *
  * "Not yet confirmed" rather than a placeholder id or a blank, because it is the true sentence:
  * the id is read from `GET /health` on transitions to `'live'`, so before the first one lands
@@ -115,8 +114,8 @@ export const pillText = (status: keyof typeof CONNECTION_WORDS, deckName: string
 export const INSTANCE_NOT_CONFIRMED = 'instance not yet confirmed'
 
 /**
- * The tooltip's whole text, and therefore also the pill's accessible DESCRIPTION (story 17.1,
- * UX-DR29, UX-DR39).
+ * The tooltip's whole text, and therefore also the pill's accessible DESCRIPTION (UX-DR29,
+ * UX-DR39).
  *
  * ONE BUILDER, TWO CONSUMERS — the visible tooltip and the `aria-describedby` computation read
  * the same element, so this function is what guarantees the glass and the description are one
@@ -125,8 +124,7 @@ export const INSTANCE_NOT_CONFIRMED = 'instance not yet confirmed'
  * The join is {@link DECK_SEPARATOR}'s em dash with spaces, the same authored punctuation the
  * pill itself uses. The PORT and the INSTANCE ID are data, not copy: the port comes from
  * `window.location` at the call site (never a configured number) and the id from the wire, shown
- * IN FULL with its case preserved — an id is the c4-3/c4-10 lesson's clearest case yet, since a
- * truncated or uppercased identifier stops identifying.
+ * IN FULL with its case preserved, since a truncated or uppercased identifier stops identifying.
  *
  * Args:
  *   port: The page's own port, already resolved by the caller (`443`/`80` by protocol when

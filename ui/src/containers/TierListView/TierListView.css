@@ -1,4 +1,4 @@
-/* ==== THE TIER LIST VIEW'S BODY (story 16.2) ============================================
+/* ==== THE TIER LIST VIEW'S BODY =========================================================
 
    Written against DESIGN.md's `components.tier-row` block (DESIGN.md:331-338), which shipped
    complete: background `{colors.surface-overlay}`, chip-background `{colors.surface-well}`,
@@ -15,8 +15,7 @@
    `1px` (`'1px solid {colors.border-hairline}'`, DESIGN.md:334), the chip's `132px`
    (`chip-width: 132px`, DESIGN.md:336), the letter's `44px` (`letter-size: 44px`, DESIGN.md:337)
    and its weight `500` (`letter-weight: '500'`, DESIGN.md:338) — all `components.tier-row` —
-   plus, added 2026-08-23: the thumb's `176px` (`components.tier-row.thumb-width`, ruled in
-   DESIGN.md first, per the c6-7 citation order), the preview column's `300px`
+   plus the thumb's `176px` (`components.tier-row.thumb-width`), the preview column's `300px`
    (`components.tier-preview.preview-width`, DESIGN.md) and the `1100px` collapse breakpoint
    (DESIGN.md's Layout section: "the app targets a window from ~1100px"). Every other value is a
    scale token or content-driven — the token pin does not move for this file.
@@ -54,12 +53,12 @@
   font: var(--type-body);
 }
 
-/* THE VIEW BODY'S TWO COLUMNS (DESIGN.md `components.tier-preview`, added 2026-08-23): the
-   tier rows in a `minmax(0, 1fr)` track — NEVER a bare `1fr` (`shell.test.ts`'s min-content
-   trap: one unbreakable note would widen the column past its share) — beside the preview's
-   `300px` (`components.tier-preview.preview-width`, DESIGN.md). `align-items: start` is what
-   gives the preview a shorter box than the rows, which is what `position: sticky` needs to
-   have anywhere to travel. `{spacing.3}` between the columns, the row grid's own column gap. */
+/* THE VIEW BODY'S TWO COLUMNS (DESIGN.md `components.tier-preview`): the tier rows in a
+   `minmax(0, 1fr)` track — NEVER a bare `1fr` (`shell.test.ts`'s min-content trap: one
+   unbreakable note would widen the column past its share) — beside the preview's `300px`
+   (`components.tier-preview.preview-width`, DESIGN.md). `align-items: start` is what gives the
+   preview a shorter box than the rows, which is what `position: sticky` needs to have anywhere
+   to travel. `{spacing.3}` between the columns, the row grid's own column gap. */
 .tier-list-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
@@ -184,9 +183,9 @@
   font: var(--type-body);
 }
 
-/* THE STRIP — a SCROLLING row of thumbnails (DESIGN.md `components.tier-row`, amended
-   2026-08-23: "the strip SCROLLS horizontally rather than wrapping, so tiles keep this size at
-   any count"; the component row's "a thumbnail row" contradicts nothing). No `flex-wrap` — a
+/* THE STRIP — a SCROLLING row of thumbnails (DESIGN.md `components.tier-row`: "the strip
+   SCROLLS horizontally rather than wrapping, so tiles keep this size at any count"; the
+   component row's "a thumbnail row" contradicts nothing). No `flex-wrap` — a
    sixty-card tier is one row behind `overflow-x: auto`, and the tiles below are `flex: 0 0
    auto` so nothing shrinks. `{spacing.2}` between tiles, the internal-clusters band.
 
@@ -225,12 +224,12 @@
 }
 
 /* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame, at a REAL width —
-   `176px` is DESIGN.md `components.tier-row.thumb-width` (added 2026-08-23, and ruled there
-   first): the deck grid's own cited floor, the smallest box this system calls a readable card
-   face. The HEIGHT follows from the width through the in-flow placeholder's `card-shape` 63:88
-   — the direction that actually works, because the earlier height-first derivation (`min-height:
-   6lh`, `SwapsView.css`'s trick) never produced a width at all: an `aspect-ratio` box with no
-   in-flow content has no intrinsic width, and the tiles collapsed to overlapping ~0px slivers.
+   `176px` is DESIGN.md `components.tier-row.thumb-width`: the deck grid's own cited floor, the
+   smallest box this system calls a readable card face. The HEIGHT follows from the width
+   through the in-flow placeholder's `card-shape` 63:88 — width-first, deliberately, because a
+   height-first derivation (`min-height: 6lh`, `SwapsView.css`'s trick) never produces a width
+   at all: an `aspect-ratio` box with no in-flow content has no intrinsic width, and the tiles
+   collapse to overlapping ~0px slivers.
    Nothing here declares `aspect-ratio` or a card radius (see the header — this file is not in
    CARD_SHAPED); `display: block` so the placeholder child fills the slot's width and sets its
    height.
@@ -262,7 +261,7 @@
   opacity: 1;
 }
 
-/* ==== THE IN-VIEW PREVIEW (DESIGN.md `components.tier-preview`, added 2026-08-23) =========
+/* ==== THE IN-VIEW PREVIEW (DESIGN.md `components.tier-preview`) ===========================
    The card-detail panel sits BEHIND the agent view's scrim, so hovering a tile showed nothing;
    this column is the tier list's own render of the inspection target. STICKY, NOT FIXED:
    `.agent-view-body` is the one scroll container, and `position: sticky` inside it needs no

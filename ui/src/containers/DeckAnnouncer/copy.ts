@@ -1,11 +1,11 @@
 /**
- * The deck-refetch announcement (story c7-5, UX-DR45).
+ * The deck-refetch announcement (UX-DR45).
  *
  * ================= ONE SENTENCE, TRANSCRIBED, WITH A HOLE IN IT ========================
  *
  * "Deck updated — 62 cards" is the worked example BOTH artefacts carry — `EXPERIENCE.md`'s
  * live-region row ("Deck refetches announce once per coalesced refetch, on completion") and the
- * epic's Story 7.5 AC — spaced em dash U+2014 included, the same separator the connection pill's
+ * epics document — spaced em dash U+2014 included, the same separator the connection pill's
  * `DECK_SEPARATOR` cites this very row for. So the template is transcribed rather than authored,
  * and `tests/deck-announcement-copy.test.ts` gates the shipped builder against both artefacts,
  * the `pin-announcement-copy.test.ts` shape: copy is gated against whatever wrote it.

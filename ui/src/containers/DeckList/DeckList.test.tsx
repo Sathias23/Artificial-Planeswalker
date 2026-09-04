@@ -17,7 +17,7 @@ import { DeckList } from './DeckList'
 import { COMMANDER_LABEL, DECK_LIST_TITLE, GROUP_LABELS, SIDEBOARD_LABEL } from './copy'
 
 /**
- * The deck list panel (story c4-7).
+ * The deck list panel.
  *
  * ================= WHAT THIS SUITE CANNOT CARRY, SAID FIRST ============================
  *
@@ -25,19 +25,18 @@ import { COMMANDER_LABEL, DECK_LIST_TITLE, GROUP_LABELS, SIDEBOARD_LABEL } from 
  *
  *   **EVERY APPEARANCE CLAIM.** jsdom evaluates no CSS. The row grid, the live tint, the inset
  *   rule, the ellipsis, the group-header rule and the ≥24px hit box are all source claims
- *   (`tests/token-usage.test.ts`, `tests/shell.test.ts`, `tests/tokens.test.ts`) plus **Task 7's**
- *   CDP eye-check. `is-live` is asserted here as a CLASS — what that class DRAWS is not.
+ *   (`tests/token-usage.test.ts`, `tests/shell.test.ts`, `tests/tokens.test.ts`) plus a browser
+ *   eye-check. `is-live` is asserted here as a CLASS — what that class DRAWS is not.
  *
  *   **THE REDUCED-MOTION FALLBACK.** jsdom does not evaluate media queries into computed style,
  *   so reading a duration here would report the unreduced value and pass for the wrong reason.
  *   It is asserted as CSS source in `tests/token-usage.test.ts`.
  *
- *   **THE HEADING STRUCTURE AS A SCREEN READER WALKS IT (Q15).** `aria-query` maps `<header>` to
+ *   **THE HEADING STRUCTURE AS A SCREEN READER WALKS IT.** `aria-query` maps `<header>` to
  *   `banner` unconditionally where HTML-AAM does not when it sits inside a `<section>`, so every
- *   titled `Panel` is a phantom `banner` in jsdom and none in a browser — measured at c4-5, and
- *   this is the first story to inherit it. Role queries here are scoped through the panel's
- *   region rather than by `getByRole('banner')`, and whether `h2`-inside-`h2` reads correctly is
- *   Chrome's accessibility tree to answer, not this file's.
+ *   titled `Panel` is a phantom `banner` in jsdom and none in a browser. Role queries here are
+ *   scoped through the panel's region rather than by `getByRole('banner')`, and whether
+ *   `h2`-inside-`h2` reads correctly is Chrome's accessibility tree to answer, not this file's.
  */
 
 const CO = 'id-commander'
@@ -88,7 +87,7 @@ const seedHydrated = (id: string, card: Partial<Card>) => {
   }))
 }
 
-/** All three boards populated — the fixture AC 22's conservation identity needs. */
+/** All three boards populated — the fixture the conservation identity needs. */
 const THREE_BOARDS = [
   row(
     CO,
@@ -216,11 +215,11 @@ describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
 
 describe('the price column that does not exist (AC 12, Q1)', () => {
   /**
-   * THE ABSENCE, ASSERTED AT THE TYPE — c4-5's AC 14 pattern, one story on.
+   * THE ABSENCE, ASSERTED AT THE TYPE.
    *
    * `CardSummary` is generated from `openapi.json`, so this fails `npx tsc -b --force` the day a
-   * price field appears on the wire — which is the only way this story's ruling could quietly
-   * stop being true. A grep would not do: `tests/unit/companion/test_routes_cards.py:136` warns
+   * price field appears on the wire — which is the only way the absence could quietly stop being
+   * true. A grep would not do: `tests/unit/companion/test_routes_cards.py:136` warns
    * the next author off exactly that, and a grep cannot see a field that arrives under a name
    * nobody predicted.
    */
@@ -263,7 +262,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
       .getAllByRole('heading', { level: 2 })
       .map((h) => h.textContent)
 
-    // The panel title is an h2 too (UX-DR44 taken as written — see Q15), so it leads.
+    // The panel title is an h2 too (UX-DR44 taken as written), so it leads.
     expect(headings).toEqual([
       DECK_LIST_TITLE,
       COMMANDER_LABEL,
@@ -341,7 +340,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
   it('draws the sideboard the GRID deliberately drops (AC 21)', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
-    // `CardGrid.test.tsx:98` — "does NOT render the sideboard … and c4-7 owns them". Discharged.
+    // The grid deliberately drops the sideboard; this panel is where it is drawn.
     const headings = within(panelOf()).getAllByRole('heading', { level: 2, name: SIDEBOARD_LABEL })
     expect(headings).toHaveLength(1)
     expect(within(panelOf()).getByRole('button', { name: /Duress/ })).toBeVisible()
@@ -398,8 +397,7 @@ describe('the double-faced row — three shapes, one AC clause (AC 23, Q2)', () 
     )
 
     const cost = within(panelOf()).getByRole('img')
-    // The deferral at `deferred-work.md:1429-1445` — a `' // '` spoken as "slash slash" — is
-    // closed BY CONSTRUCTION on this surface: the separator never reaches `ManaCost` from a row.
+    // A `' // '` spoken as "slash slash" cannot happen on this surface, BY CONSTRUCTION: the separator never reaches `ManaCost` from a row.
     expect(cost.getAttribute('aria-label')).not.toContain('//')
     expect(panelOf().textContent).not.toContain('//')
   })
@@ -438,7 +436,7 @@ describe('the double-faced row — three shapes, one AC clause (AC 23, Q2)', () 
     )
 
     // 26 live rows across 18 cards look like this until the deck-wide sweep reaches them, and
-    // c4-6's accepted no-re-drive window means a mid-sweep blip leaves them so until a reload.
+    // the sweep is not re-driven, so a mid-sweep blip leaves them so until a reload.
     expect(within(panelOf()).queryAllByRole('img')).toHaveLength(0)
     expect(within(panelOf()).getByText('Agadeem’s Awakening')).toBeVisible()
   })
@@ -466,7 +464,7 @@ describe('the double-faced row — three shapes, one AC clause (AC 23, Q2)', () 
 
 describe('a card with no image data or an unrecognised id (AC 15, Q11)', () => {
   it('renders IDENTICALLY to any other row, because the list is text-first', () => {
-    // Q11: the wire CANNOT produce this — `DeckDetail.from_deck` validates a `CardSummary` per row
+    // The wire CANNOT produce this — `DeckDetail.from_deck` validates a `CardSummary` per row
     // inside the response constructor, so a card-less entry raises rather than arriving. The
     // scenario is reachable only at the frontend CACHE tier, which is where it is exercised.
     useCardStore.setState((state) => ({
@@ -579,9 +577,9 @@ describe('inspection — the second consumer, proving the API is location-agnost
     fireEvent.mouseLeave(rows[1])
     expect(targetIdOf(useInspectionStore.getState())).toBe(LAND_B)
 
-    // No closing "not null" assertion: with the default now a DIFFERENT card, the two `toBe`
-    // assertions above already prove hover won over the fallback — a tail `not.toBe(null)`
-    // after `toBe(LAND_B)` was vacuous and is removed (c4-7 review).
+    // No closing "not null" assertion: with the default a DIFFERENT card, the two `toBe`
+    // assertions above already prove hover won over the fallback, and a tail `not.toBe(null)`
+    // after `toBe(LAND_B)` would be vacuous.
   })
 
   it('resolves MIXED INPUT in both directions, and neither clear rewrites recency (AC 27)', () => {
@@ -596,8 +594,8 @@ describe('inspection — the second consumer, proving the API is location-agnost
 
     const rows = [...panelOf().querySelectorAll<HTMLElement>('button.deck-row')]
 
-    // Keyboard focus held on row 0 while the pointer sweeps row 1 — PR #44's P1. `lastTransient`
-    // is 'hover', so the pointer wins while it is there…
+    // Keyboard focus held on row 0 while the pointer sweeps row 1. `lastTransient` is 'hover',
+    // so the pointer wins while it is there…
     rows[0].focus()
     fireEvent.mouseEnter(rows[1])
     expect(targetIdOf(useInspectionStore.getState())).toBe(LAND_A)
@@ -673,11 +671,10 @@ describe('the panel re-derives nothing (AC 28)', () => {
   })
 
   it('preserves the store’s order WITHIN a group, not just between groups (probe e)', () => {
-    // THIS TEST EXISTS BECAUSE A PROBE PASSED. Probe (e) inserted a `.sort()` over
-    // `section.cards` and the whole suite stayed green: every fixture above happened to put ONE
-    // card in each type group, so a sort INSIDE a section had nothing to reorder. The assertion
-    // was measuring between-group order — which `boardsOf` guarantees — and calling it proof of
-    // within-group order, which nothing checked.
+    // Every fixture above puts ONE card in each type group, so a `.sort()` inserted over
+    // `section.cards` would have nothing to reorder and the rest of this suite would stay green:
+    // those assertions measure between-group order — which `boardsOf` guarantees — and say
+    // nothing about within-group order. This one does.
     //
     // The store's within-group order is `boardsOf`'s comparator — ascending cmc, ties
     // alphabetical — NOT the payload's. Three creatures with distinct cmcs, deliberately given
@@ -725,9 +722,9 @@ describe('a deck with no cards at all (Q16)', () => {
     const { container } = render(<DeckList boards={boardsOf([])} />)
 
     // Not hidden: `EXPERIENCE.md` names exactly three panels to hide until a deck has cards — the
-    // curve, the colour distribution and the format check — and this is not among them. c4-12
-    // owns the empty-deck copy and ships AFTER this story, so inventing a line here would
-    // pre-empt its copy AC and put unsourced words on the glass.
+    // curve, the colour distribution and the format check — and this is not among them. The
+    // empty-deck line is `CardGrid`'s, so a second sentence here would put unsourced words on
+    // the glass.
     expect(panelOf()).toBeVisible()
     expect(container.querySelectorAll('li.deck-list-item')).toHaveLength(0)
     expect(container.querySelectorAll('.group-header')).toHaveLength(0)

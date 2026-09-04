@@ -1,8 +1,8 @@
 /**
- * The type-group derivation, against the type lines real decks actually contain (story c4-2,
- * AC 13, AC 14, AC 15, AC 16; FR-05, UX-DR17).
+ * The type-group derivation, against the type lines real decks actually contain (FR-05,
+ * UX-DR17).
  *
- * **Every fixture below is a REAL card with its REAL `type_line`**, measured at `2095050` against
+ * **Every fixture below is a REAL card with its REAL `type_line`**, measured against
  * the live database at `%LOCALAPPDATA%\artificial-planeswalker\cards.db`. Invented uuids and
  * invented type lines would prove the function does what it does; these prove it does what the
  * corpus needs, and the four double-faced cards in particular are the exact four the repo's own
@@ -130,7 +130,7 @@ describe('the four cards the repo’s two land policies disagree about (AC 14)',
  *
  * A type line discriminates only when the front face has NO em-dash (so the subtype strip cannot
  * remove the back face) AND the back face's group PRECEDES the front's. Measured across the
- * corpus at `2095050`: **29 distinct type lines**, and **0 of them in any live deck** — so the
+ * corpus: **29 distinct type lines**, and **0 of them in any live deck** — so the
  * rule is latent for the discriminating shapes, exactly as `'Card // Card'` is. Latent is not
  * untestable, and these are real printings by name.
  */
@@ -200,8 +200,9 @@ describe('a multi-type front face lands in exactly one group, by the declared or
   })
 
   it('reads the ONE list for both order and precedence, so they cannot drift', () => {
-    // The order is asserted by value, not merely by membership: c4-7 renders these headers and
-    // c4-5's "the first card of the first type group" depends on it being deterministic.
+    // The order is asserted by value, not merely by membership: the deck grid renders these
+    // headers and the cold-open inspection target ("the first card of the first type group")
+    // depends on it being deterministic.
     expect([...TYPE_GROUPS]).toEqual([
       'Creature',
       'Planeswalker',

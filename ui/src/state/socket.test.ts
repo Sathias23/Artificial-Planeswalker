@@ -1,6 +1,6 @@
 /**
  * The reconnect loop's schedule, its ticket discipline, its two-gate escalation and its one
- * dispatch switch (story c5-6, AC 2, AC 3, AC 4, AC 8, AC 11, AC 12, AC 13).
+ * dispatch switch.
  *
  * `poller.test.ts`'s idiom throughout, because the module under test is written in `poller.ts`'s
  * idiom: EVERY assertion runs on fake timers and nothing sleeps for real time — a suite that
@@ -55,7 +55,7 @@ interface FakeSocket {
  * WHAT it handed out, plus a socket factory that records every socket the loop opened.
  *
  * The two are built together because the assertions that matter are about their RELATIONSHIP: a
- * ticket is minted inside an attempt and spent immediately, and the whole of AC 3 is that no
+ * ticket is minted inside an attempt and spent immediately, and the invariant is that no
  * ticket ever crosses from one attempt into another.
  */
 const driving = (...outcomes: SessionOutcome[]) => {
@@ -84,20 +84,20 @@ const driving = (...outcomes: SessionOutcome[]) => {
   }
 
   const statuses: ConnectionStatus[] = []
-  // The WHOLE event since c7-3, exactly as `pushes` below always was: the callback carries the
+  // The WHOLE event, exactly as `pushes` below: the callback carries the
   // envelope so `connection.ts` can read `deck_changed`'s `deck_id`, and what it carries is what
   // these assertions can check — a dispatch that rebuilt the frame, or fell back to the bare
   // kind, passes a "was it called" check and fails the identity assertions in the switch block.
   const events: SystemEvent[] = []
   // The WHOLE event, not its kind — what the callback carries is what the assertions can check,
-  // and "was the payload delivered" is the claim c6-6's dispatch arm exists to make.
+  // and "was the payload delivered" is the claim the dispatch arm exists to make.
   const pushes: SuggestionsEvent[] = []
-  // The second push channel (16.1), recorded apart from the first so a cross-wired dispatch —
+  // The second push channel, recorded apart from the first so a cross-wired dispatch —
   // a swaps frame reaching `onSuggestions`, or the reverse — fails by name.
   const swapsPushes: SwapsEvent[] = []
-  // The third push channel (16.2), kept apart for the same cross-wiring reason.
+  // The third push channel, kept apart for the same cross-wiring reason.
   const tierPushes: TierListEvent[] = []
-  // The fourth and last push channel (16.3), kept apart for the same cross-wiring reason.
+  // The fourth and last push channel, kept apart for the same cross-wiring reason.
   const groupsPushes: GroupsEvent[] = []
   let reconnects = 0
 
@@ -227,7 +227,7 @@ describe('every attempt mints a FRESH ticket, and the order is delay → mint �
     sockets[1].handlers.onClose()
     await vi.advanceTimersByTimeAsync(4_000)
 
-    // `test_ws.py:129-137` is annotated as this story's shape and this is it, from the browser
+    // `test_ws.py:129-137` pins the same shape from the backend side; this is it from the browser
     // side: mint, upgrade, mint, upgrade — three times over.
     expect(mintedAt).toHaveLength(3)
     expect(sockets.map((s) => s.ticket)).toEqual(['ticket-1', 'ticket-2', 'ticket-3'])
@@ -473,8 +473,8 @@ describe('"exhausted" is TWO gates, and it is an announcement rather than a stop
 
     // Ten more minutes behind the panel, at the 30 s ceiling: twenty further attempts. A loop
     // that treated "exhausted" as a STOP would sit here forever and the page would need a
-    // reload — which is the exact defect three ledger entries record and this story exists to
-    // kill. `RETRIES_QUIETLY.disconnected` is `true` and this is what that costs.
+    // reload — which is the exact defect this loop exists to kill. `RETRIES_QUIETLY.disconnected`
+    // is `true` and this is what that costs.
     const attempts = mintedAt.length
     await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(mintedAt.length).toBe(attempts + 20)
@@ -484,8 +484,7 @@ describe('"exhausted" is TWO gates, and it is an announcement rather than a stop
 
   it('FOLLOWS `RETRIES_QUIETLY` rather than paraphrasing it — flip the entry and behaviour moves', async () => {
     // The assertion that separates "consults the contract" from "happens to agree with it
-    // today", and the one `copy-tails.test.ts` declined at c3-9 for want of a mechanism to check
-    // against. A loop carrying its own "always retry" rule passes every other test in this file
+    // today". A loop carrying its own "always retry" rule passes every other test in this file
     // and fails this one.
     const original = RETRIES_QUIETLY.disconnected
     try {
@@ -657,7 +656,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     // Kept apart on the way through, because `contracts.py:902-905` is emphatic that conflating
     // them is the interesting bug — a client that does refetches the deck it is LEAVING.
     expect(events.map((event) => event.kind)).toEqual(['active_deck_changed', 'deck_changed'])
-    // THE ENVELOPE, VERBATIM — c7-3's widening, asserted the way the suggestions arm below
+    // THE ENVELOPE, VERBATIM — asserted the way the suggestions arm below
     // asserts its own: the caller reads `deck_changed`'s `deck_id` out of what arrives here, so
     // a dispatch that handed over the bare kind, or a rebuilt object with the payload dropped,
     // must fail THIS line and not merely a was-it-called check.
@@ -708,9 +707,9 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     // a "was it called" check and fails this one.
     expect(pushes).toEqual([push])
     expect(pushes[0].payload.items).toEqual([{ card_id: 'c-1', reason: 'Curve.' }])
-    // EVERY sibling channel, not only the ones that existed when this was written (E16-93/R6):
-    // a dispatch fallthrough double-delivering this kind to a later-added channel must fail
-    // here, not pass because the assertion list froze at c6-6.
+    // EVERY sibling channel, not only the ones that existed when this was written: a dispatch
+    // fallthrough double-delivering this kind to a later-added channel must fail here, not pass
+    // because the assertion list froze.
     expect(swapsPushes).toEqual([])
     expect(tierPushes).toEqual([])
     expect(groupsPushes).toEqual([])
@@ -723,8 +722,8 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
   })
 
   it('DELIVERS a `swaps` push, with its payload, to its OWN view callback (16.1)', async () => {
-    // The pin this line replaces said `swaps` is dropped — 16.1 is the story that flips it,
-    // pairing the dispatch arm with the view that can display what it carries.
+    // Delivered rather than dropped: the dispatch arm is paired with the view that can display
+    // what it carries.
     const { socket, swapsPushes, tierPushes, groupsPushes, pushes, events, statuses, latest } =
       await open()
 
@@ -751,7 +750,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     // into `onSuggestions` would open a suggestions view over a swaps payload.
     expect(swapsPushes).toEqual([push])
     expect(swapsPushes[0].payload.items?.[0].out_card_id).toBe('c-out')
-    // Every sibling channel, later-added kinds included (E16-93/R6).
+    // Every sibling channel, later-added kinds included.
     expect(tierPushes).toEqual([])
     expect(groupsPushes).toEqual([])
     expect(pushes).toEqual([])
@@ -763,8 +762,8 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
   })
 
   it('DELIVERS a `tier_list` push, with its payload, to its OWN view callback (16.2)', async () => {
-    // The pin this line replaces said `tier_list` is dropped — 16.2 is the story that flips it,
-    // pairing the dispatch arm with the view that can display what it carries.
+    // Delivered rather than dropped: the dispatch arm is paired with the view that can display
+    // what it carries.
     const { socket, tierPushes, swapsPushes, groupsPushes, pushes, events, statuses, latest } =
       await open()
 
@@ -791,7 +790,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     expect(tierPushes).toEqual([push])
     expect(tierPushes[0].payload.items?.[0].letter).toBe('S')
     expect(swapsPushes).toEqual([])
-    // The later-added sibling too (E16-93/R6).
+    // The later-added sibling too.
     expect(groupsPushes).toEqual([])
     expect(pushes).toEqual([])
     expect(events).toEqual([])
@@ -802,9 +801,9 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
   })
 
   it('DELIVERS a `groups` push, with its payload, to its OWN view callback (16.3)', async () => {
-    // The drop loop this test replaces iterated `['groups']` — 16.3 is the story that flips
-    // the LAST kind, pairing the dispatch arm with the view that can display what it carries,
-    // and with it the drop concept leaves this file: every kind the enum admits is delivered.
+    // The LAST kind, delivered rather than dropped: the dispatch arm is paired with the view that
+    // can display what it carries, and there is no drop concept anywhere in this file — every
+    // kind the enum admits is delivered.
     const { socket, groupsPushes, tierPushes, swapsPushes, pushes, events, statuses, latest } =
       await open()
 

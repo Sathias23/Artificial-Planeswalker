@@ -1,11 +1,9 @@
 /**
- * The one authored sentence the card placeholder puts on screen (story c4-3, UX-DR22, UX-DR33).
+ * The one authored sentence the card placeholder puts on screen (UX-DR22, UX-DR33).
  *
- * A DECLARED COPY MODULE, which is decide-once ruling #1 of story c2-9: user-facing prose lives
- * only in a module listed in `COPY_MODULES` (tests/copy-rules.test.ts), and a later story with a
- * sentence in it adds an entry there rather than inventing a second mechanism. That comment named
- * "c4-3's 'Unknown card'" as a future entry from the day it was written; this is the module it
- * predicted, and the entry is added in the same commit.
+ * A DECLARED COPY MODULE: user-facing prose lives only in a module listed in `COPY_MODULES`
+ * (tests/copy-rules.test.ts), and a component with a sentence in it adds an entry there rather
+ * than inventing a second mechanism.
  *
  * ================= WHAT IS COPY HERE, AND WHAT IS EMPHATICALLY NOT =====================
  *
@@ -21,12 +19,11 @@
  * `COPY_MODULES` — and it is right there because its two words are structural fragments of the
  * badges. This string is different in kind: it is a **contract with an artefact**.
  * `EXPERIENCE.md`'s "Unknown card in a view" row spells it, `states.ts` routes `card_not_found` to
- * it, and `tests/unknown-card-copy.test.ts` has gated the artefact half since c3-2 while declaring
- * that "the day c4-3 lands, its copy module joins COPY_MODULES and the byte-for-byte assertion
- * moves there". A module with **no imports at all** is what lets that assertion be written: a
- * `ui/tests/` file may import an app module only if that module has no relative imports (the
- * measured `tsc -b` project-boundary rule, ledgered at c4-1 and proved here), which is exactly why
- * `StatePanel/copy.ts` is importable by `copy.test.ts` and `states.ts` is not.
+ * it, and `tests/unknown-card-copy.test.ts` holds the string to the artefact byte-for-byte. A
+ * module with **no imports at all** is what lets that assertion be written: a `ui/tests/` file
+ * may import an app module only if that module has no relative imports (the measured `tsc -b`
+ * project-boundary rule), which is exactly why `StatePanel/copy.ts` is importable by
+ * `copy.test.ts` and `states.ts` is not.
  *
  * So this file has no imports, permanently. Adding one would silently un-gate the copy.
  */

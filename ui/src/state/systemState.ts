@@ -1,14 +1,13 @@
 /**
- * The store's first slice, and the one React seam this story adds (story c3-9; Q1).
+ * The store's first slice, and its one React seam.
  *
- * `zustand` has been a declared dependency with **zero** consumers since c2-1 —
- * `tests/package-contract.test.ts` asserts the dependency exists purely so that its "no second
- * store" ban is not reading an empty object. This is its first consumer, and the slice is
- * deliberately the smallest honest one: which system panel is on the glass, and the deck names
- * that one of those panels carries.
+ * `tests/package-contract.test.ts` asserts the `zustand` dependency exists so that its "no
+ * second store" ban is not reading an empty object. The slice is deliberately the smallest
+ * honest one: which system panel is on the glass, and the deck names that one of those panels
+ * carries.
  *
- * **c4-1 extends this store; it does not replace it.** The card cache and the in-flight deduping
- * are new slices beside this one, and `AD-12`'s one-store rule is what makes that the cheap path.
+ * The card cache and the in-flight deduping are slices beside this one, and `AD-12`'s one-store
+ * rule is what makes that the cheap path.
  *
  * ================= WHY THE INITIAL PANEL IS `no-active-deck` ============================
  *
@@ -42,13 +41,12 @@ export interface SystemState {
   /** Deck names, carried by `no-active-deck` alone — every other panel is handed `[]`. */
   readonly decks: readonly string[]
   /**
-   * What the app knows about its WebSocket (story c5-6, Q8, Brad 2026-08-08).
+   * What the app knows about its WebSocket.
    *
-   * **A field on this slice rather than a fourth store, and that was a ruling.** The alternative
+   * **A field on this slice rather than a fourth store.** The alternative
    * spends a `STORES` entry in `store-writes.test.ts` and a whole writer module on ONE
-   * three-valued field whose only two consumers — `surfaceOf` and the connection pill (**shipped
-   * at c5-7**, reading through {@link useConnection}) — both already read this slice. The
-   * prediction held: the second consumer arrived one story later and needed no new store. What
+   * three-valued field whose only two consumers — `surfaceOf` and the connection pill (reading
+   * through {@link useConnection}) — both already read this slice. What
    * makes the field belong here rather than merely fit: the poll and
    * the socket are the app's two answers to the same question, *is the backend there*, and the
    * one place they are reconciled is `surfaceOf`, which takes this whole object.
@@ -66,7 +64,7 @@ export interface SystemState {
   readonly connection: ConnectionStatus
   /**
    * The backend instance id the tab last CONFIRMED, or `null` before the first confirmation
-   * (story 17.1, FR-15, AD-4).
+   * (FR-15, AD-4).
    *
    * A field on this slice rather than an eighth store, for the `connection` field's own reason
    * one entry up: it is the same question — *which backend is this tab talking to* — answered
@@ -89,22 +87,21 @@ export interface SystemState {
  *
  * `connection: 'reconnecting'` is the honest cold-open value and not a placeholder: before the
  * first upgrade lands there is no socket and the loop is trying, which is what that word means.
- * It draws no panel — only `'down'` does — so the first frame is unchanged from c3-9's, which is
- * what `INITIAL_SYSTEM_STATE`'s original docstring was protecting.
+ * It draws no panel — only `'down'` does — so the first frame is unchanged.
  */
 export const INITIAL_SYSTEM_STATE: SystemState = {
   panel: 'no-active-deck',
   decks: [],
   connection: 'reconnecting',
   // `null` is the honest cold open: no backend has confirmed an identity yet, and the tooltip's
-  // copy says so in words rather than showing a placeholder id (story 17.1).
+  // copy says so in words rather than showing a placeholder id.
   instanceId: null,
 }
 
 export const useSystemStore = create<SystemState>(() => INITIAL_SYSTEM_STATE)
 
 /**
- * Write the connection status (story c5-6). **The second input to this slice, and its owner is
+ * Write the connection status. **The second input to this slice, and its owner is
  * still this module** — `store-writes.test.ts`'s rule is one writer per store, not one writer per
  * field, so the socket loop reports and this function applies, exactly as `poller.ts` reports and
  * the effect below applies.
@@ -122,7 +119,7 @@ export const applyConnection = (connection: ConnectionStatus): void => {
 }
 
 /**
- * Write a CONFIRMED backend instance id (story 17.1). **The third input to this slice, and its
+ * Write a CONFIRMED backend instance id. **The third input to this slice, and its
  * owner is still this module** — `store-writes.test.ts`'s rule is one writer per store, not one
  * writer per field, so `identity.ts` reports and this function applies, exactly as the socket
  * loop reports through {@link applyConnection} and `poller.ts` reports through the effect below.
@@ -145,7 +142,7 @@ export const applyInstanceId = (instanceId: string): void => {
 }
 
 /**
- * The connection status alone, for a consumer that wants only that field (story c5-7, Q5).
+ * The connection status alone, for a consumer that wants only that field.
  *
  * ==== WHY A SECOND HOOK RATHER THAN A SECOND `useSystemState()` CALLER ==================
  * {@link useSystemState} does two things — it subscribes AND it owns the poll — and its docstring
@@ -153,18 +150,14 @@ export const applyInstanceId = (instanceId: string): void => {
  * caller creates its own poller. So a second consumer could not use it even if it wanted the whole
  * slice. This hook is the read half with none of the ownership: no effect, no poller, no writes.
  *
- * ==== AND IT IS SELECTOR-BASED, WHICH IS dw:5430's DISPOSITION ==========================
- * That entry records the selector-less subscription in `App` as a standing cost *"the pill (c5-7)
- * and Epic 6 will both inherit"*, and homes the question here: **"c5-7 if the pill wants finer
- * granularity."** It does. `App` re-renders wholesale on every system write — `panel`, `decks` and
+ * ==== AND IT IS SELECTOR-BASED =========================================================
+ * `App` re-renders wholesale on every system write — `panel`, `decks` and
  * `connection` alike — and a pill that subscribed the same way would add a second whole-store
  * subscription to re-render a component that can only ever show one of the three fields. With the
  * selector, the pill re-renders when `connection` changes and at no other time.
  *
- * **The entry is CLOSED by this, and the cost it records is not.** `App`'s own subscription is
- * unchanged and still selector-less, deliberately: it reads all three fields, so a selector there
- * would be ceremony. What dw:5430 asked was whether the pill wanted finer granularity; the answer
- * is yes, and it is one line rather than a change to how the store is written.
+ * `App`'s own subscription is selector-less, deliberately: it reads all three fields, so a
+ * selector there would be ceremony.
  *
  * The store, {@link applyConnection} and `store-writes.test.ts`'s `STORES` table are untouched:
  * this adds a READER, and a reader is not a writer.
@@ -175,7 +168,7 @@ export const applyInstanceId = (instanceId: string): void => {
 export const useConnection = (): ConnectionStatus => useSystemStore((state) => state.connection)
 
 /**
- * The last-confirmed instance id alone (story 17.1) — {@link useConnection}'s pattern for
+ * The last-confirmed instance id alone — {@link useConnection}'s pattern for
  * {@link useConnection}'s reason: the pill is the one consumer, it can only ever show this
  * field and `connection`, and a whole-slice subscription would re-render it on every `panel`
  * and `decks` write. A reader, not a writer; the store and the `STORES` table are untouched.
@@ -187,7 +180,7 @@ export const useConnection = (): ConnectionStatus => useSystemStore((state) => s
 export const useInstanceId = (): string | null => useSystemStore((state) => state.instanceId)
 
 /**
- * Watch the system state change, without naming the store (c4-2 review, the recovery re-drive).
+ * Watch the system state change, without naming the store.
  *
  * `deck.ts` needs to see the poll transition back into a healthy `no-active-deck` so a deck
  * refusal does not outlive the condition it reported — but it may not import `useSystemStore`
@@ -207,8 +200,7 @@ export const subscribeSystemState = (
 ): (() => void) => useSystemStore.subscribe(listener)
 
 /**
- * The poller the mounted `App` owns, or `null` — the seam the socket re-drives it through
- * (story c5-6, AC 15; Q5).
+ * The poller the mounted `App` owns, or `null` — the seam the socket re-drives it through.
  *
  * ==== WHY A MODULE SLOT AND NOT AN EXPORTED POLLER =====================================
  * The poller must stay inside the effect: `useSystemState`'s own docstring gives the measured
@@ -229,7 +221,7 @@ let mounted: Poller | null = null
  * **`App` is the ONE consumer, and that is a rule, not an observation.** Every mounted caller
  * creates its OWN poller — a second consumer silently doubles the request rate and races two
  * backoffs and two stalled clocks into one store, last writer wins. A future component that
- * needs this state (a header pill, a c4-x tile) reads `useSystemStore` directly and lets the
+ * needs this state (a header pill, a tile) reads `useSystemStore` directly and lets the
  * root keep the poll; if the poll itself ever needs to move, it moves — it does not multiply.
  *
  * Returns:
@@ -259,7 +251,7 @@ export const useSystemState = (): SystemState => {
  * Restart the poll from scratch — a NEW poll, with the backoff, the outcome identity and the
  * stalled clock all reset (`poller.ts:293-306` spells out what `start()` after `stop()` means).
  *
- * **Called on reconnect success** (Q5). A socket coming back means the backend process is
+ * **Called on reconnect success.** A socket coming back means the backend process is
  * answering again, and after a restart that is a genuinely fresh backend: whatever the poll
  * believed about the old one — a 60-second stalled clock, a ceiling-length backoff, a remembered
  * outcome identity — is evidence about a process that no longer exists.
@@ -272,21 +264,21 @@ export const restartPoll = (): void => {
 
 /**
  * Restart the poll **only if it has stopped** — i.e. only if the panel on the glass is one
- * `RETRIES_QUIETLY` says does not retry itself (story c5-6, AC 15; Q5).
+ * `RETRIES_QUIETLY` says does not retry itself.
  *
- * ==== THIS IS THE HALF THAT CLOSES THREE LEDGER ENTRIES ================================
+ * ==== THE THREE PANELS THAT CAN OUTLIVE THEIR CONDITION ================================
  * `poller.ts` stops on `no-active-deck`, `database-updating-stalled` and `internal-error`, and
  * each `false` is correct on its own terms — but each one also leaves a panel that can outlive
  * its condition with nothing to notice:
  *
- *   - **dw:3472/3544** — a user obeys the stalled panel, rebuilds the database successfully, and
- *     still needs a manual refresh, because the panel that told them to act is the one state that
- *     stopped asking. (Felt live at Block I: wire `200`, poll count moved by exactly 0 over 45 s.)
- *   - **dw:3463** — after one `200` the poll stops on `no-active-deck`; a database that dies later
- *     shows a stale healthy panel until reload.
- *   - **dw:3756** — an `active_deck_changed` arrives on the wire and nothing listens.
+ *   - a user obeys the stalled panel, rebuilds the database successfully, and still needs a
+ *     manual refresh, because the panel that told them to act is the one state that stopped
+ *     asking;
+ *   - after one `200` the poll stops on `no-active-deck`; a database that dies later shows a
+ *     stale healthy panel until reload;
+ *   - an `active_deck_changed` arrives on the wire and nothing listens.
  *
- * The signal the first two were missing is a socket, and this story has one. The gate is the
+ * The signal the first two were missing is a socket. The gate is the
  * CONTRACT rather than a list of three panel names: `RETRIES_QUIETLY[panel] === false` is exactly
  * *"the poll has stopped on this"*, so a seventh panel decided later is covered without an edit
  * here — and a panel the poll is still working on is not disturbed, which is what stops this from

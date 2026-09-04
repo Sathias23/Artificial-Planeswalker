@@ -1,14 +1,14 @@
 /**
- * The composition seam's status wiring, at the seam (story 17.1 — the trigger half).
+ * The composition seam's status wiring, at the seam — the trigger half.
  *
- * `connection.ts` is where the loop's reports are given their meanings, and 17.1 changes exactly
- * one of them: `onStatus` still writes the status straight through, and a transition to `'live'`
- * now ALSO fires the identity refresh. This file mocks the SOCKET FACTORY to capture the
+ * `connection.ts` is where the loop's reports are given their meanings, and exactly one of
+ * them does two things: `onStatus` writes the status straight through, and a transition to
+ * `'live'` ALSO fires the identity refresh. This file mocks the SOCKET FACTORY to capture the
  * handlers `useAgentConnection` wires — the loop's own timing is `socket.test.ts`'s subject, and
  * re-driving it here would test the loop — and mocks the one network door's health reader so the
  * refresh has a wire to answer from. What lands in the store is then asserted for real:
  * `identity.ts` and `systemState.ts` both run un-mocked, so this is the trigger, the guard and
- * the verb proven as one path, which is what AC-4's "one trigger point" claim is.
+ * the verb proven as one path, which is what the "one trigger point" claim is.
  *
  * `vi.hoisted` for the two seams the factories close over: `vi.mock` is hoisted above the
  * imports, and a plain module-scope `const` would still be in its temporal dead zone when the

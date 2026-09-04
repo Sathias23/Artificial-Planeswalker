@@ -1,11 +1,11 @@
 /**
- * The connection pill, at component level (story c5-7, AC 2–8, AC 10).
+ * The connection pill, at component level.
  *
  * WHAT IS HERE AND WHAT IS IN `App.test.tsx`. This file drives the two SLICES directly and asserts
  * what the component makes of them — the dot's class, the words, the deck name, the focusability
  * and the announcement's transition policy. It cannot prove that the pill is on the glass on every
  * SURFACE, or that a real socket drop moves it: both of those are claims about `App`'s composition
- * and c5-6's loop, so they live in `App.test.tsx` with the `FakeSocket` + fake-timer idiom (AC 18).
+ * and the socket loop, so they live in `App.test.tsx` with the `FakeSocket` + fake-timer idiom.
  *
  * ⚠️ `useDeckStore.setState` rather than a production action, and the reason is worth stating:
  * `applyDeckState` is deliberately NOT exported (`deck.ts:176` — "the ONE writer"), and the only
@@ -145,7 +145,7 @@ describe('the deck name comes from the DECK SLICE (AC 6)', () => {
     // THE LANDMINE THIS COMPONENT IS SHAPED AROUND, from the other side. `surfaceOf` returns a
     // PANEL surface whenever `connection === 'down'` while the deck slice underneath still holds
     // the deck — so a pill reading the surface would be indistinguishable from this one here, and
-    // would differ everywhere else. What this test pins is the RULING: the name is withheld
+    // would differ everywhere else. What this test pins is the DECISION: the name is withheld
     // because the Disconnected panel owns the guidance, not because the pill cannot see it.
     loadDeck('Sultai Midrange')
     applyConnection('down')
@@ -262,8 +262,8 @@ describe('the tooltip names the port and the last-confirmed instance (story 17.1
   })
 
   it('retains the last-confirmed id through reconnecting and down — unlike the deck name', () => {
-    // The identity truthfully names the last-confirmed backend; the deck-name asymmetry (Q3,
-    // withheld in `down`) is a different ruling about a different claim, and stays untouched.
+    // The identity truthfully names the last-confirmed backend; the deck-name asymmetry
+    // (withheld in `down`) is a different decision about a different claim, and stays untouched.
     loadDeck('Sultai Midrange')
     applyInstanceId('3f9c1a7e')
     applyConnection('down')
@@ -299,7 +299,7 @@ describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)',
   const tooltip = () => screen.getByRole('tooltip')
 
   it('suppresses on Escape at the DOCUMENT while the pill is unfocused — the hover channel', () => {
-    // The dispatch target is the whole finding this shape came from: a hover-only reveal holds
+    // The dispatch target is the whole reason for this shape: a hover-only reveal holds
     // no focus, so the key lands on `document.body`, and a button-scoped handler would never
     // hear it. The listener is at the document, and this test would go red if it moved back.
     applyConnection('live')
@@ -327,7 +327,7 @@ describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)',
 
   it('keeps aria-describedby wired and the description intact WHILE suppressed', () => {
     // The header's "ALWAYS wired, whatever the reveal state" claim, asserted in the one state
-    // it could silently stop being true (review finding): the description is a fact about the
+    // it could silently stop being true: the description is a fact about the
     // pill whether or not it is painted, so dismissing the visual must not strip the semantics.
     applyInstanceId('3f9c1a7e')
     applyConnection('live')
@@ -417,8 +417,8 @@ describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)',
   })
 
   it('ignores an Escape inside an IME composition session — the guard the popover taught us', () => {
-    // A composition session's Escape cancels the composition, not the reveal; before the
-    // pre-cut hardening this listener had no guard and latched anyway.
+    // A composition session's Escape cancels the composition, not the reveal, so an unguarded
+    // listener would latch on it.
     applyConnection('live')
     render(<ConnectionPill />)
 
@@ -460,7 +460,7 @@ describe('the page port is window.location’s, never a configured number', () =
   it('defaults to the REAL window.location — the production arm is executed, not assumed', () => {
     // jsdom's test URL carries an explicit port, so the non-vacuity check pins that this smoke
     // run exercises the explicit-port arm against the real global rather than passing on an
-    // empty string (review finding: the zero-argument arm was otherwise never run).
+    // empty string (without it the zero-argument arm would never run).
     expect(window.location.port).not.toBe('')
     expect(pagePort()).toBe(window.location.port)
   })

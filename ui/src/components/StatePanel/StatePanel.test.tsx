@@ -1,22 +1,21 @@
 /**
- * StatePanel — the rendered half (story c2-9).
+ * StatePanel — the rendered half.
  *
  * `tests/copy.test.ts` proves the copy module IS `EXPERIENCE.md`. This file proves the panel
  * puts that copy on the screen, in the right slot, with the right semantics — and the two have
- * to meet in the middle, because c2-8's headline review defect was exactly the gap between
- * them: the mana parser was gated exhaustively and `ManaCost` had no test proving it FORWARDED
- * what the parser returned, so every colour could be dropped and 383 tests stayed green. The
+ * to meet in the middle, because a gated parser plus an untested forwarder is a real gap: the
+ * mana parser was once gated exhaustively while `ManaCost` had no test proving it FORWARDED
+ * what the parser returned, so every colour could be dropped and every test stayed green. The
  * identical exposure here is a panel that renders the guidance in the action slot, or drops the
  * action line entirely, with the verbatim gate still passing. `renders each slot from the copy
  * module, per state` below is the assertion that closes it.
  *
- * WHAT jsdom CANNOT PROVE, stated rather than faked (AC 21). No stylesheet is applied and there
+ * WHAT jsdom CANNOT PROVE, stated rather than faked. No stylesheet is applied and there
  * is no layout engine, so the centring, the 480px measure, the chip's recessed material, the
  * accent colour of the action line and the hairline border are NOT proven here. There is no
  * `getComputedStyle` assertion in this file for that reason — it would report back the
  * defaults and pass over a stylesheet that was never linked. Those claims are read from CSS
- * SOURCE in the node project where they are static, and are on the epic manual-testing
- * checklist where they are not.
+ * SOURCE in the node project where they are static, and are an eye-check where they are not.
  */
 
 import { render, screen, within } from '@testing-library/react'
@@ -29,7 +28,7 @@ const STATES = Object.keys(STATE_COPY) as StateKey[]
 
 /**
  * A copy string as the USER sees it: the backticks are MARKUP (they become the command chip's
- * element boundaries, AC 11) and must not survive to the screen. Stripping them here rather
+ * element boundaries) and must not survive to the screen. Stripping them here rather
  * than loosening the comparison keeps these assertions byte-exact — a swallowed word still
  * fails — while also making "no backtick reaches the reader" a thing this suite states.
  */
@@ -42,7 +41,7 @@ describe('the panel semantics (AC 7, UX-DR44)', () => {
     const region = screen.getByRole('region', { name: 'No deck on the glass.' })
     // `.textContent` compared with `toBe`, not `toHaveTextContent` — the matcher is a substring
     // check, and a suite whose thesis is "verbatim means checkable" cannot have its rendered
-    // headline tolerate appended text (review 2026-07-29).
+    // headline tolerate appended text.
     expect(within(region).getByRole('heading', { level: 2 }).textContent).toBe(
       'No deck on the glass.',
     )
@@ -69,9 +68,8 @@ describe('the panel semantics (AC 7, UX-DR44)', () => {
 describe('every state renders its EXPERIENCE.md copy (AC 3, AC 4)', () => {
   it.each(STATES)('%s — the headline is the h2, byte for byte', (state) => {
     render(<StatePanel state={state} />)
-    // Exact, not `toHaveTextContent` — that matcher is a substring check, so five of six states
-    // tolerated an appended suffix until the review of 2026-07-29 made this the same bar as
-    // every other verbatim assertion in the story.
+    // Exact, not `toHaveTextContent` — that matcher is a substring check, and would tolerate an
+    // appended suffix; this is the same bar as every other verbatim assertion in the suite.
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(STATE_COPY[state].headline)
   })
 
@@ -172,7 +170,7 @@ describe('the available-deck list (AC 5)', () => {
   })
 
   it('decides emptiness with filled(), not truthiness — the shapes that look filled', () => {
-    // The c2-6 family, applied to this prop: an array whose every element renders nothing is
+    // The filled() family, applied to this prop: an array whose every element renders nothing is
     // EMPTY OF OUTPUT even though `decks.length` is 2. `filled()` is imported rather than
     // re-derived precisely so this case is already handled here.
     const { container } = render(
@@ -183,9 +181,9 @@ describe('the available-deck list (AC 5)', () => {
 
   it('drops a blank name without dropping the list — the MIXED case (review 2026-07-29)', () => {
     // `['', 'Boros Aggro']` passes `filled()` as a whole, so the all-blank test above never
-    // exercised the per-name decision: the first version rendered an empty, announced `<li>`
+    // exercises the per-name decision: without it the panel renders an empty, announced `<li>`
     // for the blank — the exact empty-chrome shape one level down. String blankness is trim's
-    // question (c2-8's AC 4 lesson), decided per element in the component.
+    // question, decided per element in the component.
     render(<StatePanel state="no-active-deck" decks={['', 'Boros Aggro', '  ']} />)
     const items = within(screen.getByRole('list')).getAllByRole('listitem')
     expect(items.map((item) => item.textContent)).toEqual(['Boros Aggro'])
@@ -205,8 +203,8 @@ describe('the copy rules, at the point of render (AC 6)', () => {
     // The static guard over copy.ts is tests/copy-rules.test.ts; this is the same rule asserted
     // against what actually reached the DOM, which is the half a source scan cannot see (a
     // string assembled at render time, a stray character in this component's own JSX).
-    // No `decks` here: the prop contract now attaches a list to no-active-deck alone (the
-    // Greptile round), and that state's list-rendering path is covered separately below.
+    // No `decks` here: the prop contract attaches a list to no-active-deck alone, and that
+    // state's list-rendering path is covered separately below.
     const { container } = render(<StatePanel state={state} />)
     const rendered = container.textContent ?? ''
     expect(rendered.normalize('NFKC')).not.toContain('!')

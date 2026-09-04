@@ -1,27 +1,22 @@
-/* Badge — the pill label in five tones (story c2-7, UX-DR10, DESIGN.md "Containers & chrome").
+/* Badge — the pill label in five tones (UX-DR10, DESIGN.md "Containers & chrome").
 
-   ==== THE TONE-TINT MECHANISM (AC 8, Q2) — THE DECIDE-ONCE RULING ====================
-   c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows all need "tint a surface from
-   a semantic token", so this is written once, here, and recorded in ui/README.md. c6-7 shipped
-   and took the NEUTRAL tone (its badge carries the item's free-text `category`, and no mapping
-   from those to the four semantic tones exists), so the first real consumer of the mechanism
-   below is still ahead — which is why the tone loop's per-tone tests remain its only cover.
+   ==== THE TONE-TINT MECHANISM ====================
+   "Tint a surface from a semantic token" is written once, here, and recorded in ui/README.md.
 
    THE PROBLEM. DESIGN.md says a semantic tone "tints background and border from its own
    semantic token — never from hard-coded RGB". The mock's spelling of that is
    `rgba(95,212,160,0.12)` for the background and `rgba(...,0.35)` for the border: five tones,
    ten colour literals, and `rgba()` is banned (`function-disallowed-list`). So is the obvious
    repair — `color-mix(in srgb, var(--positive) 12%, transparent)` is banned by the SAME rule,
-   measured on a probe under the real config. And the token layer is closed at **69** tokens (this read `64`, its c2-7 value — corrected at
-   c4-12's conformance sweep)
+   measured on a probe under the real config. And the token layer is closed at **69** tokens
    asserted byte-for-byte against DESIGN.md's frontmatter, so there is no translucent
-   `--positive-wash` to reach for and this story does not create one (AC 23).
+   `--positive-wash` to reach for and none is created here.
 
    THE ANSWER: A PSEUDO-ELEMENT WASH. `::before` covers the badge's padding box, fills it with
    the tone's OWN token, and carries the opacity. That is exactly what `rgba(…, 0.12)` MEANS,
    expressed without a colour function — the colour is still the token, so all four alternate
    themes restyle it, which is the entire reason UX-DR10 forbids the literal. No gate changes:
-   the `color-mix()` ban stands exactly as it shipped (Brad's ruling, Q2).
+   the `color-mix()` ban stands exactly as it shipped.
 
    WHY THE STACKING DANCE IS NOT OPTIONAL. An absolutely positioned pseudo-element with
    `z-index: auto` paints AFTER its originating element's inline content — so a wash written
@@ -33,7 +28,7 @@
    which is what "tints border from its own semantic token" reads as (the mock's 0.35 alpha has
    no legal spelling, and a hairline at full strength is the honest reading).
 
-   GEOMETRY LITERALS: one, the hairline border, cited beside its value (AC 11). The mock's
+   GEOMETRY LITERALS: one, the hairline border, cited beside its value. The mock's
    `letterSpacing: '0.04em'` and `minWidth: 76` are NOT reproduced — the badge's type is
    `{typography.label}`, whose tracking token is 0.1em, and DESIGN.md's `components.badge`
    declares no min-width at all, so a citation for 76px would be unsatisfiable by construction.
@@ -48,9 +43,7 @@
    gate's.)
 
    WHAT NO TEST HERE CAN PROVE: any of it. jsdom applies no stylesheet, so every claim above is
-   read as CSS SOURCE by ui/tests/token-usage.test.ts or checked by eye at the first consuming
-   story — c4-10's format check and c4-2's header badges (AC 21). Nothing on screen imports
-   this component yet. */
+   read as CSS SOURCE by ui/tests/token-usage.test.ts or checked by eye. */
 
 /* ==== THE PILL =========================================================================
    `padding: var(--space-1) var(--space-2)` REPLACES the mock's `2px 9px`. Neither 2 nor 9 is
@@ -72,7 +65,7 @@
 
   /* 1px — DESIGN.md, `components.panel.border` and `components.group-header.rule` both spell
      the house hairline "1px solid {colors.…}"; the badge inherits that weight. The borrow is
-     DELIBERATE and RULED (review 2026-07-29): `components.badge` declares no border width, but
+     DELIBERATE: `components.badge` declares no border width, but
      its tone prose requires a border, and the house has exactly one border weight — citing the
      components that do spell it out is the truthful citation, not a workaround. */
   border: 1px solid var(--border-strong);
@@ -103,14 +96,12 @@
    DESIGN.md: "5 tones: neutral (surface-overlay / text-secondary / border-strong), accent,
    positive, negative, caution."
 
-   NOT --accent-dim, ANYWHERE IN THIS FILE (AC 14, UX-DR6). Badges appear on
-   `--surface-overlay` inside agent views — c6-7's suggestion rows SHIPPED that pairing at
-   2026-08-11, and c9-1's swap rows and c9-2's tier rows are still to come — where
-   `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. The
+   NOT --accent-dim, ANYWHERE IN THIS FILE (UX-DR6). Badges appear on `--surface-overlay`
+   inside agent views, where `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. The
    `findAccentDimOnOverlay` guard is SAME-BLOCK only, and a badge whose CONTAINER supplies the
    overlay background is precisely the cross-block case that guard declares it cannot see. So
    the fix is to not write the token here at all rather than to trust the gate. The mock uses
-   `--accent-dim` for the accent tone's border; that is the drift this AC exists to stop. */
+   `--accent-dim` for the accent tone's border; that is the drift this rule exists to stop. */
 
 /* Neutral's wash is OPAQUE: `--surface-overlay` is a full surface token, not a tint, so the
    0.12 above would render it as a barely-there smudge instead of the step up the ramp
@@ -123,12 +114,11 @@
 
 .badge-accent {
   /* `--accent-bright` for the text, `--accent` for the border: the brighter of the pair is
-     the readable one over a tint of itself. NOT MEASURED (review 2026-07-29): UX-DR6's table
+     the readable one over a tint of itself. NOT MEASURED: UX-DR6's table
      covers `--accent-dim` on `--surface-overlay` only — nobody has measured `--accent-bright`
      over a 12% wash of `--accent`, nor the positive/negative/caution text over their own
-     washes, on any surface or under the four alternate themes. That measurement rides the
-     AC 21 manual check at the first consuming story (c4-2 / c4-10), where the wash's stacking
-     is checked by eye anyway. */
+     washes, on any surface or under the four alternate themes. That measurement is a manual
+     check by eye, where the wash's stacking is checked anyway. */
   border-color: var(--accent);
   color: var(--accent-bright);
 }

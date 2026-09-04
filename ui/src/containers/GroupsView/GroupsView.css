@@ -1,7 +1,7 @@
-/* ==== THE GROUPS VIEW'S BODY (story 16.3) ===============================================
+/* ==== THE GROUPS VIEW'S BODY ============================================================
 
-   Written against DESIGN.md's `components.group-section` block (added 2026-08-21, the c6-7
-   artefact-first order): `divider: '1px solid {colors.border-hairline}'` and `measure: 900px`.
+   Written against DESIGN.md's `components.group-section` block: `divider: '1px solid
+   {colors.border-hairline}'` and `measure: 900px`.
    The component line (DESIGN.md:592) gives the anatomy: title in `{typography.heading}` with
    the card count in `{typography.numeric}` `{colors.text-tertiary}`, the rationale in
    `{typography.body}` `{colors.text-secondary}` at the measure, then a wrapped tile row. The
@@ -11,9 +11,9 @@
    (`components.group-section.divider`), the rationale's `900px`
    (`components.group-section.measure`), and the badge's `1px` border and `blur(6px)` backdrop
    (both `components.quantity-badge` values, carried exactly as `QuantityBadge.css` carries
-   them — geometry literals with no token family to point at, cited beside the value per the
-   c2-8 decide-once ruling). Every other value is a scale token or content-derived — the token
-   pin does not move for this file.
+   them — geometry literals with no token family to point at, cited beside the value). Every
+   other value is a scale token or content-derived — the token pin does not move for this
+   file.
 
    THE BADGE IS `components.quantity-badge`'s CHROME UNDER THIS VIEW'S OWN CLASS. EXPERIENCE.md
    :94 gives the group tile a quantity badge with a DIFFERENT gate (in-deck-only, ×1 renders)
@@ -162,15 +162,11 @@
 
 /* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
    against the body line-height gives the slot a readable HEIGHT without spending a px — the
-   height-only half of the line-unit derivation, which stands; `SwapsView.css` carries the same
-   declaration with the same corrected caveat (this line formerly cited "`TierListView.css`'s
-   content-derivation trick", whose slot moved to DESIGN.md's `thumb-width: 176px` on
-   2026-08-23).
-   ⚠️ THE WIDTH HALF OF THE FIRST SPELLING WAS FALSE (recorded with that repair): the claim
-   that the child "derives its WIDTH from the height through `card-shape`'s own 63:88" names a
-   derivation that never existed — an `aspect-ratio` box with no in-flow content has no
-   intrinsic width, so these tiles share the collapse the tier strip was repaired for. Fixing
-   this view's sizing is a recorded follow-up, deliberately not made here (words only).
+   same declaration `SwapsView.css` carries, with the same caveat:
+   ⚠️ THIS GIVES THE SLOT NO WIDTH. `card-shape`'s 63:88 cannot derive one from the height —
+   an `aspect-ratio` box with no in-flow content has no intrinsic width — so these tiles can
+   collapse to overlapping slivers. Sizing the slot width-first, as `TierListView.css`'s
+   `.tier-tile-thumb` does, is the outstanding fix.
    Nothing here declares `aspect-ratio` or a card radius (see the header — this file is not
    in CARD_SHAPED).
 

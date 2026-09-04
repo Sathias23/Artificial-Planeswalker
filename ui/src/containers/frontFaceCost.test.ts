@@ -5,10 +5,9 @@ import type { CardEntry } from '../state/cards'
 import { frontFaceCost, frontFaceName } from './frontFaceCost'
 
 /**
- * The front-face resolution, held to the three shapes measured in the shipped database
- * (story c4-7, Q2, AC 23).
+ * The front-face resolution, held to the three shapes measured in the shipped database.
  *
- * Every card named below is a REAL row from the corpus at `d51b467`, with its real field values —
+ * Every card named below is a REAL row from the corpus, with its real field values —
  * not a hand-invented fixture. That matters for this module specifically: the whole reason it
  * exists is that the obvious one-line implementation is right for one shape and wrong for two.
  */
@@ -58,7 +57,7 @@ describe('frontFaceName — the free half (AC 23)', () => {
   })
 
   it('falls back to the raw name when the front segment trims to nothing — never empty', () => {
-    // The "Never empty" contract, held at its own boundary (c4-7 review): a name beginning with
+    // The "Never empty" contract, held at its own boundary: a name beginning with
     // the separator would otherwise slice+trim to `''` and render an empty name cell. Measured
     // 0 such rows in the corpus; the guard is one branch.
     expect(frontFaceName(' // Backface')).toBe(' // Backface')
@@ -77,7 +76,7 @@ describe('frontFaceCost — shape 1: the split cost, resolved with NO fetch (AC 
 
   it('splits BEFORE testing non-blankness — the ordering that closes the spoken-separator deferral', () => {
     // If the "non-blank means verbatim" branch ran first, this would return the whole string and
-    // `describeManaCost` would speak "slash slash" (deferred-work.md:1429-1445).
+    // `describeManaCost` would speak "slash slash".
     const summary = summaryOf({ mana_cost: '{2}{R} // {3}{G}' })
     expect(frontFaceCost(summary, undefined)).not.toContain('//')
   })

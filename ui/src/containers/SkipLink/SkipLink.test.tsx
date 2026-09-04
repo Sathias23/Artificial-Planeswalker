@@ -6,14 +6,14 @@ import { SkipLink } from './SkipLink'
 import { SKIP_LINK_LABEL } from './copy'
 
 /**
- * The skip link, in isolation (story c4-11, AC 1, AC 5–9, AC 26).
+ * The skip link, in isolation.
  *
  * ================= WHAT THIS FILE CAN AND CANNOT SEE ==================================
  *
  * **jsdom has no layout and no sequential focus navigation.** `getBoundingClientRect()` is
  * zeroes, so the 24×24 hit box is a SOURCE claim here (`shell.test.ts` reads the declarations)
  * and a MEASURED one only in the eye-check. And there is no built-in Tab traversal at all, which
- * is why `userEvent` is not installed (Q11): `userEvent.tab()` walks its own heuristic list of
+ * is why `userEvent` is not installed: `userEvent.tab()` walks its own heuristic list of
  * tabbable elements, so a test built on it asserts user-event's model of the DOM rather than this
  * app's. Tab ORDER is therefore asserted as DOCUMENT ORDER over a rendered tree, following
  * `CardTile.test.tsx:595-605`, and the real key is pressed in the eye-check.
@@ -34,7 +34,7 @@ import { SKIP_LINK_LABEL } from './copy'
  * this id and really renders an `<h2>` — is asserted against the real component in
  * `CardDetail.test.tsx` and end-to-end in `App.test.tsx`. This file tests the link.
  *
- * DECLARED SYNTHETIC IN PLACE (AC 31): the heading text below is not `PANEL_TITLE` and is not
+ * DECLARED SYNTHETIC IN PLACE: the heading text below is not `PANEL_TITLE` and is not
  * meant to be. Importing that constant would make this fixture look like a copy of the panel and
  * invite the reader to trust it as one.
  */
@@ -62,7 +62,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     const link = screen.getByRole('button', { name: SKIP_LINK_LABEL })
 
     // A positive `tabindex` is the obvious way to make something "first" and it is the wrong one:
-    // it would be a new doctrine for this app, whose Tab order is DOCUMENT ORDER (c4-6). What
+    // it would be a new doctrine for this app, whose Tab order is DOCUMENT ORDER. What
     // makes this link first is its POSITION — `AppShell` renders it before the `<header>`.
     expect(link.hasAttribute('tabindex')).toBe(false)
   })
@@ -70,8 +70,8 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
   it('adds no aria-live and announces nothing (AC 26, Q12)', () => {
     const { container } = render(<SkipLink />)
 
-    // `CardDetail`'s single polite region stays the app's only one. Asserted here so a later
-    // story cannot add "an announcement for the skip" without a red test.
+    // This component announces nothing — its accessible name is the announcement. Asserted here
+    // so a later change cannot add "an announcement for the skip" without a red test.
     expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(0)
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(0)
@@ -159,7 +159,7 @@ describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
     expect(heading.getAttribute('tabindex')).toBe('-1')
 
     // …and the attribute leaves with the focus, so the panel AT REST carries no `[tabindex]` —
-    // which is what `CardDetail`'s AC 25 not-a-modal assertion checks one file over.
+    // which is what `CardDetail`'s not-a-modal assertion checks one file over.
     heading.blur()
     expect(heading.hasAttribute('tabindex')).toBe(false)
   })
@@ -173,7 +173,8 @@ describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
     link.focus()
 
     expect(() => link.click()).not.toThrow()
-    // Focus stays where it was rather than being dropped to <body> — the AC 9 failure mode.
+    // Focus stays where it was rather than being dropped to <body> — the failure mode the
+    // withdrawal rule bans.
     expect(document.activeElement).toBe(link)
   })
 

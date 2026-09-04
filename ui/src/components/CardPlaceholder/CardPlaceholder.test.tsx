@@ -1,12 +1,11 @@
 /**
- * The card placeholders, in the project that can see a render (story c4-3).
+ * The card placeholders, in the project that can see a render.
  *
  * WHAT THIS FILE CAN AND CANNOT PROVE, stated first because an undeclared limit reads as
  * coverage. jsdom has **no layout engine and applies no stylesheet**: `getComputedStyle(el)
  * .aspectRatio` returns the empty string here and an assertion on it PASSES FOR THE WRONG
- * REASON — the sixth time this epic has recorded that trap (c2-2 AC 17, c2-5 AC 4, c2-6 AC 4/5,
- * c2-7 AC 21, c2-8 AC 21). So AC 1/2/4's geometry is split across two instruments and neither
- * claims the other's ground:
+ * REASON. So the geometry is split across two instruments and neither claims the other's
+ * ground:
  *
  *   **here** — the rendered element CARRIES the `card-shape` class, and writes no geometry of
  *   its own;
@@ -14,8 +13,7 @@
  *   `aspect-ratio: 63 / 88` and `border-radius: var(--radius-card)`, exactly once in the tree.
  *
  * Neither is a pixel. **That the 63:88 box actually looks like a card, at the 176px grid floor,
- * with a 141-character name in it, is Task 6's eye-check** and its outcome is in the story
- * record — not here, and not implied by a green suite.
+ * with a 141-character name in it, is an eye-check** — not here, and not implied by a green suite.
  *
  * THE FIXTURES ARE REAL ROWS from the shipped corpus, read at `2a64231`, because the population
  * this component exists for is small and strange: all **79** cards that permanently need the
@@ -47,8 +45,8 @@ const NO_IMAGE_CARD = {
 /**
  * A card whose two faces have DIFFERENT names — `Heaven // Earth`, a real printing.
  *
- * c4-2's probe (b) is the reason this fixture is chosen and named: **2,246 of the corpus's
- * 3,194 split-named cards are `X // X`**, so a fixture drawn from the 79 would produce identical
+ * This fixture is chosen and named because **2,246 of the corpus's 3,194 split-named cards are
+ * `X // X`**, so a fixture drawn from the 79 would produce identical
  * output whether the name were split to its front face or not. It could not discriminate the
  * rule it appeared to test.
  */
@@ -138,7 +136,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
       <CardPlaceholder variant="named-card" name={SPLIT_CARD.name} cost={SPLIT_CARD.cost} />,
     )
 
-    // EXPERIENCE.md:157 — "Placeholders expose the same name to assistive tech". The name is
+    // EXPERIENCE.md — "Placeholders expose the same name to assistive tech". The name is
     // plain text, so it is announced by being read; nothing wraps it in a label.
     expect(screen.getByText(SPLIT_CARD.name)).toBeVisible()
 
@@ -157,7 +155,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
     // THE FIXTURE IS `X // Y`, WHICH IS THE POINT. `Heaven // Earth` renders whole; a
     // `frontFace()` split would render `Heaven`, and the deck list, the detail panel and the alt
     // text would all still say `Heaven // Earth` — four surfaces, two names. Face-specific
-    // rendering is c4-6's, where `CardFace` is already typed.
+    // rendering belongs to the flip, where `CardFace` is already typed.
     expect(screen.getByText('Heaven // Earth')).toBeVisible()
     expect(screen.queryByText('Heaven')).toBeNull()
   })
@@ -247,8 +245,8 @@ describe('the unknown variant — two words and eight characters (AC 8, 9)', () 
   })
 
   it('trims a padded id BEFORE slicing, so the prefix is always 8 real characters', () => {
-    // Review finding: the first `given()` validated on `trim()` but returned the padded
-    // original, so `'  b3a40e8e…'.slice(0, 8)` rendered SIX real characters — a prefix the
+    // A `given()` that validated on `trim()` but returned the padded original would make
+    // `'  b3a40e8e…'.slice(0, 8)` render SIX real characters — a prefix the
     // measured uniqueness says collides 45 times. Reachable via the `invalid_request` route,
     // which is exactly the malformed-id population the unknown variant exists for.
     const { container } = render(
@@ -272,7 +270,7 @@ describe('the unknown variant — two words and eight characters (AC 8, 9)', () 
   it('carries no card NAME, and the type is what makes that true (AC 8, probe (d))', () => {
     // `<CardPlaceholder variant="unknown-card" name="Black Lotus" />` does not compile — the
     // props are a discriminated union and the unknown member has no `name`. That is the
-    // copy-paste this epic's probe list calls "the one that type-checks", and here it does not;
+    // copy-paste that would otherwise type-check, and here it does not;
     // the runtime half of the claim is that nothing but the label and the id is ever rendered.
     const { container } = render(<CardPlaceholder variant="unknown-card" cardId={SPLIT_CARD.id} />)
 
@@ -307,7 +305,7 @@ describe('the loading well stays silent (AC 10, probe (e))', () => {
     const { container } = render(<CardPlaceholder variant="loading" />)
     const well = container.firstElementChild!
 
-    // "No copy. Wells stay silent" (EXPERIENCE.md:72), and silent means silent in the
+    // "No copy. Wells stay silent" (EXPERIENCE.md), and silent means silent in the
     // ACCESSIBILITY TREE too — an empty well with a name is a screen reader announcing a
     // rectangle. Three independent ways of being silent, because any one of them alone could be
     // true by accident.
@@ -323,31 +321,27 @@ describe('the loading well stays silent (AC 10, probe (e))', () => {
 
   it('cannot be given anything to say — the API is the guarantee (Q8)', () => {
     // `<CardPlaceholder variant="loading" name="…" />` does not compile: the loading member of
-    // the union has exactly one property. Q8 named this as the risk of choosing ONE component
-    // with a variant over three components ("whether the well can ever accidentally take a
-    // name"), and the discriminated union is the answer that makes it structural rather than a
+    // the union has exactly one property. The risk of choosing ONE component with a variant over
+    // three components is whether the well can ever accidentally take a name, and the
+    // discriminated union is the answer that makes it structural rather than a
     // convention. The runtime half: the well branch is taken before any prop is read.
     const { container } = render(<CardPlaceholder variant="loading" />)
     expect(container.firstElementChild!.className).toBe('card-shape card-placeholder-well')
     // The well is NOT `.card-placeholder` — it has no border and no overlay background, per
-    // DESIGN.md:389 ("the same shape on {colors.surface-well} with no text").
+    // DESIGN.md ("the same shape on {colors.surface-well} with no text").
     expect(container.firstElementChild!.classList.contains('card-placeholder')).toBe(false)
   })
 })
 
 /**
- * AC 15 — `useCardEntry`'s FIRST CONSUMER AND FIRST TEST (`deferred-work.md:3295`).
+ * `useCardEntry` consumed through a real render.
  *
- * The hook has shipped since c4-1 with nothing reading it. Its ledgered reason for being
- * untested — "the testing library is not installed" — was **false**, and c4-2 corrected it:
- * `@testing-library/react@^16.3.2` ships and `App.test.tsx` already uses it.
- *
- * **THE COMPONENT DOES NOT SUBSCRIBE; THE CALLER DOES (Q7).** A listed primitive may hold no
+ * **THE COMPONENT DOES NOT SUBSCRIBE; THE CALLER DOES.** A listed primitive may hold no
  * hook of any family, and that is a signal rather than a technicality — a component that reads
  * the store is a container, and it belongs in a different list with a different posture. So the
- * subscription lives at the call site, and `Tile` below is what c4-4's real tile will look like
+ * subscription lives at the call site, and `Tile` below is what the real tile looks like
  * where it touches this component: read the entry, branch on `entry.placeholder`, pass plain
- * props. **Nothing re-derives a placeholder from a wire token** (AC 16) — `entryFor` already
+ * props. **Nothing re-derives a placeholder from a wire token** — `entryFor` already
  * wrote that field, once, per entry.
  */
 describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', () => {
@@ -356,15 +350,14 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
   })
 
   /**
-   * c4-4's tile, in miniature: the whole mapping from a cache entry to a placeholder.
+   * The tile, in miniature: the whole mapping from a cache entry to a placeholder.
    *
-   * THE ORDER IS THE CONTRACT (review finding — the first draft of this mapping got it wrong,
-   * and the too-weak test beside it could not see that): after the two decided states, every
+   * THE ORDER IS THE CONTRACT: after the two decided states, every
    * remaining entry carries a `summary` slot, and a STANDING SUMMARY ALWAYS RENDERS. That is
-   * `cards.ts:150`'s *"whatever summary exists still stands"* made control flow — it holds for
+   * `cards.ts`'s *"whatever summary exists still stands"* made control flow — it holds for
    * a summary whose re-read is in flight, a summary whose read was refused for a reason that
    * decides nothing (`placeholder: null`, the 503), and a summary whose IMAGE is missing
-   * (`placeholder: 'named-card'` — the named placeholder IS the render until c4-4 has an
+   * (`placeholder: 'named-card'` — the named placeholder IS the render until the tile has an
    * `<img>` to put in front of it). Falling through to the well for any of those drops a name
    * the deck payload already supplied into a silent rectangle.
    */
@@ -425,7 +418,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
   it('an id the cache has never seen renders the WELL, not an unknown card (AC 4 of c4-1)', () => {
     // `undefined` means "never seen", and it is the ONLY thing it means. Rendering "Unknown
     // card" for an id nobody has asked about yet would be the app claiming knowledge it has not
-    // got — the distinction c4-1's union exists to make.
+    // got — the distinction the cache's union exists to make.
     const { container } = render(<Tile cardId={NO_IMAGE_CARD.id} />)
     expect(container.firstElementChild!.className).toContain('card-placeholder-well')
   })
@@ -447,7 +440,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
 
   it('draws the unknown placeholder from entry.placeholder, never from the token (AC 16)', async () => {
     // A REAL REFUSAL THROUGH THE REAL PATH: `hydrateCard` with an injected reader, exactly as
-    // c4-1 designed it for tests. No `fetch`, no stub of a global, no store write from here.
+    // it is designed for tests. No `fetch`, no stub of a global, no store write from here.
     render(<Tile cardId={NO_IMAGE_CARD.id} />)
 
     await act(async () => {
@@ -476,8 +469,8 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
       )
     })
 
-    // BOTH halves, and the second is the one that matters (review finding): asserting only the
-    // label's ABSENCE passed against a mapping that dropped the summary into the silent well —
+    // BOTH halves, and the second is the one that matters: asserting only the
+    // label's ABSENCE passes against a mapping that drops the summary into the silent well —
     // the well also shows no label. "Standing" means the NAME is on screen.
     expect(screen.queryByText(UNKNOWN_CARD_LABEL)).toBeNull()
     expect(screen.getByText(NO_IMAGE_CARD.name)).toBeVisible()
@@ -485,10 +478,9 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
 
   it('keeps the NAMED placeholder when only the image is missing — both tokens, the real path', async () => {
     // `no_image_data` / `image_fetch_failed` are the two tokens `entryFor` maps to
-    // `placeholder: 'named-card'`, and until this test neither was ever driven through the
-    // cache (review finding) — the one member of the fixed set with no end-to-end exercise,
-    // and exactly the branch the first Tile mapping mishandled. The summary stands; the named
-    // placeholder is the render until c4-4 has an <img>.
+    // `placeholder: 'named-card'`, and this is the only place either is driven through the
+    // cache end to end — exactly the branch a Tile mapping most easily mishandles. The summary
+    // stands; the named placeholder is the render until the tile has an <img>.
     render(<Tile cardId={NO_IMAGE_CARD.id} />)
     act(() => {
       seedDeckCards([summaryOf(NO_IMAGE_CARD)])

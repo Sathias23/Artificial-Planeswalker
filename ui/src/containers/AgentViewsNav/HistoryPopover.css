@@ -1,8 +1,8 @@
-/* The session-history popover (story 17.2, FR-18) — DESIGN.md's `components.history-popover`
+/* The session-history popover (FR-18) — DESIGN.md's `components.history-popover`
    block, in a stylesheet of its own beside `AgentViewsNav.css` rather than inside it, and the
    split is a GUARD'S requirement rather than an organisational taste: this surface paints
-   `--surface-overlay`, the nav pills' hover paints `--accent-dim` (legal on `--surface-panel`
-   — the c6-5 ruling), and `token-usage.test.ts`'s UX-DR6 rule is FILE-scoped — 2.70:1 is what
+   `--surface-overlay`, the nav pills' hover paints `--accent-dim` (legal on `--surface-panel`),
+   and `token-usage.test.ts`'s UX-DR6 rule is FILE-scoped — 2.70:1 is what
    the pairing measures, and the two tokens do not have to share a rule to meet on an element,
    so they may never share a stylesheet. Registered in `shell.test.ts`'s CONTAINERS import list
    for `AgentViewsNav.tsx`, which is the module that imports it.
@@ -28,18 +28,18 @@
    `{components.state-panel.max-width}` — the system's existing bounded-secondary-surface
    figure — and the entry list scrolls INSIDE the popover past it (`overflow-y: auto`). The
    block's own comment promises *"the popover itself never outgrows the viewport"*, and the two
-   `min()` clamps are that sentence made mechanical rather than hoped (review finding 2,
-   2026-08-22): the width cap reuses the same 480px figure (a long agent-authored title on a
-   `max-content` box would otherwise overflow the viewport), and both axes bound themselves by
-   the anchor's MEASURED position minus a `{spacing.gutter}` — see each declaration's own
-   comment for its Greptile round. Exact geometry stays the eye-check's, as ever.
+   `min()` clamps are that sentence made mechanical rather than hoped: the width cap reuses
+   the same 480px figure (a long agent-authored title on a `max-content` box would otherwise
+   overflow the viewport), and both axes bound themselves by the anchor's MEASURED position
+   minus a `{spacing.gutter}` — see each declaration's own comment. Exact geometry stays the
+   eye-check's, as ever.
 
    `position: absolute` against the `.agent-views-nav-history` wrapper's `position: relative`
    (the sibling file), content-sized on both axes — deliberately NOT a fixed layer, so
    `shell.test.ts`'s full-window-fixed detector never sees it and UX-DR38's one-level overlay
    stack stays the shell's alone.
 
-   RIGHT-anchored, not left (Greptile PR #97, P1): the wrapper is the LAST pill in a header row
+   RIGHT-anchored, not left: the wrapper is the LAST pill in a header row
    that itself sits at the viewport's right edge (`.app-shell-nav` is `margin-left: auto`), so a
    left-anchored `max-content` box grows RIGHTWARD into the few pixels between the pill and the
    window edge — the viewport-relative width clamp below never engages because the overflow is
@@ -55,17 +55,17 @@
   gap: var(--space-1);
   width: max-content;
 
-  /* The width clamp's budget is MEASURED, not assumed (Greptile PR #97, round 4): the pill row
-     wraps at narrow windows (`flex-wrap: wrap`, the sibling file), and a wrapped anchor leaves
-     the viewport's right edge — a `100vw`-based cap then lets a long title run past the LEFT
-     edge, because the overflow is again the anchor's offset, not the box's width (round 1's
-     lesson, other side). `--history-popover-right` is the right-anchored edge's measured
+  /* The width clamp's budget is MEASURED, not assumed: the pill row wraps at narrow windows
+     (`flex-wrap: wrap`, the sibling file), and a wrapped anchor leaves the viewport's right
+     edge — a `100vw`-based cap then lets a long title run past the LEFT edge, because the
+     overflow is again the anchor's offset, not the box's width (the right-anchoring argument
+     above, other side). `--history-popover-right` is the right-anchored edge's measured
      viewport-X, set by the component beside the top term; minus one gutter it IS the leftward
      budget. The fallback `100vw` cites DESIGN.md only as NOT of it — an unmeasured-frame
      stand-in, no design value; the documented literal stays DESIGN.md's 480px (file head). */
   max-width: min(480px, calc(var(--history-popover-right, 100vw) - var(--space-gutter)));
 
-  /* The height clamp's two amendments (Greptile PR #97, round 2): `100dvh`, not `100vh` —
+  /* The height clamp's two terms: `100dvh`, not `100vh` —
      AppShell.css's own argument, `vh` is the LARGE viewport height and overshoots under
      retracting browser chrome — and the anchor term `--history-popover-top` (the popover's
      measured distance from the viewport top, set by the component before paint; 0px in jsdom

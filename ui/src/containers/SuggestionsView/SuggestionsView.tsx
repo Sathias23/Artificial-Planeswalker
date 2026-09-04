@@ -23,15 +23,10 @@ import { emptyPushLine } from './copy'
 import './SuggestionsView.css'
 
 /**
- * What a `suggestions` push puts INSIDE the agent view shell (stories c6-6 and c6-7).
+ * What a `suggestions` push puts INSIDE the agent view shell.
  *
- * ================= c6-6 SHIPPED HALF OF THIS FILE, AND c6-7 FILLED THE `null` ===========
- *
- * c6-6's Q1 ruling shipped the empty-push state real and returned `null` for a non-empty one,
- * because *"a rendered row is what pulls the image, inspection and alt-text contracts forward a
- * story early"*. This is that story: the rows are here, and the module is still named for the
- * VIEW rather than for the state, which is what let them be added by extending one file instead
- * of creating a second one.
+ * The module is named for the VIEW rather than for the state it renders: the empty-push line and
+ * the rows are both this view's body, and one file holds them.
  *
  * ================= IT IS A CONTAINER, AND IT READS THE STORE'S TYPE ONLY ================
  *
@@ -40,9 +35,8 @@ import './SuggestionsView.css'
  * shape is `agentView.ts`'s to translate, and a body that took a `SuggestionsPayload` would be a
  * second reader of the envelope with a second opinion about absent fields.
  *
- * It holds hooks, a ref and handlers — which is what c6-6's header predicted when it declined to
- * put this module under `src/components/`, and which `posture.test.ts` would fail there three
- * times over.
+ * It holds hooks, a ref and handlers, which is why it lives here rather than under
+ * `src/components/`, where `posture.test.ts` would fail it three times over.
  *
  * ================= WHAT THIS VIEW OWNS THAT NO EARLIER SURFACE DID =====================
  *
@@ -54,9 +48,9 @@ import './SuggestionsView.css'
  * first surface to spend that.
  *
  * **It cannot trust one field of what it renders.** `agentView.ts:50-53` validates the payload's
- * SHAPE and deliberately no item field — *"nothing about whether a `card_id` resolves. That is
- * c6-7's, at the row that renders it"* (`deferred-work.md:209`, homed here by name). So every
- * item field below is read as `unknown` and gated before use, and a malformed entry degrades to
+ * SHAPE and deliberately no item field — nothing about whether a `card_id` resolves; that is
+ * the business of the row that renders it. So every item field below is read as `unknown` and
+ * gated before use, and a malformed entry degrades to
  * the placeholder **alone**, taking no neighbour with it: FR-13 and AD-7 are one push failing one
  * row, never the push failing wholesale — which is exactly what a `TypeError` in render would do,
  * since React unmounts the whole dialog around it.
@@ -71,9 +65,9 @@ export interface SuggestionsViewProps {
   /**
    * The pushed rows. Empty is legal and renders the artefact's sentence (AD-7, UX-DR33).
    *
-   * Narrowed to the `suggestions` ARM of the store union (16.1 made `AgentViewContent` a
-   * per-kind discriminated union), still derived from the store type rather than from a wire
-   * type — the derivation just names which arm this view draws.
+   * Narrowed to the `suggestions` ARM of the store union (`AgentViewContent` is a per-kind
+   * discriminated union), still derived from the store type rather than from a wire type — the
+   * derivation just names which arm this view draws.
    */
   readonly items: Extract<AgentViewContent, { kind: 'suggestions' }>['items']
 }
@@ -83,21 +77,20 @@ export interface SuggestionsViewProps {
  *
  * **The alias is NOT called `SuggestionItem`, and that is a guard rather than a preference.**
  * `tests/wire-contract.test.ts` bans any `type`/`interface`/`class` declaration outside
- * `src/api/` whose NAME matches a shape the backend described — measured here, on the first
- * spelling of this line, which the guard caught by name. The wire's `SuggestionItem` is declared
- * once, by `contracts.py`, and reaches this file through `AgentViewContent['items']` rather than
- * through a second declaration of the same word.
+ * `src/api/` whose NAME matches a shape the backend described. The wire's `SuggestionItem` is
+ * declared once, by `contracts.py`, and reaches this file through `AgentViewContent['items']`
+ * rather than through a second declaration of the same word.
  */
 type PushedItem = SuggestionsViewProps['items'][number]
 
 /**
  * The same item as it ACTUALLY arrives — every field `unknown`, because none of them was checked.
  *
- * **This is the c6-6 review patch's pattern, one layer down.** There the builder defended
+ * **This is the envelope builder's pattern, one layer down.** `agentView.ts` defends
  * `payload.title` and `payload.items` by type-guarding them rather than by merely testing for
  * their absence; here the same reasoning reaches the fields inside an item. The generated types
- * are honest about the ENVELOPE and silent about this: `agentEventOf` is kind-only by Brad's c6-6
- * Q6 ruling, so nothing between the socket frame and this row has ever looked at `card_id`.
+ * are honest about the ENVELOPE and silent about this: `agentEventOf` is deliberately kind-only,
+ * so nothing between the socket frame and this row has ever looked at `card_id`.
  *
  * Typing the row's prop this way rather than casting inside the body is what makes the gates
  * below REQUIRED rather than defensive — with `PushedItem` the compiler would call every `typeof`
@@ -148,11 +141,11 @@ export type EveryConfidenceTokenRenders = Assert<
  *
  * `''` is not a sentinel invented here: it is the app's own value for *"an id the app cannot
  * render"*. `hydrateCard('')` refuses it terminally with `placeholder: 'unknown-card'` and issues
- * no request at all (`cards.ts:527-543`, Q5's ruling: the empty id addresses the collection route
- * rather than a card, so the uuid gate never sees it), which routes a malformed item into exactly
- * the degradation AC 4 already describes, through machinery that already exists and is tested.
+ * no request at all (`cards.ts:527-543`: the empty id addresses the collection route rather than
+ * a card, so the uuid gate never sees it), which routes a malformed item into exactly the
+ * degradation an unknown card already gets, through machinery that already exists and is tested.
  *
- * NOT trimmed, deliberately. `card_id` has no shape constraint (c4-1) and `contracts.py` caps its
+ * NOT trimmed, deliberately. `card_id` has no shape constraint, and `contracts.py` caps its
  * LENGTH without validating its shape (AD-7), so a padded id is a real id this component has no
  * standing to rewrite — the backend's refusal is the authority, and it lands on the same
  * placeholder one round trip later.
@@ -197,8 +190,8 @@ const renderableOf = (entry: CardEntry | undefined) => {
 /**
  * Whether the cache has decided this id is not a card at all.
  *
- * `entry.placeholder`, never `entry.reason`: the wire token is the store's business and c4-1's
- * AC 13 bans a `switch` on it anywhere downstream. This is the same predicate `inspection.ts`'s
+ * `entry.placeholder`, never `entry.reason`: the wire token is the store's business, and no
+ * `switch` on it belongs anywhere downstream. This is the same predicate `inspection.ts`'s
  * `inspectable()` applies — deliberately, because the row and the store must agree about which
  * entries are dead, and they agree by asking the same question rather than by two similar ones.
  */
@@ -206,22 +199,21 @@ const isUnknownCard = (entry: CardEntry | undefined): boolean =>
   entry?.status === 'unknown' && entry.placeholder === 'unknown-card'
 
 /**
- * One suggestion (AC 1-AC 4, AC 6, AC 7, UX-DR24).
+ * One suggestion (UX-DR24).
  *
- * ================= IT IS A `<button>`, AND SO IS THE UNKNOWN ONE (Q3's ruling) ==========
+ * ================= IT IS A `<button>`, AND SO IS THE UNKNOWN ONE =========================
  *
  * `DeckRow` is the verbatim structural precedent — one real `<button>` carrying all five
  * inspection verbs, no `tabindex`, no `onKeyDown` — and this row copies it rather than the tile's
  * frame/button split, because the tile only split them to keep a flip CONTROL from reading as
- * leaving the card, and this row has no child control at all (Q5: flip state is honoured, the
+ * leaving the card, and this row has no child control at all (flip state is honoured, the
  * control is not rendered).
  *
  * **Every row is the same button, including a row whose card the app cannot identify.** UX-DR22
  * says the unknown-card variant cannot be inspected, and the refusal that implements it is the
  * STORE's: `inspectable()` early-returns inside `setHovered`, `setFocused` and `togglePin`, and
- * it was written for *"Epic 6's thumbnails, whose ids do not come from a deck at all"* — this
- * surface, named a story and a half before it existed. So an unknown row is focusable and
- * readable, and can never set or pin a target.
+ * it was written for exactly this kind of surface — thumbnails whose ids do not come from a deck
+ * at all. So an unknown row is focusable and readable, and can never set or pin a target.
  *
  * The alternative — dropping the button on unknown rows — was declined for a mechanical reason
  * rather than a stylistic one: an entry moves `undefined → loading → unknown` **while rendered**,
@@ -234,13 +226,13 @@ const isUnknownCard = (entry: CardEntry | undefined): boolean =>
  * chosen. A keyboard handler here would also be a trap: while a view is open, `CardDetail`'s
  * document-CAPTURE Escape listener calls `stopPropagation()`, and React 17+ delegates its own
  * synthetic listeners at the root container BELOW `document` in the capture path — so an
- * `onKeyDown` on this row would silently never see Escape (`deferred-work.md:49`).
+ * `onKeyDown` on this row would silently never see Escape.
  */
 function SuggestionRow({ item }: { item: UntrustedItem }) {
   const cardId = cardIdOf(item)
   const entry = useCardEntry(cardId)
   const live = useIsLiveTarget(cardId)
-  // Q5: the flip STATE is honoured, keyed by printing exactly as `EXPERIENCE.md:85` describes
+  // The flip STATE is honoured, keyed by printing exactly as `EXPERIENCE.md:85` describes
   // ("a flipped tile is flipped everywhere it appears — grid, agent-view thumbnail, and the
   // detail panel — because the state is keyed by printing, not by location"). The flip CONTROL is
   // not rendered: UX-DR15 places it on tiles and the detail panel, and a >=32px hit area does not
@@ -248,7 +240,7 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
   const face = useFaceIndex(cardId)
   // DESTRUCTURED AT THE TOP OF RENDER, and that is a lint requirement rather than a style: the
   // `react-hooks/refs` rule reads a member access on this object during render as reading a ref,
-  // and `<img ref={art.settleIfCached}>` measured four errors when `useCardArt` was extracted.
+  // and `<img ref={art.settleIfCached}>` produces four such errors.
   const { state: art, settleIfCached, onLoad, onError } = useCardArt(cardId, face)
 
   const renderable = renderableOf(entry)
@@ -260,10 +252,10 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
   const reason = reasonOf(item)
   const pinnedId = usePinnedId()
 
-  // RELEASE A STALE TARGET THE MOMENT HYDRATION SETTLES TO UNKNOWN (code review, 2026-08-11:
-  // Greptile P1). `inspectable()` treats an in-flight (`undefined`/`loading`) entry as
-  // inspectable — deliberate for deck cards (c4-1: refusing on absence would refuse every card
-  // on a cold open, before any hydration had run) — but a suggestion id can settle to a
+  // RELEASE A STALE TARGET THE MOMENT HYDRATION SETTLES TO UNKNOWN. `inspectable()` treats an
+  // in-flight (`undefined`/`loading`) entry as inspectable — deliberate for deck cards (refusing
+  // on absence would refuse every card on a cold open, before any hydration had run) — but a
+  // suggestion id can settle to a
   // TERMINAL `unknown`, which UX-DR22 says can never be inspected. A real click or hover in the
   // window before that settle lands (real network latency; not reachable in jsdom's near-
   // synchronous promise resolution) races past that guard and leaves a stale hover, focus or
@@ -286,11 +278,11 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
          `--shadow-suggestion-row-live` in the stylesheet, because a composite box-shadow cannot
          be written in a component stylesheet at all (stylelint's allowed-list). */
       className={live ? 'suggestion-row is-live' : 'suggestion-row'}
-      /* THE FIVE VERBS, UNRENAMED AND UNWRAPPED (AC 2, UX-DR14, UX-DR20). Two transient slots
-         rather than one, and both clears keyed by id: leaving one row and reaching the next
-         produces two events and the losing row's is free to land second, so an unkeyed clear
-         would erase the hover the row being MOVED TO has already set (PR #44's P1, and rows are
-         where a pointer crosses the most of them per second).
+      /* THE FIVE VERBS, UNRENAMED AND UNWRAPPED (UX-DR14, UX-DR20). Two transient slots rather
+         than one, and both clears keyed by id: leaving one row and reaching the next produces
+         two events and the losing row's is free to land second, so an unkeyed clear would erase
+         the hover the row being MOVED TO has already set — and rows are where a pointer crosses
+         the most of them per second.
 
          What an id MEANS — whether it can be inspected, whether a click pins or releases — is the
          slice's, so this surface gets the tile's behaviour from the tile's verbs rather than from
@@ -301,17 +293,16 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
       onBlur={() => clearFocused(cardId)}
       onClick={() => togglePin(cardId)}
     >
-      {/* THE THUMBNAIL SLOT — FULL ROW HEIGHT, FIXED SHAPE, NEVER REFLOWING (AC 7, UX-DR36).
+      {/* THE THUMBNAIL SLOT — FULL ROW HEIGHT, FIXED SHAPE, NEVER REFLOWING (UX-DR36).
           The slot always contains a card-shaped element, from the first frame: a well before the
           picture exists, the picture over it once it does, a placeholder instead of both when
           there is nothing to draw. Nothing here changes SIZE as bytes arrive — DESIGN.md's
-          amended `components.suggestion-row.height` is content-driven precisely so this slot can
+          `components.suggestion-row.height` is content-driven precisely so this slot can
           take its height from the two text lines and derive its width from 63:88. */}
       <span className="suggestion-row-thumb">
         {unknown ? (
-          /* AC 4, and c6-6's structurally-deferred AC 3 discharged at the row that finally has a
-             subject: the id resolves to nothing, so the slot says so — and the REASON still
-             renders below, because one dead entry is one dead thumbnail and not a lost row.
+          /* THE UNKNOWN CARD: the id resolves to nothing, so the slot says so — and the REASON
+             still renders below, because one dead entry is one dead thumbnail and not a lost row.
              `cardId` is passed so the placeholder can show its 8-character prefix, which is the
              only identifying information left; `''` renders the label alone. */
           <CardPlaceholder variant="unknown-card" cardId={cardId} />
@@ -330,8 +321,8 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
         ) : (
           <>
             {/* THE SILENT WELL, and it is a SIBLING the image covers rather than a background
-                under it — c4-4's Q8 ruling: `--surface-well` painted on the image's own element
-                would show through a png face's transparent corners. It is also what gives the
+                under it, because `--surface-well` painted on the image's own element would show
+                through a png face's transparent corners. It is also what gives the
                 slot its size, so it stays mounted under a shown image rather than being swapped
                 out for one. No text, no spinner (EXPERIENCE.md's skeleton policy). */}
             <CardPlaceholder variant="loading" />
@@ -339,14 +330,14 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
               ref={settleIfCached}
               className="card-shape suggestion-row-image"
               data-loaded={art === 'shown' ? 'true' : 'false'}
-              /* AD-11, AC 7: the backend proxy, never a CDN host (`no-scryfall-hosts.test.ts`
-                 bans the family outright). `size` is UNSPELLED — Q4's ruling: `normal` is the
-                 route's own default and the grid's key, and `?size=normal` would be a SECOND
-                 browser-cache entry for one picture. A suggested card that later joins the deck
-                 then finds the grid's bytes already warm. `face` follows the store (Q5) and
-                 spells nothing at 0, which is every unflipped row. */
+              /* AD-11: the backend proxy, never a CDN host (`no-scryfall-hosts.test.ts` bans the
+                 family outright). `size` is UNSPELLED, deliberately: `normal` is the route's own
+                 default and the grid's key, and `?size=normal` would be a SECOND browser-cache
+                 entry for one picture. A suggested card that later joins the deck then finds the
+                 grid's bytes already warm. `face` follows the store and spells nothing at 0,
+                 which is every unflipped row. */
               src={cardImageUrl(cardId, undefined, face)}
-              /* `alt=""`, EXACTLY (AC 6, UX-DR48). The rule's own words for this shape: *"use
+              /* `alt=""`, EXACTLY (UX-DR48). The rule's own words for this shape: *"use
                  `alt=""` — the name is announced once, from the row text"*. The name is two
                  elements away in the same button, so alt text here would announce it twice. */
               alt=""
@@ -358,16 +349,16 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
         )}
       </span>
 
-      {/* THE HEAD LINE (AC 1): badge · name · cost · confidence, in DESIGN.md's order. */}
+      {/* THE HEAD LINE: badge · name · cost · confidence, in DESIGN.md's order. */}
       <span className="suggestion-row-head">
-        {/* Q1's ruling: the "action" badge IS the category badge — there is no `action` field on
-            the wire, and DESIGN.md and EXPERIENCE.md were both annotated in this story's first
-            commit. NEUTRAL tone, the only one that invents nothing: no mapping from free-text
+        {/* The "action" badge IS the category badge — there is no `action` field on the wire,
+            and DESIGN.md and EXPERIENCE.md are both annotated to say so.
+            NEUTRAL tone, the only one that invents nothing: no mapping from free-text
             categories to the four semantic tones exists, and `Badge` clamps an unknown tone to
             neutral anyway. `null` renders no pill at all — `filled()` is the primitive's own
             check and it already refuses a blank string, so no branch is owed here. */}
         <Badge tone="neutral">{categoryOf(item)}</Badge>
-        {/* THE NAME, FRONT FACE ONLY (AC 1). The element is present from the first frame with
+        {/* THE NAME, FRONT FACE ONLY. The element is present from the first frame with
             nothing in it, and that is deliberate: these ids carry NO summary seed, so the name
             arrives only when hydration lands, and a name that appeared by INSERTING an element
             would reflow the row under the reader. `frontFaceName` for `DeckRow`'s reason — the
@@ -375,14 +366,14 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
         <span className="suggestion-row-name">
           {renderable === null ? '' : frontFaceName(renderable.name)}
         </span>
-        {/* THE COST (AC 1). `ManaCost` is forgiving by contract — `null` and blank both render
+        {/* THE COST. `ManaCost` is forgiving by contract — `null` and blank both render
             nothing — so the not-yet-hydrated case needs no branch. `frontFaceCost` resolves the
             three real shapes and, for the 87.8% of faced cards whose top-level `mana_cost` is
             blank, reads `card_faces[0]` off the hydrated record. */}
         <span className="suggestion-row-cost">
           <ManaCost cost={renderable === null ? null : frontFaceCost(renderable, entry)} />
         </span>
-        {/* THE CONFIDENCE (AC 1), RIGHT-ALIGNED, AND RENDERED AS THE WIRE TOKEN.
+        {/* THE CONFIDENCE, RIGHT-ALIGNED, AND RENDERED AS THE WIRE TOKEN.
             `{typography.micro}` uppercases it in the stylesheet, which is the type role doing the
             work; the word itself is wire data and not copy, so nothing here is owed a
             `COPY_MODULES` entry. Wrapping it in authored words ("Confidence: high") would be new
@@ -393,7 +384,7 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
         )}
       </span>
 
-      {/* THE REASON (AC 1, AC 4) — the row's whole purpose, and the one thing that renders even
+      {/* THE REASON — the row's whole purpose, and the one thing that renders even
           when everything else about the entry has failed.
 
           THE ELEMENT IS UNCONDITIONAL, which is the one place this file departs from the app's
@@ -408,7 +399,7 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
 }
 
 export function SuggestionsView({ kind, items }: SuggestionsViewProps) {
-  /* HYDRATION IS THIS VIEW'S OWN (AC 7, AD-12). Suggested ids come from an agent rather than
+  /* HYDRATION IS THIS VIEW'S OWN (AD-12). Suggested ids come from an agent rather than
      from a deck, so unless a card is in the open deck nothing has seeded it: this effect is the
      only thing that will ever ask. The card route is cacheable (`private, max-age=3600`), so a
      reopened view within the hour costs no round trip.
@@ -419,8 +410,8 @@ export function SuggestionsView({ kind, items }: SuggestionsViewProps) {
      than during render is also what puts the JSON reads AFTER the commit that sets every
      `<img src>`, so the pictures are already queued when the metadata requests start.
 
-     KEYED ON `items`, NOT ON MOUNT. c6-6 ships replace-in-place as a re-fire against a MOUNTED
-     shell, so a second push of the same kind reaches this component as new props with the same
+     KEYED ON `items`, NOT ON MOUNT. Replace-in-place is a re-fire against a MOUNTED shell, so
+     a second push of the same kind reaches this component as new props with the same
      component instance — a mount-only effect would leave every id of the second push unhydrated.
 
      The hooks rule is why this sits above the empty branch rather than inside the non-empty one:
@@ -430,12 +421,12 @@ export function SuggestionsView({ kind, items }: SuggestionsViewProps) {
       void hydrateCard(cardId)
   }, [items])
 
-  // `length === 0` and never `!items.length` or `items.length ? … : …` — the c2-6 falsy-value
+  // `length === 0` and never `!items.length` or `items.length ? … : …` — the falsy-value
   // family in a numeric test, and `Panel.tsx:73-80`'s idiom. The store's builder guarantees an
   // ARRAY here for every payload the wire admits, so there is no third state to branch on.
   if (items.length !== 0) {
     return (
-      /* A REAL `ul`/`li` (AC 5, UX-DR44), with NO `role` override: the list semantics are what
+      /* A REAL `ul`/`li` (UX-DR44), with NO `role` override: the list semantics are what
          tell a screen-reader user how many suggestions arrived before they start moving through
          them — and the shell's header already said the same number in words. */
       <ul className="suggestions-view-rows">
@@ -463,11 +454,11 @@ export function SuggestionsView({ kind, items }: SuggestionsViewProps) {
   }
 
   // A bare `<p>`, and NOT a `StatePanel`: EXPERIENCE.md files the empty push under *Voice and
-  // Tone* as an in-view line, exactly as it files the empty deck as an in-grid one, and c4-12
-  // established that a single sentence in a surface's own body is not a panel. It REPLACES the
-  // `<ul>` above rather than sitting inside it — a `<p>` in a `<ul>` is invalid, and an empty
-  // list announces "list, 0 items" before the sentence explaining why (`DESIGN.md`'s
-  // `components.empty-push-line`, added by this story). No `aria-live` anywhere near it either:
+  // Tone* as an in-view line, exactly as it files the empty deck as an in-grid one, and a
+  // single sentence in a surface's own body is not a panel. It REPLACES the `<ul>` above rather
+  // than sitting inside it — a `<p>` in a `<ul>` is invalid, and an empty list announces
+  // "list, 0 items" before the sentence explaining why (`DESIGN.md`'s
+  // `components.empty-push-line`). No `aria-live` anywhere near it either:
   // the view's announcement is the heading's, and a second region inside the same dialog would
   // announce the same arrival twice.
   return <p className="suggestions-view-empty">{emptyPushLine(kind)}</p>

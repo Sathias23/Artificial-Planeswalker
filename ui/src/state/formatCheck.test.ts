@@ -1,11 +1,11 @@
 /**
  * The format-check slice: one read, one writer, and a staleness rule that a deck change cannot
- * defeat (story c4-10, AC 9, AC 11, AC 12).
+ * defeat.
  *
  * Every fixture here is either a **verified real row** or **declared synthetic in place**, with
- * no third option (AC 26). The reports below were read out of the running backend at `4e31ea7`
- * by driving the real ASGI app against the shipped database; where a state has no real instance
- * — there are five — the fixture says so at its declaration and names how it was produced.
+ * no third option. The reports below were read out of the running backend by driving the real
+ * ASGI app against the shipped database; where a state has no real instance — there are five —
+ * the fixture says so at its declaration and names how it was produced.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -92,7 +92,7 @@ describe('the slice starts idle and every outcome is a value (AC 9)', () => {
     expect(stateNow()).toEqual({ status: 'refused' })
 
     // …and a whitespace-only id too. `deckPath('  ')` would encode to `/api/deck/%20%20/…`, a
-    // request guaranteed to 404 — the second-lock weakness `createDeckBoot`'s review closed.
+    // request guaranteed to 404 — the same second-lock weakness `createDeckBoot` guards against.
     await loadFormatCheck('   ', read)
     expect(read).not.toHaveBeenCalled()
   })

@@ -8,20 +8,19 @@ import { CONNECTION_WORDS, DECK_SEPARATOR, pillText, tooltipText } from './copy'
 import { pagePort } from './port'
 
 /**
- * The connection pill — the gauge on c5-6's machine (story c5-7, FR-15, UX-DR29, UX-DR40,
+ * The connection pill — the gauge on the socket loop's machine (FR-15, UX-DR29, UX-DR40,
  * UX-DR45, UX-DR46, UX-DR47, `DESIGN.md:479`, `EXPERIENCE.md:43`, `:97`, `:112-119`).
  *
  * A static 8px dot, the word for the state, and the active deck's name, bottom-left on **every**
- * surface. c5-6 built the machinery and wrote `SystemState.connection`; three shipped module
- * headers (`socket.ts:160`, `systemState.ts:49`, `connection.ts:24`) named this story as that
- * field's second reader. This is it.
+ * surface. The socket loop writes `SystemState.connection`; this component is that field's second
+ * reader (`socket.ts:160`, `systemState.ts:49`, `connection.ts:24`).
  *
- * ================= IT READS THE DECK SLICE, NEVER `surfaceOf` (AC 6) ===================
+ * ================= IT READS THE DECK SLICE, NEVER `surfaceOf` ==========================
  *
  * The single most likely way to get this component wrong, and it fails on exactly one surface —
  * the one it exists for. `surfaceOf`'s FIRST arm returns a PANEL surface whenever
  * `connection === 'down'` (`deck.ts:481-486`), while the deck slice underneath still holds the
- * loaded deck: nothing is cleared, which is what makes AC 9's *"comes back without a reload"* free.
+ * loaded deck: nothing is cleared, which is what makes *"comes back without a reload"* free.
  * So a pill that took its name from the surface would go quiet in the disconnected state, and
  * every other state would still look right.
  *
@@ -30,7 +29,7 @@ import { pagePort } from './port'
  * keep the boot"*), because `useDeckState()` also OWNS the boot and every mounted caller of it
  * creates a second one.
  *
- * ================= AND IT NAMES NO DECK IN THE `'down'` STATE (Q3) =====================
+ * ================= AND IT NAMES NO DECK IN THE `'down'` STATE ==========================
  *
  * A deliberate asymmetry, not an oversight. In `'down'` the Disconnected state panel has the left
  * column and owns the guidance; the pill owns the status. A deck name sitting beside the words
@@ -38,39 +37,38 @@ import { pagePort } from './port'
  * CONTENT stays rendered where it is rendered at all (UX-DR35); what is withheld is the pill's
  * assertion about it.
  *
- * ================= THE TOOLTIP (story 17.1) — AND STILL NO CLIENT COUNT ================
+ * ================= THE TOOLTIP — AND STILL NO CLIENT COUNT =============================
  *
- * UX-DR29's port/instance-id tooltip clause was reserved for this story by the FR coverage map
- * (*"Pill shell + reconnect in 5; status detail in 10"*, `epics:727`), and c5-7's real `<button>`
- * was shipped so `aria-describedby` could attach without re-doing the element or the Tab-order
- * record. This is that attachment. The tooltip element sits OUTSIDE the button — inside it, its
- * text would join the button's CONTENTS and therefore its accessible NAME, breaking the pinned
- * accname `Connected—Sultai Midrange` (the `AgentViewsNav` hint's argument exactly) — and it is
- * the button's IMMEDIATE next sibling, because the stylesheet's `+` combinator is what reveals
- * it on `:hover`/`:focus-visible`. The nav pill's `title`+hidden-description shape is NOT enough
- * here: the AC requires a VISUAL reveal on keyboard focus, so the description element itself is
- * the visible tooltip, and there is no `title` at all (UX-DR39's hover-only ban).
+ * UX-DR29's port/instance-id tooltip clause attaches to the pill's real `<button>` through
+ * `aria-describedby`, without re-doing the element or the Tab-order record. The tooltip element
+ * sits OUTSIDE the button — inside it, its text would join the button's CONTENTS and therefore
+ * its accessible NAME, breaking the pinned accname `Connected—Sultai Midrange` (the
+ * `AgentViewsNav` hint's argument exactly) — and it is the button's IMMEDIATE next sibling,
+ * because the stylesheet's `+` combinator is what reveals it on `:hover`/`:focus-visible`. The
+ * nav pill's `title`+hidden-description shape is NOT enough here: a VISUAL reveal on keyboard
+ * focus is required, so the description element itself is the visible tooltip, and there is no
+ * `title` at all (UX-DR39's hover-only ban).
  *
  * The PORT is `window.location`'s, never a configured number — {@link agentSocketUrl}'s argument
  * one seam over: any number written into this bundle would be wrong for the ephemeral-port case
  * it was written for, and the page's own authority IS the backend's authority (AD-13). The
  * INSTANCE ID is the system slice's last-confirmed value, refreshed through `identity.ts` on
  * every transition to `'live'` — this component still reads no endpoint. The backend's
- * `connected_count` is still NOT an input here, and stays out of the tooltip by ruling.
+ * `connected_count` is deliberately NOT an input here, and stays out of the tooltip.
  *
  * ESCAPE SUPPRESSES THE REVEAL (WCAG 1.4.13 dismissable): a DOCUMENT-level keydown listener —
  * not a button handler, because a hover-only reveal holds no focus and the key would land on
  * `document.body` unheard — sets one state bit, `is-suppressed`, and CSS gates every reveal
- * selector on its absence. THE SUPPRESSION LASTS FOR THE CURRENT REVEAL SESSION ONLY (Greptile,
- * PR #96): Escape is pressed for many reasons on this page — unpinning the card detail is the
- * common one — and a document listener hears them all, so an unrelated Escape would otherwise
- * latch the bit and make the user's NEXT hover or focus silently reveal nothing. Entry events
- * are therefore resets: `focus` and `mouseenter` each begin a new session and wipe the bit — a
- * new entry is a new intent — while an Escape during an ACTIVE hover/focus stays dismissed
- * precisely because no new entry event fires while the pointer or focus is held. Blur always
- * clears too, and mouse-leave clears while the pill is unfocused; both are exits ending the
- * session they belong to. An identity change must NOT announce: the live region below is keyed
- * on the STATUS alone, so the tooltip's data changing never touches it.
+ * selector on its absence. THE SUPPRESSION LASTS FOR THE CURRENT REVEAL SESSION ONLY: Escape is
+ * pressed for many reasons on this page — unpinning the card detail is the common one — and a
+ * document listener hears them all, so an unrelated Escape would otherwise latch the bit and
+ * make the user's NEXT hover or focus silently reveal nothing. Entry events are therefore
+ * resets: `focus` and `mouseenter` each begin a new session and wipe the bit — a new entry is a
+ * new intent — while an Escape during an ACTIVE hover/focus stays dismissed precisely because
+ * no new entry event fires while the pointer or focus is held. Blur always clears too, and
+ * mouse-leave clears while the pill is unfocused; both are exits ending the session they belong
+ * to. An identity change must NOT announce: the live region below is keyed on the STATUS alone,
+ * so the tooltip's data changing never touches it.
  *
  * ================= THE DOT IS DECORATION, AND IT NEVER MOVES ==========================
  *
@@ -109,7 +107,7 @@ export function ConnectionPill() {
   // poke so React owns the class list; visual reveal itself is CSS's job and holds no state.
   const [suppressed, setSuppressed] = useState(false)
 
-  // AT THE DOCUMENT, NOT ON THE BUTTON (review finding): the hover reveal needs no focus, so
+  // AT THE DOCUMENT, NOT ON THE BUTTON: the hover reveal needs no focus, so
   // during a hover-only reveal the key lands on `document.body` and a button-scoped handler
   // would never hear it — Escape could not dismiss exactly the channel 1.4.13's dismissable
   // clause exists for. Registered for the mounted lifetime, which means it also hears every
@@ -119,8 +117,8 @@ export function ConnectionPill() {
   // begins a new session.
   //
   // Deliberately NO `stopPropagation` and NO `preventDefault`: this listener must never consume
-  // the key — swallowing it here would be the exact starvation `deferred-work.md:49` records the
-  // agent view's own capture handler causing. It is NOT the only document Escape listener any
+  // the key — swallowing it here would be the exact starvation the agent view's own capture
+  // handler causes. It is NOT the only document Escape listener any
   // more: the History popover (`AgentViewsNav`) registers its own while open, and its wrapper
   // half `preventDefault()`s — which the standard `defaultPrevented` guard below honours, so a
   // popover-consumed Escape never latches the suppression bit. `isComposing` keeps an IME's
@@ -136,7 +134,7 @@ export function ConnectionPill() {
 
   // A SELECTOR, so the pill re-renders when the deck's NAME changes and not when its boards do.
   // `status === 'deck'` is the only arm that carries a detail; every other arm is `null`, which is
-  // AC 6's *"no placeholder, no 'undefined'"* expressed as the absence of a branch rather than as
+  // *"no placeholder, no 'undefined'"* expressed as the absence of a branch rather than as
   // a string.
   const deckName = useDeckStore((state) =>
     state.deck.status === 'deck' ? state.deck.detail.name : null,
@@ -147,12 +145,12 @@ export function ConnectionPill() {
   const named = connection === 'down' ? null : deckName
   const text = pillText(connection, named)
 
-  // THE ANNOUNCEMENT IS CAPTURED DURING RENDER, NOT IN AN EFFECT (AC 10, UX-DR45) — the pattern
+  // THE ANNOUNCEMENT IS CAPTURED DURING RENDER, NOT IN AN EFFECT (UX-DR45) — the pattern
   // `CardDetail.tsx:292-320` documents, for the reason it documents: `react-hooks/set-state-in-
   // effect` rejects the effect spelling, and a `setState` in an effect is a second render pass, so
   // the dot and the announcement would land in two different commits.
   //
-  // KEYED ON THE STATUS ALONE, which is the whole of Q4's ruling in one dependency:
+  // KEYED ON THE STATUS ALONE, and that one dependency carries the whole announcement policy:
   //
   //   * The INITIAL render never announces. `seen: null` is a state no status can equal, so the
   //     first pass through this branch stores the status with an EMPTY text. That matters because
@@ -174,22 +172,22 @@ export function ConnectionPill() {
 
   return (
     <>
-      {/* A REAL `<button>` (Q2, UX-DR47, and `keyboard-floor.test.ts:400-415` derives the rule
-          rather than listing it) — shipped at c5-7 precisely so this story's `aria-describedby`
-          could attach without re-doing the element or the Tab-order record.
+      {/* A REAL `<button>` (UX-DR47, and `keyboard-floor.test.ts:400-415` derives the rule
+          rather than listing it), which is what lets `aria-describedby` attach without re-doing
+          the element or the Tab-order record.
 
           STILL NO `onClick`, AND THAT IS STILL THE HONEST SHAPE. The tooltip reveals on hover
           and focus — CSS's job — so a click does nothing and a no-op handler would be a lie.
           The four handlers below manage the suppression bit the document-level Escape listener
-          sets (see the effect above), and the ruling is SESSION-SCOPED dismissal (Greptile,
-          PR #96): the ENTRY events — focus, mouse-enter — each begin a new reveal session and
-          RESET the bit, because a document listener hears every Escape on the page (unpinning
-          the card detail is the common one) and an unrelated Escape must not latch the tooltip
-          shut for the next visit; a new entry is a new intent. An Escape during an ACTIVE
-          hover/focus stays dismissed exactly because no new entry event fires while the
-          pointer or focus is held. The EXIT events close the session out: blur always clears,
-          and mouse-leave clears while the pill is not the focused element (a pointer leaving a
-          still-focused, still-dismissed pill leaves the keyboard session's dismissal alone).
+          sets (see the effect above), and dismissal is SESSION-SCOPED: the ENTRY events —
+          focus, mouse-enter — each begin a new reveal session and RESET the bit, because a
+          document listener hears every Escape on the page (unpinning the card detail is the
+          common one) and an unrelated Escape must not latch the tooltip shut for the next
+          visit; a new entry is a new intent. An Escape during an ACTIVE hover/focus stays
+          dismissed exactly because no new entry event fires while the pointer or focus is
+          held. The EXIT events close the session out: blur always clears, and mouse-leave
+          clears while the pill is not the focused element (a pointer leaving a still-focused,
+          still-dismissed pill leaves the keyboard session's dismissal alone).
           It still carries no `aria-expanded`, no `aria-pressed` and no `aria-haspopup` — a
           tooltip is a description, not a popup the button controls — and no `title` (UX-DR39
           bans a hover-only disclosure; the visible tooltip is the one channel, so the two can
@@ -220,14 +218,13 @@ export function ConnectionPill() {
             <>
               <span className="connection-pill-separator">{` ${DECK_SEPARATOR} `}</span>
               {/* The deck NAME is data from the wire. It is rendered in a role that preserves its
-                  case — see `ConnectionPill.css` for why it may not take the micro role, which
-                  is c4-3's lesson and c4-10's repeat of it. */}
+                  case — see `ConnectionPill.css` for why it may not take the micro role. */}
               <span className="connection-pill-deck">{deckName}</span>
             </>
           )}
         </span>
       </button>
-      {/* THE TOOLTIP (story 17.1) — the button's IMMEDIATE next sibling, which the stylesheet's
+      {/* THE TOOLTIP — the button's IMMEDIATE next sibling, which the stylesheet's
           `+` combinator depends on, and OUTSIDE the button so its text stays a description and
           never joins the accessible name (see the header). `role="tooltip"` names what it is;
           the id is what `aria-describedby` above resolves. Hidden at rest by CSS alone — jsdom
@@ -241,7 +238,7 @@ export function ConnectionPill() {
       >
         {tooltipText(pagePort(), instanceId)}
       </p>
-      {/* THE APP'S SECOND POLITE LIVE REGION (AC 10, AC 11, UX-DR45 — which authorises three:
+      {/* THE APP'S SECOND POLITE LIVE REGION (UX-DR45 — which authorises three:
           this one, the agent-view heading and the pin announcement). OUTSIDE the button, exactly
           as `CardDetail`'s sits outside its panel: the control must not itself become a live
           region, or every focus and hover change would speak. Empty at rest. */}

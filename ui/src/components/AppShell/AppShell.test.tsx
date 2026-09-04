@@ -1,16 +1,16 @@
 /**
- * The component half of story c2-6 — the landmarks, the slots and the overlay's presence.
+ * The AppShell component — the landmarks, the slots and the overlay's presence.
  *
  * WHAT THIS FILE CAN AND CANNOT ASSERT, said once at the top because it governs every test
  * below. jsdom has NO LAYOUT ENGINE: it resolves no grid tracks, evaluates no media query and
  * returns no box geometry, so `getComputedStyle(el).gridTemplateColumns` here is not "452px
- * fixed, fluid beside it" — it is the empty string. Every geometry assertion in this story
+ * fixed, fluid beside it" — it is the empty string. Every geometry assertion for the shell
  * therefore reads the CSS SOURCE, in `ui/tests/shell.test.ts`, and never a rendered DOM.
  * What lives here is what jsdom genuinely knows: the accessibility tree, the element
  * structure, and whether a node exists at all.
  *
  * Assertions go through @testing-library by ROLE rather than by class name, which is what
- * makes AC 14's landmark requirement a real check rather than a decorative one. The one
+ * makes the landmark requirement a real check rather than a decorative one. The one
  * exception is the overlay slot, which is an unstyled positioning container with no role by
  * design — its own test says so.
  */
@@ -53,15 +53,15 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     )
     const link = screen.getByRole('button', { name: 'Skip past the deck grid' })
 
-    // OUTSIDE ALL THREE. Q5 declined putting it inside `<header>`: a skip link is not banner
-    // content, and joining a landmark's accessible content buys nothing.
+    // OUTSIDE ALL THREE. Not inside `<header>`: a skip link is not banner content, and joining
+    // a landmark's accessible content buys nothing.
     expect(screen.getByRole('banner').contains(link)).toBe(false)
     expect(screen.getByRole('main').contains(link)).toBe(false)
     expect(screen.getByRole('contentinfo').contains(link)).toBe(false)
 
     // FIRST IN DOCUMENT ORDER, which — because nothing in this app carries a `tabindex` — is the
-    // whole of "the first Tab stop" (c4-6's ruling). Asserted as POSITION rather than as a
-    // `tabindex` value, following `CardTile.test.tsx:595-605`.
+    // whole of "the first Tab stop". Asserted as POSITION rather than as a `tabindex` value,
+    // following `CardTile.test.tsx`.
     expect(container.querySelector('.app-shell')?.firstElementChild).toBe(link)
     expect(
       link.compareDocumentPosition(screen.getByRole('banner')) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -172,10 +172,10 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
   })
 
   it('never leaves the h1 effectively empty, whatever shape the deck name arrives in', () => {
-    // Q3's requirement is that the page is never heading-less, and a default parameter fires
-    // only on `undefined`. A whitespace-only string (review round 2) renders an h1 that is
-    // present in the DOM, invisible on screen, and announced as an empty heading — the same
-    // state Q3 forbids, wearing a shape a `!== ''` check waves through.
+    // The page is never heading-less, and a default parameter fires only on `undefined`. A
+    // whitespace-only string renders an h1 that is present in the DOM, invisible on screen, and
+    // announced as an empty heading — the same forbidden state, wearing a shape a `!== ''`
+    // check waves through.
     for (const empty of ['', ' ', null, undefined, false] as const) {
       const { unmount } = render(<AppShell deckName={empty} />)
       expect(
@@ -188,8 +188,8 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
 
   it('never renders an EMPTY h1, even for deckName="" (review, 2026-07-28)', () => {
     // A default parameter fires only on `undefined`; an empty string from a loading gap in
-    // c4-2's store would render an empty heading and leave the page effectively heading-less
-    // — the exact state Q3 exists to prevent. The fallback is value-aware, and this pins it.
+    // the store would render an empty heading and leave the page effectively heading-less
+    // — the exact state the fallback exists to prevent. It is value-aware, and this pins it.
     render(<AppShell deckName="" />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Artificial Planeswalker')
@@ -222,15 +222,15 @@ describe('AppShell updating marker (c7-4, UX-DR35, UX-DR42)', () => {
     expect(text?.tagName).toBe('SPAN')
     expect(text?.textContent).toBe('Updating…')
     // The ellipsis is U+2026 HORIZONTAL ELLIPSIS, asserted by CODEPOINT (the U+00B7 middle-dot
-    // precedent): the epic AC and the UX-DR42 inventory spell the string verbatim, and "looks
+    // precedent): the UX-DR42 inventory spells the string verbatim, and "looks
     // like three dots" is exactly the class of difference an eye scanning a diff waves through.
     expect(text?.textContent?.codePointAt('Updating'.length)).toBe(0x2026)
   })
 
   it('contributes no announcement, role or live region — the pinned inventory is untouched', () => {
-    // The StatePanel.test.tsx mirror (landmine 17): asserted over the whole subtree, so a
-    // helpful `aria-live` anywhere near the marker fails too. Announcing the change is c7-5's,
-    // once, on completion — an in-flight murmur here would be a second mechanism.
+    // The StatePanel.test.tsx mirror: asserted over the whole subtree, so a helpful
+    // `aria-live` anywhere near the marker fails too. Announcing the change happens once, on
+    // completion — an in-flight murmur here would be a second mechanism.
     const { container } = render(<AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating />)
 
     expect(container.querySelector('.app-shell-updating')?.getAttribute('aria-hidden')).toBe('true')
@@ -251,7 +251,7 @@ describe('AppShell updating marker (c7-4, UX-DR35, UX-DR42)', () => {
 
   it('carries neither the attribute nor the text at rest — false and absent alike', () => {
     // `data-updating={undefined}` renders NO attribute, so the resting DOM is byte-identical to
-    // the pre-c7-4 shell — no vestigial state for a stylesheet or a census to trip over.
+    // a shell without the marker — no vestigial state for a stylesheet or a census to trip over.
     for (const updating of [undefined, false]) {
       const { container, unmount } = render(
         <AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating={updating} />,
@@ -295,8 +295,8 @@ describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders
   })
 
   it('treats an EMPTY ARRAY — the most idiomatic empty of all — as empty', () => {
-    // `left={cards.map(...)}` over an empty list (review round 2); `[false, null]` is the same
-    // defect one level down: empty of OUTPUT rather than empty of elements.
+    // `left={cards.map(...)}` over an empty list; `[false, null]` is the same defect one level
+    // down: empty of OUTPUT rather than empty of elements.
     const { container } = render(<AppShell left={[]} right={[false, null]} />)
 
     expect(container.querySelectorAll('.app-shell-column')).toHaveLength(1)
@@ -311,7 +311,7 @@ describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders
   })
 
   it('still renders a NON-empty array — the empty check must not eat real content', () => {
-    // A `filled()` that answered "false" for every array would drop c4-4's real grid.
+    // A `filled()` that answered "false" for every array would drop the real card grid.
     render(<AppShell left={[<p key="a">the card grid</p>]} />)
 
     expect(screen.getByText('the card grid')).toBeInTheDocument()
@@ -338,12 +338,12 @@ describe('AppShell single-track grid when the right column is empty (17.5)', () 
 
 describe('AppShell overlay slot (AC 7, AC 9)', () => {
   // The slot is an unstyled positioning container: it has no role, and giving it one would
-  // invent a landmark c6-5 does not want. So these two assert on the ELEMENT, which is the
+  // invent a landmark the agent view does not want. So these two assert on the ELEMENT, the
   // honest thing to assert about a thing whose whole contract is "exists / does not exist".
   const overlayIn = (container: HTMLElement) => container.querySelector('.app-shell-overlay')
 
   it('renders NOTHING when no agent view is open', () => {
-    // AC 9. An always-present transparent full-window div is a click-swallower that presents
+    // An always-present transparent full-window div is a click-swallower that presents
     // as "the app stopped responding to clicks", and it is the default outcome of "reserve a
     // slot" read literally. The slot is reserved in CSS; the ELEMENT is conditional.
     const { container } = render(<AppShell />)
@@ -353,8 +353,8 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
 
   it('renders the overlay when given one, so the slot is proven to WORK', () => {
     // Proven to work rather than proven to be absent — a slot only ever tested empty is a slot
-    // nobody has shown c6-5 can use. c6-5 has since used it (`App.tsx` passes the agent view
-    // here), and this stays a PROP-level test of the shell's own contract: the component is
+    // nobody has shown can be used. `App.tsx` passes the agent view here, and this stays a
+    // PROP-level test of the shell's own contract: the component is
     // handed an arbitrary node, exactly as `AppShell.tsx` is never edited to know what one is.
     const { container } = render(<AppShell overlay={<p>agent view</p>} />)
 
@@ -363,12 +363,11 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
   })
 
   it('mounts NO overlay element for any empty shape a caller can express', () => {
-    // The slot had been left out of the `filled()` treatment the other regions got, and the
-    // stakes here are higher than a missing placeholder: `overlay={views.map(...)}` over an
-    // empty list would mount a full-window FIXED element containing nothing — AC 9's
+    // The stakes here are higher than a blank region: `overlay={views.map(...)}` over an
+    // empty list would mount a full-window FIXED element containing nothing — the
     // click-swallower, presenting as "the app stopped responding to clicks".
     //
-    // The last two are Greptile's (PR #23), and they are the sharp ones: an empty Fragment is
+    // The last two are the sharp ones: an empty Fragment is
     // a React ELEMENT, so every nullish/boolean/string/array check says "filled" while the
     // browser paints nothing; and a Set is a legal React child that `Array.isArray` denies.
     expect(overlayIn(render(<AppShell overlay={[]} />).container)).toBeNull()
@@ -381,8 +380,8 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
 
   it('does not CONSUME a one-shot iterable while inspecting it (Greptile, PR #23)', () => {
     // A generator returns itself from [Symbol.iterator](), so spreading it to check for
-    // emptiness hands React an exhausted iterator: measured, the region rendered EMPTY and
-    // lost its placeholder as well — strictly worse than not looking at all. React itself
+    // emptiness hands React an exhausted iterator: measured, the region rendered EMPTY —
+    // strictly worse than not looking at all. React itself
     // warns that iterators are unsupported as children; the shell must not make that worse.
     function* views() {
       yield <p key="a">agent view</p>
@@ -393,7 +392,7 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
   })
 
   it('still mounts the overlay for a NON-empty Fragment or Set', () => {
-    // The silent half. A `filled()` that answered "false" for every Fragment would stop c6-5's
+    // The silent half. A `filled()` that answered "false" for every Fragment would stop the
     // agent view from ever mounting, which is a far worse failure than the one above.
     const fragment = render(<AppShell overlay={<>agent view</>} />)
     expect(overlayIn(fragment.container)).not.toBeNull()
@@ -405,8 +404,8 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
   })
 
   it('keeps the overlay OUT of the main landmark', () => {
-    // It is a sibling of header/main/footer, not content of the page beneath it. c6-5 puts a
-    // dialog here; a dialog nested inside `main` is a different accessibility story.
+    // It is a sibling of header/main/footer, not content of the page beneath it. The agent view
+    // puts a dialog here; a dialog nested inside `main` is a different accessibility story.
     render(<AppShell overlay={<p>agent view</p>} />)
 
     expect(within(screen.getByRole('main')).queryByText('agent view')).not.toBeInTheDocument()

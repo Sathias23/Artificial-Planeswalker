@@ -2,14 +2,14 @@ import { useCardEntry } from '../state/cards'
 
 /**
  * How many of a card's faces carry their own picture — the ONE predicate that decides whether a
- * printing can be flipped at all (story c4-6, AC 2, AC 13, Q9, AD-11).
+ * printing can be flipped at all (AD-11).
  *
  * ================= WHY IT IS A MODULE OF ITS OWN AND NOT A LOCAL IN THE CONTROL ========
  *
- * Q5 rules that the *"does this card get a control?"* question is asked once, in `FlipControl`,
- * which returns `null` when the answer is no. That is still true of the QUESTION — but two
- * components need the ANSWER: the control, to decide whether to exist, and `CardTile`, to decide
- * whether to render a second stacked `<img>` for the back face (Q10). Two copies of a predicate
+ * The *"does this card get a control?"* question is asked once, in `FlipControl`, which returns
+ * `null` when the answer is no. That is true of the QUESTION — but two components need the
+ * ANSWER: the control, to decide whether to exist, and `CardTile`, to decide whether to render a
+ * second stacked `<img>` for the back face. Two copies of a predicate
  * that mirrors a Python function is one copy that will be repaired and one that will not, which is
  * `useCardArt`'s own reason for existing.
  *
@@ -48,24 +48,23 @@ import { useCardEntry } from '../state/cards'
  *   **There is no `layout` anywhere, at any layer** (AD-11). The `cards` table has 23 columns and
  *   none of them is `layout`; `Card` has no such field; only 66 of 6,455 stored face objects carry
  *   one inside `CardFace`'s `extra="allow"` bag, and `test_images.py:156` proves the resolver
- *   ignores it. FR-04's PRD text still says "layout" and that is a PRD amendment owed
- *   (`epics-companion-app.md:323`), not a licence to switch on a string that is absent.
+ *   ignores it. FR-04's PRD text still says "layout"; that is not a licence to switch on a string
+ *   that is absent.
  *
- * ================= WHAT IT COUNTS, AND WHY THAT IS THE HONEST NUMBER (Q3, Q9) ==========
+ * ================= WHAT IT COUNTS, AND WHY THAT IS THE HONEST NUMBER ===================
  *
  * It counts IMAGES, not faces, because `face=` on the image route indexes the list
  * `resolve_face_images` returns — a split card has two faces and ONE image, so `face=1` on it is
  * `404 no_image_data`, *out of range* rather than "the other half".
  *
- * Measured read-only at Task 0 against the shipped database: **0 partially imaged rows exist** —
- * a card's faces either all carry images or none do — so for every card that gets a control the
- * imaged count and `card_faces.length` coincide, which is the premise that lets `CardDetail` index
- * `card_faces` with the same integer it passes as `face=`. Whoever meets the first partially imaged
- * printing owns the ledger entry that is already open for it (`deferred-work.md:2765-2770`).
+ * Measured against the shipped database: **0 partially imaged rows exist** — a card's faces
+ * either all carry images or none do — so for every card that gets a control the imaged count and
+ * `card_faces.length` coincide, which is the premise that lets `CardDetail` index `card_faces`
+ * with the same integer it passes as `face=`.
  *
- * Measured too, and it is the number that corrects the ledger: **every one of the 2,778 cards that
- * gets a control has exactly TWO imaged faces.** The 3- and 5-face cards `deferred-work.md:2032`
- * warns about are all split cards with ZERO imaged faces and no control.
+ * Measured too: **every one of the 2,778 cards that gets a control has exactly TWO imaged
+ * faces.** The 3- and 5-face cards in the corpus are all split cards with ZERO imaged faces and
+ * no control.
  */
 
 /**
@@ -73,29 +72,28 @@ import { useCardEntry } from '../state/cards'
  *
  * **A NUMBER, derived AFTER the subscription.** The store subscription is `useCardEntry`'s
  * per-id entry selector; this hook filters and counts on the way out, so the derived value never
- * enters a zustand comparison at all (review 2026-08-06 corrected this paragraph, which first
- * claimed a returned array would "re-render its consumer forever" — that loop belongs to derived
- * objects returned from a SELECTOR, which is exactly why the derivation lives here, outside one).
+ * enters a zustand comparison at all — the re-render-forever loop belongs to derived objects
+ * returned from a SELECTOR, which is exactly why the derivation lives here, outside one.
  * The count stays a number anyway: it is the cheapest honest answer to the one question both
  * consumers ask, and the array never leaves.
  *
- * **It subscribes and starts nothing.** `useCardEntry` is a pure selector over a plain record
- * (c4-1 Q3): no effect, no request, no cleanup. A card nobody has hydrated yet reads `undefined`
- * and answers `0`, which is why a flip control materialises when the deck sweep lands rather than
- * at first paint — the residue Q1 declares, and the reason the sweep exists at all.
+ * **It subscribes and starts nothing.** `useCardEntry` is a pure selector over a plain record:
+ * no effect, no request, no cleanup. A card nobody has hydrated yet reads `undefined` and
+ * answers `0`, which is why a flip control materialises when the deck sweep lands rather than at
+ * first paint — and the reason the sweep exists at all.
  *
  * Args:
  *   cardId: The Scryfall printing uuid.
  *
  * Returns:
  *   `0` for a card with no per-face pictures — which is 35,483 of the corpus's 38,261 rows, and
- *   every card that must NOT get a control (AC 2). `>= 2` is the flippable population.
+ *   every card that must NOT get a control. `>= 2` is the flippable population.
  */
 export const useImagedFaceCount = (cardId: string): number => {
   const entry = useCardEntry(cardId)
   // Only a HYDRATED entry can answer: `CardSummary` carries neither `card_faces` nor `image_uris`,
   // so the summary tier is silent here by construction rather than by omission. No `entry.reason`
-  // and no `entry.placeholder` is read — an `unknown` entry simply has no card (c4-1 AC 13).
+  // and no `entry.placeholder` is read — an `unknown` entry simply has no card.
   const faces = entry?.status === 'hydrated' ? entry.card.card_faces : null
   if (!Array.isArray(faces)) return 0
   return faces.filter((face) => Object.keys(face.image_uris ?? {}).length > 0).length
