@@ -5,7 +5,7 @@ import os
 import threading
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
@@ -28,8 +28,10 @@ def _load_text_embedding() -> type["TextEmbedding"]:
     """
     from fastembed import TextEmbedding
 
-    # cast: under pre-commit's ``--ignore-missing-imports`` mypy the class resolves to Any.
-    return cast("type[TextEmbedding]", TextEmbedding)
+    # Typed local rather than a bare return: under pre-commit's ``--ignore-missing-imports``
+    # mypy the imported class is ``Any``, and a bare ``return`` of it trips no-any-return.
+    cls: type[TextEmbedding] = TextEmbedding
+    return cls
 
 
 # Single source of truth for downstream stories (2.2 schema / 2.3 builder import these — never
