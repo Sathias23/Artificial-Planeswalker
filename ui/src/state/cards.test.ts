@@ -234,13 +234,28 @@ describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => 
     expect(Object.keys(useCardStore.getState().cards)).toHaveLength(99)
   })
 
-  it('leaves a HYDRATED id hydrated — seeding never downgrades a paid-for request', async () => {
+  it("REPLACES a hydrated entry with the payload's card — a refetch is never stale", async () => {
+    // The deck detail is the server's current row for the printing. After a reimport changes a
+    // card's text or legalities, the next deck refetch (or reconnect) carries the new record —
+    // and it must land, not lose to whatever an earlier read produced.
     const reader = hydratingReader()
     await hydrateCard(SOL_RING, reader.read)
+    expect(entryOf(SOL_RING)).toMatchObject({ status: 'hydrated', card: { id: SOL_RING } })
 
-    seedDeckCards([deckCard(SOL_RING, 'Sol Ring')])
+    seedDeckCards([
+      {
+        ...deckCard(SOL_RING, 'Sol Ring'),
+        card: { ...deckCard(SOL_RING, 'Sol Ring').card, oracle_text: 'ERRATA' },
+      },
+    ])
 
-    expect(entryOf(SOL_RING)?.status).toBe('hydrated')
+    expect(entryOf(SOL_RING)).toMatchObject({
+      status: 'hydrated',
+      card: { id: SOL_RING, oracle_text: 'ERRATA' },
+    })
+    // Still hydrated, so the next hydrateCard call issues nothing.
+    await hydrateCard(SOL_RING, reader.read)
+    expect(reader.read).toHaveBeenCalledTimes(1)
   })
 
   it('ANSWERS a previously refused id, and still re-asks nothing (AC 11)', async () => {

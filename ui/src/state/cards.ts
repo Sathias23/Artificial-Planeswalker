@@ -403,10 +403,14 @@ const spent = (cardId: string): boolean => (attempts.get(cardId) ?? 0) >= MAX_AT
  * `summary` tier and `App.tsx` swept the deck for the rest, at one request per distinct id (99 on
  * the largest real deck).
  *
- * **A newer hydrated entry is never overwritten.** An entry already `hydrated` is left exactly as
- * it is: a deck refetch must not replace a record a live read just produced. Every other tier —
- * `summary`, `loading`, `unknown`, or no entry at all — is replaced by the payload's card, which
- * is strictly more information than any of them held.
+ * **The payload's card always wins, hydrated entries included.** Every row is the server's
+ * current record for that printing, read from the same database a per-card request would read,
+ * so it is never less fresh than whatever the cache holds — and after a reimport it is fresher.
+ * A deck refetch or reconnect therefore replaces an already-`hydrated` entry rather than keeping
+ * it; keeping it would leave costs, faces and legalities frozen at whatever the first read saw.
+ * Every other tier — `summary`, `loading`, `unknown`, or no entry at all — is replaced the same
+ * way. (What seeding must never do is *downgrade*: it never has, because it never wrote less
+ * than a whole `Card`.)
  *
  * **A malformed row is skipped rather than written.** `deckOf` validates the envelope and not the
  * rows, so a row without a usable `card_id` or without a `card` object can reach here inside a
@@ -428,7 +432,6 @@ export const seedDeckCards = (deckCards: readonly DeckCardSummary[]): void => {
       const card = deckCard?.card
       if (typeof cardId !== 'string' || cardId === '') continue
       if (typeof card !== 'object' || card === null) continue
-      if (cards[cardId]?.status === 'hydrated') continue
       cards[cardId] = { status: 'hydrated', card }
     }
     return { cards }
