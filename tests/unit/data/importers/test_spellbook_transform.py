@@ -5,6 +5,7 @@ known letters), and the skip-vs-error policy: non-OK status / non-empty ``requir
 banned tag are skipped AND counted; any unknown tag is a loud abort naming the variant.
 """
 
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -179,3 +180,49 @@ class TestSkipPolicy:
         """A malformed variant with no pieces must abort, never masquerade as matched."""
         with pytest.raises(Exception):  # noqa: B017 — ValidationError or import error
             transform_spellbook_variant(make_wire_variant(uses=[]))
+
+
+class TestMalformedExportsAndCoercions:
+    """The abort arms for a malformed export, and the wire-number coercions."""
+
+    def test_a_piece_with_no_card_name_is_a_loud_error_naming_the_variant(self):
+        variant = make_wire_variant(uses=[{"card": {}, "quantity": 1, "mustBeCommander": False}])
+
+        with pytest.raises(SpellbookImportError, match="1000-2000.*no card name"):
+            transform_spellbook_variant(variant)
+
+    def test_a_result_with_no_feature_name_is_a_loud_error_naming_the_variant(self):
+        variant = make_wire_variant(produces=[{"feature": {}, "quantity": 1}])
+
+        with pytest.raises(SpellbookImportError, match="1000-2000.*no feature name"):
+            transform_spellbook_variant(variant)
+
+    @pytest.mark.parametrize("quantity", [None, 0, -3], ids=["missing", "zero", "negative"])
+    def test_a_missing_zero_or_negative_quantity_means_at_least_one(self, quantity):
+        variant = make_wire_variant(
+            uses=[
+                {"card": {"name": "Basalt Monolith"}, "quantity": quantity},
+                {"card": {"name": "Rings of Brighthearth"}, "quantity": 1},
+            ]
+        )
+
+        record = transform_spellbook_variant(variant)
+
+        assert record is not None
+        assert record.cards == ("Basalt Monolith", "Rings of Brighthearth")
+
+    def test_ijson_decimals_are_coerced_to_ints(self):
+        """ijson parses every number as ``Decimal``; both quantity and popularity must survive."""
+        variant = make_wire_variant(
+            popularity=Decimal("42"),
+            uses=[
+                {"card": {"name": "Basalt Monolith"}, "quantity": Decimal("2")},
+                {"card": {"name": "Rings of Brighthearth"}, "quantity": Decimal("1")},
+            ],
+        )
+
+        record = transform_spellbook_variant(variant)
+
+        assert record is not None
+        assert record.popularity == 42 and type(record.popularity) is int
+        assert record.cards == ("Basalt Monolith", "Basalt Monolith", "Rings of Brighthearth")

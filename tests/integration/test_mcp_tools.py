@@ -31,6 +31,13 @@ from mcp import ClientSession
 from mcp.shared.memory import create_connected_server_and_client_session
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.companion.client import PushOutcome
+from src.companion.contracts import (
+    GroupsPayload,
+    SuggestionsPayload,
+    SwapsPayload,
+    TierListPayload,
+)
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.logic.assessment import (
@@ -40,10 +47,16 @@ from src.logic.assessment import (
     TIER_LABELS,
 )
 from src.mcp_server.server import build_server
+from src.mcp_server.tools import companion, initialize_database
 from src.mcp_server.tools.assess_deck_power import MULTIPLAYER_VARIANCE_CAVEAT
 from src.viewer import present
 from tests.fixtures.combo_snapshot import seed_snapshot, snapshot_variant
+from tests.fixtures.embedder import FakeEmbedder
 from tests.integration.conftest import SeededVecDB
+from tests.integration.mcp_server.test_first_run_data_init import (
+    _fake_importer,
+    _sync_cards_factory,
+)
 
 
 async def test_lookup_card_exact_hit(seeded_card_db: async_sessionmaker[AsyncSession]):
@@ -1464,3 +1477,261 @@ async def test_compare_graceful_failures_through_client(
     assert sc["comparison"] is None
     assert "commander" in sc["summary"]
     assert "standard" in sc["summary"]
+
+
+# --- The rebuild tools and the companion tools, through the same in-process client ---------------
+
+
+async def test_initialize_database_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """First call imports (``ok``), the second finds the cards and downloads nothing."""
+    db_path = tmp_path / "fresh.db"
+    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{db_path.as_posix()}")
+    monkeypatch.setattr(initialize_database, "import_scryfall_bulk_data", _fake_importer)
+
+    server = build_server(session_factory=create_session_factory(create_engine()))
+    async with create_connected_server_and_client_session(server) as client:
+        first = await client.call_tool("initialize_database", {})
+        second = await client.call_tool("initialize_database", {})
+
+    assert first.isError is False and first.structuredContent is not None
+    assert first.structuredContent["status"] == "ok"
+    assert first.structuredContent["cards_imported"] == 2
+    assert second.isError is False and second.structuredContent is not None
+    assert second.structuredContent["status"] == "already_initialized"
+    assert second.structuredContent["cards_total"] == 2
+
+
+async def test_initialize_database_import_failure_is_a_graceful_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    db_path = tmp_path / "broken.db"
+    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{db_path.as_posix()}")
+
+    async def boom(session, *, bulk_type: str = "default_cards"):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(initialize_database, "import_scryfall_bulk_data", boom)
+
+    server = build_server(session_factory=create_session_factory(create_engine()))
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("initialize_database", {})
+
+    assert result.isError is False and result.structuredContent is not None
+    assert result.structuredContent["status"] == "error"
+    assert "network down" in result.structuredContent["message"]
+
+
+async def test_build_search_index_round_trip(
+    seeded_card_db: async_sessionmaker[AsyncSession], tmp_path: Path
+):
+    factory = _sync_cards_factory(tmp_path, seed=True)
+    try:
+        server = build_server(
+            session_factory=seeded_card_db, connection_factory=factory, embedder=FakeEmbedder()
+        )
+        async with create_connected_server_and_client_session(server) as client:
+            result = await client.call_tool("build_search_index", {})
+    finally:
+        factory.close()
+
+    assert result.isError is False and result.structuredContent is not None
+    assert result.structuredContent["status"] == "ok"
+    assert result.structuredContent["cards_indexed"] == 2
+
+
+@pytest.fixture
+def closed_companion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A data directory holding no discovery file, so no companion is running."""
+    data_dir = tmp_path / "no-companion-here"
+    data_dir.mkdir()
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
+    return data_dir
+
+
+async def test_companion_status_round_trip(
+    seeded_card_db: async_sessionmaker[AsyncSession], closed_companion: Path
+):
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("companion_status", {})
+
+    assert result.isError is False and result.structuredContent is not None
+    assert result.structuredContent["status"] == "not_running"
+    assert result.structuredContent["launch_command"]
+
+
+async def test_companion_set_active_deck_round_trip(
+    seeded_card_db: async_sessionmaker[AsyncSession], closed_companion: Path
+):
+    """The deck is read first; with no companion running the tool says so and nothing else."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "Shown Deck"})
+        assert created.structuredContent is not None
+        deck_id = created.structuredContent["deck"]["id"]
+
+        shown = await client.call_tool("companion_set_active_deck", {"deck_id": deck_id})
+        missing = await client.call_tool(
+            "companion_set_active_deck", {"deck_id": "deck-not-in-database-00000"}
+        )
+
+    assert shown.isError is False and shown.structuredContent is not None
+    assert shown.structuredContent["status"] == "app_not_running"
+    assert shown.structuredContent["deck_id"] == deck_id
+    assert missing.structuredContent is not None
+    assert missing.structuredContent["status"] == "deck_not_found"
+
+
+class _PushStub:
+    """Stands in for the leaf's ``push_event``, recording every envelope it was handed."""
+
+    def __init__(self, outcome: PushOutcome) -> None:
+        self.outcome = outcome
+        self.events: list[object] = []
+
+    async def __call__(self, event, **kwargs: object) -> PushOutcome:
+        self.events.append(event)
+        return self.outcome
+
+
+_SHOW_TOOLS = [
+    pytest.param(
+        "companion_show_suggestions",
+        SuggestionsPayload(
+            title="Two-drops",
+            items=[
+                {"card_id": "0000c6c9-0000-4000-8000-00000000000a", "reason": "Curve filler."},
+                {"card_id": "0000c6c9-0000-4000-8000-00000000000b", "reason": "Second copy."},
+            ],
+        ),
+        id="suggestions",
+    ),
+    pytest.param(
+        "companion_show_swaps",
+        SwapsPayload(
+            title="One trade",
+            items=[
+                {
+                    "out_card_id": "0000c6c9-0000-4000-8000-00000000000a",
+                    "in_card_id": "0000c6c9-0000-4000-8000-00000000000b",
+                    "rationale": "Same role, one turn earlier.",
+                    "out_qty": 1,
+                    "in_qty": 1,
+                }
+            ],
+        ),
+        id="swaps",
+    ),
+    pytest.param(
+        "companion_show_tier_list",
+        TierListPayload(
+            title="Ranked",
+            items=[
+                {
+                    "letter": "S",
+                    "name": "Never cut",
+                    "card_ids": ["0000c6c9-0000-4000-8000-00000000000a"],
+                },
+                {
+                    "letter": "A",
+                    "name": "Usually in",
+                    "card_ids": ["0000c6c9-0000-4000-8000-00000000000b"],
+                },
+                {
+                    "letter": "B",
+                    "name": "Flexible",
+                    "card_ids": ["0000c6c9-0000-4000-8000-00000000000c"],
+                },
+            ],
+        ),
+        id="tier_list",
+    ),
+    pytest.param(
+        "companion_show_groups",
+        GroupsPayload(
+            title="Packages",
+            items=[
+                {
+                    "title": "Ramp",
+                    "rationale": "Into the six-drops a turn early.",
+                    "card_ids": ["0000c6c9-0000-4000-8000-00000000000a"],
+                }
+            ],
+        ),
+        id="groups",
+    ),
+]
+
+
+@pytest.mark.parametrize(("tool", "payload"), _SHOW_TOOLS)
+async def test_companion_show_happy_path_round_trip(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    payload,
+):
+    """Each push tool crosses the wire, reaches the leaf once, and reports the leaf's outcome."""
+    stub = _PushStub(PushOutcome(outcome="displayed", clients=1))
+    monkeypatch.setattr(companion, "_client_push_event", stub)
+
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(tool, {"payload": payload.model_dump(mode="json")})
+
+    assert result.isError is False and result.structuredContent is not None
+    assert result.structuredContent["status"] == "displayed"
+    assert result.structuredContent["clients"] == 1
+    assert result.structuredContent["items_pushed"] == len(payload.items)
+    assert len(stub.events) == 1
+    assert stub.events[0].payload == payload
+
+
+ROUND_TRIPPED = frozenset(
+    {
+        "lookup_card_by_name",
+        "search_cards",
+        "list_decks",
+        "create_deck",
+        "load_deck",
+        "delete_deck",
+        "add_card_to_deck",
+        "import_decklist",
+        "remove_card_from_deck",
+        "view_deck",
+        "companion_status",
+        "companion_set_active_deck",
+        "companion_show_suggestions",
+        "companion_show_swaps",
+        "companion_show_tier_list",
+        "companion_show_groups",
+        "analyze_mana_curve",
+        "detect_synergies",
+        "validate_deck",
+        "assess_deck_power",
+        "compare_deck_power",
+        "semantic_search_cards",
+        "find_similar_cards",
+        "initialize_database",
+        "build_search_index",
+    }
+)
+"""Every registered tool with a ``call_tool`` round trip in this file.
+
+Kept by hand on purpose: a new tool fails the guard below until someone adds both the round
+trip and this entry, so "every tool crosses the wire once" stays true by test rather than by
+convention.
+"""
+
+
+async def test_every_registered_tool_has_a_round_trip(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        listed = await client.list_tools()
+
+    registered = {tool.name for tool in listed.tools}
+    assert registered == ROUND_TRIPPED, (
+        f"tools without a round trip: {sorted(registered - ROUND_TRIPPED)}; "
+        f"entries with no tool behind them: {sorted(ROUND_TRIPPED - registered)}"
+    )

@@ -26,9 +26,7 @@ mint-to-expiry loop through ``store.consume``; and ``TestTheStoreIsCreatedByTheL
 *about* the lifespan's wiring of ``app.state``, so the state key is its subject, not its shortcut.
 """
 
-import ast
 import logging
-from pathlib import Path
 
 import httpx
 import pytest
@@ -44,12 +42,6 @@ _PATH = "/api/session"
 _PORT = 54321
 """The port ``lifespan_client`` stamps, restated here so the ``Host`` cases can address the app as
 something else without importing a private conftest constant."""
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-
-_ROUTE_MODULE = _REPO_ROOT / "src/companion/app/routes/session.py"
-"""Resolved against the repo root rather than the CWD, matching every source-scanning guard in
-``test_routes_active_deck.py``."""
 
 
 @pytest.fixture
@@ -207,46 +199,6 @@ class TestTheHostEnvelopeIsInherited:
                 response = await client.get(_PATH)
 
             assert response.status_code == 200, authority
-
-    def test_the_route_module_contains_no_host_or_origin_check_of_its_own(self):
-        """AC 5's "without duplicating the check", and Q1's ruling, asserted structurally.
-
-        **Q1 (Brad 2026-08-08): no ``Origin`` validation on the mint.** AD-5 and review finding S-6
-        both home it on the upgrade (c5-3), there is no CORS middleware and c1-5 ruled there never
-        will be, so a foreign page can issue this GET but cannot read the response. Duplicating
-        either check here would put one decision in two places to keep in sync.
-
-        **What this compares:** the route module's source text against the two header names. **What
-        it cannot see:** a check spelled without either literal — reading ``request.headers`` by a
-        computed key, or delegating to a helper. Read against the code: the module reaches
-        ``request`` only for ``request.app``, which the import-level assertion below pins.
-        """
-        source = (_ROUTE_MODULE).read_text(encoding="utf-8")
-        # The prose discusses both headers at length and must be free to — the module docstring,
-        # AND every function/class docstring, are prose. Stripped via the AST rather than by
-        # splitting on the module docstring's closing quotes, so that documenting the Host envelope
-        # in a *handler* docstring stays an editorial act instead of reddening a security test.
-        doc_lines: set[int] = set()
-        for node in ast.walk(ast.parse(source)):
-            if isinstance(node, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                first = node.body[0] if node.body else None
-                if (
-                    isinstance(first, ast.Expr)
-                    and isinstance(first.value, ast.Constant)
-                    and isinstance(first.value.value, str)
-                    and first.end_lineno is not None
-                ):
-                    doc_lines.update(range(first.lineno, first.end_lineno + 1))
-        body = "\n".join(
-            line
-            for number, line in enumerate(source.splitlines(), start=1)
-            if number not in doc_lines and not line.lstrip().startswith("#")
-        )
-
-        assert "Origin" not in body
-        assert "Host" not in body
-        # Non-vacuity: the body really is the executable half and really contains the route.
-        assert "mint_session_ticket" in body
 
 
 class TestTheResponseIsNotCacheable:

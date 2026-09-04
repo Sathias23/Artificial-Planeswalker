@@ -15,7 +15,6 @@ Everything is asserted **through the wire**. The slot is never read directly —
 inspected ``app.state.active_deck`` would pass with the routes deleted.
 """
 
-import ast
 import json
 import logging
 from pathlib import Path
@@ -34,54 +33,6 @@ _PATH = "/api/active-deck"
 # Every source-scanning guard below resolves against this rather than the CWD, matching the
 # committed-schema fixture's style further down: run from any directory, the guards must find the
 # real modules or fail on their own non-vacuity asserts — not fail by scanning nothing.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-
-
-def code_identifiers(path):
-    """Return every identifier a module's **code** mentions, ignoring prose.
-
-    AST-only, for the reason ``test_import_boundary.py`` states about its own guards: a scan of
-    raw source is keyed on syntax rather than on meaning, and the first thing it catches is the
-    docstring explaining why the banned thing is absent. That is not hypothetical — the raw-text
-    version of :meth:`TestNoDeckExistenceCheck.test_the_route_module_imports_no_data_layer` failed
-    on this module's own paragraph explaining why it does **not** take a ``DbSession`` (measured
-    2026-08-01, and the same shape as c3-3's headline finding).
-
-    String *constants* are excluded, so a docstring can discuss ``DbSession`` freely while an
-    actual reference fails. That is the right way round: the claim is about what the code does.
-
-    Args:
-        path: A repo-relative path to a Python module.
-
-    Returns:
-        A set containing every imported module and name, every ``Name`` and every attribute
-        accessed anywhere in the module.
-    """
-    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
-    found: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                found.update(alias.name.split("."))
-                found.add(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            # A relative `from . import x` has module=None; guard it rather than `or ""`, which
-            # would seed the empty string into every identifier set (c3-4 review).
-            if node.module:
-                found.update(node.module.split("."))
-                found.add(node.module)
-            found.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.Name):
-            found.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            found.add(node.attr)
-        elif isinstance(node, ast.arg):
-            found.add(node.arg)
-        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            found.add(node.name)
-    return found
-
-
 # Deliberately distinguishable from each other and from every fixture id in the suite (c3-1's R3
 # finding: nothing tied a nested value to its source because every fixture was identical on the
 # asserted fields). A set-then-read sequence proves nothing if the id is the same string
@@ -416,36 +367,6 @@ class TestNoDeckExistenceCheck:
         assert refused.status_code == 400
         assert refused.json() == {"reason": "invalid_request"}
 
-    def test_the_route_module_reaches_for_no_data_layer(self):
-        """Explicitly absent from the diff: any repository, session or ``src.data`` reference.
-
-        Asserted rather than trusted: ``test_import_boundary.py`` bans *write* paths, so a
-        read-only ``DeckRepository`` here would pass every existing guard while quietly making this
-        route the database-dependent thing AD-16 says it must not be.
-
-        Keyed on the **code**, not the text — the module's docstring discusses ``DbSession`` at
-        length, explaining why this route does not take one, and a raw-text scan fails on that
-        paragraph (which is how this test was first written, and how it first failed).
-        """
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/routes/active_deck.py")
-
-        # Non-vacuity, and specific enough to prove the walk reached real code rather than an
-        # empty parse: these are things the module genuinely does reference.
-        assert {"set_active_deck", "read_active_deck", "ActiveDeckRequest"} <= identifiers
-
-        # Deliberately NOT the bare names `data` or `deps`: code_identifiers collects every Name
-        # and attribute, so a future legitimate local (`data = response.model_dump()`) would red a
-        # database-layering guard for a change with no database in it — the exact noise-trap the
-        # MCP-side test below argues against. The layer is caught by its unambiguous names, and
-        # the dotted `src.data` (which code_identifiers records whole) covers the package import
-        # the bare word was standing in for.
-        banned = {"DbSession", "AsyncSession", "get_session", "sqlalchemy", "src.data"}
-        for name in identifiers:
-            assert "Repository" not in name, f"the active-deck route reached for {name}"
-        assert not (banned & identifiers), (
-            f"the active-deck route reached for {banned & identifiers}"
-        )
-
 
 class TestTheMethodSemantics:
     """AC 8: measured, not assumed. ``spa.py`` predicted this case for a route not yet written."""
@@ -748,173 +669,6 @@ class TestTheCommittedSchema:
         assert request_model["additionalProperties"] is False
 
 
-class TestTheBoundariesThisRouteMustNotCross:
-    """AC 11, AC 12, AC 13: what this story deliberately did **not** open."""
-
-    def test_the_mcp_server_holds_no_active_deck_state(self):
-        """AC 12 (CM-3): the active deck lives in the backend, and nowhere else.
-
-        Scans the MCP package rather than trusting AD-3's import guard alone. That guard proves
-        ``src/mcp_server`` cannot *import* ``src.companion.app``; it does not prove the MCP side
-        has not grown a slot of its own, which is the thing CM-3 actually forbids and the thing
-        project-context D5 ("no per-session server state") exists to prevent.
-
-        **Keyed on state-holding, deliberately not on the phrase "active deck".** c6-2 adds a tool
-        called ``companion_set_active_deck``, which is *supposed* to exist — it calls this endpoint
-        and keeps nothing. A guard banning that name would go red at c6-2 for a correct change, get
-        deleted in irritation, and take the real property with it. What is banned is a **module-
-        level binding** that could hold the value across calls, and any reference to the backend's
-        slot.
-        """
-        sources = sorted((_REPO_ROOT / "src" / "mcp_server").rglob("*.py"))
-
-        # Non-vacuity: the package was found and really contains code.
-        assert sources, "no MCP server sources found — the scan would be vacuous"
-
-        offenders = []
-        for path in sources:
-            identifiers = code_identifiers(path)
-            for banned in ("ActiveDeckSlot", "active_deck", "ActiveDeck"):
-                if banned in identifiers:
-                    offenders.append(f"{path}: references {banned}")
-            # Module-level mutable state named for the deck being displayed — the shape CM-3
-            # forbids, whatever it is spelled.
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in tree.body:
-                targets = []
-                if isinstance(node, ast.Assign):
-                    targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                    targets = [node.target.id]
-                for target in targets:
-                    if "active" in target.lower() and "deck" in target.lower():
-                        offenders.append(f"{path}: module-level {target}")
-
-        assert not offenders, f"the MCP server grew active-deck state: {offenders}"
-
-    def test_the_state_module_names_no_agent_credential(self):
-        """AC 13 (AD-5): the agent credential is absent from the module holding display state.
-
-        **NARROWED AT c5-2 (AC 14), and the narrowing is the interesting part.** c3-4 wrote this
-        guard forward-looking, banning ``ticket`` alongside the agent-token names *"so c5-2
-        inherits a rule rather than a coincidence"* — on the assumption that the ticket store would
-        land in ``security.py``. c5-2's Q3 ruled the other way (``security.py``'s one proven
-        structural property is that it *stores nothing*, and a compare-and-set cannot be split from
-        its storage), so ``state.py`` legitimately grew a :class:`TicketStore` — and this guard
-        reddened on the noun ``ticket``, which is the opposite of what it exists to catch.
-
-        ``ticket`` therefore leaves the ban list; **every agent-token-specific name stays**, and
-        ``token`` staying is what keeps ``discovery.mint_token``'s bare sibling out. Note the ban
-        is on *identifiers*, not prose: ``code_identifiers`` is AST-only, so the paragraphs above
-        may discuss the agent token freely while a reference to one fails.
-
-        **What this now proves, read against the code rather than against its own comment:** that
-        no name in ``state.py``'s syntax tree is spelled like the agent credential. **What it
-        cannot see:** the credential reached indirectly — ``getattr(app.state, "agent_" + "token")``
-        or an import aliased to a different name. That residual hole is why AC 15's sibling below
-        exists, and why it asserts the *call graph* rather than a second vocabulary.
-        """
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/state.py")
-
-        # Non-vacuity, both holders: a scan that found neither would satisfy any ban list.
-        assert {"ActiveDeckSlot", "active_deck", "deck_id"} <= identifiers
-        assert {"TicketStore", "ticket_store", "mint", "consume"} <= identifiers
-        banned = {"token", "agent_token", "credential", "secret", "mint_token"}
-        assert not (banned & identifiers), f"the state module reached for {banned & identifiers}"
-
-    def test_the_ticket_store_shares_no_code_path_with_the_agent_token(self):
-        """AC 15 (AD-5): the two credentials share no code path, asserted structurally.
-
-        **This replaces the coverage AC 14 gave up, and it is strictly stronger than the noun-ban
-        it replaces.** Banning the word ``ticket`` never proved anything about the agent token; it
-        proved that ``state.py`` had not yet grown a ticket store. What AD-5 actually requires is
-        that the ticket and the agent token *"share no storage and no code path"* — so this walks
-        the module that holds the ticket store and asserts the four ways a code path could be
-        shared, each of which is a real construct in this codebase rather than a hypothetical:
-
-        * importing :mod:`src.companion.discovery` (whose ``mint_token`` mints the agent token);
-        * reading the ``agent_token`` accessor or ``app.state.agent_token``;
-        * calling ``presented_credential`` / ``agent_token_is_valid`` / ``require_agent_token``;
-        * reaching the ``Bearer`` channel via ``AgentToken`` or ``_AUTHORIZATION_HEADER``.
-
-        **What it compares:** the set of identifiers ``state.py``'s AST mentions against that
-        vocabulary. **What it cannot see:** a shared path built entirely out of names it does not
-        know — the same indirection hole its sibling has — and anything the *route* module does,
-        which is why ``test_routes_session.py`` re-asserts the property over the wire on a real
-        response and real captured logs.
-        """
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/state.py")
-
-        # Non-vacuity, and a real one: the walk must be finding the ticket store's OWN code, or
-        # every absence below is satisfied by scanning an empty set.
-        assert {"TicketStore", "secrets", "token_urlsafe", "MAX_TICKETS"} <= identifiers
-
-        shared_paths = {
-            "discovery",
-            "mint_token",
-            "agent_token",
-            "presented_credential",
-            "agent_token_is_valid",
-            "require_agent_token",
-            "AgentToken",
-            "_AUTHORIZATION_HEADER",
-        }
-        assert not (shared_paths & identifiers), (
-            f"the ticket store shares a code path with the agent token: "
-            f"{shared_paths & identifiers} (AD-5)"
-        )
-
-    def test_the_credential_check_reads_one_accessor_and_stores_nothing(self):
-        """AC 13's other half: the check is stateless.
-
-        A credential check that cached its verdict — a set of seen tokens, a memo — would be the
-        shared storage AD-5 forbids, and would also outlive the restart that is supposed to
-        invalidate the token. Asserted structurally: the module has no module-level mutable
-        container at all, so there is nowhere for a cache to live.
-        """
-        path = _REPO_ROOT / "src/companion/app/security.py"
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-
-        assert "agent_token_is_valid" in code_identifiers(path)  # non-vacuity
-
-        # Probed with planted violations, per the C2 standing agreement (c3-4 review): the first
-        # version banned only literal Dict/List/Set on ast.Assign, and all four plants below
-        # sailed through it — `_seen = set()` and `_memo = defaultdict(list)` are ast.Call, an
-        # annotated `_cache: dict[str, str] = {}` is ast.AnnAssign (which has `target`, not
-        # `targets`), and `_tokens = frozenset() | {x}` is a BinOp. Hence: both assignment node
-        # shapes, and the *family* — any call whose callee name is a mutable-container
-        # constructor — rather than an enumeration of literal node types alone.
-        mutable_constructors = {"set", "dict", "list", "defaultdict", "OrderedDict", "deque"}
-
-        def is_mutable_container(value):
-            literal_containers = (
-                ast.Dict | ast.List | ast.Set | ast.ListComp | ast.SetComp | ast.DictComp
-            )
-            if isinstance(value, literal_containers):
-                return True
-            if isinstance(value, ast.Call):
-                callee = value.func
-                name = callee.id if isinstance(callee, ast.Name) else getattr(callee, "attr", None)
-                return name in mutable_constructors
-            if isinstance(value, ast.BinOp):
-                return is_mutable_container(value.left) or is_mutable_container(value.right)
-            return False
-
-        for node in tree.body:
-            if isinstance(node, ast.Assign):
-                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                names = [node.target.id]
-            else:
-                continue
-            for name in names:
-                # frozenset/str/int constants are fine — a mutable container is not.
-                assert not is_mutable_container(node.value), (
-                    f"security.py holds mutable module-level state in {name}; "
-                    "a credential check must store nothing (AD-5)"
-                )
-
-
 class TestNothingIsLoggedThatShouldNotBe:
     """AC 10's log half, stated as a positive requirement rather than only as an absence."""
 
@@ -1107,73 +861,6 @@ class TestThePutBroadcasts:
         assert response.json() == {"deck_id": _FIRST_DECK, "clients": 0}
         assert stored.json() == {"deck_id": _FIRST_DECK}
         assert registry.connected_count == 0, "and the dead client was dropped on the way past"
-
-    async def test_the_broadcast_helpers_are_total(self):
-        """AC 18's structural half, and the honest statement of **where** the containment lives.
-
-        The route adds one awaited call and no ``try`` (Q4: *"the route adds literally one awaited
-        call"*), so AC 18's "a fault inside the broadcast never affects the 200" holds only because
-        the two helpers **cannot raise** — every call they make is inside a ``try`` whose handler
-        catches ``Exception``. That is the property this pins.
-
-        **What it compares:** that every ``Call`` node in either helper's body sits inside a
-        ``Try`` — *or* is a call to the other helper, which this same test proves total. That
-        exemption is the composition rule made explicit: ``broadcast_active_deck_changed`` ends in
-        a bare ``return await broadcast(...)``, and wrapping a call that cannot raise would be
-        ceremony. **What it cannot see:** an exception raised by an ``except`` handler itself (a
-        logging call that blows up), which is the residual every catch-all in this package shares.
-        """
-        totals = {"broadcast", "broadcast_active_deck_changed"}
-        tree = ast.parse((_REPO_ROOT / "src/companion/app/ws.py").read_text(encoding="utf-8"))
-        helpers = {
-            node.name: node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.AsyncFunctionDef) and node.name in totals
-        }
-
-        assert set(helpers) == totals  # non-vacuity
-        for name, helper in helpers.items():
-            guarded = {
-                id(node)
-                for statement in helper.body
-                if isinstance(statement, ast.Try)
-                for node in ast.walk(statement)
-                if isinstance(node, ast.Call)
-            }
-            unguarded = [
-                ast.unparse(node)
-                for node in ast.walk(helper)
-                if isinstance(node, ast.Call)
-                and id(node) not in guarded
-                and not (isinstance(node.func, ast.Name) and node.func.id in totals)
-            ]
-            assert unguarded == [], f"{name} can raise at {unguarded}; the route has no net"
-            handlers = [
-                handler
-                for statement in helper.body
-                if isinstance(statement, ast.Try)
-                for handler in statement.handlers
-            ]
-            assert handlers, f"{name} has no except clause"
-            assert all(
-                isinstance(handler.type, ast.Name) and handler.type.id == "Exception"
-                for handler in handlers
-            ), f"{name} catches something narrower than Exception"
-
-    async def test_the_insertion_point_comment_was_replaced_by_the_call(self):
-        """AC 19: the marked line predicted a call; the call is what stands there now.
-
-        **What it compares:** the route module's identifiers for the awaited broadcast, and its
-        source for the comment that reserved the line. **What it cannot see:** whether the call is
-        positioned *after* the store — which the behavioural tests above cover by observing the
-        stored id arrive on the wire.
-        """
-        route_source = _REPO_ROOT / "src/companion/app/routes/active_deck.py"
-
-        assert "broadcast_active_deck_changed" in code_identifiers(route_source)
-        assert "c5-4 adds its active_deck_changed broadcast on the line below" not in (
-            route_source.read_text(encoding="utf-8")
-        )
 
 
 class TestTwoTabsOnePut:

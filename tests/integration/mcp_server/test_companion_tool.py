@@ -31,10 +31,12 @@ Despite living under ``tests/integration/``, these run in the ordinary ``-m "not
 a directory is not a marker (AD-10), and nothing here touches a socket.
 """
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import get_args
+from typing import Any, NamedTuple, get_args
 
 import pytest
+from pydantic import BaseModel
 
 from src.companion.client import PUSH_OUTCOMES, PushOutcome, PushOutcomeToken
 from src.companion.contracts import (
@@ -580,10 +582,97 @@ class TestTheResultIsCompact:
         }
 
 
-class TestTheSuggestionsPushIsDelegated:
+class _PushKind(NamedTuple):
+    """One push tool and everything a test needs to drive it without knowing its noun."""
+
+    kind: str
+    tool: Callable[..., Awaitable[Any]]
+    payload: Callable[..., Any]
+    result_model: type[BaseModel]
+    sentinels: tuple[str, ...]
+    cards_in: Callable[[Any], int]
+    """How many card ids one item of this kind carries, so a counts-cards bug is visible."""
+    max_items: int
+    """The payload's own item cap, so the budget test runs at the largest legal push."""
+
+
+_PUSH_KINDS = [
+    pytest.param(
+        _PushKind(
+            "suggestions",
+            show_suggestions,
+            _payload,
+            ShowSuggestionsResult,
+            (_SENTINEL_CARD_ID, _SENTINEL_REASON, _SENTINEL_TITLE, "Curve"),
+            lambda item: 1,
+            60,
+        ),
+        id="suggestions",
+    ),
+    pytest.param(
+        _PushKind(
+            "swaps",
+            show_swaps,
+            _swaps_payload,
+            ShowSwapsResult,
+            (_SENTINEL_OUT_ID, _SENTINEL_IN_ID, _SENTINEL_RATIONALE, _SENTINEL_SWAPS_TITLE),
+            lambda item: 2,
+            60,
+        ),
+        id="swaps",
+    ),
+    pytest.param(
+        _PushKind(
+            "tier_list",
+            show_tier_list,
+            _tier_payload,
+            ShowTierListResult,
+            (
+                _SENTINEL_TIER_CARD_ID,
+                _SENTINEL_TIER_NAME,
+                _SENTINEL_TIER_NOTE,
+                _SENTINEL_TIER_TITLE,
+            ),
+            lambda item: len(item.card_ids),
+            12,
+        ),
+        id="tier_list",
+    ),
+    pytest.param(
+        _PushKind(
+            "groups",
+            show_groups,
+            _groups_payload,
+            ShowGroupsResult,
+            (
+                _SENTINEL_GROUP_CARD_ID,
+                _SENTINEL_GROUP_TITLE,
+                _SENTINEL_GROUP_RATIONALE,
+                _SENTINEL_GROUPS_TITLE,
+            ),
+            lambda item: len(item.card_ids),
+            12,
+        ),
+        id="groups",
+    ),
+]
+"""The four push tools, one row each. Every class below runs once per row, so a tool that drifted
+from its siblings fails under its own id rather than hiding behind a copy of the suite."""
+
+_OUTCOME_ROWS = [
+    pytest.param("displayed", 2, id="displayed"),
+    pytest.param("no_clients_connected", 0, id="no-clients"),
+    pytest.param("app_not_running", None, id="app-not-running"),
+    pytest.param("payload_rejected", None, id="payload-rejected"),
+    pytest.param("backend_error", None, id="backend-error"),
+]
+
+
+@pytest.mark.parametrize("push", _PUSH_KINDS)
+class TestThePushIsDelegated:
     """AC 2: the payload becomes one envelope, and the envelope reaches the leaf unchanged."""
 
-    async def test_one_suggestions_envelope_carries_the_payload_through_untouched(self, push_stub):
+    async def test_one_envelope_carries_the_payload_through_untouched(self, push_stub, push):
         """The whole of this tool's job, and the only thing only this layer can get wrong.
 
         The comparison is against a **freshly built equal payload** rather than against the
@@ -592,27 +681,27 @@ class TestTheSuggestionsPushIsDelegated:
         """
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         assert len(stub.events) == 1, "one call is one push; nothing at this layer retries"
         event = stub.events[0]
-        assert event.kind == "suggestions"
-        assert event.payload == _payload(), "the payload crosses to the leaf untouched"
+        assert event.kind == push.kind
+        assert event.payload == push.payload(), "the payload crosses to the leaf untouched"
         assert result.status == "displayed"
         assert result.items_pushed == 2
 
-    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub):
+    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub, push):
         """Nothing here sorts, dedupes or reorders — the agent's order is the screen's order."""
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-        payload = _payload(items=3)
+        payload = push.payload(items=3)
 
-        await show_suggestions(payload=payload)
+        await push.tool(payload=payload)
 
-        assert [item.card_id for item in stub.events[0].payload.items] == [
-            item.card_id for item in payload.items
+        assert [item.model_dump() for item in stub.events[0].payload.items] == [
+            item.model_dump() for item in payload.items
         ]
 
-    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub):
+    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub, push):
         """A naive ``ts`` is refused on the live wire (``AwareDatetime``) and is invisible here.
 
         Nothing else in this file touches a socket, so a helper that used ``utcnow()`` would pass
@@ -621,153 +710,166 @@ class TestTheSuggestionsPushIsDelegated:
         """
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        await show_suggestions(payload=_payload())
+        await push.tool(payload=push.payload())
 
         assert stub.events[0].ts.tzinfo is not None
 
-    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub):
+    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub, push):
         """``id`` is identity and dedupe (AD-6): two pushes must not collide on it."""
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        await show_suggestions(payload=_payload())
-        await show_suggestions(payload=_payload())
+        await push.tool(payload=push.payload())
+        await push.tool(payload=push.payload())
 
         first, second = (event.id for event in stub.events)
         assert first.strip(), "a blank id is refused by the envelope and useless for dedupe"
         assert first != second, "a reused id would let a reader collapse two distinct pushes"
 
-    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub):
+    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub, push):
         """The fallback header belongs to the reader; a tool-supplied one is not agent-authored."""
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        await show_suggestions(payload=_payload(title=None))
+        await push.tool(payload=push.payload(title=None))
 
         assert stub.events[0].payload.title is None
 
 
+@pytest.mark.parametrize("push", _PUSH_KINDS)
 class TestEveryPushOutcomeBecomesTheStatusOfTheSameName:
     """AC 2/6: AD-8's five tokens, 1:1, with the count carried and never invented."""
 
-    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self):
+    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self, push):
         """A push tool has no database to be wrong about, so it layers no status above the wire.
 
         Set equality against the client's own tuple, so widening either side without the other
         fails here rather than in a review comment (AD-8, AD-16).
         """
-        annotation = ShowSuggestionsResult.model_fields["status"].annotation
+        annotation = push.result_model.model_fields["status"].annotation
         assert set(get_args(annotation)) == set(PUSH_OUTCOMES)
 
-    @pytest.mark.parametrize(
-        ("outcome", "clients"),
-        [
-            pytest.param("displayed", 2, id="displayed"),
-            pytest.param("no_clients_connected", 0, id="no-clients"),
-            pytest.param("app_not_running", None, id="app-not-running"),
-            pytest.param("payload_rejected", None, id="payload-rejected"),
-            pytest.param("backend_error", None, id="backend-error"),
-        ],
-    )
-    async def test_the_token_and_the_count_both_pass_through(self, push_stub, outcome, clients):
+    @pytest.mark.parametrize(("outcome", "clients"), _OUTCOME_ROWS)
+    async def test_the_token_and_the_count_both_pass_through(
+        self, push_stub, push, outcome, clients
+    ):
         """All five in one parametrization: a tool that swallowed the fifth would look correct in
         any single-row test. ``0`` and ``None`` are distinguished deliberately — ``0`` is a wire
         success (nobody watching), ``None`` is "the backend never told us"."""
         push_stub(PushOutcome(outcome=outcome, clients=clients))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         assert result.status == outcome
         assert result.clients == clients
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
 
-    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub, push):
         """c5-5's ruling: the backend will not re-send, so a retry duplicates at the first tab."""
         stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         assert result.status == "no_clients_connected"
         assert result.clients == 0
         assert len(stub.events) == 1, "a success with nobody watching is still one push"
 
-    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
+    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub, push):
         """The token is for a caller to switch on; the sentence is for a person to read."""
         for outcome in PUSH_OUTCOMES:
             push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
 
-            result = await show_suggestions(payload=_payload())
+            result = await push.tool(payload=push.payload())
 
             assert outcome not in result.message
             assert "companion" in result.message.lower()
 
 
-class TestAnEmptySuggestionsPayloadIsStillPushed:
+@pytest.mark.parametrize("push", _PUSH_KINDS)
+class TestAnEmptyPayloadIsStillPushed:
     """AC 4: "I looked and found nothing" is expressible, so it must reach the wire."""
 
-    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub):
+    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub, push):
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        result = await show_suggestions(payload=_payload(items=0))
+        result = await push.tool(payload=push.payload(items=0))
 
         assert len(stub.events) == 1, "AD-7: an empty push is a legal push, not a skipped one"
         assert stub.events[0].payload.items == []
         assert result.status == "displayed"
         assert result.items_pushed == 0
 
-    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub):
+    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub, push):
         """The non-vacuity pairing: the same stub, both sizes, and the counts told apart."""
         stub = push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        empty = await show_suggestions(payload=_payload(items=0))
-        filled = await show_suggestions(payload=_payload(items=2))
+        empty = await push.tool(payload=push.payload(items=0))
+        filled = await push.tool(payload=push.payload(items=2))
 
         assert [len(event.payload.items) for event in stub.events] == [0, 2], (
             "the envelope carries whatever the caller sent, empty and non-empty alike"
         )
         assert (empty.items_pushed, filled.items_pushed) == (0, 2)
 
+    async def test_items_pushed_counts_items_and_not_cards(self, push_stub, push):
+        """One item may carry several card ids and is still ONE item — the count the result
+        reports is ``len(payload.items)``. The multi-card fixtures carry two ids per item, so a
+        counts-cards bug is off by 2x there rather than coincidentally right."""
+        push_stub(PushOutcome(outcome="displayed", clients=1))
 
-class TestTheSuggestionsResultIsCompact:
+        payload = push.payload(items=3)
+        cards_carried = sum(push.cards_in(item) for item in payload.items)
+        assert cards_carried >= 3, "the fixture must carry at least one card per item"
+
+        result = await push.tool(payload=payload)
+
+        assert result.items_pushed == 3
+
+
+@pytest.mark.parametrize("push", _PUSH_KINDS)
+class TestThePushResultIsCompact:
     """AC 5: under roughly 200 tokens, and echoing not one word of the payload."""
 
     @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_the_serialised_result_stays_well_inside_the_budget(self, push_stub, outcome):
+    async def test_the_serialised_result_stays_well_inside_the_budget(
+        self, push_stub, push, outcome
+    ):
         """Every branch, not the happy one: the 400-character bound and its rationale are the same
         ones documented for the control tool above, and a push result has more reason to grow —
         the thing it is reporting on is a list."""
         push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
 
-        result = await show_suggestions(payload=_payload(items=60))
+        result = await push.tool(payload=push.payload(items=push.max_items))
 
         assert len(result.model_dump_json()) < 400, result.model_dump_json()
 
     @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_not_one_planted_string_comes_back_out(self, push_stub, outcome):
+    async def test_not_one_planted_string_comes_back_out(self, push_stub, push, outcome):
         """The guard that stays behind: the agent already holds this content, so a result that
         repeated it would cost the conversation twice for nothing (CM-1)."""
         push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         dumped = result.model_dump_json()
-        for sentinel in (_SENTINEL_CARD_ID, _SENTINEL_REASON, _SENTINEL_TITLE, "Curve"):
+        for sentinel in push.sentinels:
             assert sentinel not in dumped, f"{sentinel!r} was echoed back into the result"
 
-    async def test_the_result_carries_counts_and_nothing_else(self, push_stub):
+    async def test_the_result_carries_counts_and_nothing_else(self, push_stub, push):
         push_stub(PushOutcome(outcome="displayed", clients=1))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
 
 
+@pytest.mark.parametrize("push", _PUSH_KINDS)
 class TestTheAppBeingClosedIsReportedAndNothingMore:
     """AC 6: the companion is a second channel, never a condition on the first (NG5, SC-3)."""
 
-    async def test_a_closed_app_is_named_as_such(self, push_stub):
+    async def test_a_closed_app_is_named_as_such(self, push_stub, push):
         push_stub(PushOutcome(outcome="app_not_running"))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         assert result.status == "app_not_running"
         assert result.clients is None
@@ -776,612 +878,17 @@ class TestTheAppBeingClosedIsReportedAndNothingMore:
 
     @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
     async def test_no_message_tells_the_agent_to_change_its_written_answer(
-        self, push_stub, outcome
+        self, push_stub, push, outcome
     ):
         """The glass is additive. A sentence here that offered chat as a *fallback* would imply the
         normal reply had been conditional on the push succeeding, which it never was."""
         push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
 
-        result = await show_suggestions(payload=_payload())
+        result = await push.tool(payload=push.payload())
 
         lowered = result.message.lower()
         for directive in ("instead", "skip", "no need to", "don't"):
             assert directive not in lowered, f"the message steers the reply with {directive!r}"
-
-
-class TestTheSwapsPushIsDelegated:
-    """16-1 AC 2: one swaps payload becomes one envelope, and it reaches the leaf unchanged."""
-
-    async def test_one_swaps_envelope_carries_the_payload_through_untouched(self, push_stub):
-        """The structural clone of the suggestions delegation test, and the same trap: the
-        comparison is against a freshly built equal payload rather than the argument object."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_swaps(payload=_swaps_payload())
-
-        assert len(stub.events) == 1, "one call is one push; nothing at this layer retries"
-        event = stub.events[0]
-        assert event.kind == "swaps"
-        assert event.payload == _swaps_payload(), "the payload crosses to the leaf untouched"
-        assert result.status == "displayed"
-        assert result.items_pushed == 2
-
-    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub):
-        """Nothing here sorts, dedupes or reorders — the agent's order is the screen's order."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-        payload = _swaps_payload(items=3)
-
-        await show_swaps(payload=payload)
-
-        assert [(item.out_card_id, item.in_card_id) for item in stub.events[0].payload.items] == [
-            (item.out_card_id, item.in_card_id) for item in payload.items
-        ]
-
-    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub):
-        """The wire refuses a naive ``ts`` (``AwareDatetime``) and no socket exists here to say
-        so — this assertion stands in for it, exactly as the suggestions twin does."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_swaps(payload=_swaps_payload())
-
-        assert stub.events[0].ts.tzinfo is not None
-
-    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub):
-        """``id`` is identity and dedupe (AD-6): two pushes must not collide on it."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_swaps(payload=_swaps_payload())
-        await show_swaps(payload=_swaps_payload())
-
-        first, second = (event.id for event in stub.events)
-        assert first.strip(), "a blank id is refused by the envelope and useless for dedupe"
-        assert first != second, "a reused id would let a reader collapse two distinct pushes"
-
-    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub):
-        """The fallback header belongs to the reader; a tool-supplied one is not agent-authored."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_swaps(payload=_swaps_payload(title=None))
-
-        assert stub.events[0].payload.title is None
-
-
-class TestEverySwapsOutcomeBecomesTheStatusOfTheSameName:
-    """16-1 AC 2: AD-8's five tokens, 1:1, with the count carried and never invented."""
-
-    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self):
-        """A push tool has no database to be wrong about, so it layers no status above the wire —
-        set equality against the client's own tuple, exactly as the suggestions result pins."""
-        annotation = ShowSwapsResult.model_fields["status"].annotation
-        assert set(get_args(annotation)) == set(PUSH_OUTCOMES)
-
-    @pytest.mark.parametrize(
-        ("outcome", "clients"),
-        [
-            pytest.param("displayed", 2, id="displayed"),
-            pytest.param("no_clients_connected", 0, id="no-clients"),
-            pytest.param("app_not_running", None, id="app-not-running"),
-            pytest.param("payload_rejected", None, id="payload-rejected"),
-            pytest.param("backend_error", None, id="backend-error"),
-        ],
-    )
-    async def test_the_token_and_the_count_both_pass_through(self, push_stub, outcome, clients):
-        """All five in one parametrization: a tool that swallowed the fifth would look correct in
-        any single-row test. ``0`` and ``None`` stay distinguishable on purpose."""
-        push_stub(PushOutcome(outcome=outcome, clients=clients))
-
-        result = await show_swaps(payload=_swaps_payload())
-
-        assert result.status == outcome
-        assert result.clients == clients
-        assert result.items_pushed == 2
-        assert result.message, "every status carries a sentence a human can read"
-
-    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
-        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
-        retry would duplicate at the first tab."""
-        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
-
-        result = await show_swaps(payload=_swaps_payload())
-
-        assert result.status == "no_clients_connected"
-        assert result.clients == 0
-        assert len(stub.events) == 1, "a success with nobody watching is still one push"
-
-    async def test_a_closed_app_is_named_as_such(self, push_stub):
-        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
-        channel, never a condition on the first (NG5, SC-3)."""
-        push_stub(PushOutcome(outcome="app_not_running"))
-
-        result = await show_swaps(payload=_swaps_payload())
-
-        assert result.status == "app_not_running"
-        assert result.clients is None
-        assert "isn't running" in result.message
-        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
-
-    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
-        """The token is for a caller to switch on; the sentence is for a person to read."""
-        for outcome in PUSH_OUTCOMES:
-            push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
-
-            result = await show_swaps(payload=_swaps_payload())
-
-            assert outcome not in result.message
-            assert "companion" in result.message.lower()
-
-
-class TestAnEmptySwapsPayloadIsStillPushed:
-    """16-1 edge row: "I found no trade worth proposing" is expressible, so it reaches the wire."""
-
-    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub):
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_swaps(payload=_swaps_payload(items=0))
-
-        assert len(stub.events) == 1, "AD-7: an empty push is a legal push, not a skipped one"
-        assert stub.events[0].payload.items == []
-        assert result.status == "displayed"
-        assert result.items_pushed == 0
-
-    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub):
-        """The non-vacuity pairing: the same stub, both sizes, and the counts told apart."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        empty = await show_swaps(payload=_swaps_payload(items=0))
-        filled = await show_swaps(payload=_swaps_payload(items=2))
-
-        assert [len(event.payload.items) for event in stub.events] == [0, 2], (
-            "the envelope carries whatever the caller sent, empty and non-empty alike"
-        )
-        assert (empty.items_pushed, filled.items_pushed) == (0, 2)
-
-    async def test_items_pushed_counts_swap_pairs_and_not_cards(self, push_stub):
-        """One trade carries two card ids and is ONE item — the count the result reports."""
-        push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_swaps(payload=_swaps_payload(items=3))
-
-        assert result.items_pushed == 3
-
-
-class TestTheSwapsResultIsCompact:
-    """16-1: under the same ~400-char bound, and echoing not one word of the payload."""
-
-    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_the_serialised_result_stays_well_inside_the_budget(self, push_stub, outcome):
-        """Every branch, at the payload cap — the same bound and rationale the suggestions
-        result documents, and a swaps result has the same reason to grow."""
-        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
-
-        result = await show_swaps(payload=_swaps_payload(items=60))
-
-        assert len(result.model_dump_json()) < 400, result.model_dump_json()
-
-    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_not_one_planted_string_comes_back_out(self, push_stub, outcome):
-        """The agent already holds this content; a result that repeated it would cost the
-        conversation twice for nothing (CM-1)."""
-        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
-
-        result = await show_swaps(payload=_swaps_payload())
-
-        dumped = result.model_dump_json()
-        for sentinel in (
-            _SENTINEL_OUT_ID,
-            _SENTINEL_IN_ID,
-            _SENTINEL_RATIONALE,
-            _SENTINEL_SWAPS_TITLE,
-        ):
-            assert sentinel not in dumped, f"{sentinel!r} was echoed back into the result"
-
-    async def test_the_result_carries_counts_and_nothing_else(self, push_stub):
-        push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_swaps(payload=_swaps_payload())
-
-        assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
-
-
-class TestTheTierListPushIsDelegated:
-    """16-2 AC: one tier-list payload becomes one envelope, and it reaches the leaf unchanged."""
-
-    async def test_one_tier_list_envelope_carries_the_payload_through_untouched(self, push_stub):
-        """The structural clone of the suggestions delegation test, and the same trap: the
-        comparison is against a freshly built equal payload rather than the argument object."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_tier_list(payload=_tier_payload())
-
-        assert len(stub.events) == 1, "one call is one push; nothing at this layer retries"
-        event = stub.events[0]
-        assert event.kind == "tier_list"
-        assert event.payload == _tier_payload(), "the payload crosses to the leaf untouched"
-        assert result.status == "displayed"
-        assert result.items_pushed == 2
-
-    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub):
-        """Nothing here sorts, dedupes or reorders — the agent's order is the screen's order,
-        and for a tier list that includes NOT re-sorting tiers by letter."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-        payload = _tier_payload(items=3)
-
-        await show_tier_list(payload=payload)
-
-        assert [(item.letter, item.name) for item in stub.events[0].payload.items] == [
-            (item.letter, item.name) for item in payload.items
-        ]
-
-    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub):
-        """The wire refuses a naive ``ts`` (``AwareDatetime``) and no socket exists here to say
-        so — this assertion stands in for it, exactly as the suggestions twin does."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_tier_list(payload=_tier_payload())
-
-        assert stub.events[0].ts.tzinfo is not None
-
-    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub):
-        """``id`` is identity and dedupe (AD-6): two pushes must not collide on it."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_tier_list(payload=_tier_payload())
-        await show_tier_list(payload=_tier_payload())
-
-        first, second = (event.id for event in stub.events)
-        assert first.strip(), "a blank id is refused by the envelope and useless for dedupe"
-        assert first != second, "a reused id would let a reader collapse two distinct pushes"
-
-    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub):
-        """The fallback header belongs to the reader (``DEFAULT_TITLE_BY_KIND`` says "Tier
-        list"); a tool-supplied one is not agent-authored."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_tier_list(payload=_tier_payload(title=None))
-
-        assert stub.events[0].payload.title is None
-
-
-class TestEveryTierListOutcomeBecomesTheStatusOfTheSameName:
-    """16-2 AC: AD-8's five tokens, 1:1, with the count carried and never invented."""
-
-    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self):
-        """A push tool has no database to be wrong about, so it layers no status above the wire —
-        set equality against the client's own tuple, exactly as its two siblings pin."""
-        annotation = ShowTierListResult.model_fields["status"].annotation
-        assert set(get_args(annotation)) == set(PUSH_OUTCOMES)
-
-    @pytest.mark.parametrize(
-        ("outcome", "clients"),
-        [
-            pytest.param("displayed", 2, id="displayed"),
-            pytest.param("no_clients_connected", 0, id="no-clients"),
-            pytest.param("app_not_running", None, id="app-not-running"),
-            pytest.param("payload_rejected", None, id="payload-rejected"),
-            pytest.param("backend_error", None, id="backend-error"),
-        ],
-    )
-    async def test_the_token_and_the_count_both_pass_through(self, push_stub, outcome, clients):
-        """All five in one parametrization: a tool that swallowed the fifth would look correct in
-        any single-row test. ``0`` and ``None`` stay distinguishable on purpose."""
-        push_stub(PushOutcome(outcome=outcome, clients=clients))
-
-        result = await show_tier_list(payload=_tier_payload())
-
-        assert result.status == outcome
-        assert result.clients == clients
-        assert result.items_pushed == 2
-        assert result.message, "every status carries a sentence a human can read"
-
-    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
-        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
-        retry would duplicate at the first tab."""
-        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
-
-        result = await show_tier_list(payload=_tier_payload())
-
-        assert result.status == "no_clients_connected"
-        assert result.clients == 0
-        assert len(stub.events) == 1, "a success with nobody watching is still one push"
-
-    async def test_a_closed_app_is_named_as_such(self, push_stub):
-        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
-        channel, never a condition on the first (NG5, SC-3)."""
-        push_stub(PushOutcome(outcome="app_not_running"))
-
-        result = await show_tier_list(payload=_tier_payload())
-
-        assert result.status == "app_not_running"
-        assert result.clients is None
-        assert "isn't running" in result.message
-        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
-
-    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
-        """The token is for a caller to switch on; the sentence is for a person to read."""
-        for outcome in PUSH_OUTCOMES:
-            push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
-
-            result = await show_tier_list(payload=_tier_payload())
-
-            assert outcome not in result.message
-            assert "companion" in result.message.lower()
-
-
-class TestAnEmptyTierListPayloadIsStillPushed:
-    """16-2 edge row: "I found nothing worth tiering" is expressible, so it reaches the wire."""
-
-    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub):
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_tier_list(payload=_tier_payload(items=0))
-
-        assert len(stub.events) == 1, "AD-7: an empty push is a legal push, not a skipped one"
-        assert stub.events[0].payload.items == []
-        assert result.status == "displayed"
-        assert result.items_pushed == 0
-
-    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub):
-        """The non-vacuity pairing: the same stub, both sizes, and the counts told apart."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        empty = await show_tier_list(payload=_tier_payload(items=0))
-        filled = await show_tier_list(payload=_tier_payload(items=2))
-
-        assert [len(event.payload.items) for event in stub.events] == [0, 2], (
-            "the envelope carries whatever the caller sent, empty and non-empty alike"
-        )
-        assert (empty.items_pushed, filled.items_pushed) == (0, 2)
-
-    async def test_items_pushed_counts_tiers_and_not_cards(self, push_stub):
-        """One tier carries two card ids in this fixture and is ONE item — the count the result
-        reports is ``len(payload.items)``, the swaps "pairs, not cards" precedent applied."""
-        push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        payload = _tier_payload(items=3)
-        cards_carried = sum(len(item.card_ids) for item in payload.items)
-        assert cards_carried == 6, "the fixture must carry more cards than tiers to prove this"
-
-        result = await show_tier_list(payload=payload)
-
-        assert result.items_pushed == 3
-
-
-class TestTheTierListResultIsCompact:
-    """16-2: under the same ~400-char bound, and echoing not one word of the payload."""
-
-    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_the_serialised_result_stays_well_inside_the_budget(self, push_stub, outcome):
-        """Every branch, at the payload cap — 12 tiers is ``TierListPayload``'s own maximum."""
-        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
-
-        result = await show_tier_list(payload=_tier_payload(items=12))
-
-        assert len(result.model_dump_json()) < 400, result.model_dump_json()
-
-    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_not_one_planted_string_comes_back_out(self, push_stub, outcome):
-        """The agent already holds this content; a result that repeated it would cost the
-        conversation twice for nothing (CM-1)."""
-        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
-
-        result = await show_tier_list(payload=_tier_payload())
-
-        dumped = result.model_dump_json()
-        for sentinel in (
-            _SENTINEL_TIER_CARD_ID,
-            _SENTINEL_TIER_NAME,
-            _SENTINEL_TIER_NOTE,
-            _SENTINEL_TIER_TITLE,
-        ):
-            assert sentinel not in dumped, f"{sentinel!r} was echoed back into the result"
-
-    async def test_the_result_carries_counts_and_nothing_else(self, push_stub):
-        push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_tier_list(payload=_tier_payload())
-
-        assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
-
-
-class TestTheGroupsPushIsDelegated:
-    """16-3 AC: one groups payload becomes one envelope, and it reaches the leaf unchanged."""
-
-    async def test_one_groups_envelope_carries_the_payload_through_untouched(self, push_stub):
-        """The structural clone of the suggestions delegation test, and the same trap: the
-        comparison is against a freshly built equal payload rather than the argument object."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_groups(payload=_groups_payload())
-
-        assert len(stub.events) == 1, "one call is one push; nothing at this layer retries"
-        event = stub.events[0]
-        assert event.kind == "groups"
-        assert event.payload == _groups_payload(), "the payload crosses to the leaf untouched"
-        assert result.status == "displayed"
-        assert result.items_pushed == 2
-
-    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub):
-        """Nothing here sorts, dedupes or merges — the agent's order is the screen's order."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-        payload = _groups_payload(items=3)
-
-        await show_groups(payload=payload)
-
-        assert [item.title for item in stub.events[0].payload.items] == [
-            item.title for item in payload.items
-        ]
-
-    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub):
-        """The wire refuses a naive ``ts`` (``AwareDatetime``) and no socket exists here to say
-        so — this assertion stands in for it, exactly as the suggestions twin does."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_groups(payload=_groups_payload())
-
-        assert stub.events[0].ts.tzinfo is not None
-
-    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub):
-        """``id`` is identity and dedupe (AD-6): two pushes must not collide on it."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_groups(payload=_groups_payload())
-        await show_groups(payload=_groups_payload())
-
-        first, second = (event.id for event in stub.events)
-        assert first.strip(), "a blank id is refused by the envelope and useless for dedupe"
-        assert first != second, "a reused id would let a reader collapse two distinct pushes"
-
-    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub):
-        """The fallback header belongs to the reader (``DEFAULT_TITLE_BY_KIND`` says
-        "Groups"); a tool-supplied one is not agent-authored."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        await show_groups(payload=_groups_payload(title=None))
-
-        assert stub.events[0].payload.title is None
-
-
-class TestEveryGroupsOutcomeBecomesTheStatusOfTheSameName:
-    """16-3 AC: AD-8's five tokens, 1:1, with the count carried and never invented."""
-
-    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self):
-        """A push tool has no database to be wrong about, so it layers no status above the wire —
-        set equality against the client's own tuple, exactly as its three siblings pin."""
-        annotation = ShowGroupsResult.model_fields["status"].annotation
-        assert set(get_args(annotation)) == set(PUSH_OUTCOMES)
-
-    @pytest.mark.parametrize(
-        ("outcome", "clients"),
-        [
-            pytest.param("displayed", 2, id="displayed"),
-            pytest.param("no_clients_connected", 0, id="no-clients"),
-            pytest.param("app_not_running", None, id="app-not-running"),
-            pytest.param("payload_rejected", None, id="payload-rejected"),
-            pytest.param("backend_error", None, id="backend-error"),
-        ],
-    )
-    async def test_the_token_and_the_count_both_pass_through(self, push_stub, outcome, clients):
-        """All five in one parametrization: a tool that swallowed the fifth would look correct in
-        any single-row test. ``0`` and ``None`` stay distinguishable on purpose."""
-        push_stub(PushOutcome(outcome=outcome, clients=clients))
-
-        result = await show_groups(payload=_groups_payload())
-
-        assert result.status == outcome
-        assert result.clients == clients
-        assert result.items_pushed == 2
-        assert result.message, "every status carries a sentence a human can read"
-
-    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
-        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
-        retry would duplicate at the first tab."""
-        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
-
-        result = await show_groups(payload=_groups_payload())
-
-        assert result.status == "no_clients_connected"
-        assert result.clients == 0
-        assert len(stub.events) == 1, "a success with nobody watching is still one push"
-
-    async def test_a_closed_app_is_named_as_such(self, push_stub):
-        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
-        channel, never a condition on the first (NG5, SC-3)."""
-        push_stub(PushOutcome(outcome="app_not_running"))
-
-        result = await show_groups(payload=_groups_payload())
-
-        assert result.status == "app_not_running"
-        assert result.clients is None
-        assert "isn't running" in result.message
-        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
-
-    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
-        """The token is for a caller to switch on; the sentence is for a person to read."""
-        for outcome in PUSH_OUTCOMES:
-            push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
-
-            result = await show_groups(payload=_groups_payload())
-
-            assert outcome not in result.message
-            assert "companion" in result.message.lower()
-
-
-class TestAnEmptyGroupsPayloadIsStillPushed:
-    """16-3 edge row: "I found no grouping worth drawing" is expressible, so it reaches the
-    wire."""
-
-    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub):
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_groups(payload=_groups_payload(items=0))
-
-        assert len(stub.events) == 1, "AD-7: an empty push is a legal push, not a skipped one"
-        assert stub.events[0].payload.items == []
-        assert result.status == "displayed"
-        assert result.items_pushed == 0
-
-    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub):
-        """The non-vacuity pairing: the same stub, both sizes, and the counts told apart."""
-        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        empty = await show_groups(payload=_groups_payload(items=0))
-        filled = await show_groups(payload=_groups_payload(items=2))
-
-        assert [len(event.payload.items) for event in stub.events] == [0, 2], (
-            "the envelope carries whatever the caller sent, empty and non-empty alike"
-        )
-        assert (empty.items_pushed, filled.items_pushed) == (0, 2)
-
-    async def test_items_pushed_counts_groups_and_not_cards(self, push_stub):
-        """One group carries two card ids in this fixture and is ONE item — the count the result
-        reports is ``len(payload.items)``, the tiers "not cards" precedent applied: a
-        counts-cards bug is off by 2× here rather than coincidentally right."""
-        push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        payload = _groups_payload(items=3)
-        cards_carried = sum(len(item.card_ids) for item in payload.items)
-        assert cards_carried == 6, "the fixture must carry more cards than groups to prove this"
-
-        result = await show_groups(payload=payload)
-
-        assert result.items_pushed == 3
-
-
-class TestTheGroupsResultIsCompact:
-    """16-3: under the same ~400-char bound, and echoing not one word of the payload."""
-
-    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_the_serialised_result_stays_well_inside_the_budget(self, push_stub, outcome):
-        """Every branch, at the payload cap — 12 groups is ``GroupsPayload``'s own maximum."""
-        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
-
-        result = await show_groups(payload=_groups_payload(items=12))
-
-        assert len(result.model_dump_json()) < 400, result.model_dump_json()
-
-    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
-    async def test_not_one_planted_string_comes_back_out(self, push_stub, outcome):
-        """The agent already holds this content; a result that repeated it would cost the
-        conversation twice for nothing (CM-1)."""
-        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
-
-        result = await show_groups(payload=_groups_payload())
-
-        dumped = result.model_dump_json()
-        for sentinel in (
-            _SENTINEL_GROUP_CARD_ID,
-            _SENTINEL_GROUP_TITLE,
-            _SENTINEL_GROUP_RATIONALE,
-            _SENTINEL_GROUPS_TITLE,
-        ):
-            assert sentinel not in dumped, f"{sentinel!r} was echoed back into the result"
-
-    async def test_the_result_carries_counts_and_nothing_else(self, push_stub):
-        push_stub(PushOutcome(outcome="displayed", clients=1))
-
-        result = await show_groups(payload=_groups_payload())
-
-        assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
 
 
 class TestEveryPushToolSpeaksItsOwnNoun:

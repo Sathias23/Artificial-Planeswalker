@@ -19,8 +19,6 @@ from src.data.models.combo import (
 from src.data.repositories.combo_snapshot import ComboSnapshotRepository
 from src.data.schemas.combo import name_keys
 
-pytestmark = pytest.mark.integration
-
 
 @pytest.fixture
 async def in_memory_engine():
@@ -229,6 +227,22 @@ class TestGetVariantsForNames:
 
     async def test_empty_names_returns_empty_tuple(self, repo, seeded_snapshot):
         assert await repo.get_variants_for_names([]) == ()
+
+    async def test_names_are_folded_before_lookup(self, repo, seeded_snapshot):
+        """The deck's casing is not the index's: names are folded through the shared
+        ``name_keys`` so the piece row still matches."""
+        records = await repo.get_variants_for_names(["BASALT monolith", "zealous CONSCRIPTS"])
+        assert [record.spellbook_id for record in records] == ["1-1", "2-2"]
+
+    async def test_duplicate_and_case_variant_names_return_each_variant_once(
+        self, repo, seeded_snapshot
+    ):
+        """Two spellings of one card fold to one key, and a variant matched through several
+        keys still comes back exactly once."""
+        records = await repo.get_variants_for_names(
+            ["Basalt Monolith", "basalt monolith", "BASALT MONOLITH", "Alive // Well", "Alive"]
+        )
+        assert [record.spellbook_id for record in records] == ["1-1", "3-3"]
 
     async def test_corrupt_bracket_tag_raises_validation_error(
         self, repo, session, seeded_snapshot

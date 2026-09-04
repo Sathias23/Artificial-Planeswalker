@@ -9,8 +9,9 @@
  * IF THE FIRST TEST BELOW TIMES OUT, THAT IS THE COLD START, NOT A BUG. `eslint.config.js` sets
  * `projectService: true`, so the first ESLint call in the process builds a TypeScript program
  * before it lints a line; whichever ESLint test runs first pays all of it and the rest are
- * milliseconds. Eight sightings across C6 and C7 before the timeout was raised — see
- * `vite.config.ts`, the `node` project's `testTimeout`, which carries the measurements.
+ * milliseconds. That is why this suite runs under `npm run test:gates`
+ * (`vitest.gates.config.ts`), which carries the 180 s timeout the ordinary node project no
+ * longer needs.
  */
 
 import { readFileSync } from 'node:fs'
@@ -49,6 +50,7 @@ interface StylelintConfig {
   }[]
 }
 const INLINE_STYLE_RULE = 'no-restricted-syntax'
+const COPY_BAN_RULE = 'no-restricted-syntax'
 const HEX_RULE = 'color-no-hex'
 const NAMED_COLOUR_RULE = 'color-named'
 const COLOUR_FN_RULE = 'function-disallowed-list'
@@ -133,6 +135,51 @@ describe('eslint accessibility gate (UX-DR47, AC 8)', () => {
       expect(options?.handlers).not.toContain('onLoad')
       expect(options?.handlers).not.toContain('onError')
     }
+  })
+})
+
+describe('eslint copy ban (UX-DR33)', () => {
+  // The voice rules used to be a test that parsed every shipped module's TypeScript AST; they
+  // are now three `no-restricted-syntax` selectors over string literals, JSX text and template
+  // chunks, proven here in the same both-ways shape as the gates above.
+  const lintBothFixtures = async () => {
+    const eslint = new ESLint({ cwd: uiRoot, ignore: false })
+    const results = await eslint.lintFiles([
+      fixture('tsx/copy-ban-violation.tsx'),
+      fixture('tsx/copy-ban-clean.tsx'),
+    ])
+    expect(results, 'eslint linted the wrong number of fixtures').toHaveLength(2)
+    for (const result of results) {
+      expect(
+        result.messages.filter((m) => m.fatal),
+        `${result.filePath} did not parse — every count below would be vacuous`,
+      ).toEqual([])
+    }
+    const byFile = (name: string) => results.find((r) => r.filePath.endsWith(name))
+    return { violation: byFile('copy-ban-violation.tsx'), clean: byFile('copy-ban-clean.tsx') }
+  }
+
+  it('reports an exclamation mark, an emoji and "something went wrong" — one each', async () => {
+    const { violation } = await lintBothFixtures()
+
+    expect(violation).toBeDefined()
+    const firing = violation!.messages.filter((m) => m.ruleId === COPY_BAN_RULE)
+
+    expect(firing).toHaveLength(3)
+    expect(new Set(firing.map((m) => m.severity))).toEqual(new Set([2]))
+    // Each ban resolved to its own line, because a count of three would also pass if one
+    // selector fired three times and the other two never fired at all.
+    const byLine = new Map(firing.map((m) => [m.line, m.message]))
+    expect(byLine.get(7)).toContain('exclamation mark')
+    expect(byLine.get(9)).toContain('emoji')
+    expect(byLine.get(11)).toContain('something went wrong')
+  })
+
+  it('stays silent on `!` as an operator and on a comment, in the same invocation', async () => {
+    const { clean } = await lintBothFixtures()
+
+    expect(clean).toBeDefined()
+    expect(clean!.messages.filter((m) => m.ruleId === COPY_BAN_RULE)).toEqual([])
   })
 })
 

@@ -25,5 +25,5 @@
      and the gate-proving tests (which drive the ESLint/stylelint Node APIs and a real Vite
      server, so they need node types rather than DOM ones). Component tests live in `src`
      and belong to tsconfig.app.json instead. */
-  "include": ["vite.config.ts", "config/**/*.ts", "tests/**/*.ts"]
+  "include": ["vite.config.ts", "vitest.gates.config.ts", "config/**/*.ts", "tests/**/*.ts"]
 }

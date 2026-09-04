@@ -175,6 +175,11 @@ jobs:
       - name: Vitest
         run: npm test
 
+      # The two suites that shell into a real tool (ESLint/stylelint, a Vite dev server) run
+      # under their own config and timeout, so the ordinary run above keeps vitest's default.
+      - name: Vitest gates
+        run: npm run test:gates
+
       # AC 1's committed-lockfile contract, gated where it can actually die. `npm ci` succeeds
       # even against a lock regenerated without the linux bindings (optional deps are simply
       # absent), and none of the four gates above load the production build path — so without

@@ -8,8 +8,8 @@ patched and the temp dir redirected to ``tmp_path`` throughout, so no real brows
 launches and nothing leaks into the system temp.
 
 The deprecation added in story 15.1 is asserted at the bottom of this file, through
-``list_tools()`` rather than through ``view_deck.__doc__`` — the description an agent
-reads is the registered tool's, and a ``__doc__`` assertion would still pass if
+``list_tools()`` rather than through the function's own docstring — the description an agent
+reads is the registered tool's, and a docstring assertion would still pass if
 registration stopped exposing it. Everything above it is behavioural coverage of a
 tool that is deprecated but **unchanged**, and it is deliberately left untouched: the
 evidence that nothing broke is that none of it needed editing.

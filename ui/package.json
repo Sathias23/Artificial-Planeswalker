@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:gates": "vitest run --config vitest.gates.config.ts",
     "gen:types": "openapi-typescript src/api/openapi.json -o src/api/types.d.ts",
     "gen:api": "cd .. && uv run python -m scripts.dump_openapi && cd ui && npm run gen:types"
   },

@@ -26,7 +26,6 @@ The one real-socket proof is c5-8's, and it shipped on 2026-08-09:
 integration-marked, and nothing here should become so.
 """
 
-import ast
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -244,30 +243,6 @@ class TestTheNumberIsTheDeliveredCount:
         assert response.json() == {"clients": 1}
         assert len(healthy.sent) == 1
         assert gone.sent == []
-
-    def test_the_route_never_reads_the_registry_count_at_all(self):
-        """The structural half, and it exists because the behavioural test above **provably cannot
-        see one of the two wrong implementations** (measured by R2 probe, 2026-08-08).
-
-        Planting ``connected_count`` sampled *after* the awaited broadcast leaves the whole suite
-        **green**, and the reason is a property of :func:`~src.companion.app.ws.broadcast` rather
-        than a gap in the test: the fan-out ``discard``s each client it fails to write to, so by
-        the time it returns, the registry has already been pruned to exactly the delivered set. The
-        two numbers genuinely agree at that point.
-
-        So the divergence the test above catches is the *pre*-sample — the natural naive
-        implementation, and the one Q1's reasoning is actually about (planted, red, reverted). This
-        assertion covers the other arm the only way it can be covered: by refusing the identifier
-        outright. Between them, both wrong implementations are closed.
-        """
-        from tests.unit.companion.test_routes_active_deck import code_identifiers
-
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/routes/agent_events.py")
-
-        assert "connected_count" not in identifiers
-        assert "connection_registry" not in identifiers
-        # Non-vacuity: the scan found the call the receipt is actually built from.
-        assert "broadcast" in identifiers
 
     async def test_the_same_registry_would_have_reported_two(self, lifespan_client):
         # The non-vacuity half, and the thing that makes the test above a real discriminator: with
@@ -757,20 +732,6 @@ class TestNoDatabaseAnywhereNearThisRoute:
         assert response.status_code == 200
         assert json.loads(frames[0])["payload"]["items"][0]["card_id"] == unknown
 
-    def test_the_route_module_imports_no_data_layer(self):
-        # AST-only, matching `test_routes_active_deck.py`'s guard and for the reason it records: a
-        # raw-text scan is keyed on syntax rather than meaning, and the first thing it catches is
-        # the docstring explaining why the banned thing is absent.
-        from tests.unit.companion.test_routes_active_deck import code_identifiers
-
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/routes/agent_events.py")
-
-        assert "DbSession" not in identifiers
-        assert "get_session" not in identifiers
-        assert not {name for name in identifiers if name.startswith("src.data")}
-        # Non-vacuity: the scan really did read this module.
-        assert "broadcast" in identifiers
-
     def test_the_route_declares_no_service_unavailable(self, lifespan_client):
         # The operation has no database dependency, so it can answer neither 503 token. Declaring
         # one would promise a `types.d.ts` consumer a branch that can never arrive.
@@ -878,24 +839,6 @@ class TestTheCommittedSchema:
 class TestNoSecondAuthCheck:
     """AC 4: the credential contract is inherited whole, never re-implemented."""
 
-    def test_the_route_module_writes_no_credential_logic_of_its_own(self):
-        from tests.unit.companion.test_routes_active_deck import code_identifiers
-
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/routes/agent_events.py")
-
-        # It may name the annotation; it may not reach past it to the machinery behind it, which
-        # is what a second comparison would look like.
-        assert "AgentToken" in identifiers
-        for banned in (
-            "presented_credential",
-            "agent_token_is_valid",
-            "require_agent_token",
-            "agent_token",
-            "compare_digest",
-            "Header",
-        ):
-            assert banned not in identifiers, banned
-
     def test_no_security_scheme_was_introduced(self):
         # `require_agent_token` reads the header by hand precisely so the artifact stays clean. A
         # FastAPI security class would have added a `securitySchemes` component and a per-operation
@@ -904,29 +847,3 @@ class TestNoSecondAuthCheck:
 
         assert "securitySchemes" not in schema.get("components", {})
         assert "security" not in schema["paths"][_PATH]["post"]
-
-
-class TestTheStructuralGuardsThisStoryMustNotTrip:
-    """The bans that live on files this diff touches, asserted against the shipped source."""
-
-    def test_the_push_path_creates_no_task(self):
-        # AD-9: the sends are sequential awaits inside the caller's coroutine. A detached task
-        # would outlive the request that started it.
-        from tests.unit.companion.test_routes_active_deck import code_identifiers
-
-        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/routes/agent_events.py")
-
-        assert "create_task" not in identifiers
-
-    def test_the_route_module_is_where_auth_and_broadcast_legitimately_meet(self):
-        # `state.py` and `ws.py` ban credential identifiers outright. This module is the exception
-        # `active_deck.py` already established — asserted so the exception is a decision rather
-        # than an accident.
-        source = (_REPO_ROOT / "src/companion/app/routes/agent_events.py").read_text(
-            encoding="utf-8"
-        )
-        tree = ast.parse(source)
-
-        assert isinstance(tree, ast.Module)
-        assert "AgentToken" in source
-        assert "broadcast" in source

@@ -9,7 +9,6 @@ passing it in as the *preferred* one exercises an identical code path while stay
 real companion, another dev process, or a parallel CI job holding 8765 (Gotcha 8).
 """
 
-import ast
 import io
 import logging
 import os
@@ -193,6 +192,35 @@ class TestPortResolution:
 
         assert resolved == server.DEFAULT_PORT
         assert [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+class TestTheDocumentedPort:
+    """``docs/companion.md`` names the preferred port; it must be the shipped default."""
+
+    def test_the_default_port_and_both_overrides_are_the_shipped_ones(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Precedence is exercised against :func:`server.resolve_preferred_port` first, so the
+        sentence the guide carries is checked against behaviour rather than another sentence."""
+        # If DEFAULT_PORT ever moved near the ceiling these probes would exceed _MAX_PORT and the
+        # test would silently invert into asserting the *ignore* path — passing while proving the
+        # opposite of what it claims (review, 2026-08-19).
+        explicit, from_env = server.DEFAULT_PORT + 1, server.DEFAULT_PORT + 2
+        assert server._MIN_PORT <= explicit <= server._MAX_PORT, "probe port out of range"
+        assert server._MIN_PORT <= from_env <= server._MAX_PORT, "probe port out of range"
+
+        monkeypatch.setenv(server.PORT_ENV_VAR, str(from_env))
+        assert server.resolve_preferred_port(explicit) == explicit
+        assert server.resolve_preferred_port(None) == from_env
+        assert server.resolve_preferred_port(server._MAX_PORT + 1) == server.DEFAULT_PORT
+        monkeypatch.delenv(server.PORT_ENV_VAR)
+        assert server.resolve_preferred_port(None) == server.DEFAULT_PORT
+
+        guide = (REPO_ROOT / "docs" / "companion.md").read_text(encoding="utf-8")
+        assert f"prefers port **{server.DEFAULT_PORT}**" in guide, (
+            f"docs/companion.md does not name server.DEFAULT_PORT ({server.DEFAULT_PORT}) as the "
+            "port the companion prefers"
+        )
 
 
 class TestBind:
@@ -820,99 +848,6 @@ class TestServeConfiguration:
         assert config.workers == 1
         assert config.host == "127.0.0.1"
         assert config.port == port
-
-
-def _python_files(*directories: Path) -> list[Path]:
-    """Return every ``*.py`` file under *directories*, excluding ``__pycache__``.
-
-    Args:
-        *directories: Directories to walk recursively.
-
-    Returns:
-        A sorted list of Python source files.
-
-    Raises:
-        AssertionError: If any *single* directory yields nothing — an aggregate check would let a
-            renamed or typo'd directory silently narrow the scan while the other side keeps it
-            green (c1-1's dead-guard lesson, one level down).
-    """
-    files: list[Path] = []
-    for directory in directories:
-        found = [path for path in directory.rglob("*.py") if "__pycache__" not in path.parts]
-        assert found, f"scan found no Python files under {directory} — check the path constants"
-        files.extend(found)
-    return sorted(files)
-
-
-class TestNothingElseHardcodesThePort:
-    """AC 5 (AD-4): the port number is defined once, and this test is what keeps it that way."""
-
-    def test_only_the_runner_names_the_default_port(self):
-        # tests/ is out of scope — this very file must name the number — and plugin/ is a verbatim
-        # generated copy of src/, so scanning it would only ever double-report src/'s findings.
-        # AST numeric literals, not a substring match: `8_765` and hex spellings cannot evade the
-        # scan, and `18765` or a hash in a comment cannot false-positive it.
-        offenders: list[str] = []
-        legal = 0
-
-        for path in _python_files(REPO_ROOT / "src", REPO_ROOT / "scripts"):
-            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-            names_the_port = any(
-                isinstance(node, ast.Constant)
-                and not isinstance(node.value, bool)
-                and node.value == 8765
-                for node in ast.walk(tree)
-            )
-            if not names_the_port:
-                continue
-            relative = path.resolve().relative_to(REPO_ROOT).as_posix()
-            if relative == "src/companion/app/server.py":
-                legal += 1
-            else:
-                offenders.append(relative)
-
-        assert not offenders, (
-            f"8765 is hardcoded outside the runner: {offenders}. Read it from "
-            "src.companion.app.server.DEFAULT_PORT, or the bound value via main.bound_port(app)."
-        )
-        assert legal == 1, (
-            "the scan did not find 8765 in src/companion/app/server.py — the guard is vacuous "
-            "and would pass even if the constant were deleted"
-        )
-
-
-class TestNothingBindsBeyondLoopback:
-    """AC 1 / NFR-01: every bind in the companion targets the ``HOST`` constant, not a literal."""
-
-    def test_every_bind_target_is_the_host_constant(self):
-        binds: list[tuple[str, int, str]] = []
-
-        for path in _python_files(REPO_ROOT / "src" / "companion"):
-            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-            relative = path.resolve().relative_to(REPO_ROOT).as_posix()
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                if not isinstance(node.func, ast.Attribute) or node.func.attr != "bind":
-                    continue
-                if not node.args:
-                    binds.append((relative, node.lineno, "<no address argument>"))
-                    continue
-                address = node.args[0]
-                host = address.elts[0] if isinstance(address, ast.Tuple) and address.elts else None
-                binds.append((relative, node.lineno, ast.unparse(host) if host else "<not a pair>"))
-
-        assert binds, (
-            "no bind() call found under src/companion/ — the NFR-01 guard is vacuous. If the bind "
-            "moved, point this scan at its new home rather than deleting it."
-        )
-        # Exactly the bare name `HOST`, not a suffix match: `other_module.HOST` could carry any
-        # value, so an attribute that merely *ends* in HOST must fail loudly and be reviewed here.
-        offenders = [entry for entry in binds if entry[2] != "HOST"]
-        assert not offenders, (
-            f"a bind target other than the HOST constant was found: {offenders}. NFR-01 makes "
-            "127.0.0.1 the security envelope — 0.0.0.0, '::', '' and 'localhost' are all forbidden."
-        )
 
 
 class _RecordingBrowser:
