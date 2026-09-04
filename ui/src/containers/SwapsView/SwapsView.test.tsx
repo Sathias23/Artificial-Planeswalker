@@ -357,7 +357,7 @@ describe('the inspection contract on BOTH tiles (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(screen.getByRole('button', { name: /Out · 2 copies/ })).toBe(tiles[0])
   })
 
-  it('REFUSES every verb on an unknown tile through the store, and stays a button (Q3)', () => {
+  it('REFUSES every verb on an unknown tile through the store, and stays a button', () => {
     seedUnknown('c-out')
     seedHydrated('c-in')
     const { container } = render(<SwapsView kind="swaps" items={[TRADE]} />)
@@ -380,7 +380,7 @@ describe('the inspection contract on BOTH tiles (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(useInspectionStore.getState().hoveredId).toBe('c-out')
   })
 
-  it('releases a stale hover, focus AND pin when an entry settles to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when an entry settles to unknown', () => {
     const { container } = render(<SwapsView kind="swaps" items={[TRADE]} />)
     const [outTile] = tilesOf(rowAt(container, 0))
 

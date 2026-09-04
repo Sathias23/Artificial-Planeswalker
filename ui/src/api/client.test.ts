@@ -74,11 +74,11 @@ describe('readDecks reads the route the artefact names', () => {
     expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
   })
 
-  it('has no path parameter, which is WHY retrying it is safe (AC 10)', () => {
-    // Measured at c3-2 and pinned in `test_routes_cards.py`: a malformed id sent to a backend
-    // with no database answers `database_not_initialized`, NOT `invalid_request`, because
-    // FastAPI solves dependencies before it collects validation errors. So a client that treats
-    // both database tokens as "retry quietly" retries a request whose id can never succeed.
+  it('has no path parameter, which is WHY retrying it is safe', () => {
+    // Pinned in `test_routes_cards.py`: a malformed id sent to a backend with no database answers
+    // `database_not_initialized`, NOT `invalid_request`, because FastAPI solves dependencies
+    // before it collects validation errors. So a client that treats both database tokens as
+    // "retry quietly" retries a request whose id can never succeed.
     //
     // This poll cannot hit that, and the reason is structural rather than careful: there is no
     // id in the path to be malformed. Asserted rather than merely written down, because the
@@ -87,7 +87,7 @@ describe('readDecks reads the route the artefact names', () => {
     expect(DECKS_PATH).not.toMatch(/[{}:]/)
   })
 
-  it('keeps the card route a SEPARATE constant, so the two are not confusable (c4-1 Q1)', () => {
+  it('keeps the card route a SEPARATE constant, so the two are not confusable', () => {
     // The card route takes an id and is therefore NOT retry-safe on the token alone. Two
     // constants rather than one templated helper means the difference is visible at every call
     // site instead of buried in an argument.
@@ -180,7 +180,7 @@ describe('a request cannot hang forever', () => {
   })
 })
 
-describe('a refusal carries its token through unvalidated (AC 2)', () => {
+describe('a refusal carries its token through unvalidated', () => {
   it.each([
     ['database_not_initialized', 503],
     ['database_unavailable', 503],
@@ -192,7 +192,7 @@ describe('a refusal carries its token through unvalidated (AC 2)', () => {
     expect(await readDecks()).toEqual({ kind: 'error', reason })
   })
 
-  it('passes a token this build has never heard of through UNCHANGED (AC 8)', async () => {
+  it('passes a token this build has never heard of through UNCHANGED', async () => {
     // Delivered as untyped JSON, which is the only way it can arrive: `ErrorReason` is erased at
     // runtime. This module deliberately does NOT clamp — clamping is `panelFor`'s single job,
     // and doing it in two places would mean two places to get it wrong.
@@ -202,7 +202,7 @@ describe('a refusal carries its token through unvalidated (AC 2)', () => {
   })
 })
 
-describe('the four malformed inputs of AC 9, none of which may reject', () => {
+describe('the four malformed inputs, none of which may reject', () => {
   it('a 503 with no body at all', async () => {
     responding(null, 503)
 
@@ -271,7 +271,7 @@ const solRingBody = JSON.stringify({
   oracle_text: '{T}: Add {C}{C}.',
 })
 
-describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
+describe('readCard addresses one card, safely', () => {
   it('asks for /api/cards/<id>, uncached', async () => {
     const fetchMock = responding(solRingBody, 200)
 
@@ -318,7 +318,7 @@ describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
   })
 })
 
-describe('a card read is a total outcome union, exactly like the deck poll (c4-1 AC 2)', () => {
+describe('a card read is a total outcome union, exactly like the deck poll', () => {
   it('reads a 200 as the card', async () => {
     responding(solRingBody, 200)
 
@@ -386,7 +386,7 @@ describe('a card read is a total outcome union, exactly like the deck poll (c4-1
   })
 })
 
-describe('readCard issues ONE request and never retries (c4-1 AC 12, AC 25)', () => {
+describe('readCard issues ONE request and never retries', () => {
   it('makes exactly one request for a 503 — the bound lives in the cache, not here', async () => {
     // The trap: a malformed id sent to a backend with no database
     // answers `database_not_initialized`, a token `RETRIES_QUIETLY` says to retry quietly, and
@@ -426,13 +426,13 @@ const deckBody = (overrides: Record<string, unknown> = {}) =>
     mainboard_count: 100,
     sideboard_count: 0,
     distinct_cards: 99,
-    created_at: '2026-07-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
+    created_at: '2025-07-01T00:00:00Z',
+    updated_at: '2025-08-01T00:00:00Z',
     cards: [],
     ...overrides,
   })
 
-describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
+describe('the two boot routes are addressed correctly', () => {
   it('asks for /api/active-deck, uncached, with no path parameter to be malformed', async () => {
     const fetchMock = responding('{"deck_id": null}', 200)
 
@@ -473,7 +473,7 @@ describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
     ['a traversal', '../decks'],
     ['a space', 'my deck'],
     ['a percent', '100%'],
-  ])('encodes %s so the id stays ONE path segment (AC 3)', (_label, deckId) => {
+  ])('encodes %s so the id stays ONE path segment', (_label, deckId) => {
     const path = deckPath(deckId)
 
     expect(path.startsWith(DECK_PATH_PREFIX)).toBe(true)
@@ -490,7 +490,7 @@ describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
   })
 })
 
-describe('a 200 from /api/active-deck: null is an ANSWER, not an absence (AC 1)', () => {
+describe('a 200 from /api/active-deck: null is an ANSWER, not an absence', () => {
   it('reads a real id', async () => {
     responding(`{"deck_id": "${ATRAXA_DECK_ID}"}`, 200)
 
@@ -563,7 +563,7 @@ describe('a 200 from /api/deck/<id>: three fields, and cards is one of them', ()
     expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
   })
 
-  it('still accepts a GENUINELY empty deck — the non-vacuity half (c4-12)', async () => {
+  it('still accepts a GENUINELY empty deck — the non-vacuity half', async () => {
     responding(deckBody({ cards: [], mainboard_count: 0 }), 200)
 
     const outcome = await readDeck(ATRAXA_DECK_ID)
@@ -636,7 +636,7 @@ describe('the two routes refuse in DIFFERENT vocabularies, and both stay values'
  * immediately when the signal arrives already aborted — because the property under test is
  * exactly that the abort REACHES the wire.
  */
-describe('a caller can abandon a deck read mid-flight (c7-3)', () => {
+describe('a caller can abandon a deck read mid-flight', () => {
   /** A fetch that never answers on its own and honours its signal exactly as the real one does. */
   const hangingFetch = () => {
     const fetchMock = vi.fn<typeof fetch>(
@@ -721,7 +721,7 @@ describe('a caller can abandon a deck read mid-flight (c7-3)', () => {
   })
 })
 
-describe('neither boot reader retries (AC 12, Q6)', () => {
+describe('neither boot reader retries', () => {
   it.each([
     ['a 503 on the deck read', () => responding('{"reason": "database_not_initialized"}', 503)],
     ['a network rejection', () => stubFetch(() => Promise.reject(new TypeError('nope')))],
@@ -780,7 +780,7 @@ const formatCheckBody = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   })
 
-describe('readFormatCheck addresses the deck route it hangs off (c4-10 AC 7)', () => {
+describe('readFormatCheck addresses the deck route it hangs off', () => {
   it('asks for /api/deck/<id>/format-check, uncached, with the shared clock', async () => {
     const fetchMock = responding(formatCheckBody(), 200)
 
@@ -812,7 +812,7 @@ describe('readFormatCheck addresses the deck route it hangs off (c4-10 AC 7)', (
   })
 })
 
-describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', () => {
+describe('a 200 from the format check: the rows are the contract', () => {
   it('returns the promised record, six rows in CHECK_ORDER', async () => {
     responding(formatCheckBody(), 200)
 
@@ -850,7 +850,7 @@ describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', 
     expect(await readFormatCheck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
   })
 
-  it('accepts the FORMATLESS report unchanged — it is a 200, never an error (Q8)', async () => {
+  it('accepts the FORMATLESS report unchanged — it is a 200, never an error', async () => {
     // DECLARED SYNTHETIC, and measured rather than composed: produced by overriding a real
     // deck's format to `'potato'` and running the real `format_check`. `deck_validator.py`'s own
     // docstring says so — *"never a different body and never an error"* — so a reader that
@@ -950,9 +950,9 @@ describe('the format check refuses in the deck vocabulary, and stays a value', (
   it.each([
     ['a 503', () => responding('{"reason": "database_not_initialized"}', 503)],
     ['a network rejection', () => stubFetch(() => Promise.reject(new TypeError('nope')))],
-  ])('makes exactly ONE request for %s — no retry, no timer (AC 11)', async (_label, arrange) => {
-    // The c3-2 trap applies here as it does to every path-parameter route, and this route has a
-    // second reason of its own: the panel draws NOTHING on a refusal (Q6), so a retry would be
+  ])('makes exactly ONE request for %s — no retry, no timer', async (_label, arrange) => {
+    // The header's trap applies here as it does to every path-parameter route, and this route has
+    // a second reason of its own: the panel draws NOTHING on a refusal, so a retry would be
     // spending requests to fix a screen nobody can see is broken.
     const fetchMock = arrange()
 
@@ -970,7 +970,7 @@ describe('the format check refuses in the deck vocabulary, and stays a value', (
  * factory. These blocks test that: everything DOM-shaped about a socket stops in this file, and
  * `src/state/socket.test.ts` never touches a constructor at all.
  */
-describe('readSessionTicket mints one ticket, and never twice (AC 3)', () => {
+describe('readSessionTicket mints one ticket, and never twice', () => {
   it('asks for /api/session, uncached, and says so', async () => {
     const fetchMock = responding('{"ticket": "abc"}', 200)
 
@@ -1024,7 +1024,7 @@ describe('readSessionTicket mints one ticket, and never twice (AC 3)', () => {
     await expect(readSessionTicket()).resolves.toEqual({ kind: 'error', reason: 'internal_error' })
   })
 
-  it('reports a lost backend as unreachable — the ordinary case this whole story is about', async () => {
+  it('reports a lost backend as unreachable — the ordinary case', async () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
 
     await expect(readSessionTicket()).resolves.toEqual({ kind: 'unreachable' })
@@ -1117,7 +1117,7 @@ describe('readInstanceId reads the health probe once, and folds every failure to
   })
 })
 
-describe('agentSocketUrl is built entirely from window.location (AC 1)', () => {
+describe('agentSocketUrl is built entirely from window.location', () => {
   it('never names a port, and never switches the host spelling', () => {
     const url = new URL(agentSocketUrl('abc'))
 
@@ -1156,9 +1156,9 @@ describe('agentSocketUrl is built entirely from window.location (AC 1)', () => {
   })
 })
 
-describe('agentEventOf narrows one frame, or refuses it (AC 13)', () => {
+describe('agentEventOf narrows one frame, or refuses it', () => {
   const envelope = (kind: string) =>
-    JSON.stringify({ kind, id: 'x', ts: '2026-08-08T00:00:00Z', payload: {} })
+    JSON.stringify({ kind, id: 'x', ts: '2025-08-08T00:00:00Z', payload: {} })
 
   it.each(['suggestions', 'swaps', 'tier_list', 'groups', 'deck_changed', 'active_deck_changed'])(
     'accepts a %s frame',
@@ -1193,7 +1193,7 @@ describe('agentEventOf narrows one frame, or refuses it (AC 13)', () => {
   })
 })
 
-describe('openAgentSocket wires one socket, and collapses four outcomes into one (Q1)', () => {
+describe('openAgentSocket wires one socket, and collapses four outcomes into one', () => {
   /** A scriptable stand-in for the platform constructor. jsdom HAS one; we never want to use it. */
   class FakeSocket {
     static built: FakeSocket[] = []

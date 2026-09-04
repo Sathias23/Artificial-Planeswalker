@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
 
 import { StatChip } from './StatChip'
 
-describe('StatChip structure (AC 3)', () => {
+describe('StatChip structure', () => {
   it('renders its label and its value', () => {
     render(<StatChip label="Cards" value={60} />)
 
@@ -35,7 +35,7 @@ describe('StatChip structure (AC 3)', () => {
   // read.
 })
 
-describe('StatChip delta, tinted by numeric sign (AC 6, Q6)', () => {
+describe('StatChip delta, tinted by numeric sign', () => {
   it('renders a positive delta with an explicit + sign', () => {
     const { container } = render(<StatChip label="Power" value={12} delta={3} />)
 
@@ -85,7 +85,7 @@ describe('StatChip delta, tinted by numeric sign (AC 6, Q6)', () => {
   })
 })
 
-describe('StatChip is presentation-only (AC 5)', () => {
+describe('StatChip is presentation-only', () => {
   it('exposes no role and no interaction', () => {
     render(<StatChip label="Cards" value={60} />)
 

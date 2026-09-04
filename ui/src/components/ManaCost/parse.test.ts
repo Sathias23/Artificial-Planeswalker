@@ -49,7 +49,7 @@ const oneSymbol = (cost: string): ManaSymbolToken => {
   return token
 }
 
-describe('the scanner is total (AC 8)', () => {
+describe('the scanner is total', () => {
   it('returns a token list for every string and throws for none', () => {
     // Including the shapes a `match()` would silently return null or [] for. The claim is
     // TOTALITY, so it is asserted over a list rather than on one lucky input.
@@ -100,7 +100,7 @@ describe('the scanner is total (AC 8)', () => {
     }
   })
 
-  it('is case-insensitive (AC 8c)', () => {
+  it('is case-insensitive', () => {
     // Every stored cost in the shipped database is uppercase (measured: zero rows where
     // `mana_cost <> upper(mana_cost)`). Accepting lowercase costs nothing and is one fewer way
     // to be silently wrong — the parser's input is a string, not a database column.
@@ -111,7 +111,7 @@ describe('the scanner is total (AC 8)', () => {
     expect(oneSymbol('{2/r}').glyph).toBe('2')
   })
 
-  it('treats undefined, null and the empty string identically (AC 4)', () => {
+  it('treats undefined, null and the empty string identically', () => {
     // The absent cost arrives as `''` from this repo's own data — 5,943 lands carry the empty
     // string and `mana_cost` is never NULL. The wire type is NOT nullable either (`mana_cost:
     // string` on both `Card` and `CardSummary`, from the schemas' NULL-coercing validators). All
@@ -123,7 +123,7 @@ describe('the scanner is total (AC 8)', () => {
   })
 })
 
-describe('the nine measured families (AC 6)', () => {
+describe('the nine measured families', () => {
   it('colour: {W} {U} {B} {R} {G}', () => {
     for (const letter of ['W', 'U', 'B', 'R', 'G']) {
       const symbol = oneSymbol(`{${letter}}`)
@@ -171,7 +171,7 @@ describe('the nine measured families (AC 6)', () => {
     }
   })
 
-  it('generic hybrid: {2/W} — the 2 is a GLYPH, never a colour (AC 9)', () => {
+  it('generic hybrid: {2/W} — the 2 is a GLYPH, never a colour', () => {
     // `split('/')` treating every part as a colour is the defect this asserts against: it would
     // render `{2/R}` as a colour named "2". Both fields are checked, because getting the colour
     // right while dropping the 2 is the same silent loss one level down.
@@ -191,7 +191,7 @@ describe('the nine measured families (AC 6)', () => {
     }
   })
 
-  it('Phyrexian: {B/P}, and Kozilek’s {C/P} — a MODIFIER, not a colour (AC 9)', () => {
+  it('Phyrexian: {B/P}, and Kozilek’s {C/P} — a MODIFIER, not a colour', () => {
     for (const letter of ['W', 'U', 'B', 'R', 'G', 'C']) {
       const symbol = oneSymbol(`{${letter}/P}`)
       expect(symbol.colours).toEqual([letter.toLowerCase()])
@@ -203,7 +203,7 @@ describe('the nine measured families (AC 6)', () => {
     }
   })
 
-  it('three-part hybrid Phyrexian: {R/W/P} — TWO colours plus a marker (AC 9)', () => {
+  it('three-part hybrid Phyrexian: {R/W/P} — TWO colours plus a marker', () => {
     // Nahiri, the Unforgiving. The family that breaks any parser assuming `/` splits a symbol
     // into exactly two colours — and the one the obvious four examples never mention.
     for (const raw of ['{R/W/P}', '{G/U/P}', '{G/W/P}', '{R/G/P}']) {
@@ -216,7 +216,7 @@ describe('the nine measured families (AC 6)', () => {
   })
 })
 
-describe('the // separator, in up to five parts (AC 7)', () => {
+describe('the // separator, in up to five parts', () => {
   it('surfaces ` // ` as its own text token rather than dropping it', () => {
     // 338 rows in the shipped database look like this. A tokeniser written as
     // `cost.match(/\{[^}]*\}/g)` keeps the braces and drops everything between them, so a split
@@ -244,7 +244,7 @@ describe('the // separator, in up to five parts (AC 7)', () => {
   })
 })
 
-describe('malformed input becomes visible, never absent (AC 3, AC 8b)', () => {
+describe('malformed input becomes visible, never absent', () => {
   it('emits an unrecognised braced symbol as `unknown`, carrying its inner text', () => {
     // Snow, and the four un-set / recent one-offs, all measured in the shipped database. None
     // of them is in the parser's symbol table, and none of them may vanish.
@@ -255,9 +255,9 @@ describe('malformed input becomes visible, never absent (AC 3, AC 8b)', () => {
     }
   })
 
-  it('emits an INVENTED symbol family as unknown — the structural proof (AC 25)', () => {
-    // `{Q/W/E}` appears in no enumeration anywhere in parse.ts. If AC 3 held only because the
-    // author listed the symbols they happened to know about, this is where that shows.
+  it('emits an INVENTED symbol family as unknown — the structural proof', () => {
+    // `{Q/W/E}` appears in no enumeration anywhere in parse.ts. If totality held only because
+    // the author listed the symbols they happened to know about, this is where that shows.
     const tokens = parseManaCost('{Q/W/E}')
     expect(tokens).toHaveLength(1)
     expect(tokens[0]).toEqual({ kind: 'unknown', raw: '{Q/W/E}', glyph: 'Q/W/E' })
@@ -297,7 +297,7 @@ describe('malformed input becomes visible, never absent (AC 3, AC 8b)', () => {
     expect(parseManaCost('{W/U/B}')[0].kind).toBe('unknown')
   })
 
-  it('rejects a duplicated colour, but accepts a reordered one (review 2026-07-29)', () => {
+  it('rejects a duplicated colour, but accepts a reordered one', () => {
     // `{W/W}` is not real data, and waving it through would render a plain white pip announced
     // as "white or white" — a malformed wire value made to look RIGHT, which is the inverse of
     // this module's contract for everything else. Order-insensitivity is different: `{P/W}` and
@@ -337,7 +337,7 @@ describe('the exact defects the composition reference ships (regression)', () =>
   })
 })
 
-describe('the accessible-name formatter (AC 15, Q4)', () => {
+describe('the accessible-name formatter', () => {
   const name = (cost: string) => describeManaCost(parseManaCost(cost))
 
   it('names every family in words, because the pip carries meaning only in colour', () => {

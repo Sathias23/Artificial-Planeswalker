@@ -56,7 +56,7 @@ const ITEM = { card_id: 'c-1', reason: 'Fills the two-drop gap.' } as const
 
 const SUGGESTIONS = {
   id: 'push-1',
-  ts: '2026-08-11T09:15:00Z',
+  ts: '2025-08-11T09:15:00Z',
   kind: 'suggestions',
   title: 'Suggestions',
   count: 3,
@@ -64,7 +64,7 @@ const SUGGESTIONS = {
 } as const
 const TIERS = {
   id: 'push-2',
-  ts: '2026-08-11T09:16:00Z',
+  ts: '2025-08-11T09:16:00Z',
   kind: 'suggestions',
   title: 'Card tiers',
   count: 12,
@@ -81,7 +81,7 @@ const TIERS = {
  * production signature honest about what the generator says.
  */
 const frame = (payload: unknown, id = 'push-1'): SuggestionsEvent =>
-  ({ id, ts: '2026-08-11T09:15:00Z', kind: 'suggestions', payload }) as SuggestionsEvent
+  ({ id, ts: '2025-08-11T09:15:00Z', kind: 'suggestions', payload }) as SuggestionsEvent
 
 /**
  * The slot's answer, read without rendering a component.
@@ -106,7 +106,7 @@ describe('the session starts with nothing to show', () => {
   })
 })
 
-describe('opening shows the pushed content (AC 6)', () => {
+describe('opening shows the pushed content', () => {
   it('writes the WHOLE slice in one go, so no render sees open-with-stale-content', () => {
     // Kept as a whole-state `toEqual` rather than relaxed to `toMatchObject`, and that is the
     // point of it: this is the one assertion in the file that fails when the slice grows a
@@ -129,7 +129,7 @@ describe('opening shows the pushed content (AC 6)', () => {
     expect(result.current).toBe(SUGGESTIONS)
   })
 
-  it('REPLACES rather than stacks — the scalar is AC 6 in the type (UX-DR38)', () => {
+  it('REPLACES rather than stacks — the scalar in the type is the rule (UX-DR38)', () => {
     // The overlay stack is exactly one level deep, permanently. A second open cannot create a
     // second level because there is nowhere to put one; what it does instead is replace. That
     // is the STATE half of the replace-in-place contract and it is the whole of what this
@@ -142,7 +142,7 @@ describe('opening shows the pushed content (AC 6)', () => {
   })
 })
 
-describe('one envelope becomes one view, for every payload the wire admits (c6-6, AC 1, AC 4)', () => {
+describe('one envelope becomes one view, for every payload the wire admits', () => {
   it('carries the payload through — title, count and the items themselves', () => {
     // THE DELEGATION CLAIM, and the reason it is asserted on real values rather than on a spy:
     // the failure to guard against is a builder that ignores its argument and mints an empty
@@ -158,13 +158,13 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
     expect(content.kind).toBe('suggestions')
   })
 
-  it('retains `ts` and `id` unread — c6-8’s pill time and this story’s replace key', () => {
-    // The two fields nothing in c6-6 renders. They are asserted here because "retained for a
-    // later story" is a claim that decays silently: a builder that dropped `ts` would break
-    // nothing until c6-8, and by then the diff that dropped it is a year of stories back.
+  it('retains `ts` and `id` unread — the pill time and the replace key', () => {
+    // The two fields the builder itself never reads. They are asserted here because a field
+    // "retained for a consumer elsewhere" is a claim that decays silently: a builder that
+    // dropped `ts` would break nothing in this module, only the pill time downstream.
     const content = suggestionsViewOf(frame({ items: [] }, 'push-42'))
 
-    expect(content.ts).toBe('2026-08-11T09:15:00Z')
+    expect(content.ts).toBe('2025-08-11T09:15:00Z')
     expect(content.id).toBe('push-42')
   })
 
@@ -229,15 +229,15 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
     expect(content.title).toBe('Resilience options')
   })
 
-  it('OPENS the view it builds — the one verb `connection.ts` calls (AC 1)', () => {
-    // The auto-open ruling (2026-07-25) with no click anywhere in it. Asserted through the
-    // store rather than through the builder, because the verb's whole job is the composition.
+  it('OPENS the view it builds — the one verb `connection.ts` calls', () => {
+    // Auto-open is deliberate: a push shows itself with no click anywhere in it. Asserted through
+    // the store rather than through the builder, because the verb's whole job is the composition.
     openSuggestionsPush(frame({ title: 'Resilience options', items: [ITEM] }, 'push-7'))
 
     expect(useAgentViewStore.getState().status).toBe('open')
     expect(openViewNow()).toEqual({
       id: 'push-7',
-      ts: '2026-08-11T09:15:00Z',
+      ts: '2025-08-11T09:15:00Z',
       kind: 'suggestions',
       title: 'Resilience options',
       count: 1,
@@ -245,7 +245,7 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
     })
   })
 
-  it('REPLACES a showing view with the newer push, keeping it open (AC 2, state half)', () => {
+  it('REPLACES a showing view with the newer push, keeping it open (state half)', () => {
     openSuggestionsPush(frame({ title: 'First look', items: [ITEM] }, 'push-1'))
     openSuggestionsPush(frame({ title: 'Second look', items: [] }, 'push-2'))
 
@@ -283,7 +283,7 @@ const SWAP = {
 
 /** A `swaps` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
 const swapsFrame = (payload: unknown, id = 'push-s1'): SwapsEvent =>
-  ({ id, ts: '2026-08-21T09:15:00Z', kind: 'swaps', payload }) as SwapsEvent
+  ({ id, ts: '2025-08-21T09:15:00Z', kind: 'swaps', payload }) as SwapsEvent
 
 describe('one swaps envelope becomes one view, for every payload the wire admits (16.1)', () => {
   it('carries the payload through — title, count and the items themselves', () => {
@@ -294,7 +294,7 @@ describe('one swaps envelope becomes one view, for every payload the wire admits
     expect(content.items).toEqual([SWAP])
     expect(content.id).toBe('push-9')
     expect(content.kind).toBe('swaps')
-    expect(content.ts).toBe('2026-08-21T09:15:00Z')
+    expect(content.ts).toBe('2025-08-21T09:15:00Z')
   })
 
   it('builds an EMPTY view rather than throwing when the payload is absent entirely', () => {
@@ -339,7 +339,7 @@ describe('one swaps envelope becomes one view, for every payload the wire admits
     expect(useAgentViewStore.getState().status).toBe('open')
     expect(openViewNow()).toEqual({
       id: 'push-7',
-      ts: '2026-08-21T09:15:00Z',
+      ts: '2025-08-21T09:15:00Z',
       kind: 'swaps',
       title: 'Cheaper removal',
       count: 1,
@@ -374,7 +374,7 @@ const TIER = {
 
 /** A `tier_list` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
 const tierFrame = (payload: unknown, id = 'push-t1'): TierListEvent =>
-  ({ id, ts: '2026-08-21T10:15:00Z', kind: 'tier_list', payload }) as TierListEvent
+  ({ id, ts: '2025-08-21T10:15:00Z', kind: 'tier_list', payload }) as TierListEvent
 
 describe('one tier_list envelope becomes one view, for every payload the wire admits (16.2)', () => {
   it('carries the payload through — title, count and the items themselves', () => {
@@ -385,7 +385,7 @@ describe('one tier_list envelope becomes one view, for every payload the wire ad
     expect(content.items).toEqual([TIER])
     expect(content.id).toBe('push-9')
     expect(content.kind).toBe('tier_list')
-    expect(content.ts).toBe('2026-08-21T10:15:00Z')
+    expect(content.ts).toBe('2025-08-21T10:15:00Z')
   })
 
   it('counts payload TIERS, raw — never the cards inside them, never the render-time skip', () => {
@@ -440,7 +440,7 @@ describe('one tier_list envelope becomes one view, for every payload the wire ad
     expect(useAgentViewStore.getState().status).toBe('open')
     expect(openViewNow()).toEqual({
       id: 'push-7',
-      ts: '2026-08-21T10:15:00Z',
+      ts: '2025-08-21T10:15:00Z',
       kind: 'tier_list',
       title: 'Creature ranks',
       count: 1,
@@ -474,7 +474,7 @@ const GROUP = {
 
 /** A `groups` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
 const groupsFrame = (payload: unknown, id = 'push-g1'): GroupsEvent =>
-  ({ id, ts: '2026-08-21T11:15:00Z', kind: 'groups', payload }) as GroupsEvent
+  ({ id, ts: '2025-08-21T11:15:00Z', kind: 'groups', payload }) as GroupsEvent
 
 describe('one groups envelope becomes one view, for every payload the wire admits (16.3)', () => {
   it('carries the payload through — title, count and the items themselves', () => {
@@ -485,7 +485,7 @@ describe('one groups envelope becomes one view, for every payload the wire admit
     expect(content.items).toEqual([GROUP])
     expect(content.id).toBe('push-8')
     expect(content.kind).toBe('groups')
-    expect(content.ts).toBe('2026-08-21T11:15:00Z')
+    expect(content.ts).toBe('2025-08-21T11:15:00Z')
   })
 
   it('counts payload GROUPS, raw — never the cards inside them, never the render-time skip', () => {
@@ -542,7 +542,7 @@ describe('one groups envelope becomes one view, for every payload the wire admit
     expect(useAgentViewStore.getState().status).toBe('open')
     expect(openViewNow()).toEqual({
       id: 'push-6',
-      ts: '2026-08-21T11:15:00Z',
+      ts: '2025-08-21T11:15:00Z',
       kind: 'groups',
       title: 'Deck anatomy',
       count: 1,
@@ -563,7 +563,7 @@ describe('one groups envelope becomes one view, for every payload the wire admit
   })
 })
 
-describe('dismissal never clears the content (AC 5, UX-DR34)', () => {
+describe('dismissal never clears the content (UX-DR34)', () => {
   it('closes by writing STATUS ONLY — the content survives, byte for byte', () => {
     // The whole of UX-DR34: *"dismissal never clears it — the view remains re-openable for the
     // rest of the session"*. zustand's shallow merge is what makes the omission of `content`
@@ -586,9 +586,9 @@ describe('dismissal never clears the content (AC 5, UX-DR34)', () => {
     expect(useAgentViewStore.getState().content).toBe(SUGGESTIONS)
   })
 
-  it('re-opens the SAME content with no second push (AC 5)', () => {
-    // What "re-openable for the rest of the session" means operationally, and the reason c6-8
-    // can build nav pills that re-open a view without asking the agent for anything.
+  it('re-opens the SAME content with no second push', () => {
+    // What "re-openable for the rest of the session" means operationally, and the reason the
+    // nav pills can re-open a view without asking the agent for anything.
     openAgentView(SUGGESTIONS)
     closeAgentView()
     openAgentView(useAgentViewStore.getState().content!)
@@ -639,7 +639,7 @@ describe('the test-only reset is the one thing that forgets (non-vacuity)', () =
  */
 const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewContent => ({
   id,
-  ts: '2026-08-12T14:32:00Z',
+  ts: '2025-08-12T14:32:00Z',
   kind,
   title: AGENT_VIEW_LABELS[kind],
   count: 0,
@@ -648,7 +648,7 @@ const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewC
   items: [],
 })
 
-describe('the pill vocabulary is one table with one owner (c6-8, Task 2)', () => {
+describe('the pill vocabulary is one table with one owner', () => {
   it('names all four kinds, in the enum’s order', () => {
     // The order is load-bearing: `AgentViewsNav` derives the pill order from this table's keys
     // rather than authoring it a second time, so a reordering here reorders the header.
@@ -682,7 +682,7 @@ describe('the pill vocabulary is one table with one owner (c6-8, Task 2)', () =>
   })
 })
 
-describe('a push is retained under its own kind (c6-8, AC 4)', () => {
+describe('a push is retained under its own kind', () => {
   it('files the content in `retained` beside `content`, as the SAME object', () => {
     openAgentView(SUGGESTIONS)
 
@@ -701,7 +701,7 @@ describe('a push is retained under its own kind (c6-8, AC 4)', () => {
     expect(useAgentViewStore.getState().retained.groups).toBeUndefined()
   })
 
-  it('keeps ONE view per kind — the newest replaces the older (c6-6’s replace, from the map)', () => {
+  it('keeps ONE view per kind — the newest replaces the older (replace-in-place, from the map)', () => {
     openAgentView(SUGGESTIONS)
     openAgentView(TIERS)
 
@@ -733,7 +733,7 @@ describe('a push is retained under its own kind (c6-8, AC 4)', () => {
   })
 })
 
-describe('unread has exactly one setter, and it is displacement (c6-8, AC 5)', () => {
+describe('unread has exactly one setter, and it is displacement', () => {
   it('marks NOTHING unread on the first push of a session', () => {
     openAgentView(SUGGESTIONS)
 
@@ -752,7 +752,7 @@ describe('unread has exactly one setter, and it is displacement (c6-8, AC 5)', (
     expect(useAgentViewStore.getState().retained.suggestions).toBe(SUGGESTIONS)
   })
 
-  it('does NOT mark the same kind unread — c6-6’s replace-in-place is untouched', () => {
+  it('does NOT mark the same kind unread — replace-in-place is untouched', () => {
     openAgentView(SUGGESTIONS)
     openAgentView(TIERS)
 
@@ -801,7 +801,7 @@ describe('unread has exactly one setter, and it is displacement (c6-8, AC 5)', (
   })
 })
 
-describe('reopenAgentView puts a retained view back (c6-8, AC 4)', () => {
+describe('reopenAgentView puts a retained view back', () => {
   it('re-opens the retained content, by identity, asking nothing of the agent', () => {
     openAgentView(SUGGESTIONS)
     closeAgentView()
@@ -837,7 +837,7 @@ describe('reopenAgentView puts a retained view back (c6-8, AC 4)', () => {
   })
 })
 
-describe('the c6-8 fields did not reshape the c6-5 ones (UX-DR38, Landmine 15)', () => {
+describe('the retention fields did not reshape the open-view ones (UX-DR38)', () => {
   it('keeps `content` a scalar — the map is bookkeeping, not a second open view', () => {
     openAgentView(SUGGESTIONS)
     openAgentView(viewOf('swaps'))
@@ -878,7 +878,7 @@ describe('the c6-8 fields did not reshape the c6-5 ones (UX-DR38, Landmine 15)',
  * again after the one close path. `useOpenAgentView` beside it already has its own coverage
  * above; the pair's whole reason to both exist is the last test here.
  */
-describe('the announcer’s open/closed bit (c7-6)', () => {
+describe('the announcer’s open/closed bit', () => {
   it('is FALSE before anything has pushed — the mount state of every session', () => {
     const { result } = renderHook(() => useAgentViewIsOpen())
     expect(result.current).toBe(false)
@@ -953,14 +953,14 @@ describe('the announcer’s open/closed bit (c7-6)', () => {
 const pushAt = (n: number, kind: AgentViewContent['kind'] = 'suggestions'): AgentViewContent => ({
   id: `push-h${n}`,
   // Minutes, zero-padded, so ordering by ts and ordering by arrival can be told apart.
-  ts: `2026-08-22T10:${String(n).padStart(2, '0')}:00Z`,
+  ts: `2025-08-22T10:${String(n).padStart(2, '0')}:00Z`,
   kind,
   title: `Push ${n}`,
   count: 0,
   items: [],
 })
 
-describe('every push is filed into the history, newest first by ts (17.2, FR-18)', () => {
+describe('every push is filed into the history, newest first by ts (FR-18)', () => {
   it('starts empty, which is the History pill’s quiet state', () => {
     expect(INITIAL_AGENT_VIEW.history).toEqual([])
     const { result } = renderHook(() => useAgentViewHistoryCount())
@@ -1004,7 +1004,7 @@ describe('every push is filed into the history, newest first by ts (17.2, FR-18)
     expect(ids).toEqual(['push-h4', 'push-bad-ts', 'push-h5'])
   })
 
-  it('treats a runtime-NULL or numeric ts as unparseable — never as epoch 0 (review finding 5)', () => {
+  it('treats a runtime-NULL or numeric ts as unparseable — never as epoch 0', () => {
     // `agentEventOf` validates only `kind`, so `ts` can arrive as null or a number at runtime.
     // `new Date(null)` is EPOCH 0 and a numeric ts is milliseconds — an unguarded ranking would
     // sort either as decades old (and silently drop it at the cap) instead of giving it the
@@ -1033,7 +1033,7 @@ describe('every push is filed into the history, newest first by ts (17.2, FR-18)
     expect(history.some((e) => e.id === 'push-h1')).toBe(false)
   })
 
-  it('drops the ARRIVAL itself when it is older than all twenty — while the glass still shows it (review finding 6)', () => {
+  it('drops the ARRIVAL itself when it is older than all twenty — while the glass still shows it', () => {
     // The docstring's own edge: "including the arrival itself, if it is older than all twenty".
     // A "make room first" refactor (evict the tail, THEN insert) would keep the ancient arrival
     // and drop push-h2 instead — inverting the rule with every other cap test still green.
@@ -1097,7 +1097,7 @@ describe('every push is filed into the history, newest first by ts (17.2, FR-18)
   })
 })
 
-describe('reopenPush puts one specific push back (17.2)', () => {
+describe('reopenPush puts one specific push back', () => {
   it('re-opens the entry by IDENTITY — an older push of an already-re-pushed kind included', () => {
     // The case the per-kind pills cannot reach: two suggestions
     // pushes, and the OLDER one is still reachable through history.
@@ -1170,7 +1170,7 @@ describe('reopenPush puts one specific push back (17.2)', () => {
   })
 })
 
-describe('the history hooks (17.2)', () => {
+describe('the history hooks', () => {
   it('useAgentViewHistory returns the STORED array reference, never a derivation', () => {
     openAgentView(pushAt(1))
     const { result } = renderHook(() => useAgentViewHistory())

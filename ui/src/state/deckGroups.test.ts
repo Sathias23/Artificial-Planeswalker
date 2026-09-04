@@ -63,7 +63,7 @@ const row = (
   card: summary(name, typeLine, cmc),
 })
 
-describe('the front face is the whole rule (AC 14, FR-05, UX-DR17)', () => {
+describe('the front face is the whole rule (FR-05, UX-DR17)', () => {
   it('takes the segment before the first separator', () => {
     expect(frontFace('Creature — Elephant // Land')).toBe('Creature — Elephant')
   })
@@ -82,7 +82,7 @@ describe('the front face is the whole rule (AC 14, FR-05, UX-DR17)', () => {
   })
 })
 
-describe('the four cards the repo’s two land policies disagree about (AC 14)', () => {
+describe('the four cards the repo’s two land policies disagree about', () => {
   // src/viewer/view_model.py::is_land splits on the front face; src/logic/mana_curve.py and
   // src/logic/assessment/mana_base.py test the WHOLE string for "land". FR-05 and UX-DR17 both
   // say front face, so all four of these are NOT lands — and all four are in real decks.
@@ -186,7 +186,7 @@ describe('the front face decides, even when the back face outranks it — probe 
   })
 })
 
-describe('a multi-type front face lands in exactly one group, by the declared order (AC 15)', () => {
+describe('a multi-type front face lands in exactly one group, by the declared order', () => {
   it.each([
     ['Artifact Creature — Golem', 'Creature'],
     ['Enchantment Creature — Spirit', 'Creature'],
@@ -230,7 +230,7 @@ describe('a multi-type front face lands in exactly one group, by the declared or
   })
 })
 
-describe('a type the scheme does not name is CARRIED, never dropped (AC 16)', () => {
+describe('a type the scheme does not name is CARRIED, never dropped', () => {
   it('files the corpus’s literal "Card" type line under the residual group', () => {
     // "Pym Particles" — 2 live deck rows, and the only rows outside the eight primary types.
     expect(groupOf('Card')).toBe('Other')
@@ -364,7 +364,7 @@ describe('each board arrives sorted — cmc ascending, ties alphabetical', () =>
   })
 })
 
-describe('the three boards, and what each one holds (Q4)', () => {
+describe('the three boards, and what each one holds', () => {
   const cards = [
     row('Atraxa, Grand Unifier', 'Legendary Creature — Phyrexian Angel', { commander: true }),
     row('Llanowar Elves', 'Creature — Elf Druid', { quantity: 4 }),
@@ -419,7 +419,7 @@ describe('the three boards, and what each one holds (Q4)', () => {
   })
 })
 
-describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', () => {
+describe('CONSERVATION — nothing is lost and the counts still sum', () => {
   const cards = [
     row('Atraxa, Grand Unifier', 'Legendary Creature — Phyrexian Angel', { commander: true }),
     row('Llanowar Elves', 'Creature — Elf Druid', { quantity: 4 }),
@@ -446,8 +446,8 @@ describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', ()
     mainboard_count: 1 + 4 + 2 + 1 + 2 + 1 + 1 + 10,
     sideboard_count: 2 + 1,
     distinct_cards: 10,
-    created_at: '2026-08-02T00:00:00Z',
-    updated_at: '2026-08-02T00:00:00Z',
+    created_at: '2025-08-02T00:00:00Z',
+    updated_at: '2025-08-02T00:00:00Z',
     cards,
   }
 
@@ -495,7 +495,7 @@ describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', ()
     expect(other?.quantity).toBe(3)
   })
 
-  it('holds for the empty deck, which is c4-12’s state and must not be a special case', () => {
+  it('holds for the empty deck, which must not be a special case', () => {
     const boards = boardsOf([])
 
     expect(boards.mainboard).toEqual([])

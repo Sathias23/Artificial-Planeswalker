@@ -72,7 +72,7 @@ const MIXED = [
 const captions = () =>
   [...document.querySelectorAll('.card-tile-caption')].map((node) => node.textContent)
 
-describe('the grid renders the store’s answer, not a second one (AC 15)', () => {
+describe('the grid renders the store’s answer, not a second one', () => {
   it('draws the commander first, then the mainboard in TYPE_GROUPS order', () => {
     render(<CardGrid boards={boardsOf(MIXED)} />)
 
@@ -114,13 +114,13 @@ describe('the grid renders the store’s answer, not a second one (AC 15)', () =
   })
 })
 
-describe('the three boards each have a home or a named owner (AC 14)', () => {
+describe('the three boards each have a home or a named owner', () => {
   it('renders the commander — 16 of 40 real decks have one', () => {
     render(<CardGrid boards={boardsOf(MIXED)} />)
     expect(screen.getByText('Atraxa, Grand Unifier')).toBeVisible()
   })
 
-  it('does NOT render the sideboard — 41 rows across 5 real decks, and c4-7 owns them', () => {
+  it('does NOT render the sideboard — 41 rows across 5 real decks, and the deck list owns them', () => {
     // The boundary, asserted rather than left to "not mentioned". The art grid is the DECK; the
     // sideboard mixed in would inflate every count a reader takes off the screen. The deck list
     // draws it, from the same `boards.sideboard` this component ignores.
@@ -144,7 +144,7 @@ describe('the three boards each have a home or a named owner (AC 14)', () => {
   })
 })
 
-describe('the structure (AC 13, AC 16)', () => {
+describe('the structure', () => {
   it('is a real ul/li, not a div soup and not a painted role', () => {
     const { container } = render(<CardGrid boards={boardsOf(MIXED)} />)
 
@@ -159,7 +159,7 @@ describe('the structure (AC 13, AC 16)', () => {
     }
   })
 
-  it('sits in an UNTITLED panel, which invents no name (Q6)', () => {
+  it('sits in an UNTITLED panel, which invents no name', () => {
     render(<CardGrid boards={boardsOf(MIXED)} />)
     // An unnamed `<section>` has no role at all, which is right — a generic
     // invented title would add an identical entry to every landmark list. The counts a reader
@@ -177,15 +177,9 @@ describe('the structure (AC 13, AC 16)', () => {
   })
 })
 
-describe('an empty deck reaches this story, and c4-12’s copy landed here (c4-12, AC 1, AC 3)', () => {
-  // ⚠️ THIS DESCRIBE WAS REWRITTEN, NOT ADDED, AND THE REWRITE IS THE POINT. Its title used to be
-  // *"it must not invent c4-12's copy (Q10)"* and its body asserted `container.textContent === ''`
-  // — a correct claim for c4-4, and FALSE the moment c4-12 landed. The story that lands a promised
-  // line has to retire the test that promised it, in the same commit; leaving both would have made
-  // this file red, and deleting it would have dropped the only per-component coverage of the state.
-  //
-  // ⚠️ THE FIXTURE IS SYNTHETIC AND DECLARED SO IN PLACE (AC 31). `boardsOf([])` models a deck
-  // with zero rows, and measured 2026-08-07 against the shipped database **no such deck exists**:
+describe('an empty deck reaches the grid, and the empty-deck line renders here', () => {
+  // ⚠️ THE FIXTURE IS SYNTHETIC AND DECLARED SO IN PLACE. `boardsOf([])` models a deck with zero
+  // rows, and measured against the shipped database **no such deck exists**:
   // 0 of 42 decks have zero `deck_cards` rows, and the smallest real deck is a 1-card one. It is
   // nonetheless the NORMAL state at creation — `create_deck` inserts a deck and writes no card —
   // so this is a synthetic fixture for a reachable state, not an invented one.
@@ -220,7 +214,7 @@ describe('an empty deck reaches this story, and c4-12’s copy landed here (c4-1
     expect(screen.queryByRole('heading')).toBeNull()
   })
 
-  it('renders NO line for a deck that has only a sideboard — the named residue (Q1)', () => {
+  it('renders NO line for a deck that has only a sideboard — the named residue', () => {
     // THE STATE NO ARTEFACT DESCRIBES, PINNED SO THE CHOICE IS VISIBLE. `deckIsEmpty` is
     // sideboard-INCLUSIVE (because "This deck is empty" would be false copy over a deck with
     // cards in it), so a sideboard-only deck is not empty — and this grid draws commander +

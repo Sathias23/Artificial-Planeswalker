@@ -111,8 +111,8 @@ const settleDeck = (rows: DeckCardSummary[]) => {
     mainboard_count: rows.length,
     sideboard_count: 0,
     distinct_cards: rows.length,
-    created_at: '2026-07-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
+    created_at: '2025-07-01T00:00:00Z',
+    updated_at: '2025-08-01T00:00:00Z',
     cards: rows,
   }
   useDeckStore.setState({ deck: { status: 'deck', detail, boards: boardsOfDeck(detail) } })
@@ -514,7 +514,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(screen.getByRole('button', { name: 'Card c-group-1' })).toBe(tiles[0])
   })
 
-  it('REFUSES every verb on an unknown tile through the store, and stays a button (Q3)', () => {
+  it('REFUSES every verb on an unknown tile through the store, and stays a button', () => {
     seedUnknown('c-group-1')
     seedHydrated('c-group-2')
     const { container } = render(<GroupsView kind="groups" items={[GROUP]} />)
@@ -537,7 +537,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(useInspectionStore.getState().hoveredId).toBe('c-group-1')
   })
 
-  it('releases a stale hover, focus AND pin when an entry settles to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when an entry settles to unknown', () => {
     const { container } = render(<GroupsView kind="groups" items={[GROUP]} />)
     const [first] = tilesOf(sectionAt(container, 0))
 

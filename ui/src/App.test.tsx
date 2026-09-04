@@ -148,7 +148,7 @@ const drop = () => driveSocket(() => socket().onclose?.())
 const push = (kind: string, payload: Record<string, unknown> = {}, id = `id-${kind}`) =>
   driveSocket(() =>
     socket().onmessage?.({
-      data: JSON.stringify({ kind, id, ts: '2026-08-08T00:00:00Z', payload }),
+      data: JSON.stringify({ kind, id, ts: '2025-08-08T00:00:00Z', payload }),
     }),
   )
 
@@ -235,8 +235,8 @@ const deckDetail = (overrides: Record<string, unknown> = {}) =>
       mainboard_count: 100,
       sideboard_count: 0,
       distinct_cards: 2,
-      created_at: '2026-07-01T00:00:00Z',
-      updated_at: '2026-08-01T00:00:00Z',
+      created_at: '2025-07-01T00:00:00Z',
+      updated_at: '2025-08-01T00:00:00Z',
       cards: [
         // The real printing's real values: `{G}`, cmc 1. (The corpus
         // also holds a TOKEN `Llanowar Elves` with a blank cost and the type line
@@ -504,7 +504,7 @@ describe('App', () => {
  * stylesheet, and `StatePanel.tsx` contains no `<img>`, `<svg>`, icon or spinner — both of which
  * are source-read gates that jsdom could not improve on, since jsdom applies no stylesheet at all.
  */
-describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () => {
+describe('the panel is chosen by the wire, not by a constant', () => {
   it('greets a fresh install with the database panel, not an error page', async () => {
     render(<App />)
     await settle()
@@ -535,7 +535,7 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
     expect(screen.getByRole('region', { name: 'The companion hit a bug.' })).toBeVisible()
   })
 
-  it('does not crash on a body the contract never promised (AC 8, AC 9)', async () => {
+  it('does not crash on a body the contract never promised', async () => {
     // The end-to-end half of `panel.test.ts`: an out-of-union token delivered as untyped JSON,
     // all the way to a render. `STATE_COPY[state]` has no fallback branch, so without the
     // boundary's clamp this render throws and the app shows a blank screen — the error page the
@@ -547,7 +547,7 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
     expect(screen.getByRole('region', { name: 'The companion hit a bug.' })).toBeVisible()
   })
 
-  it('does not crash on a 503 with no body at all (AC 9)', async () => {
+  it('does not crash on a 503 with no body at all', async () => {
     answering(new Response(null, { status: 503 }))
     render(<App />)
     await settle()
@@ -555,7 +555,7 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
     expect(screen.getByRole('region', { name: 'The companion hit a bug.' })).toBeVisible()
   })
 
-  it('does not crash when the backend cannot be reached at all (AC 9)', async () => {
+  it('does not crash when the backend cannot be reached at all', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
@@ -589,7 +589,7 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
     ],
   ]
   it.each(STATE_PANEL_ARMS)(
-    'leaves NO analysis panel and NO analysis row behind the %s panel (c4-8/c4-9, AC 3)',
+    'leaves NO analysis panel and NO analysis row behind the %s panel',
     async (_label, arrange) => {
       arrange()
       render(<App />)
@@ -607,7 +607,7 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
   )
 
   it.each(STATE_PANEL_ARMS)(
-    'issues NO format-check request behind the %s panel (c4-10, AC 3, AC 10)',
+    'issues NO format-check request behind the %s panel',
     async (_label, arrange) => {
       // ABSENCE OF THE PANEL IS NOT ABSENCE OF THE REQUEST, and only one of the two is visible in
       // the DOM. The effect that drives the read is keyed on the deck id, so a non-deck surface
@@ -707,7 +707,7 @@ describe('nothing paints until the active-deck read settles', () => {
  * unmounted and re-rendered between the two responses would pass while FR-22 was false, and that
  * is the shape to guard against: *the wiring is right and nothing asserts the wiring*.
  */
-describe('the app comes alive on its own (AC 4, FR-22)', () => {
+describe('the app comes alive on its own (FR-22)', () => {
   it('transitions from the database panel to the deck list with no refresh', async () => {
     const fetchMock = answering(
       refusal('database_not_initialized', 503),
@@ -757,7 +757,7 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     expect(within(panel).queryAllByRole('button')).toHaveLength(0)
   })
 
-  it('is the WELCOME surface — hero above the panel, single track, no story key (17.5)', async () => {
+  it('is the WELCOME surface — hero above the panel, single track, no story key', async () => {
     booting(activeDeck(null))
     answering(decks('Boros Aggro', 'Dimir Mill'))
 
@@ -820,7 +820,7 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
       },
     ],
   ] as [string, () => void, (() => void | Promise<void>)?][])(
-    'renders NO hero and no image behind the %s panel (17.5)',
+    'renders NO hero and no image behind the %s panel',
     async (_label, arrange, afterMount) => {
       arrange()
       render(<App />)
@@ -834,7 +834,7 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     },
   )
 
-  it('replaces the Welcome with the two-column deck surface when the agent sets a deck (17.5)', async () => {
+  it('replaces the Welcome with the two-column deck surface when the agent sets a deck', async () => {
     // Boot with NO deck — the Welcome is on the glass — then the agent sets one and the socket
     // carries it. The same `deck_changed` recipe the stalled-recovery test drives.
     booting(activeDeck(null))
@@ -859,7 +859,7 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     ).toBeVisible()
   })
 
-  it('renders an empty deck list as nothing extra — the ordinary fresh answer (AC 5)', async () => {
+  it('renders an empty deck list as nothing extra — the ordinary fresh answer', async () => {
     answering(refusal('database_not_initialized', 503), decks())
 
     render(<App />)
@@ -871,7 +871,7 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     expect(within(panel).queryAllByRole('list')).toHaveLength(0)
   })
 
-  it('stops polling once the database is there — the map says so (AC 7)', async () => {
+  it('stops polling once the database is there — the map says so', async () => {
     const fetchMock = answering(decks('Boros Aggro'))
 
     render(<App />)
@@ -905,8 +905,8 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
  * block above is written: ONE mount, real `fetch`, no remount between the two answers. A test
  * that rendered the store's output directly would prove the store, not the boot.
  */
-describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', () => {
-  it('asks both routes, in order, and renders the deck name in the h1 (AC 19)', async () => {
+describe('a cold open finds the deck and puts it on the glass (FR-07)', () => {
+  it('asks both routes, in order, and renders the deck name in the h1', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -928,7 +928,7 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(screen.queryByRole('heading', { level: 1, name: 'Artificial Planeswalker' })).toBeNull()
   })
 
-  it('fills the header badges with the format and the size (AC 20)', async () => {
+  it('fills the header badges with the format and the size', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail({ sideboard_count: 15 }))
     answering(decks())
 
@@ -959,7 +959,7 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(banner.textContent).not.toContain('Format and size badges land here')
   })
 
-  it('displaces the system panel, and says so honestly in the left column (AC 6)', async () => {
+  it('displaces the system panel, and says so honestly in the left column', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -1078,14 +1078,13 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // widths are the eye-check's, at 1440px and at UX-DR8's ~1100px floor.
   })
 
-  it('empties the analysis row on a land-only deck — the precondition c4-9 hides it on (Q10)', async () => {
-    // c4-8's REVIEW FINDING, AND c4-9's ANSWER TO IT. `<AnalysisRow>` is unconditional in the
-    // deck arm, so when BOTH children render null — a land-only deck has no curve and no
-    // coloured pips — the row's empty div remains a real flex child of `.app-shell-column`, and
-    // the column's 24px panel gap still applied beneath the grid. That was ACCEPTED posture at
-    // c4-8, because gating the row in `App.tsx` would have needed the curve's total there: a
-    // second derivation of what `curve.ts` owns, for a state NO corpus deck can produce (all 40
-    // have a non-empty curve AND at least 2 pips).
+  it('empties the analysis row on a land-only deck', async () => {
+    // `<AnalysisRow>` is unconditional in the deck arm, so when BOTH children render null — a
+    // land-only deck has no curve and no coloured pips — the row's empty div remains a real flex
+    // child of `.app-shell-column`, and the column's 24px panel gap would still apply beneath the
+    // grid. Gating the row in `App.tsx` would need the curve's total there: a second derivation
+    // of what `curve.ts` owns, for a state NO corpus deck can produce (all 40 have a non-empty
+    // curve AND at least 2 pips).
     //
     // `.analysis-row:empty { display: none }` closes it without that derivation: it lets the
     // row answer for itself. What this test can assert in jsdom is the DOM half — the row is
@@ -1114,7 +1113,7 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(emptyRow!.childNodes).toHaveLength(0)
   })
 
-  it('puts the deck on the glass as card faces (c4-4, AC 16, FR-19)', async () => {
+  it('puts the deck on the glass as card faces (FR-19)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -1205,7 +1204,7 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(images.filter((img) => img.getAttribute('src')?.includes('size=large'))).toHaveLength(1)
   })
 
-  it('seeds the card cache HYDRATED and asks the card route for nothing (AC 17)', async () => {
+  it('seeds the card cache HYDRATED and asks the card route for nothing', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks())
 
@@ -1236,7 +1235,7 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(fetchMock).toHaveBeenCalledTimes(5)
   })
 
-  it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {
+  it('shows the no-active-deck panel when there is genuinely no deck', async () => {
     booting(activeDeck(null))
     answering(decks('Boros Aggro'))
 
@@ -1251,8 +1250,8 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
   })
 })
 
-describe('a deck refusal reaches the glass as a PANEL, never as a status code (AC 8, 9, 11)', () => {
-  it('clears a 404 to the no-active-deck state, with the poll’s names (FR-11, AC 8)', async () => {
+describe('a deck refusal reaches the glass as a PANEL, never as a status code', () => {
+  it('clears a 404 to the no-active-deck state, with the poll’s names (FR-11)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
     answering(decks('Boros Aggro', 'Dimir Mill'))
 
@@ -1268,7 +1267,7 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
   it.each([
     ['database_not_initialized', 'Card database not set up yet.'],
     ['database_unavailable', 'Card database is updating.'],
-  ])('turns a 503 %s on the DECK read into its own panel (AD-16, AC 9)', async (reason, name) => {
+  ])('turns a 503 %s on the DECK read into its own panel (AD-16)', async (reason, name) => {
     // Two 503s, two panels, chosen from the TOKEN — and the poll is deliberately answering `200`
     // underneath, so this can only be the deck path's decision. That is what makes the assertion
     // non-vacuous: with the poll agreeing, it would pass no matter which route decided.
@@ -1301,7 +1300,7 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     expect(screen.queryByRole('region', { name: 'Format check' })).toBeNull()
   })
 
-  it('answers a 400 on the deck read with no-active-deck, not the bug panel (Q5, AC 11)', async () => {
+  it('answers a 400 on the deck read with no-active-deck, not the bug panel', async () => {
     booting(activeDeck('an id the agent typed'), refusal('invalid_request', 400))
     answering(decks('Boros Aggro'))
 
@@ -1312,11 +1311,11 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
   })
 
-  it('leaves no ghost deck in the store after clearing — probe (d), at the root', async () => {
-    // **The only honest home for this claim**, and a probe is why it moved here. The same
-    // assertion in `deck.test.ts` supplied its OWN `onUpdate` and therefore never touched the
-    // writer `useDeckState` actually uses — two successive probes that broke production's writer
-    // both stayed green there. Rendering `App` is what puts the production hook, the production
+  it('leaves no ghost deck in the store after clearing, at the root', async () => {
+    // **The only honest home for this claim.** The same
+    // assertion in `deck.test.ts` supplies its OWN `onUpdate` and therefore never touches the
+    // writer `useDeckState` actually uses — a broken production writer stays green there.
+    // Rendering `App` is what puts the production hook, the production
     // effect and the production writer in the path.
     useDeckStore.setState({
       deck: {
@@ -1331,8 +1330,8 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
           mainboard_count: 1,
           sideboard_count: 0,
           distinct_cards: 1,
-          created_at: '2026-07-01T00:00:00Z',
-          updated_at: '2026-08-01T00:00:00Z',
+          created_at: '2025-07-01T00:00:00Z',
+          updated_at: '2025-08-01T00:00:00Z',
           cards: [],
         },
         boards: {
@@ -1359,7 +1358,7 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     expect(screen.queryByRole('heading', { level: 1, name: 'Ghost Deck' })).toBeNull()
   })
 
-  it('never renders a bare status code anywhere — probe (f)', async () => {
+  it('never renders a bare status code anywhere', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
     answering(decks())
 
@@ -1463,7 +1462,7 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
   })
 })
 
-describe('the boot does not poll, whatever the backend says (AC 12, Q6)', () => {
+describe('the boot does not poll, whatever the backend says', () => {
   it('issues ONE deck request in ten minutes against a forever-503 id', async () => {
     // The 503-outranks-400 trap, at the root: a backend with no database answers
     // `database_not_initialized` to an id that could NEVER succeed, and that token is one
@@ -1515,7 +1514,7 @@ describe('the boot does not poll, whatever the backend says (AC 12, Q6)', () => 
  * written into `App.tsx` and `ui/README.md` where the next surface's author will read it, and
  * the second test below is what makes it a gate rather than a note.
  */
-describe('the skip link is present exactly when there is something to skip (c4-11, AC 4)', () => {
+describe('the skip link is present exactly when there is something to skip', () => {
   const SKIP = 'Skip past the deck grid'
 
   it('is on the glass, and FIRST, for a loaded deck with cards', async () => {
@@ -1574,8 +1573,8 @@ describe('the skip link is present exactly when there is something to skip (c4-1
     })
   }
 
-  it('is withdrawn behind the disconnected panel — driven by the REAL backoff (c5-6, AC 21)', async () => {
-    // The conversion AC 21 asks for. Nothing here writes a store: the backend simply never
+  it('is withdrawn behind the disconnected panel — driven by the REAL backoff', async () => {
+    // Nothing here writes a store: the backend simply never
     // answers the mint, the loop fails on its own schedule, and sixty seconds later the two gates
     // agree. What is being asserted is unchanged — the link is withdrawn behind a state panel —
     // but it is now asserted about the panel the shipped mechanism produces.
@@ -1605,7 +1604,7 @@ describe('the skip link is present exactly when there is something to skip (c4-1
   const STORE_DRIVEN_ARMS = ['database-updating-stalled'] as const
 
   for (const panel of STORE_DRIVEN_ARMS) {
-    it(`is withdrawn behind the ${panel} panel (store-driven — its wire trigger is not this story's)`, async () => {
+    it(`is withdrawn behind the ${panel} panel (store-driven — its trigger is a timer this suite does not own)`, async () => {
       // No deck on the glass, which is the state these panels can actually occupy: `surfaceOf`
       // gives a LOADED deck priority over the system panel (deck.ts:426 — the deck-wins posture),
       // so the left column shows these arms only from the no-deck state. Driven through
@@ -1628,8 +1627,8 @@ describe('the skip link is present exactly when there is something to skip (c4-1
     })
   }
 
-  it('is withdrawn on an EMPTY deck — the case UX-DR31 does not cover (Q3, c4-12)', async () => {
-    // The gap Q3 exists to close. An empty deck renders NO state panel, so UX-DR31's withdrawal
+  it('is withdrawn on an EMPTY deck — the case UX-DR31 does not cover', async () => {
+    // An empty deck renders NO state panel, so UX-DR31's withdrawal
     // trigger is absent — and its grid is not populated, so the presence trigger is absent too.
     // It falls between both branches of the written rule.
     //
@@ -1684,7 +1683,7 @@ describe('the skip link is present exactly when there is something to skip (c4-1
     expect(screen.getByRole('button', { name: SKIP })).toBeInTheDocument()
   })
 
-  it('moves focus into the right column when activated, end to end (AC 5)', async () => {
+  it('moves focus into the right column when activated, end to end', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -1714,7 +1713,7 @@ describe('the skip link is present exactly when there is something to skip (c4-1
   })
 })
 
-describe('the attribution is on the surface (c2-10, AC 15)', () => {
+describe('the attribution is on the surface', () => {
   it('renders inside the contentinfo landmark, by role and by text', () => {
     render(<App />)
 
@@ -1735,7 +1734,7 @@ describe('the attribution is on the surface (c2-10, AC 15)', () => {
     ])
   })
 
-  it('leaves no surface without it — the slot is filled, not merely fillable (Q3)', () => {
+  it('leaves no surface without it — the slot is filled, not merely fillable', () => {
     render(<App />)
 
     // The structural half. The shell renders a PLACEHOLDER whenever `footer` is empty, so a
@@ -1746,9 +1745,9 @@ describe('the attribution is on the surface (c2-10, AC 15)', () => {
     expect(screen.queryByText(/Scryfall and Fan Content attribution lands here/)).toBeNull()
   })
 
-  it('is still the LAST pair of Tab stops, with the skip link first (c4-11, AC 11)', async () => {
-    // THE CORRIDOR, END TO END, over a real rendered deck (AC 11). Asserted as DOCUMENT ORDER —
-    // never as a `tabindex` value and never through `userEvent.tab()` (Q11: jsdom implements no
+  it('is still the LAST pair of Tab stops, with the skip link first', async () => {
+    // THE CORRIDOR, END TO END, over a real rendered deck. Asserted as DOCUMENT ORDER —
+    // never as a `tabindex` value and never through `userEvent.tab()` (jsdom implements no
     // sequential focus navigation, so that call would walk user-event's own heuristic list rather
     // than this app's DOM). `CardTile.test.tsx:595-605` set this precedent.
     booting(
@@ -1862,7 +1861,7 @@ const focusablesNow = () => [
   ),
 ]
 
-describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 11)', () => {
+describe('the corridor numbers of §A are pinned in the suite', () => {
   const atraxaShape = () => [
     {
       ...deckCard(
@@ -1946,7 +1945,7 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     }
   })
 
-  it('pins the intra-panel order — unpin, then flip, then oracle — while a flippable card is pinned (AC 11)', async () => {
+  it('pins the intra-panel order — unpin, then flip, then oracle — while a flippable card is pinned', async () => {
     booting(
       activeDeck(ATRAXA_DECK_ID),
       deckDetail({ cards: atraxaShape(), mainboard_count: 100, distinct_cards: 99 }),
@@ -2011,7 +2010,7 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
   })
 })
 
-describe('the jsdom phantom-banner count (c4-11, AC 25)', () => {
+describe('the jsdom phantom-banner count', () => {
   it('holds at SIX banners in jsdom on a loaded deck — asserted, not assumed', async () => {
     // aria-query maps `<header>` to `banner` UNCONDITIONALLY, so every titled Panel's `<header>`
     // reads as a banner here while a real browser scopes `banner` to the `<body>`-level header
@@ -2030,7 +2029,7 @@ describe('the jsdom phantom-banner count (c4-11, AC 25)', () => {
   })
 })
 
-describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
+describe('the empty deck', () => {
   /**
    * ⚠️ **THIS FIXTURE IS SYNTHETIC, AND IT HAS TO BE.**
    *
@@ -2052,7 +2051,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
       deckDetail({ cards: [], mainboard_count: 0, distinct_cards: 0 }),
     )
 
-  it('shows the line INSTEAD OF the list, inside the untitled panel (AC 1, AC 3)', async () => {
+  it('shows the line INSTEAD OF the list, inside the untitled panel', async () => {
     emptyDeck()
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2075,7 +2074,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     expect(document.querySelectorAll('.card-tile')).toHaveLength(0)
   })
 
-  it('renders the header exactly as a full deck does, including a 0 maindeck badge (AC 5)', async () => {
+  it('renders the header exactly as a full deck does, including a 0 maindeck badge', async () => {
     emptyDeck()
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2104,7 +2103,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     expect(screen.getByText('brawl')).toBeVisible()
   })
 
-  it('never lets the left slot fall through to the shell placeholder (AC 4)', async () => {
+  it('never lets the left slot fall through to the shell placeholder', async () => {
     emptyDeck()
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2130,7 +2129,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     expect(screen.getByRole('button', { name: /^Suggestions/ })).toBeTruthy()
   })
 
-  it('hides all three analysis panels — and only ONE of them by this story gate (AC 7-9)', async () => {
+  it('hides all three analysis panels — and only ONE of them by the emptiness gate', async () => {
     emptyDeck()
     const mock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2157,8 +2156,8 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     expect(deckDetailCalls(mock)).toBe(1)
   })
 
-  it('proves the curve and colour hide on THEIR OWN totals, not on a card count (AC 8)', async () => {
-    // THE DISCRIMINATOR, AND WITHOUT IT AC 8 IS UNFALSIFIABLE. On an empty deck "zero cards" and
+  it('proves the curve and colour hide on THEIR OWN totals, not on a card count', async () => {
+    // THE DISCRIMINATOR, AND WITHOUT IT THE CLAIM IS UNFALSIFIABLE. On an empty deck "zero cards" and
     // "zero curve total" coincide, so absence there is consistent with EITHER mechanism. A
     // LAND-ONLY deck separates them: it HAS cards (tiles render, the deck list has rows, the skip
     // link is present) and still has nothing for either panel to say, because both exclude lands.
@@ -2186,7 +2185,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     expect(screen.queryByText(EMPTY_DECK_LINE)).toBeNull()
   })
 
-  it('keeps the card detail and deck list panels — the recorded artefact gap (AC 13)', async () => {
+  it('keeps the card detail and deck list panels — the recorded artefact gap', async () => {
     emptyDeck()
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2206,7 +2205,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     expect(document.querySelector('.deck-row')).toBeNull()
   })
 
-  it('adds no live region anywhere, and reads as THREE banners in jsdom (AC 14)', async () => {
+  it('adds no live region anywhere, and reads as THREE banners in jsdom', async () => {
     emptyDeck()
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2258,7 +2257,7 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
   })
 })
 
-describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () => {
+describe('never blank, defined operationally', () => {
   /**
    * **THE DEFINITION, BECAUSE NO ARTEFACT SUPPLIES ONE.**
    *
@@ -2399,7 +2398,7 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
     }
   })
 
-  it('holds on the EMPTY deck — the state this story creates (AC 23)', async () => {
+  it('holds on the EMPTY deck', async () => {
     // All three counts 0 together — the real wire body, matching the empty-deck describe's own
     // `emptyDeck()` helper rather than leaving the builder's `distinct_cards: 2` beside
     // `cards: []`.
@@ -2420,10 +2419,10 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
     expect(slots().left).not.toContain('The card-art grid lands here')
   })
 
-  it('holds through a refetch — the half this criterion was handed to c7-4 by name for', async () => {
-    // The SCOPE note above says it in advance: "the half UX-DR36 is really about is the refetch
-    // teardown — a surface that empties itself while re-reading", and that path did not exist
-    // until c7-3 built the refetch. This drives it at its most tempting moment: the deck read is
+  it('holds through a refetch — the half UX-DR36 is really about', async () => {
+    // The SCOPE note above: "the half UX-DR36 is really about is the refetch
+    // teardown — a surface that empties itself while re-reading". This drives it at its most
+    // tempting moment: the deck read is
     // WITHHELD mid-flight, and the populated view must carry every slot the whole way — never a
     // blank, never a skeleton — with only the header's updating marker saying anything changed.
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
@@ -2483,7 +2482,7 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
  *
  * The missing signal was a socket. Each `it` below is one of those rows, driven end to end.
  */
-describe('the page reconnects on its own (c5-6)', () => {
+describe('the page reconnects on its own', () => {
   const DISCONNECTED = 'Lost the companion backend.'
 
   /** A backend that is not there: every route, not just the socket. That is what a restart is. */
@@ -2493,7 +2492,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     return fetchMock as unknown as ReturnType<typeof answering>
   }
 
-  it('opens exactly ONE socket per tab, built from the page authority (AC 1)', async () => {
+  it('opens exactly ONE socket per tab, built from the page authority', async () => {
     render(<App />)
     await settle()
     await advance(10 * 60_000)
@@ -2505,7 +2504,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(sockets[0].url).toContain('ticket=ticket-1')
   })
 
-  it('mints a FRESH ticket for every attempt, and never re-presents one (AC 3)', async () => {
+  it('mints a FRESH ticket for every attempt, and never re-presents one', async () => {
     render(<App />)
     await settle()
     await drop()
@@ -2519,9 +2518,9 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(sockets[1].url).toContain('ticket=ticket-2')
   })
 
-  // ==================== dw:3451 + dw:4930 — THE FIRST-LOAD DEFECT ======================
-  it('shows the DISCONNECTED panel on a first load with no backend, not "No deck on the glass" (AC 14)', async () => {
-    // The ledger's own words for what shipped before this story: the copy is *actionable and
+  // ==================== THE FIRST-LOAD DEFECT ==========================================
+  it('shows the DISCONNECTED panel on a first load with no backend, not "No deck on the glass"', async () => {
+    // Without the socket the copy is *actionable and
     // wrong* — it tells the reader to ask the agent to set a deck, about a backend that is not
     // running.
     backendDown()
@@ -2541,7 +2540,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(screen.queryByRole('region', { name: 'No deck on the glass.' })).toBeNull()
   })
 
-  it('KEEPS RETRYING behind the panel, and the panel is not a stop (AC 8)', async () => {
+  it('KEEPS RETRYING behind the panel, and the panel is not a stop', async () => {
     const fetchMock = backendDown()
 
     render(<App />)
@@ -2558,7 +2557,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(callsTo(fetchMock, '/api/session') - mints).toBe(20)
   })
 
-  it('comes back WITHOUT A RELOAD when the backend returns (AC 9, AC 5)', async () => {
+  it('comes back WITHOUT A RELOAD when the backend returns', async () => {
     // The family's whole point, and the row every other entry was waiting on.
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     backendDown()
@@ -2580,7 +2579,7 @@ describe('the page reconnects on its own (c5-6)', () => {
   })
 
   // ==================== UX-DR35 — THE DECK STAYS UP WHILE RECONNECTING =================
-  it('leaves a loaded deck on the glass for the whole pre-exhaustion window (AC 7)', async () => {
+  it('leaves a loaded deck on the glass for the whole pre-exhaustion window', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2607,7 +2606,7 @@ describe('the page reconnects on its own (c5-6)', () => {
   })
 
   // ==================== FR-07 — THE ACTIVE DECK DIED WITH THE PROCESS ==================
-  it('lands on no-active-deck after a restart, as a state and not as an error (AC 6)', async () => {
+  it('lands on no-active-deck after a restart, as a state and not as an error', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2631,8 +2630,8 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(screen.queryByRole('heading', { level: 1, name: /Atraxa/ })).toBeNull()
   })
 
-  // ==================== dw:3756 — A FRAME ARRIVES AND SOMETHING LISTENS ================
-  it('switches decks on active_deck_changed — the event that had no listener (AC 11)', async () => {
+  // ==================== A FRAME ARRIVES AND SOMETHING LISTENS ==========================
+  it('switches decks on active_deck_changed — the event that had no listener', async () => {
     booting(activeDeck(null))
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2653,7 +2652,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     // `contracts.py`'s "never refetch the deck you are leaving" structural here.
   })
 
-  it('costs one idempotent refetch per duplicate active_deck_changed (AC 12)', async () => {
+  it('costs one idempotent refetch per duplicate active_deck_changed', async () => {
     // The backend fires on EVERY `PUT`, including a redundant re-set of the deck that is already
     // active (`ws.py:409-444`). Three frames, three refetches, one screen — not a crash, not a
     // loop, not a growing queue.
@@ -2681,7 +2680,7 @@ describe('the page reconnects on its own (c5-6)', () => {
   // refetch describe below. Unknown-kind/default-arm coverage lives in the malformed-frame test
   // underneath.
 
-  it('ignores a malformed frame without closing the socket or the app (AC 13)', async () => {
+  it('ignores a malformed frame without closing the socket or the app', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2703,11 +2702,10 @@ describe('the page reconnects on its own (c5-6)', () => {
     ).toBeVisible()
   })
 
-  // ==================== dw:3472 + dw:3544 — THE TERMINAL STALLED PANEL =================
-  it('recovers the stalled panel when the socket says something moved (AC 15)', async () => {
-    // C3 retro R3: *"c5-6 resolves the family; it should not solve one third of it."* This is the
-    // sibling that was felt live at Block I — wire `200`, poll count moved by exactly 0 over 45 s,
-    // because `RETRIES_QUIETLY['database-updating-stalled']` is `false` and rightly so: the quiet
+  // ==================== THE TERMINAL STALLED PANEL =====================================
+  it('recovers the stalled panel when the socket says something moved', async () => {
+    // The stalled panel is terminal on its own — wire `200`, poll count moves by exactly 0 over
+    // 45 s — because `RETRIES_QUIETLY['database-updating-stalled']` is `false` and rightly so: the quiet
     // retry has already been running and has not worked. The replacement signal is the socket.
     answering(refusal('database_unavailable', 503))
 
@@ -2728,8 +2726,8 @@ describe('the page reconnects on its own (c5-6)', () => {
     ).toBeVisible()
   })
 
-  it('re-drives the poll on RECONNECT too, not only on an event (AC 15)', async () => {
-    // The other half of Q5: a reconnect restarts the poll unconditionally, because a socket
+  it('re-drives the poll on RECONNECT too, not only on an event', async () => {
+    // A reconnect restarts the poll unconditionally, because a socket
     // coming back is the strongest evidence the app gets that the process it was talking to is
     // gone. A stalled clock inherited from a process that no longer exists is not evidence.
     answering(refusal('database_unavailable', 503))
@@ -2748,8 +2746,8 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
   })
 
-  // ==================== dw:3652 — THE TERMINAL CARD ID ================================
-  it('gives an exhausted card id its attempts back on reconnect (AC 16, Q6)', async () => {
+  // ==================== THE TERMINAL CARD ID ==========================================
+  it('gives an exhausted card id its attempts back on reconnect', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2800,7 +2798,7 @@ describe('the page reconnects on its own (c5-6)', () => {
  * The `FakeSocket` + fake-timer idiom is the reconnect block's above; nothing new is
  * introduced here.
  */
-describe('the connection pill reports the real loop (c5-7)', () => {
+describe('the connection pill reports the real loop', () => {
   const DISCONNECTED = 'Lost the companion backend.'
 
   const pill = () => document.querySelector('.connection-pill')!
@@ -2813,8 +2811,8 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     return fetchMock
   }
 
-  // ==================== AC 18 — THE WALK ==============================================
-  it('walks live -> reconnecting -> down on the real backoff, and back (AC 2, AC 4, AC 18)', async () => {
+  // ==================== THE WALK ======================================================
+  it('walks live -> reconnecting -> down on the real backoff, and back', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2858,8 +2856,8 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     expect(announcement()).toContain(CONNECTION_WORDS.live)
   })
 
-  // ==================== AC 7 — THE PILL AND THE PANEL, TOGETHER ========================
-  it('renders BESIDE the Disconnected panel, not instead of it (AC 7)', async () => {
+  // ==================== THE PILL AND THE PANEL, TOGETHER ===============================
+  it('renders BESIDE the Disconnected panel, not instead of it', async () => {
     // `EXPERIENCE.md:119` writes this state as "Left column + pill" — both, simultaneously. The
     // failure it guards against is a `surfaceOf`-driven pill, which would go quiet here.
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
@@ -2874,8 +2872,8 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     expect(dotClass()).toContain('is-down')
   })
 
-  // ==================== AC 1 — EVERY SURFACE ==========================================
-  it('is present on a STATE-PANEL surface, where the left slot is not a deck at all (AC 1)', async () => {
+  // ==================== EVERY SURFACE =================================================
+  it('is present on a STATE-PANEL surface, where the left slot is not a deck at all', async () => {
     // The landmine, asserted from the outside: `App.tsx` renders `<StatePanel>` into `left` in
     // five of its six arms, so a pill mounted in the deck-only Fragment would be absent here and
     // present in every component test.
@@ -2892,7 +2890,7 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     expect(pill().textContent).toBe(CONNECTION_WORDS.live)
   })
 
-  it('is present on a COLD OPEN, before any answer has arrived at all (AC 1)', async () => {
+  it('is present on a COLD OPEN, before any answer has arrived at all', async () => {
     // The very first paint: no socket, no poll answer, no deck. `settle()` is deliberately NOT
     // awaited — this is the frame before anything resolves.
     booting(activeDeck(null))
@@ -2906,7 +2904,7 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     await settle()
   })
 
-  it('is present on an EMPTY deck, and names it (AC 1, AC 6)', async () => {
+  it('is present on an EMPTY deck, and names it', async () => {
     booting(
       activeDeck(ATRAXA_DECK_ID),
       deckDetail({ cards: [], mainboard_count: 0, sideboard_count: 0, distinct_cards: 0 }),
@@ -2921,8 +2919,8 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     expect(pill()).toHaveTextContent('Atraxa Counter Cabinet v2 (owned)')
   })
 
-  // ==================== AC 9 — THE DOM POSITION, AT THE ROOT ===========================
-  it('is the LAST Tab stop before the footer links, on a state-panel surface too (AC 9)', async () => {
+  // ==================== THE DOM POSITION, AT THE ROOT ==================================
+  it('is the LAST Tab stop before the footer links, on a state-panel surface too', async () => {
     // The corridor pins above assert this on a loaded deck. Asserted here as well because the
     // shell slot is what makes it true, and a slot is easy to move: `AppShell` renders the pill
     // between `</main>` and `<footer>` on every arm, not only the one with a deck in it.
@@ -2980,7 +2978,7 @@ describe('the connection pill reports the real loop (c5-7)', () => {
  * two-instance mount here would fake the very fan-out it claimed to prove. What each tab does
  * on receipt is exactly what this block pins.
  */
-describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, AC 4)', () => {
+describe('the glass follows the agent’s active-deck choice', () => {
   const SKIP_LINK = 'Skip past the deck grid'
   const CARD_DETAIL = 'Card detail'
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
@@ -3050,8 +3048,8 @@ describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, 
     resetDeckMemory()
   })
 
-  // ==================== AC 2 + AC 3 — THE SWITCH, AND THE DECK IT LEAVES ================
-  it('switches deck → deck, releases the old deck’s pin, and never asks for the deck it left (AC 2, AC 3)', async () => {
+  // ==================== THE SWITCH, AND THE DECK IT LEAVES ==============================
+  it('switches deck → deck, releases the old deck’s pin, and never asks for the deck it left', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks(ATRAXA_NAME, ARABELLA_NAME))
 
@@ -3108,8 +3106,8 @@ describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, 
     expect(sockets).toHaveLength(1)
   })
 
-  // ==================== AC 4 — THE DECK THE AGENT CHOSE IS ALREADY GONE =================
-  it('clears to the no-active-deck state when the deck the agent chose 404s (AC 4)', async () => {
+  // ==================== THE DECK THE AGENT CHOSE IS ALREADY GONE ========================
+  it('clears to the no-active-deck state when the deck the agent chose 404s', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks(ATRAXA_NAME, ARABELLA_NAME))
 
@@ -3165,9 +3163,9 @@ describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, 
     expect(detailReadsOf(clearPaths, ARABELLA_DECK_ID)).toBe(1)
   })
 
-  // ==================== Q2 — THE PIN THAT OUTLIVES ITS DECK, ACCEPTED AND PINNED ========
-  it('heals a pin that outlived a no-active-deck interlude instead of showing it on the next deck (AC 2, Q2)', async () => {
-    // ⚠️ THIS TEST DOCUMENTS A LATENT STATE RATHER THAN A FIX, BY RULING (Q2, Brad 2026-08-09).
+  // ==================== THE PIN THAT OUTLIVES ITS DECK, ACCEPTED AND PINNED =============
+  it('heals a pin that outlived a no-active-deck interlude instead of showing it on the next deck', async () => {
+    // ⚠️ THIS TEST DOCUMENTS A LATENT STATE RATHER THAN A FIX, deliberately.
     //
     // The release lives in `CardDetail`'s `[boards]` effect, and that effect only runs while a deck
     // surface is MOUNTED. So on the path below — pinned deck, then a fall to a state panel — the
@@ -3236,7 +3234,7 @@ describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, 
  * settle — *the wiring is right and nothing asserts the wiring* is the failure to guard
  * against. Every request-log assertion carries a why-message naming its claim.
  */
-describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)', () => {
+describe('the glass refetches on deck_changed, coalesced and latest-wins', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
 
   /** `pathsSince`/friends, re-declared from the active-deck block above — its consts are block-scoped. */
@@ -3275,8 +3273,8 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
       .getByRole('heading', { level: 2, name: 'Creatures' })
       .parentElement?.querySelector('.group-header-count')?.textContent
 
-  // ==================== AC 1 — THE MATCHING REFETCH, ONE REQUEST, EVERYTHING RECOMPUTES
-  it('refetches with ONE deck read on a matching event, and the glass recomputes from the new list (AC 1)', async () => {
+  // ==================== THE MATCHING REFETCH, ONE REQUEST, EVERYTHING RECOMPUTES
+  it('refetches with ONE deck read on a matching event, and the glass recomputes from the new list', async () => {
     const fetchMock = await bootedDeck()
     // The BEFORE state of every derived surface asserted after the refetch, so each "it moved"
     // claim below is a movement rather than a value that might always have been true: one
@@ -3304,13 +3302,10 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     await settle()
 
     const paths = pathsSince(fetchMock, marker)
-    expect(
-      activeDeckReads(paths),
-      'AC 1: a matching refetch must never ask /api/active-deck — that was the pre-c7-3 shape',
-    ).toBe(0)
+    expect(activeDeckReads(paths), 'a matching refetch must never ask /api/active-deck').toBe(0)
     expect(
       detailReadsOf(paths, ATRAXA_DECK_ID),
-      'AC 1: exactly one GET /api/deck/{id} per handled event',
+      'exactly one GET /api/deck/{id} per handled event',
     ).toBe(1)
 
     // The new decklist is live everywhere the old one was — five derived surfaces,
@@ -3333,20 +3328,17 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     expect(useCardStore.getState().cards['id-Grizzly Bears']?.status).toBe('hydrated')
     expect(
       callsTo(fetchMock, '/api/cards/id-Grizzly%20Bears'),
-      'a refetch costs no per-card request (AC 1)',
+      'a refetch costs no per-card request',
     ).toBe(0)
-    // …and the format check re-asked, which is the amended c4-10 pin: one request per SETTLED
-    // detail. Before this story the panel stayed stale forever after an agent edit.
-    expect(
-      formatChecksOf(paths),
-      'AC 1: the format check re-runs once per settled refetch (amended c4-10 pin)',
-    ).toBe(1)
+    // …and the format check re-asked: one request per SETTLED
+    // detail. Without that the panel stays stale forever after an agent edit.
+    expect(formatChecksOf(paths), 'the format check re-runs once per settled refetch').toBe(1)
     // One socket throughout: a refetch is a request, never a reconnect.
     expect(sockets).toHaveLength(1)
   })
 
-  // ==================== AC 1 — THE DECK-AGNOSTIC FOLD, ALL FOUR SPELLINGS ==============
-  it('treats a payload-less, empty, null and blank deck_id all as "refetch the active deck" (AC 1)', async () => {
+  // ==================== THE DECK-AGNOSTIC FOLD, ALL FOUR SPELLINGS =====================
+  it('treats a payload-less, empty, null and blank deck_id all as "refetch the active deck"', async () => {
     const fetchMock = await bootedDeck()
     const marker = fetchMock.mock.calls.length
 
@@ -3359,7 +3351,7 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     await push('deck_changed', { deck_id: '   ' })
     await driveSocket(() =>
       socket().onmessage?.({
-        data: JSON.stringify({ kind: 'deck_changed', id: 'id-bare', ts: '2026-08-14T00:00:00Z' }),
+        data: JSON.stringify({ kind: 'deck_changed', id: 'id-bare', ts: '2025-08-14T00:00:00Z' }),
       }),
     )
     await settle()
@@ -3367,26 +3359,23 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     const paths = pathsSince(fetchMock, marker)
     expect(
       detailReadsOf(paths, ATRAXA_DECK_ID),
-      'AC 1: each deck-agnostic frame refetches the active deck, by its settled id',
+      'each deck-agnostic frame refetches the active deck, by its settled id',
     ).toBe(4)
     expect(
       activeDeckReads(paths),
-      'AC 1: none of them re-drives the boot — the settled detail.id is the client-side truth',
+      'none of them re-drives the boot — the settled detail.id is the client-side truth',
     ).toBe(0)
     // FOUR settles, FOUR format-check re-asks — a count where the two candidate rules
     // genuinely diverge: "one request per deck id per mount" would say 1
     // here, and "one per settled detail" says 4. (Sequential frames, so no coalescing folds
     // them: each push's refetch settles before the next frame arrives.)
-    expect(
-      formatChecksOf(paths),
-      'one format-check re-ask per settled refetch (amended c4-10 pin)',
-    ).toBe(4)
+    expect(formatChecksOf(paths), 'one format-check re-ask per settled refetch').toBe(4)
   })
 
-  it('trims a padded deck_id before the match — whitespace must not read as a different deck (AC 1)', async () => {
-    // The review's asymmetry finding: a BLANK id folded to null while a PADDED copy of the
-    // settled id passed through raw, failed the verbatim `detail.id` comparison, and was
-    // silently a "different deck" — a missed refresh with no recovery signal. The fold now
+  it('trims a padded deck_id before the match — whitespace must not read as a different deck', async () => {
+    // The asymmetry to guard: a BLANK id folds to null, so a PADDED copy of the
+    // settled id passed through raw would fail the verbatim `detail.id` comparison and be
+    // silently a "different deck" — a missed refresh with no recovery signal. The fold
     // trims, so padding is spelling, not identity.
     const fetchMock = await bootedDeck()
     const marker = fetchMock.mock.calls.length
@@ -3397,13 +3386,13 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     const paths = pathsSince(fetchMock, marker)
     expect(
       detailReadsOf(paths, ATRAXA_DECK_ID),
-      'AC 1: a padded copy of the settled id is the SAME deck — one refetch',
+      'a padded copy of the settled id is the SAME deck — one refetch',
     ).toBe(1)
-    expect(activeDeckReads(paths), 'AC 1: …a refetch, not a re-drive').toBe(0)
+    expect(activeDeckReads(paths), '…a refetch, not a re-drive').toBe(0)
   })
 
-  // ==================== AC 2 — A DIFFERENT DECK'S EVENT ================================
-  it('does not touch the active deck for a different deck’s event, but still restarts a stopped poll (AC 2)', async () => {
+  // ==================== A DIFFERENT DECK'S EVENT =======================================
+  it('does not touch the active deck for a different deck’s event, but still restarts a stopped poll', async () => {
     const fetchMock = await bootedDeck()
     // The poll stopped on landing: `RETRIES_QUIETLY['no-active-deck']` is false, so a healthy
     // idle tab polls no further — which is what makes the restart below observable at all.
@@ -3415,11 +3404,11 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     const paths = pathsSince(fetchMock, marker)
     expect(
       detailReadsOf(paths, ATRAXA_DECK_ID),
-      'AC 2: a different deck’s event must not refetch the deck on the glass',
+      'a different deck’s event must not refetch the deck on the glass',
     ).toBe(0)
     expect(
       activeDeckReads(paths),
-      'AC 2: nor re-drive the boot — the mismatch is adjudicated against the settled detail.id',
+      'nor re-drive the boot — the mismatch is adjudicated against the settled detail.id',
     ).toBe(0)
     expect(
       paths.filter((path) => path.includes('a-deck-this-tab-is-not-showing')),
@@ -3427,14 +3416,14 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     ).toEqual([])
     expect(
       decksPolls(paths),
-      'AC 2: the stopped-poll restart still runs — the deck list may refresh regardless',
+      'the stopped-poll restart still runs — the deck list may refresh regardless',
     ).toBe(1)
     // The deck stayed put through all of it.
     expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
   })
 
-  // ==================== AC 4 — THE 404 CLEAR, PRESERVED ================================
-  it('clears to no-active-deck when the refetch 404s — deletion, today’s mapping (AC 4)', async () => {
+  // ==================== THE 404 CLEAR, PRESERVED =======================================
+  it('clears to no-active-deck when the refetch 404s — deletion, today’s mapping', async () => {
     const fetchMock = await bootedDeck()
     const marker = fetchMock.mock.calls.length
 
@@ -3448,18 +3437,15 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     expect(screen.queryByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeNull()
     expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
     const paths = pathsSince(fetchMock, marker)
-    expect(
-      detailReadsOf(paths, ATRAXA_DECK_ID),
-      'AC 4: the clear cost the one refetch request',
-    ).toBe(1)
+    expect(detailReadsOf(paths, ATRAXA_DECK_ID), 'the clear cost the one refetch request').toBe(1)
     expect(
       activeDeckReads(paths),
-      'AC 4: …and no boot re-drive — the 404 settles through the refetch itself',
+      '…and no boot re-drive — the 404 settles through the refetch itself',
     ).toBe(0)
   })
 
-  // ==================== AC 4 — EVERY OTHER REFUSAL DROPS ===============================
-  it('keeps the loaded deck on screen through a non-404 refusal — staleness accepted (AC 4)', async () => {
+  // ==================== EVERY OTHER REFUSAL DROPS ======================================
+  it('keeps the loaded deck on screen through a non-404 refusal — staleness accepted', async () => {
     const fetchMock = await bootedDeck()
     const marker = fetchMock.mock.calls.length
 
@@ -3474,12 +3460,12 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     // Non-vacuity: the refusal really was fetched and really was dropped — not a no-op branch.
     expect(
       detailReadsOf(pathsSince(fetchMock, marker), ATRAXA_DECK_ID),
-      'AC 4: the refusal was actually read (and then dropped), not skipped',
+      'the refusal was actually read (and then dropped), not skipped',
     ).toBe(1)
   })
 
-  // ==================== AC 5 — NO DECK LOADED: THE FULL RE-DRIVE STANDS ================
-  it('keeps the full two-request re-drive when no deck is loaded (AC 5)', async () => {
+  // ==================== NO DECK LOADED: THE FULL RE-DRIVE STANDS =======================
+  it('keeps the full two-request re-drive when no deck is loaded', async () => {
     booting(activeDeck(null))
     const fetchMock = answering(decks(ATRAXA_NAME))
     render(<App />)
@@ -3498,21 +3484,16 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     const paths = pathsSince(fetchMock, marker)
     expect(
       activeDeckReads(paths),
-      'AC 5: from none, deck_changed re-drives the FULL boot — active-deck first',
+      'from none, deck_changed re-drives the FULL boot — active-deck first',
     ).toBe(1)
-    expect(
-      detailReadsOf(paths, ATRAXA_DECK_ID),
-      'AC 5: …then the one deck read the answer names',
-    ).toBe(1)
-    // (The refused-state sibling of this row is pinned by the c5-6 block's "recovers the
+    expect(detailReadsOf(paths, ATRAXA_DECK_ID), '…then the one deck read the answer names').toBe(1)
+    // (The refused-state sibling of this row is pinned by the reconnect block's "recovers the
     // stalled panel" test, which drives deck_changed from a 503 panel — cited, not duplicated.)
   })
 
-  // ==================== AC 4 — THE DROP COMPOSES WITH AN OPEN AGENT VIEW ===============
-  it('drops a 503 refetch behind an OPEN agent view: the view stays, the deck stays behind it (AC 4)', async () => {
-    // The scenario the two amended c6-6 layering tests used to reach by accident — a 503
-    // arriving on `deck_changed` while a view is open — re-covered under the NEW policy
-    // (review finding: amending them to the 404-clear deleted it entirely). The drop must
+  // ==================== THE DROP COMPOSES WITH AN OPEN AGENT VIEW ======================
+  it('drops a 503 refetch behind an OPEN agent view: the view stays, the deck stays behind it', async () => {
+    // A 503 arriving on `deck_changed` while a view is open. The drop must
     // compose with the overlay: no teardown behind the dialog, no panel sliding under it, the
     // view itself untouched. The refetches that DO change state have their own family below.
     const fetchMock = await bootedDeck()
@@ -3532,7 +3513,7 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     // …and the refusal really was fetched and dropped (non-vacuity for all three lines above).
     expect(
       detailReadsOf(pathsSince(fetchMock, marker), ATRAXA_DECK_ID),
-      'AC 4: the refusal was read once and dropped — not skipped, not re-driven',
+      'the refusal was read once and dropped — not skipped, not re-driven',
     ).toBe(1)
   })
 })
@@ -3553,7 +3534,7 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
  * deck read WITHHELD behind the real `fetch` seam — because jsdom answers on the next microtask
  * and a marker asserted after the settle would be asserting nothing.
  */
-describe('refetch never tears down what’s on screen (c7-4)', () => {
+describe('refetch never tears down what’s on screen', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const tiles = () => [...document.querySelectorAll<HTMLElement>('.card-tile')]
   const detailName = () => document.querySelector('.card-detail-name')
@@ -3688,8 +3669,8 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
     expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
   })
 
-  // ==================== AC 3 — THE PIN SURVIVES A SAME-DECK REFETCH ====================
-  it('keeps a pinned card pinned through a refetch that still lists it — the behaviour change', async () => {
+  // ==================== THE PIN SURVIVES A SAME-DECK REFETCH ===========================
+  it('keeps a pinned card pinned through a refetch that still lists it', async () => {
     await bootedDeck()
 
     // PIN THE SECOND TILE (Forest), the active-deck block's reasoning verbatim: `Llanowar Elves` IS
@@ -3878,7 +3859,7 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
  * re-announce is proven the way the heading's is: a `MutationObserver` on the region,
  * because "announces" IS "mutates" to a live region and jsdom has no speech.
  */
-describe('the refetch announces once, politely, on completion (c7-5)', () => {
+describe('the refetch announces once, politely, on completion', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const region = () => document.querySelector('.deck-announcement')
   const settleCount = () => useDeckStore.getState().refetchSettles
@@ -4153,14 +4134,9 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
     expect(badgeOf(/Forest/)!.getAttribute('data-flashed')).toBeNull()
   })
 
-  // ==================== FLIPPED AT c7-6 — THE MODAL GATE ==============================
-  it('stays SILENT on a completion behind an open agent view (flipped at c7-6)', async () => {
-    // ⚠️ THIS TEST'S CLAIM WAS REVERSED BY c7-6, DELIBERATELY AND AS PLANNED. It shipped at c7-5
-    // named *"announces on a completion behind an open agent view — suppression is c7-6, not
-    // here"*, asserting today's un-gated behaviour precisely so that the story owning UX-DR45's
-    // *"nothing announces from behind an open agent view"* would have a red test to flip rather
-    // than a silent gap to discover. It is flipped here, in place, so the reversal is visible in
-    // one diff instead of appearing as a deletion in one file and a new test in another.
+  // ==================== THE MODAL GATE =================================================
+  it('stays SILENT on a completion behind an open agent view', async () => {
+    // UX-DR45: *"nothing announces from behind an open agent view"*.
     //
     // The deletion describe below owns the rest of the family — that the settle is CONSUMED,
     // that the next one with the view closed announces, and that the deck behind the dialog
@@ -4205,7 +4181,7 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
  * `&& !viewOpen`, and `App.tsx`'s surface-transition focus rescue — and every test below that
  * covers one of them says which, so a firing proof has a named row to redden.
  */
-describe('deck deletion, and agent views during a refetch (c7-6)', () => {
+describe('deck deletion, and agent views during a refetch', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const SKIP = 'Skip past the deck grid'
   const region = () => document.querySelector('.deck-announcement')
@@ -4286,10 +4262,10 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     resetAgentView()
   })
 
-  // ==================== AC 2 — THE DELETION WALK, END TO END ===========================
-  it('clears to the no-active-deck panel listing exactly the REMAINING decks (AC 2)', async () => {
-    // THE WALK NOBODY HAD TAKEN. `:3379` proves the 404 clears and its own comment says c7-6 owes
-    // the deck-list assertion it does not make; this is that assertion, plus the two ends the
+  // ==================== THE DELETION WALK, END TO END ==================================
+  it('clears to the no-active-deck panel listing exactly the REMAINING decks', async () => {
+    // THE WHOLE WALK. `:3379` proves the 404 clears without asserting the deck list;
+    // this is that assertion, plus the two ends the
     // clear sits between — the deleted deck really was on the glass first, and the panel's list
     // really is the poll's SECOND answer rather than its first.
     const fetchMock = await bootedDeck()
@@ -4323,12 +4299,12 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     const paths = fetchMock.mock.calls.slice(marker).map(([input]) => String(input))
     expect(
       paths.filter((path) => path === `/api/deck/${ATRAXA_DECK_ID}`),
-      'AC 2: the clear cost the one refetch request',
+      'the clear cost the one refetch request',
     ).toHaveLength(1)
     expect(paths.filter((path) => path === '/api/active-deck')).toHaveLength(0)
     expect(
       paths.filter((path) => path === '/api/decks'),
-      'AC 2: the stopped poll restarted, which is what re-lists the remaining decks',
+      'the stopped poll restarted, which is what re-lists the remaining decks',
     ).toHaveLength(1)
 
     // AND NOTHING WAS ANNOUNCED. A 404 never increments the counter, so "Deck updated — N cards"
@@ -4337,7 +4313,7 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(region()!.textContent).toBe('')
   })
 
-  it('renders the headline and NO list when the LAST deck is the one deleted (AC 2)', async () => {
+  it('renders the headline and NO list when the LAST deck is the one deleted', async () => {
     // `StatePanel.tsx:133`'s `filled()` arm, reached through the deletion path rather than
     // through a prop: an empty list renders no `<ul>` at all, so the panel does not show an
     // empty box under its sentence.
@@ -4351,8 +4327,8 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(within(panel).queryAllByRole('listitem')).toEqual([])
   })
 
-  // ==================== AC 1 — THE MODAL GATE, COMPOSED ================================
-  it('drops the announcement for a refetch settling behind an open view, and resumes after it closes (AC 1)', async () => {
+  // ==================== THE MODAL GATE, COMPOSED =======================================
+  it('drops the announcement for a refetch settling behind an open view, and resumes after it closes', async () => {
     // THE `&& !viewOpen` EXPRESSION, end to end and in BOTH directions — the drop, and the proof
     // that it was a drop rather than a queue. A deferred announcement would fire the instant the
     // dialog closed, speaking a count whose moment had passed at the exact moment the reader is
@@ -4432,7 +4408,7 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(region()!.textContent).toBe('Deck updated — 102 cards')
   })
 
-  it('announces nothing for a 503 dropped behind an open view either (AC 1)', async () => {
+  it('announces nothing for a 503 dropped behind an open view either', async () => {
     // The dropped-refusal row. `:3454` already pins that the deck and the view both survive a 503
     // behind a dialog; what it does not say is what the ANNOUNCER did, and the answer must be
     // "nothing" for a reason that is NOT the modal gate — a dropped refetch never settles, so the
@@ -4459,8 +4435,8 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     ).toHaveLength(1)
   })
 
-  // ==================== AC 5 — DELETION BEHIND AN OPEN VIEW ============================
-  it('keeps a view open and valid through the deletion, and lands the reader on the panel (AC 5)', async () => {
+  // ==================== DELETION BEHIND AN OPEN VIEW ===================================
+  it('keeps a view open and valid through the deletion, and lands the reader on the panel', async () => {
     // The composed row: `:4426` proves the view survives and `:4450` proves the close lands on
     // the headline, each from its own setup. This walks the whole thing once — deletion, the
     // remaining-decks panel behind the dialog, silence, then the close — because the thing a user
@@ -4498,10 +4474,10 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(document.activeElement).not.toBe(document.body)
   })
 
-  // ==================== AC 3 — THE SURFACE-TRANSITION FOCUS RESCUE =====================
-  it('hands focus from a TILE to the panel headline when the deck is deleted under it (AC 3)', async () => {
-    // THE LEDGERED HALF OF THE EPIC'S NO-FOCUS-TO-BODY RULE, closed. `SkipLink.tsx` named this
-    // story by hand: React unmounting the focused node drops focus to `<body>`, which restarts
+  // ==================== THE SURFACE-TRANSITION FOCUS RESCUE ============================
+  it('hands focus from a TILE to the panel headline when the deck is deleted under it', async () => {
+    // THE NO-FOCUS-TO-BODY RULE, at the surface transition: React unmounting the focused node
+    // drops focus to `<body>`, which restarts
     // Tab from the very top of the document — for a keyboard user mid-deck that is the whole
     // 206-stop corridor again, with no announcement that anything moved.
     const fetchMock = await bootedDeck()
@@ -4522,7 +4498,7 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(headline()?.getAttribute('tabindex')).toBe('-1')
   })
 
-  it('hands focus from a DECK ROW the same way — the whole surface departs at once (AC 3)', async () => {
+  it('hands focus from a DECK ROW the same way — the whole surface departs at once', async () => {
     // The second of the five departing focusables, and the one that proves this is a SURFACE
     // rule rather than a grid rule: the deck row lives in the right column, which hangs off the
     // same `kind === 'deck'` gate as the grid. One effect covers both.
@@ -4540,8 +4516,8 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(document.activeElement).toBe(headline())
   })
 
-  it('hands focus from a FLIP CONTROL the same way — the third focusable AC 3 names (AC 3)', async () => {
-    // The one departing focusable the AC names that the tile and deck-row rows do not stand in
+  it('hands focus from a FLIP CONTROL the same way — the third departing focusable', async () => {
+    // The one departing focusable that the tile and deck-row rows do not stand in
     // for, because it does not exist at mount: a flip control GROWS when the hydration sweep
     // answers a two-faced record (`card_faces` lives only in the full card), so this row boots a
     // Pathway deck and waits for the sweep — the back-face test's exact arrangement.
@@ -4568,8 +4544,8 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(document.activeElement).toBe(headline())
   })
 
-  it('DECLINES when something outside the deck surface holds focus (AC 3)', async () => {
-    // `SkipLink.tsx:112-116`'s ruling at the surface's scale: moving focus that something else
+  it('DECLINES when something outside the deck surface holds focus', async () => {
+    // `SkipLink.tsx:112-116`'s rule at the surface's scale: moving focus that something else
     // already holds would be this effect reversing a decision it did not make. The footer link
     // and the connection pill both survive the transition — they are rendered outside the
     // `kind === 'deck'` gate — so a rescue that fired unconditionally would YANK the reader out
@@ -4589,7 +4565,7 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(headline()?.hasAttribute('tabindex')).toBe(false)
   })
 
-  it('declines for the connection pill too — the other survivor outside the gate (AC 3)', async () => {
+  it('declines for the connection pill too — the other survivor outside the gate', async () => {
     const fetchMock = await bootedDeck()
     const pill = document.querySelector<HTMLElement>('.connection-pill')!
     act(() => pill.focus())
@@ -4601,8 +4577,8 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(pill.isConnected).toBe(true)
   })
 
-  it('declines for an agent-views NAV PILL too — the header survivor the matrix names (AC 3)', async () => {
-    // The matrix's decline row reads "Header/footer/nav pill focused", and the c6-8 reopen pill
+  it('declines for an agent-views NAV PILL too — the header survivor the matrix names', async () => {
+    // The matrix's decline row reads "Header/footer/nav pill focused", and the reopen pill
     // is a DIFFERENT element from the connection pill above: it lives in the header's nav, it
     // only exists once a kind has pushed, and it is exactly where a keyboard user is standing
     // when they are about to re-open a view. It survives the transition — the header renders
@@ -4625,8 +4601,8 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(headline()?.hasAttribute('tabindex')).toBe(false)
   })
 
-  it('declines while a view is open even when focus already fell to BODY (AC 3, Greptile PR #80)', async () => {
-    // THE HOLE THE FIRST GREPTILE PASS FOUND: the rescue's body-focus inference — "focus on
+  it('declines while a view is open even when focus already fell to BODY', async () => {
+    // THE HOLE IN THE INFERENCE: the rescue's body-focus inference — "focus on
     // `<body>` across a deck → panel transition means the departing surface held it" — is only
     // sound when no modal is open. A real pointer click on the dialog's NON-focusable content
     // blurs to `<body>` (jsdom does not model that blur, so this test arranges it by hand), and
@@ -4656,9 +4632,9 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(document.activeElement).toBe(headline())
   })
 
-  // ==================== AC 4 — THE TAB ORDER ACROSS THE TRANSITION =====================
-  it('withdraws the skip link and every grid stop from the Tab order after the deletion (AC 4)', async () => {
-    // The corridor, walked ACROSS the transition this story owns rather than on either side of
+  // ==================== THE TAB ORDER ACROSS THE TRANSITION ============================
+  it('withdraws the skip link and every grid stop from the Tab order after the deletion', async () => {
+    // The corridor, walked ACROSS the transition rather than on either side of
     // it. The loaded-deck pins (`:1815-1830`) are untouched and stay where they are; what is new
     // is the before/after over one mount, which is the only shape that can catch a stop that
     // survives its own surface.
@@ -4753,7 +4729,7 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
  * tile does **not** carry `data-flashed`, rather than reading the journey text as a defect it
  * should repair.
  */
-describe('UJ-1 end to end - the loop closes (c7-7)', () => {
+describe('UJ-1 end to end - the loop closes', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const rows = () => [...document.querySelectorAll<HTMLButtonElement>('.suggestion-row')]
   const detailName = () => document.querySelector('.card-detail-name')
@@ -4998,8 +4974,8 @@ describe('UJ-1 end to end - the loop closes (c7-7)', () => {
     expect(sockets).toHaveLength(1)
   })
 
-  it('stands still and says nothing when the emit is swallowed (AC 3, the accepted staleness window)', async () => {
-    // AC 3's OTHER half. The tool-side promise — byte-identical result, nothing raised, the POST
+  it('stands still and says nothing when the emit is swallowed (the accepted staleness window)', async () => {
+    // The tool-side promise — byte-identical result, nothing raised, the POST
     // genuinely attempted — is `test_deck_changed_wiring.py`'s
     // `TestARealHttpFailureCostsTheMutationNothing`. What no test showed is the consequence *on
     // the glass*, which is the half a user would actually experience: the database has changed,
@@ -5081,7 +5057,7 @@ describe('UJ-1 end to end - the loop closes (c7-7)', () => {
 // THE AGENT VIEW REACHES THE OVERLAY SLOT, AND ESC LAYERS OVER THE PIN
 // =====================================================================================
 
-describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 6)', () => {
+describe('the agent view fills the shell’s overlay slot', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const overlay = () => document.querySelector('.app-shell-overlay')
   const tiles = () => [...document.querySelectorAll<HTMLElement>('.card-tile')]
@@ -5091,7 +5067,7 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
   // the STORE-driven path; the socket-driven path is the push describe further down.
   const SUGGESTIONS = {
     id: 'push-c6-5',
-    ts: '2026-08-11T09:15:00Z',
+    ts: '2025-08-11T09:15:00Z',
     kind: 'suggestions',
     title: 'Suggestions',
     count: 2,
@@ -5125,7 +5101,7 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
     resetAgentView()
   })
 
-  it('renders NOTHING in the slot while the store is closed (AC 9’s click-swallower)', async () => {
+  it('renders NOTHING in the slot while the store is closed (the click-swallower)', async () => {
     // `App` passes an ABSENT `overlay`, so `filled()` refuses to mount the wrapper at all. Not a
     // hidden element, not an empty one: no element. A full-window fixed layer containing nothing
     // is what `AppShell.tsx:134-139` warns presents as "the app stopped responding to clicks".
@@ -5147,7 +5123,7 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('re-opens the SAME view after dismissal, with no second push (AC 5, UX-DR34)', async () => {
+  it('re-opens the SAME view after dismissal, with no second push (UX-DR34)', async () => {
     // UX-DR34 end to end: the content outlives the dismissal, so the view is re-openable for the
     // rest of the session. The nav pills are what re-open it from the glass, and the nav
     // describe at the foot of this file walks that whole loop.
@@ -5164,7 +5140,7 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
     expect(screen.getByRole('dialog')).toHaveAccessibleName(SUGGESTIONS.title)
   })
 
-  it('closes on the close pill and hands focus back to the tile that opened it (AC 4)', async () => {
+  it('closes on the close pill and hands focus back to the tile that opened it', async () => {
     await bootedDeck()
 
     // A real element of the real app holds focus when the view opens — not a fixture button.
@@ -5239,7 +5215,7 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
 // A PUSH OPENS ITS VIEW, AND A REPEAT PUSH REPLACES IT IN PLACE
 // =====================================================================================
 
-describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4, AC 5, AC 6)', () => {
+describe('a suggestions push opens its view, end to end', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const SKIP = 'Skip past the deck grid'
   const dialog = () => screen.queryByRole('dialog')
@@ -5287,7 +5263,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     resetAgentView()
   })
 
-  it('opens the view with NO click — the frame is the whole gesture (AC 1, UX-DR34)', async () => {
+  it('opens the view with NO click — the frame is the whole gesture (UX-DR34)', async () => {
     await bootedDeck()
     expect(dialog()).toBeNull()
 
@@ -5302,7 +5278,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(document.activeElement).toBe(viewTitle())
   })
 
-  it('falls back to the authored title when the agent names nothing (Q7, dw:30-32)', async () => {
+  it('falls back to the authored title when the agent names nothing', async () => {
     await bootedDeck()
 
     await push('suggestions', { items: ITEMS })
@@ -5313,7 +5289,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(dialog()).toHaveAccessibleName(SUGGESTIONS_VIEW_TITLE)
   })
 
-  it('renders the artefact’s line for an EMPTY push rather than rejecting it (AC 4)', async () => {
+  it('renders the artefact’s line for an EMPTY push rather than rejecting it', async () => {
     await bootedDeck()
 
     await push('suggestions', { title: 'Nothing found', items: [] })
@@ -5335,7 +5311,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
 
     await driveSocket(() =>
       socket().onmessage?.({
-        data: JSON.stringify({ kind: 'suggestions', id: 'bare', ts: '2026-08-08T00:00:00Z' }),
+        data: JSON.stringify({ kind: 'suggestions', id: 'bare', ts: '2025-08-08T00:00:00Z' }),
       }),
     )
 
@@ -5344,7 +5320,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(sockets[0].closed).toBe(0)
   })
 
-  it('REPLACES in place on a second push — same dialog node, new content (AC 2)', async () => {
+  it('REPLACES in place on a second push — same dialog node, new content', async () => {
     await bootedDeck()
     await pushSettled({ title: 'First look', items: ITEMS }, 'push-1')
     const before = screen.getByRole('dialog')
@@ -5382,7 +5358,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(dialog()).toHaveAttribute('data-entering', 'true')
   })
 
-  it('stays open and stays VALID when the deck is lost behind it (AC 5, UX-DR37)', async () => {
+  it('stays open and stays VALID when the deck is lost behind it (UX-DR37)', async () => {
     // *"Agent content is about cards, not about the deck's presence, so a lost deck does not
     // invalidate a tier list."* True by construction — nothing in the overlay path reads deck
     // state — so this pins the COMPOSED behaviour rather than describing the construction.
@@ -5406,7 +5382,7 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(viewCount()).toHaveTextContent('2')
   })
 
-  it('lands the reader on the state panel when the view closes over one (AC 5)', async () => {
+  it('lands the reader on the state panel when the view closes over one', async () => {
     // EXPERIENCE.md:122's second clause. The remembered restore target is a card tile the panel
     // replaced, so the disconnected-restore arm is what runs — and it sends focus to the
     // panel's headline rather than to the deck `<h1>`, which is no longer on the glass.
@@ -5431,11 +5407,10 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(document.activeElement).not.toBe(document.body)
   })
 
-  it('withdraws the skip link and the grid’s Tab stops behind that panel (AC 5)', async () => {
-    // The already-shipped withdrawals (c4-11's link, and the grid's stops vanishing with the
-    // grid), pinned in the COMPOSED state this story creates — a panel behind an OPEN view. No
-    // module was changed to make these true; what is new is that they are now asserted together
-    // with a dialog on the glass, which is the arrangement AC 5 describes.
+  it('withdraws the skip link and the grid’s Tab stops behind that panel', async () => {
+    // The withdrawals (the skip link, and the grid's stops vanishing with the grid), pinned in
+    // the COMPOSED state — a panel behind an OPEN view — asserted together with a dialog on the
+    // glass.
     await bootedDeck()
     await push('suggestions', { title: 'Resilience options', items: ITEMS })
 
@@ -5451,8 +5426,8 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(document.querySelectorAll('.card-tile')).toHaveLength(0)
   })
 
-  it('updates the NON-MOTION signals on a replace — heading, count, live region (AC 6)', async () => {
-    // UX-DR43: *"motion is never the sole signal"*. The three signals this story owns are the
+  it('updates the NON-MOTION signals on a replace — heading, count, live region', async () => {
+    // UX-DR43: *"motion is never the sole signal"*. The three signals here are the
     // heading text, the count beside it, and a real mutation of the `aria-live` region. The nav
     // pill's unread marker and its timestamp are the nav's own (the composition reference
     // carries no timestamp in the view header), so what is asserted for that half is that the
@@ -5475,12 +5450,12 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(records.length).toBeGreaterThan(0)
     expect(region).toHaveTextContent('Second look')
     expect(viewCount()).toHaveTextContent('1')
-    // The retained ordering key, unrendered by this story and read by the next one.
-    expect(useAgentViewStore.getState().content?.ts).toBe('2026-08-08T00:00:00Z')
+    // The retained ordering key, read by the nav pill.
+    expect(useAgentViewStore.getState().content?.ts).toBe('2025-08-08T00:00:00Z')
   })
 
-  it('announces a replace whose title is BYTE-IDENTICAL to the one showing (Q4)', async () => {
-    // FOUND BY A PLANT (2026-08-11): removing the heading's `key` left the test above green,
+  it('announces a replace whose title is BYTE-IDENTICAL to the one showing', async () => {
+    // Removing the heading's `key` leaves the test above green,
     // because two DIFFERENT titles mutate the region whatever mechanism is used. The claim that
     // actually needs an end-to-end pin is the common case — an agent that omits `payload.title`
     // twice, so both pushes carry the same fallback word and a plain re-render mutates nothing.
@@ -5537,9 +5512,9 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
 // A SWAPS PUSH OPENS ITS VIEW, END TO END, THROUGH THE REAL SOCKET SEAM
 // =====================================================================================
 
-describe('a swaps push opens its view, end to end (16.1)', () => {
-  // The c6-6 opener's shape on the second push kind, and the one test that can catch the whole
-  // chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to `onSwaps`,
+describe('a swaps push opens its view, end to end', () => {
+  // The suggestions opener's shape on the second push kind, and the one test that can catch the
+  // whole chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to `onSwaps`,
   // `connection.ts` calls `openSwapsPush`, the store opens, and `App.tsx`'s kind switch mounts
   // `SwapsView`. Every seam-level test stays green with the App render arm
   // reverted — this is the composed assertion that cannot.
@@ -5619,8 +5594,8 @@ describe('a swaps push opens its view, end to end (16.1)', () => {
 // A TIER-LIST PUSH OPENS ITS VIEW, END TO END, THROUGH THE REAL SOCKET SEAM
 // =====================================================================================
 
-describe('a tier-list push opens its view, end to end (16.2)', () => {
-  // 16.1's opener's shape on the third push kind, and the one test that can catch the whole
+describe('a tier-list push opens its view, end to end', () => {
+  // The swaps opener's shape on the third push kind, and the one test that can catch the whole
   // chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to `onTierList`,
   // `connection.ts` calls `openTierListPush`, the store opens, and `App.tsx`'s kind switch
   // mounts `TierListView`. Every seam-level test stays green with the App render arm reverted —
@@ -5722,8 +5697,8 @@ describe('a tier-list push opens its view, end to end (16.2)', () => {
 // A GROUPS PUSH OPENS ITS VIEW, END TO END, THROUGH THE REAL SOCKET SEAM
 // =====================================================================================
 
-describe('a groups push opens its view, end to end (16.3)', () => {
-  // 16.2's opener's shape on the fourth and last push kind, and the one test that can catch the
+describe('a groups push opens its view, end to end', () => {
+  // The tier-list opener's shape on the fourth and last push kind, and the one test that can catch the
   // whole chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to
   // `onGroups` (the drop arm is GONE), `connection.ts` calls `openGroupsPush`, the store opens,
   // and `App.tsx`'s now-total kind ternary mounts `GroupsView`. Every seam-level test stays
@@ -5842,7 +5817,7 @@ describe('a groups push opens its view, end to end (16.3)', () => {
 // THE SUGGESTION ROWS, INSIDE THE REAL VIEW, ON THE REAL INSPECTION CONTRACT
 // =====================================================================================
 
-describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)', () => {
+describe('a pushed suggestion is a card you can look at', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const unpinControl = () => document.querySelector('.card-detail-unpin')
   const detailName = () => document.querySelector('.card-detail-name')
@@ -5900,7 +5875,7 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
     resetAgentView()
   })
 
-  it('renders the rows INSIDE the dialog, hydrated from the card route (AC 7)', async () => {
+  it('renders the rows INSIDE the dialog, hydrated from the card route', async () => {
     const fetchMock = await bootedDeck()
     await pushRows()
 
@@ -5936,7 +5911,7 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
     expect(pinRegion()).toBeEmptyDOMElement()
   })
 
-  it('clicking a row pins it and announces ONCE, from the shipped region (AC 2)', async () => {
+  it('clicking a row pins it and announces ONCE, from the shipped region', async () => {
     await bootedDeck()
     await pushRows()
 
@@ -5955,7 +5930,7 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
   })
 
   // ==================== UJ-1 STEP 6, WHICH FINALLY EXISTS END TO END ====================
-  it('ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES (AC 2, UJ-1 step 6)', async () => {
+  it('ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES (UJ-1 step 6)', async () => {
     // `EXPERIENCE.md:188`: *"dismissing a suggestion view leaves that card in the detail panel"*.
     // The overlay describe pins the Esc LAYERING with a pin set from a tile; this is the same
     // layering with the gesture the flow actually describes.
@@ -5987,7 +5962,7 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
     expect(useInspectionStore.getState().pinnedId).toBeNull()
   })
 
-  it('degrades ONE unknown id and leaves its neighbours drawing art (AC 4, FR-13)', async () => {
+  it('degrades ONE unknown id and leaves its neighbours drawing art (FR-13)', async () => {
     // End to end, over the real refusal: the route answers `card_not_found` for this id, the
     // cache records `placeholder: 'unknown-card'`, and the row draws the placeholder while its
     // REASON still renders.
@@ -6059,7 +6034,7 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
 // THE NAV PILLS: UNREAD MARKERS, RE-OPEN, AND KIND SWITCHING
 // =====================================================================================
 
-describe('the agent-views nav puts a dismissed view one click away (c6-8)', () => {
+describe('the agent-views nav puts a dismissed view one click away', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const rows = () => [...document.querySelectorAll<HTMLButtonElement>('.suggestion-row')]
   const pills = () => [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')]
@@ -6106,8 +6081,8 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     resetAgentView()
   })
 
-  // ==================== COLD OPEN (AC 1, AC 6, UX-DR40) ==============================
-  it('renders five quiet pills that are NOT Tab stops (AC 1, UX-DR40; five since 17.2)', async () => {
+  // ==================== COLD OPEN (UX-DR40) ===========================================
+  it('renders five quiet pills that are NOT Tab stops (UX-DR40)', async () => {
     await bootedDeck()
 
     expect(pills()).toHaveLength(5)
@@ -6120,8 +6095,8 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(document.body.textContent).not.toContain('Agent-view nav pills land here')
   })
 
-  // ==================== A PUSH ACTIVATES ITS PILL (AC 2) =============================
-  it('activates exactly the pushed kind’s pill, with the envelope’s time (AC 2)', async () => {
+  // ==================== A PUSH ACTIVATES ITS PILL ====================================
+  it('activates exactly the pushed kind’s pill, with the envelope’s time', async () => {
     await bootedDeck()
     await pushRows()
 
@@ -6140,7 +6115,7 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(time.textContent).toBeTruthy()
   })
 
-  it('does not mark the pushed kind unread — a push is read on arrival (AC 3)', async () => {
+  it('does not mark the pushed kind unread — a push is read on arrival', async () => {
     await bootedDeck()
     await pushRows()
 
@@ -6148,9 +6123,9 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(document.querySelectorAll('.agent-views-nav-dot')).toHaveLength(0)
   })
 
-  it('leaves the pill active and UNREAD-FREE after a dismissal (AC 3, UX-DR34)', async () => {
-    // Dismissal is Brad's own act. A pill that grew a dot when he closed the view would be
-    // telling him he has not seen the thing he just closed.
+  it('leaves the pill active and UNREAD-FREE after a dismissal (UX-DR34)', async () => {
+    // Dismissal is the user's own act. A pill that grew a dot when they closed the view would be
+    // telling them they have not seen the thing they just closed.
     await bootedDeck()
     await pushRows()
     escape()
@@ -6161,8 +6136,8 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(document.querySelectorAll('.agent-views-nav-dot')).toHaveLength(0)
   })
 
-  // ==================== THE FLAGSHIP: THE WHOLE AC-4 LOOP ============================
-  it('re-opens the dismissed view with the same content, re-hydrated, and returns focus (AC 4)', async () => {
+  // ==================== THE FLAGSHIP: THE WHOLE RE-OPEN LOOP =========================
+  it('re-opens the dismissed view with the same content, re-hydrated, and returns focus', async () => {
     // Flow 3 of `EXPERIENCE.md:207-212`, end to end: push → dismiss → pill → the view is back →
     // close → focus is where it started. The pill in the middle is the nav's own; what this
     // test proves is that the four mechanisms it leans on all fire on the re-open path.
@@ -6225,8 +6200,8 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(document.activeElement).toBe(target)
   })
 
-  it('re-hydrates against CURRENT card data rather than replaying a snapshot (AC 4)', async () => {
-    // AC 4's *"re-hydrated against current card data"*, proved the way this harness can prove
+  it('re-hydrates against CURRENT card data rather than replaying a snapshot', async () => {
+    // *"Re-hydrated against current card data"*, proved the way this harness can prove
     // it: the cache is emptied between the dismissal and the re-open, and the re-open ASKS THE
     // WORLD AGAIN for every id rather than redrawing what it had. That is the property that
     // makes retaining ITEMS (ids and reasons) rather than rendered rows the right call, and it
@@ -6269,20 +6244,19 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(rows()[0]).toHaveTextContent('Llanowar Elves')
   })
 
-  // ==================== AC 5 — KIND SWITCHING, AT THE STORE SEAM =====================
-  it('switches the view and marks the displaced pill unread when another kind arrives (AC 5)', async () => {
-    // Driven at the store seam by c6-8, when no wire path could reach a second kind; since 16.1
-    // the `swaps` traversal IS reachable through the socket (its dispatch arm and view landed
-    // together), and `agentView.test.ts` re-proves the displacement through the production
-    // verb. This test keeps the store-seam drive so its subject stays the NAV's reaction
-    // rather than the dispatch, and the content stays synthetic (empty items) on purpose.
+  // ==================== KIND SWITCHING, AT THE STORE SEAM ============================
+  it('switches the view and marks the displaced pill unread when another kind arrives', async () => {
+    // Driven at the store seam even though the `swaps` traversal is reachable through the
+    // socket (`agentView.test.ts` proves the displacement through the production verb), so
+    // its subject stays the NAV's reaction rather than the dispatch; the content stays
+    // synthetic (empty items) on purpose.
     await bootedDeck()
     await pushRows()
     expect(screen.getByRole('dialog')).toBeVisible()
 
     const swaps: AgentViewContent = {
       id: 'push-swaps',
-      ts: '2026-08-12T14:32:00Z',
+      ts: '2025-08-12T14:32:00Z',
       kind: 'swaps',
       title: 'Swap candidates',
       count: 0,
@@ -6323,8 +6297,8 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     expect(pill('suggestions').textContent).not.toContain(UNREAD_WORD)
   })
 
-  // ==================== AC 6 — WHERE THE PILLS SIT IN THE TAB ORDER ==================
-  it('puts an active pill in the header nav, ahead of the card grid (AC 6, UX-DR40)', async () => {
+  // ==================== WHERE THE PILLS SIT IN THE TAB ORDER =========================
+  it('puts an active pill in the header nav, ahead of the card grid (UX-DR40)', async () => {
     await bootedDeck()
     await pushRows()
     escape()
@@ -6363,7 +6337,7 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
 // SESSION HISTORY: THE HISTORY PILL, THE POPOVER, AND THE RE-OPEN SEAM
 // =====================================================================================
 
-describe('the History pill puts any of the last twenty pushes one click away (17.2, FR-18)', () => {
+describe('the History pill puts any of the last twenty pushes one click away (FR-18)', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
   const historyPill = () => screen.getByRole<HTMLButtonElement>('button', { name: HISTORY_LABEL })
   const popover = () => document.querySelector('.agent-views-nav-popover')
@@ -6442,8 +6416,8 @@ describe('the History pill puts any of the last twenty pushes one click away (17
     expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(0)
   })
 
-  // ==================== THE FLAGSHIP: THE WHOLE AC-1 LOOP =============================
-  it('lists four mixed-kind pushes newest-first, and the second entry re-opens that exact push (AC 1)', async () => {
+  // ==================== THE FLAGSHIP: THE WHOLE HISTORY LOOP ==========================
+  it('lists four mixed-kind pushes newest-first, and the second entry re-opens that exact push', async () => {
     const fetchMock = await bootedDeck()
     await fourPushes()
 
@@ -6578,7 +6552,7 @@ describe('the History pill puts any of the last twenty pushes one click away (17
     expect(useInspectionStore.getState().pinnedId).toBeNull()
   })
 
-  it('pins the ACCEPTED RESIDUAL: Esc from an unrelated control closes popover AND pin together (review finding 4)', async () => {
+  it('pins the ACCEPTED RESIDUAL: Esc from an unrelated control closes popover AND pin together', async () => {
     // The one hole in the Esc layering, on the record rather than only in a census comment: the
     // entries are ordinary Tab stops, so focus can leave the pill+popover wrapper while the
     // popover stays open — and from out there the keystroke reaches BOTH document listeners
@@ -6613,7 +6587,7 @@ describe('the History pill puts any of the last twenty pushes one click away (17
     expect(document.activeElement).toBe(tile)
   })
 
-  it('never yanks wandered focus back to the pill on an outside dismissal (review finding 8)', async () => {
+  it('never yanks wandered focus back to the pill on an outside dismissal', async () => {
     // `closePopover`'s guard: focus returns to the pill only when closing would otherwise DROP
     // it. Focus resting on a live control outside the wrapper is a decision the close did not
     // make — an unconditional `pill.focus()` would pass every other test and steal it here.
@@ -6656,10 +6630,10 @@ describe('the History pill puts any of the last twenty pushes one click away (17
     expect(document.querySelectorAll('[aria-live]')).toHaveLength(liveBefore)
   })
 
-  // ==================== POPOVER + PILL TOOLTIP: ONE ESC, ONE LAYER (pre-cut R1) =======
-  it('Esc closes the popover without suppressing the connection pill tooltip (17.1 x 17.2 seam)', async () => {
-    // The epic's own two stories compose at the document: 17.1's tooltip-suppression listener
-    // and 17.2's popover-dismiss listener both hear every Escape. The wrapper half consumes the
+  // ==================== POPOVER + PILL TOOLTIP: ONE ESC, ONE LAYER ====================
+  it('Esc closes the popover without suppressing the connection pill tooltip (tooltip x popover seam)', async () => {
+    // Two listeners compose at the document: the tooltip-suppression listener
+    // and the popover-dismiss listener both hear every Escape. The wrapper half consumes the
     // keystroke (preventDefault) whenever focus sits inside the pill+popover wrapper — where a
     // click-open parks it — and the pill's listener honours `defaultPrevented`, so the SAME Esc
     // must close the popover and leave a hover-revealed tooltip alone.

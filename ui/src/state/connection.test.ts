@@ -68,7 +68,7 @@ beforeEach(() => {
   useSystemStore.setState(INITIAL_SYSTEM_STATE)
 })
 
-describe('a transition to live refreshes the confirmed identity (story 17.1, AC-4)', () => {
+describe('a transition to live refreshes the confirmed identity ', () => {
   it('still writes every status straight through to the system slice', async () => {
     const { onStatus } = wired()
 

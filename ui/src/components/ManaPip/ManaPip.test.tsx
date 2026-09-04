@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ManaPip } from './ManaPip'
 
-describe('the glyph slot (AC 1, AC 16)', () => {
+describe('the glyph slot', () => {
   it('shows a generic count', () => {
     render(<ManaPip glyph="2" />)
     expect(screen.getByText('2')).toBeInTheDocument()
@@ -41,13 +41,13 @@ describe('the glyph slot (AC 1, AC 16)', () => {
     expect(screen.getByText('P')).toBeInTheDocument()
   })
 
-  it('shows an unrecognised symbol’s own text rather than nothing (AC 3)', () => {
+  it('shows an unrecognised symbol’s own text rather than nothing', () => {
     render(<ManaPip glyph="HW" />)
     expect(screen.getByText('HW')).toBeInTheDocument()
   })
 
-  it('shows the seven-digit Gleemax cost in full, unclipped and untruncated (AC 16)', () => {
-    // The DOM half of AC 16. Whether it FITS is a layout question jsdom cannot answer — the
+  it('shows the seven-digit Gleemax cost in full, unclipped and untruncated', () => {
+    // The DOM half. Whether it FITS is a layout question jsdom cannot answer — the
     // stylesheet answers it with min-width + a pill radius and no `overflow: hidden`, and the
     // grow-not-clip guard in ui/tests/token-usage.test.ts reads exactly that source. What this
     // asserts is the half that would otherwise be a truncating `.slice(0, 3)` nobody noticed:
@@ -62,7 +62,7 @@ describe('the glyph slot (AC 1, AC 16)', () => {
   })
 })
 
-describe('the accessibility posture (AC 15, Q4)', () => {
+describe('the accessibility posture', () => {
   it('is DECORATIVE by default — a pip inside a labelled cost must not announce itself', () => {
     const { container } = render(<ManaPip colours={['r']} glyph="2" />)
     const pip = container.firstElementChild
@@ -73,7 +73,7 @@ describe('the accessibility posture (AC 15, Q4)', () => {
     expect(screen.queryByRole('img')).toBeNull()
   })
 
-  it('becomes a named role="img" when a label is supplied — c4-9’s legend case', () => {
+  it('becomes a named role="img" when a label is supplied — the colour legend’s case', () => {
     render(<ManaPip colours={['g']} label="green" />)
     // BY ROLE AND NAME, which is what a screen-reader user actually reaches. An `aria-label`
     // on a bare <span> is name-PROHIBITED on role="generic" and may be ignored outright, so
@@ -91,7 +91,7 @@ describe('the accessibility posture (AC 15, Q4)', () => {
     expect(screen.queryByRole('img')).toBeNull()
   })
 
-  it('treats a WHITESPACE-ONLY label the same way (review 2026-07-29)', () => {
+  it('treats a WHITESPACE-ONLY label the same way', () => {
     // `label=" "` is the same nothing wearing a space: an exact-`''` check let it through to a
     // role="img" whose accessible name is a blank — the precise failure the branch above was
     // written and tested against.
@@ -101,7 +101,7 @@ describe('the accessibility posture (AC 15, Q4)', () => {
   })
 })
 
-describe('the colour class, which is the ONE thing a class assertion may prove (AC 12)', () => {
+describe('the colour class, which is the ONE thing a class assertion may prove', () => {
   // The exception to "never assert by class name", and it is narrow: the class is not a styling
   // detail here, it is the MECHANISM by which a colour reaches a token at all. The stylesheet
   // half — that every suffix these produce is actually declared, with a real `--mana-*` — is
@@ -118,7 +118,7 @@ describe('the colour class, which is the ONE thing a class assertion may prove (
     expect(classOf(first)).toBe('mana-pip mana-pip-wg')
   })
 
-  it('falls back to a REAL token, never to nothing (AC 12)', () => {
+  it('falls back to a REAL token, never to nothing', () => {
     // Three shapes that must all land on a declared class rather than an unstyled — which is
     // to say transparent, which is to say invisible — circle: no colours at all (the generic
     // and `{X}` case), and more colours than a two-stop gradient can express.

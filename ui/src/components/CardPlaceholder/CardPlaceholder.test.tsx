@@ -57,7 +57,7 @@ const SPLIT_CARD = {
   typeLine: 'Instant // Sorcery',
 }
 
-describe('every variant is card-shaped, and none of them writes the shape (AC 1, 2, 4)', () => {
+describe('every variant is card-shaped, and none of them writes the shape', () => {
   it.each([
     ['named', <CardPlaceholder variant="named-card" name={NO_IMAGE_CARD.name} />],
     ['unknown', <CardPlaceholder variant="unknown-card" cardId={NO_IMAGE_CARD.id} />],
@@ -76,7 +76,7 @@ describe('every variant is card-shaped, and none of them writes the shape (AC 1,
     expect(root!.getAttribute('style')).toBeNull()
   })
 
-  it('draws NO image of any kind — never a broken glyph, a 1x1 pixel or a card back (AC 6)', () => {
+  it('draws NO image of any kind — never a broken glyph, a 1x1 pixel or a card back', () => {
     // AD-11's non-negotiable, client half. `test_routes_card_image.py` holds the backend to the
     // same promise; this is the assertion that the SPA never invents one either. `<img>` with a
     // dead src is the failure this whole component exists to replace, so its absence is the
@@ -92,7 +92,7 @@ describe('every variant is card-shaped, and none of them writes the shape (AC 1,
   })
 })
 
-describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', () => {
+describe('the named variant — name, pips, type line', () => {
   it('renders the three parts in the order the design specifies', () => {
     const { container } = render(
       <CardPlaceholder
@@ -131,7 +131,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
     expect(container.querySelector('.mana-cost-text')?.textContent).toBe(' // ')
   })
 
-  it('announces the card name, and does NOT announce the cost twice (AC 13)', () => {
+  it('announces the card name, and does NOT announce the cost twice', () => {
     const { container } = render(
       <CardPlaceholder variant="named-card" name={SPLIT_CARD.name} cost={SPLIT_CARD.cost} />,
     )
@@ -149,7 +149,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
     expect(container.firstElementChild!.getAttribute('aria-label')).toBeNull()
   })
 
-  it('renders the name the payload carries, UNSPLIT (Q5)', () => {
+  it('renders the name the payload carries, UNSPLIT', () => {
     render(<CardPlaceholder variant="named-card" name={SPLIT_CARD.name} />)
 
     // THE FIXTURE IS `X // Y`, WHICH IS THE POINT. `Heaven // Earth` renders whole; a
@@ -160,7 +160,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
     expect(screen.queryByText('Heaven')).toBeNull()
   })
 
-  it('renders a `Card // Card` type line unchanged, because it is what the data says (Q9)', () => {
+  it('renders a `Card // Card` type line unchanged, because it is what the data says', () => {
     render(
       <CardPlaceholder
         variant="named-card"
@@ -174,7 +174,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
     expect(screen.getByText('Card // Card')).toBeVisible()
   })
 
-  it('is correct when two of its three parts are EMPTY — the only permanent case (AC 7)', () => {
+  it('is correct when two of its three parts are EMPTY — the only permanent case', () => {
     const { container } = render(
       <CardPlaceholder
         variant="named-card"
@@ -197,8 +197,8 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
     ['null', null],
     ['empty', ''],
     ['whitespace-only', '   '],
-  ])('renders NO name element for a %s name, and does not throw (AC 7)', (_label, name) => {
-    // TOTALITY, IN THE SPELLING c4-2's REVIEW MEASURED. `DeckBadges` called `format.trim()`
+  ])('renders NO name element for a %s name, and does not throw', (_label, name) => {
+    // TOTALITY, IN THE MEASURED SPELLING. `DeckBadges` once called `format.trim()`
     // behind a `!== null` check and threw `Cannot read properties of undefined` on a partial
     // deck: a presentation primitive that crashes the whole app on one absent prop is the FR-13
     // posture inverted. Whitespace is in this list because a `??` default fires only on
@@ -216,7 +216,7 @@ describe('the named variant — name, pips, type line (AC 5, 7, 13; Q5, Q9)', ()
   })
 })
 
-describe('the unknown variant — two words and eight characters (AC 8, 9)', () => {
+describe('the unknown variant — two words and eight characters', () => {
   it('reads exactly the artefact’s label', () => {
     render(<CardPlaceholder variant="unknown-card" cardId={NO_IMAGE_CARD.id} />)
 
@@ -227,7 +227,7 @@ describe('the unknown variant — two words and eight characters (AC 8, 9)', () 
     expect(UNKNOWN_CARD_LABEL).toBe('Unknown card')
   })
 
-  it('truncates the id to 8 characters, and the number carries its measurement (AC 9)', () => {
+  it('truncates the id to 8 characters, and the number carries its measurement', () => {
     const { container } = render(
       <CardPlaceholder variant="unknown-card" cardId={NO_IMAGE_CARD.id} />,
     )
@@ -267,7 +267,7 @@ describe('the unknown variant — two words and eight characters (AC 8, 9)', () 
     expect(container.querySelectorAll('.card-placeholder-id')).toHaveLength(0)
   })
 
-  it('carries no card NAME, and the type is what makes that true (AC 8, probe (d))', () => {
+  it('carries no card NAME, and the type is what makes that true', () => {
     // `<CardPlaceholder variant="unknown-card" name="Black Lotus" />` does not compile — the
     // props are a discriminated union and the unknown member has no `name`. That is the
     // copy-paste that would otherwise type-check, and here it does not;
@@ -278,7 +278,7 @@ describe('the unknown variant — two words and eight characters (AC 8, 9)', () 
     expect(container.querySelectorAll('.mana-cost, .card-placeholder-type')).toHaveLength(0)
   })
 
-  it('is reachable from every token states.ts maps to it, with no re-derivation here (AC 8, 16)', () => {
+  it('is reachable from every token states.ts maps to it, with no re-derivation here', () => {
     // THE COUPLING, AT RUNTIME. `PLACEHOLDER_FOR_REASON`'s VALUES are the variants this
     // component must accept — `card_not_found` to `unknown-card`, both image tokens to
     // `named-card` — and this loop renders each one rather than trusting the type. A third key
@@ -300,7 +300,7 @@ describe('the unknown variant — two words and eight characters (AC 8, 9)', () 
   })
 })
 
-describe('the loading well stays silent (AC 10, probe (e))', () => {
+describe('the loading well stays silent', () => {
   it('renders no text, no children and no accessible name', () => {
     const { container } = render(<CardPlaceholder variant="loading" />)
     const well = container.firstElementChild!
@@ -319,7 +319,7 @@ describe('the loading well stays silent (AC 10, probe (e))', () => {
     expect(container.querySelectorAll('[role], [class*="spinner"]')).toHaveLength(0)
   })
 
-  it('cannot be given anything to say — the API is the guarantee (Q8)', () => {
+  it('cannot be given anything to say — the API is the guarantee', () => {
     // `<CardPlaceholder variant="loading" name="…" />` does not compile: the loading member of
     // the union has exactly one property. The risk of choosing ONE component with a variant over
     // three components is whether the well can ever accidentally take a name, and the
@@ -344,7 +344,7 @@ describe('the loading well stays silent (AC 10, probe (e))', () => {
  * props. **Nothing re-derives a placeholder from a wire token** — `entryFor` already
  * wrote that field, once, per entry.
  */
-describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', () => {
+describe('consuming the cache without re-deriving it', () => {
   beforeEach(() => {
     resetCardCache()
   })
@@ -415,7 +415,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
     },
   })
 
-  it('an id the cache has never seen renders the WELL, not an unknown card (AC 4 of c4-1)', () => {
+  it('an id the cache has never seen renders the WELL, not an unknown card', () => {
     // `undefined` means "never seen", and it is the ONLY thing it means. Rendering "Unknown
     // card" for an id nobody has asked about yet would be the app claiming knowledge it has not
     // got — the distinction the cache's union exists to make.
@@ -438,7 +438,7 @@ describe('consuming the cache without re-deriving it (AC 15, 16, 17, 18; Q7)', (
     expect(screen.getByText('Card // Card')).toBeVisible()
   })
 
-  it('draws the unknown placeholder from entry.placeholder, never from the token (AC 16)', async () => {
+  it('draws the unknown placeholder from entry.placeholder, never from the token', async () => {
     // A REAL REFUSAL THROUGH THE REAL PATH: `hydrateCard` with an injected reader, exactly as
     // it is designed for tests. No `fetch`, no stub of a global, no store write from here.
     render(<Tile cardId={NO_IMAGE_CARD.id} />)

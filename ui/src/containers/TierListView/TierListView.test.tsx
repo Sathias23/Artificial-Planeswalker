@@ -397,7 +397,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(screen.getByRole('button', { name: 'Card c-tier-1' })).toBe(tiles[0])
   })
 
-  it('REFUSES every verb on an unknown tile through the store, and stays a button (Q3)', () => {
+  it('REFUSES every verb on an unknown tile through the store, and stays a button', () => {
     seedUnknown('c-tier-1')
     seedHydrated('c-tier-2')
     const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
@@ -420,7 +420,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     expect(useInspectionStore.getState().hoveredId).toBe('c-tier-1')
   })
 
-  it('releases a stale hover, focus AND pin when an entry settles to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when an entry settles to unknown', () => {
     const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
     const [first] = tilesOf(rowAt(container, 0))
 
@@ -450,7 +450,7 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
   })
 })
 
-describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-23)', () => {
+describe('the in-view preview (DESIGN.md components.tier-preview)', () => {
   // jsdom's usual disclaimers apply one more time: the two-column grid, the 176px/300px tracks,
   // the sticky positioning and the ≤1100px collapse are all stylesheet claims. The load-bearing
   // rules — the thumb's real width, unshrinkable tiles, scroll-not-wrap, the preview's media
@@ -619,7 +619,7 @@ describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-
     expect(preview.textContent).toBe('')
   })
 
-  it('releases a TILELESS pin that settles unknown, so tier hover is never outranked forever (Greptile P1, PR #103)', () => {
+  it('releases a TILELESS pin that settles unknown, so tier hover is never outranked forever', () => {
     seedAll()
     // A pin retained from ANOTHER surface (FR-17's survival) naming a card with NO tile in this
     // push: no per-tile release valve exists for it, so the preview's own must fire.

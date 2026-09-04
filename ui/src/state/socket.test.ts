@@ -145,7 +145,7 @@ const settle = () => vi.advanceTimersByTimeAsync(0)
 const frame = (kind: AgentEvent['kind']): AgentEvent => ({
   kind,
   id: `id-${kind}`,
-  ts: '2026-08-08T00:00:00Z',
+  ts: '2025-08-08T00:00:00Z',
   payload: {},
 })
 
@@ -158,7 +158,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('the backoff grows and then STOPS growing (AC 2)', () => {
+describe('the backoff grows and then STOPS growing', () => {
   it('attempts immediately, then on 2 s, 4 s, 8 s, 16 s and 30 s — and never longer', async () => {
     const { socket, mintedAt } = driving(UNREACHABLE)
 
@@ -216,7 +216,7 @@ describe('the backoff grows and then STOPS growing (AC 2)', () => {
   })
 })
 
-describe('every attempt mints a FRESH ticket, and the order is delay → mint → open (AC 3)', () => {
+describe('every attempt mints a FRESH ticket, and the order is delay → mint → open', () => {
   it('mints once per attempt and never presents the same ticket twice', async () => {
     const { socket, sockets, mintedAt } = driving(TICKET)
 
@@ -280,7 +280,7 @@ describe('every attempt mints a FRESH ticket, and the order is delay → mint �
   })
 })
 
-describe('the generation counter survives every await and every callback (AC 4)', () => {
+describe('the generation counter survives every await and every callback', () => {
   it('drops a mint that was in flight when the loop stopped', async () => {
     let release: (outcome: SessionOutcome) => void = () => undefined
     const sockets: { ticket: string }[] = []
@@ -412,7 +412,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
   })
 })
 
-describe('"exhausted" is TWO gates, and it is an announcement rather than a stop (AC 8; Q2)', () => {
+describe('"exhausted" is TWO gates, and it is an announcement rather than a stop', () => {
   it('shows nothing until BOTH sixty seconds and four failures have passed', async () => {
     const { socket, statuses } = driving(UNREACHABLE)
 
@@ -463,7 +463,7 @@ describe('"exhausted" is TWO gates, and it is an announcement rather than a stop
     socket.stop()
   })
 
-  it('KEEPS RETRYING behind the panel — the whole point of AC 9', async () => {
+  it('KEEPS RETRYING behind the panel — the whole point of the announcement', async () => {
     const { socket, statuses, mintedAt } = driving(UNREACHABLE)
 
     socket.start()
@@ -510,7 +510,7 @@ describe('"exhausted" is TWO gates, and it is an announcement rather than a stop
     expect(RETRIES_QUIETLY.disconnected).toBe(true)
   })
 
-  it('clears the announcement the moment a socket comes back (AC 9)', async () => {
+  it('clears the announcement the moment a socket comes back', async () => {
     const { socket, statuses, latest } = driving(
       UNREACHABLE,
       UNREACHABLE,
@@ -585,7 +585,7 @@ describe('the status is emitted on CHANGE only', () => {
   })
 })
 
-describe('the reconnect signal fires on a RE-connect, never on the first one (AC 5)', () => {
+describe('the reconnect signal fires on a RE-connect, never on the first one', () => {
   it('says nothing when the very first socket of the tab opens', async () => {
     const { socket, reconnects, latest } = driving(TICKET)
 
@@ -631,7 +631,7 @@ describe('the reconnect signal fires on a RE-connect, never on the first one (AC
   })
 })
 
-describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)', () => {
+describe('ONE total switch over the six-kind closed enum', () => {
   const open = async () => {
     const driver = driving(TICKET)
     driver.socket.start()
@@ -640,14 +640,14 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     return driver
   }
 
-  it('reports the two system kinds, separately, each carrying its WHOLE envelope (c7-3)', async () => {
+  it('reports the two system kinds, separately, each carrying its WHOLE envelope', async () => {
     const { socket, events, latest } = await open()
 
     const activeChanged = frame('active_deck_changed')
     const deckChanged: AgentEvent = {
       kind: 'deck_changed',
       id: 'id-deck_changed',
-      ts: '2026-08-08T00:00:00Z',
+      ts: '2025-08-08T00:00:00Z',
       payload: { deck_id: 'the-edited-deck' },
     }
     latest().handlers.onMessage(activeChanged)
@@ -666,7 +666,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     socket.stop()
   })
 
-  it('costs one report per duplicate `active_deck_changed`, and nothing else (AC 12)', async () => {
+  it('costs one report per duplicate `active_deck_changed`, and nothing else', async () => {
     // The backend fires this on EVERY `PUT /api/active-deck`, including a redundant re-set of the
     // deck that is already active (`ws.py:409-444`). Three identical frames are three idempotent
     // refetches — not a crash, not a loop, not a growing queue.
@@ -688,14 +688,14 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     socket.stop()
   })
 
-  it('DELIVERS a `suggestions` push, with its payload, to the view callback (c6-6, AC 1)', async () => {
+  it('DELIVERS a `suggestions` push, with its payload, to the view callback', async () => {
     const { socket, pushes, swapsPushes, tierPushes, groupsPushes, events, statuses, latest } =
       await open()
 
     const push: SuggestionsEvent = {
       kind: 'suggestions',
       id: 'push-1',
-      ts: '2026-08-11T09:15:00Z',
+      ts: '2025-08-11T09:15:00Z',
       payload: { title: 'Resilience options', items: [{ card_id: 'c-1', reason: 'Curve.' }] },
     }
     latest().handlers.onMessage(push)
@@ -730,7 +730,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     const push: SwapsEvent = {
       kind: 'swaps',
       id: 'push-swaps-1',
-      ts: '2026-08-21T09:15:00Z',
+      ts: '2025-08-21T09:15:00Z',
       payload: {
         title: 'Cheaper removal',
         items: [
@@ -770,7 +770,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     const push: TierListEvent = {
       kind: 'tier_list',
       id: 'push-tiers-1',
-      ts: '2026-08-21T09:15:00Z',
+      ts: '2025-08-21T09:15:00Z',
       payload: {
         title: 'How the creatures rank',
         items: [
@@ -810,7 +810,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     const push: GroupsEvent = {
       kind: 'groups',
       id: 'push-groups-1',
-      ts: '2026-08-21T09:15:00Z',
+      ts: '2025-08-21T09:15:00Z',
       payload: {
         title: 'How the deck is put together',
         items: [
@@ -846,7 +846,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     socket.stop()
   })
 
-  it('ignores a frame this build cannot read, and keeps the socket open (AC 13)', async () => {
+  it('ignores a frame this build cannot read, and keeps the socket open', async () => {
     const { socket, events, statuses, latest } = await open()
 
     // `null` is what `client.ts`'s narrower hands over for non-JSON, an unknown `kind` and the

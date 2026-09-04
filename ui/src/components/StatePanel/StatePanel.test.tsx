@@ -34,7 +34,7 @@ const STATES = Object.keys(STATE_COPY) as StateKey[]
  */
 const asRendered = (text: string) => text.replaceAll('`', '')
 
-describe('the panel semantics (AC 7, UX-DR44)', () => {
+describe('the panel semantics (UX-DR44)', () => {
   it('is a region named by its headline, with the headline as an h2', () => {
     render(<StatePanel state="no-active-deck" />)
 
@@ -47,7 +47,7 @@ describe('the panel semantics (AC 7, UX-DR44)', () => {
     )
   })
 
-  it('carries no aria-live — this panel is not in the live-region inventory (landmine 17)', () => {
+  it('carries no aria-live — this panel is not in the live-region inventory', () => {
     // UX-DR45 names three live regions and this is not one of them: the panel REPLACES the main
     // surface, so the landmark change carries it. An aria-live here would re-announce the whole
     // panel — headline, guidance, action and every deck name — on every mount. Asserted over the
@@ -57,7 +57,7 @@ describe('the panel semantics (AC 7, UX-DR44)', () => {
     expect(container.querySelectorAll('[role="alert"], [role="status"]')).toHaveLength(0)
   })
 
-  it('renders no illustration, icon or image element (AC 2 — the ban is on the ELEMENT)', () => {
+  it('renders no illustration, icon or image element — the ban is on the ELEMENT', () => {
     for (const state of STATES) {
       const { container } = render(<StatePanel state={state} />)
       expect(container.querySelectorAll('img, svg, picture, canvas')).toHaveLength(0)
@@ -65,7 +65,7 @@ describe('the panel semantics (AC 7, UX-DR44)', () => {
   })
 })
 
-describe('every state renders its EXPERIENCE.md copy (AC 3, AC 4)', () => {
+describe('every state renders its EXPERIENCE.md copy', () => {
   it.each(STATES)('%s — the headline is the h2, byte for byte', (state) => {
     render(<StatePanel state={state} />)
     // Exact, not `toHaveTextContent` — that matcher is a substring check, and would tolerate an
@@ -88,7 +88,7 @@ describe('every state renders its EXPERIENCE.md copy (AC 3, AC 4)', () => {
     expect([...container.querySelectorAll('p')].map((p) => p.textContent)).toEqual(expected)
   })
 
-  it('gives the action its own line — a separate block from the guidance (AC 1)', () => {
+  it('gives the action its own line — a separate block from the guidance', () => {
     const { container } = render(<StatePanel state="disconnected" />)
     const paragraphs = [...container.querySelectorAll('p')]
     expect(paragraphs).toHaveLength(2)
@@ -115,7 +115,7 @@ describe('every state renders its EXPERIENCE.md copy (AC 3, AC 4)', () => {
   })
 })
 
-describe('the command chip is derived from the copy (AC 1, AC 11)', () => {
+describe('the command chip is derived from the copy', () => {
   it('marks up the backticked command, and shows no backtick to the user', () => {
     const { container } = render(<StatePanel state="database-not-initialized" />)
 
@@ -124,7 +124,7 @@ describe('the command chip is derived from the copy (AC 1, AC 11)', () => {
     expect(container.textContent).not.toContain('`')
   })
 
-  it('marks up a multi-word command in the state this story wrote', () => {
+  it('marks up a multi-word command', () => {
     const { container } = render(<StatePanel state="internal-error" />)
     expect([...container.querySelectorAll('code')].map((chip) => chip.textContent)).toEqual([
       'artificial-planeswalker companion',
@@ -140,7 +140,7 @@ describe('the command chip is derived from the copy (AC 1, AC 11)', () => {
   })
 })
 
-describe('the available-deck list (AC 5)', () => {
+describe('the available-deck list', () => {
   it('lists the names it is given', () => {
     render(<StatePanel state="no-active-deck" decks={['Boros Aggro', 'Simic Ramp']} />)
     const items = within(screen.getByRole('list')).getAllByRole('listitem')
@@ -179,7 +179,7 @@ describe('the available-deck list (AC 5)', () => {
     expect(container.querySelectorAll('ul')).toHaveLength(0)
   })
 
-  it('drops a blank name without dropping the list — the MIXED case (review 2026-07-29)', () => {
+  it('drops a blank name without dropping the list — the MIXED case', () => {
     // `['', 'Boros Aggro']` passes `filled()` as a whole, so the all-blank test above never
     // exercises the per-name decision: without it the panel renders an empty, announced `<li>`
     // for the blank — the exact empty-chrome shape one level down. String blankness is trim's
@@ -198,7 +198,7 @@ describe('the available-deck list (AC 5)', () => {
   })
 })
 
-describe('the copy rules, at the point of render (AC 6)', () => {
+describe('the copy rules, at the point of render', () => {
   it.each(STATES)('%s — shows no exclamation mark, emoji or blame to the user', (state) => {
     // The static guard over copy.ts is tests/copy-rules.test.ts; this is the same rule asserted
     // against what actually reached the DOM, which is the half a source scan cannot see (a
@@ -220,7 +220,7 @@ describe('the copy rules, at the point of render (AC 6)', () => {
   })
 })
 
-describe('the prop contract is the gate (Greptile round, 2026-07-30)', () => {
+describe('the prop contract is the gate', () => {
   it('forbids a deck list under any other state at COMPILE time, with the renderer unchanged', () => {
     // The constraint is a TYPE, so its firing half is `@ts-expect-error`: if the union ever
     // flattens back to `decks` on every state, `tsc -b` fails on this line — the same

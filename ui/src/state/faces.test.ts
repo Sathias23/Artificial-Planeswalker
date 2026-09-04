@@ -27,7 +27,7 @@ afterEach(resetFaces)
 
 const PATHWAY = 'clearwater-pathway'
 
-describe('an unflipped card reads as its front face (AC 13)', () => {
+describe('an unflipped card reads as its front face', () => {
   it('answers 0 for an id it has never seen — absence IS the front face', () => {
     // `?? 0` and never `||`: the stored value 0 and the absent value must resolve identically,
     // because "flipped back to the front" and "never flipped" are the same face and the URL they
@@ -42,7 +42,7 @@ describe('an unflipped card reads as its front face (AC 13)', () => {
   })
 })
 
-describe('flipping advances the index modulo the IMAGED-face count (AC 13, Q3)', () => {
+describe('flipping advances the index modulo the IMAGED-face count', () => {
   it('goes front → back → front for the only shape that exists (2,778 of 2,778)', () => {
     // MEASURED against the corpus: every one of the 2,778 cards that gets a control has exactly
     // TWO imaged faces, so the modulo is a two-state toggle for every printing in the corpus. The
@@ -109,7 +109,7 @@ describe('a count that cannot support a flip does nothing (rule 10)', () => {
   })
 })
 
-describe('the state survives what it must and is forgettable when it must be (AC 9)', () => {
+describe('the state survives what it must and is forgettable when it must be', () => {
   it('keeps every entry when `resetFaces` has NOT been called — including across re-reads', () => {
     // The store is the thing a `deck_changed` re-render does not touch: nothing in this module
     // subscribes to a deck, so there is no path by which a new deck could clear it. See the

@@ -39,7 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('the slice starts idle and every outcome is a value (AC 9)', () => {
+describe('the slice starts idle and every outcome is a value', () => {
   it('starts idle', () => {
     expect(stateNow()).toEqual(INITIAL_FORMAT_CHECK_STATE)
     expect(stateNow()).toEqual({ status: 'idle' })
@@ -63,14 +63,11 @@ describe('the slice starts idle and every outcome is a value (AC 9)', () => {
     ['an unreachable backend', { kind: 'unreachable' }],
   ]
 
-  it.each(OUTCOMES)(
-    'turns %s into `refused`, and never into a panel (Q6, AC 12)',
-    async (_label, outcome) => {
-      await loadFormatCheck('deck-1', () => Promise.resolve(outcome))
+  it.each(OUTCOMES)('turns %s into `refused`, and never into a panel', async (_label, outcome) => {
+    await loadFormatCheck('deck-1', () => Promise.resolve(outcome))
 
-      expect(stateNow()).toEqual({ status: 'refused' })
-    },
-  )
+    expect(stateNow()).toEqual({ status: 'refused' })
+  })
 
   it('never rejects, even when an injected reader throws', async () => {
     await expect(
@@ -98,7 +95,7 @@ describe('the slice starts idle and every outcome is a value (AC 9)', () => {
   })
 })
 
-describe('a deck change mid-flight cannot land the old deck’s report (AC 9)', () => {
+describe('a deck change mid-flight cannot land the old deck’s report', () => {
   it('drops a superseded load, even when it settles LAST', async () => {
     // THE FAILURE THIS PREVENTS, CONCRETELY: the agent switches decks while a read is in flight
     // and the previous deck's legality verdict lands on top of the new one — a panel confidently
@@ -159,7 +156,7 @@ describe('a deck change mid-flight cannot land the old deck’s report (AC 9)', 
   })
 })
 
-describe('one request per call, and never a retry (AC 11)', () => {
+describe('one request per call, and never a retry', () => {
   const RETRY_OUTCOMES: [string, FormatCheckOutcome][] = [
     ['a refusal', { kind: 'error', reason: 'database_not_initialized' }],
     ['an unreachable backend', { kind: 'unreachable' }],

@@ -59,7 +59,7 @@ const row = (name: string, typeLine: string, options: RowOptions = {}): DeckCard
 /** The buckets a list of rows produces, as a plain array — `curveOf` takes the derivation. */
 const curveFor = (rows: DeckCardSummary[]) => curveOf(boardsOf(rows)).buckets.map((b) => b.count)
 
-describe('the buckets are 1 … 7+, and there are seven of them (AC 6)', () => {
+describe('the buckets are 1 … 7+, and there are seven of them', () => {
   it('names them in ascending order with the last one open-ended', () => {
     expect(BUCKETS).toEqual([1, 2, 3, 4, 5, 6, 7])
     expect(LAST_BUCKET).toBe(7)
@@ -79,7 +79,7 @@ describe('the buckets are 1 … 7+, and there are seven of them (AC 6)', () => {
   })
 })
 
-describe('cards below the first bucket fold into it (Q1, AC 11)', () => {
+describe('cards below the first bucket fold into it', () => {
   it('folds a zero-mana non-land into bucket 1 rather than dropping it', () => {
     // `Pym Particles` (`fmsc` #28), the ONE live non-land row with `cmc = 0` in all 40 decks —
     // and the same row that is the deck list's only `Other`-group card. Its `type_line` really
@@ -100,7 +100,7 @@ describe('cards below the first bucket fold into it (Q1, AC 11)', () => {
   })
 })
 
-describe('lands are excluded by a WHOLE-WORD front-face test (Q4, AC 7)', () => {
+describe('lands are excluded by a WHOLE-WORD front-face test', () => {
   it('excludes the four MDFC lands that are in real decks today', () => {
     // The four cards the repo's land policies disagree about, all in real decks:
     // 7 rows across 5 decks. FR-05/UX-DR17 say front face, so all four are SPELLS here.
@@ -180,7 +180,7 @@ describe('lands are excluded by a WHOLE-WORD front-face test (Q4, AC 7)', () => 
   })
 })
 
-describe('double-faced cards bucket by their front face — for free (AC 8)', () => {
+describe('double-faced cards bucket by their front face — for free', () => {
   it('buckets a blank-cost transform card by cmc, with no hydration anywhere', () => {
     // 2,830 of 2,830 faced cards with a blank top-level `mana_cost` have `cmc` EQUAL to the
     // front face's mana value (100%, measured). So the front-face clause is satisfied here by
@@ -211,7 +211,7 @@ describe('double-faced cards bucket by their front face — for free (AC 8)', ()
     ).toEqual([0, 0, 1, 0, 0, 0, 0])
   })
 
-  it('IS KNOWINGLY WRONG for a true split card, and this pins the wrongness (Q2)', () => {
+  it('IS KNOWINGLY WRONG for a true split card, and this pins the wrongness', () => {
     // `Cramped Vents // Access Maze`: Scryfall's `cmc` for a true split card is the SUM of both
     // halves, so `'{3}{B} // {5}{B}{B}'` reports 11 where the front face is 4. 137 corpus cards
     // are this shape and ZERO are in any of the 40 real decks — the panel is correct today BY
@@ -237,7 +237,7 @@ describe('double-faced cards bucket by their front face — for free (AC 8)', ()
   })
 })
 
-describe('the board policy is commander + mainboard, sideboard excluded (Q5, AC 9)', () => {
+describe('the board policy is commander + mainboard, sideboard excluded', () => {
   it('counts the commander', () => {
     // 16 of 40 real decks carry one; including it moves the corpus non-land quantity from
     // 1,812 to 1,828. `deck_analysis.py:171-173` includes it too, so the panel and the MCP tool
@@ -273,7 +273,7 @@ describe('the board policy is commander + mainboard, sideboard excluded (Q5, AC 
   })
 })
 
-describe('counts are SUMMED QUANTITIES, never row counts (AC 10)', () => {
+describe('counts are SUMMED QUANTITIES, never row counts', () => {
   it('counts a ×4 row as four cards', () => {
     // The same rule `deckGroups.ts:166-167` fixed for group headers. A row count would not move
     // when a quantity changed from 3 to 4, which is the change a curve exists to report.
@@ -292,7 +292,7 @@ describe('counts are SUMMED QUANTITIES, never row counts (AC 10)', () => {
   })
 })
 
-describe('the totals and the scale (AC 18, AC 19)', () => {
+describe('the totals and the scale', () => {
   it('reports the total and the tallest bucket', () => {
     const curve = curveOf(
       boardsOf([
@@ -329,7 +329,7 @@ describe('the totals and the scale (AC 18, AC 19)', () => {
   })
 })
 
-describe('the derivation is a pure total function (Q9, AC 12)', () => {
+describe('the derivation is a pure total function', () => {
   it('returns a fresh value and mutates nothing it was handed', () => {
     const rows = [row('Lightning Bolt', 'Instant', { cmc: 1 })]
     const boards = boardsOf(rows)

@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 
 import { GroupHeader } from './GroupHeader'
 
-describe('Group header semantics (AC 4, AC 15, UX-DR44)', () => {
+describe('Group header semantics (UX-DR44)', () => {
   it('renders its label as an h2 with the count beside it', () => {
     const { container } = render(<GroupHeader label="Creatures" count={24} />)
 
@@ -43,7 +43,7 @@ describe('Group header semantics (AC 4, AC 15, UX-DR44)', () => {
   })
 })
 
-describe('Group header counts (AC 16)', () => {
+describe('Group header counts', () => {
   it('RENDERS "0" for count={0}', () => {
     // "CREATURES 0" is the honest state of an empty group and the exact state a deck being
     // built passes through. `{count && <span>{count}</span>}` renders the bare string `0` and
@@ -67,7 +67,7 @@ describe('Group header counts (AC 16)', () => {
   })
 })
 
-describe('Group header is presentation-only (AC 5)', () => {
+describe('Group header is presentation-only', () => {
   it('exposes no interaction', () => {
     render(<GroupHeader label="Creatures" count={2} />)
 

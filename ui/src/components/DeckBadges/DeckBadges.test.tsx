@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 
 import { DeckBadges } from './DeckBadges'
 
-describe('what the badges say (Q9)', () => {
+describe('what the badges say', () => {
   it('renders the format and the maindeck size', () => {
     render(<DeckBadges format="brawl" mainboardCount={100} sideboardCount={0} />)
 
@@ -63,7 +63,7 @@ describe('what the badges say (Q9)', () => {
   })
 })
 
-describe('the count is its own element, so the numeric role can reach it (Q9b, UX-DR3)', () => {
+describe('the count is its own element, so the numeric role can reach it (UX-DR3)', () => {
   it('wraps every number in the count class and never the label', () => {
     const { container } = render(
       <DeckBadges format="brawl" mainboardCount={100} sideboardCount={15} />,
@@ -88,7 +88,7 @@ describe('the count is its own element, so the numeric role can reach it (Q9b, U
     expect(container.querySelectorAll('.deck-badges-count')).toHaveLength(1)
   })
 
-  it('renders a zero maindeck count rather than hiding it (c4-12’s empty deck)', () => {
+  it('renders a zero maindeck count rather than hiding it (the empty deck)', () => {
     // `0` is falsy, and a truthiness guard here would silently drop the one badge that tells a
     // reader their deck is empty.
     render(<DeckBadges format="brawl" mainboardCount={0} sideboardCount={0} />)

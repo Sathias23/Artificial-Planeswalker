@@ -20,7 +20,7 @@ import { STATE_COPY } from '../components/StatePanel/copy'
 import { PANEL_FOR_REASON } from '../components/StatePanel/states'
 import { panelFor } from './panel'
 
-describe('the panel comes from the token, never from the status (AC 2)', () => {
+describe('the panel comes from the token, never from the status', () => {
   it('gives two DIFFERENT panels to the two tokens that share status 503', () => {
     // The whole of AD-16 in three lines. Both of these arrive as `503`; a client keyed on the
     // status could not tell them apart, and the fresh-install path would show "Card database is
@@ -46,7 +46,7 @@ describe('the panel comes from the token, never from the status (AC 2)', () => {
   })
 })
 
-describe('it is total, so nothing unrenderable reaches STATE_COPY (AC 8)', () => {
+describe('it is total, so nothing unrenderable reaches STATE_COPY', () => {
   it('clamps a token that is not in the union at all', () => {
     expect(panelFor('quantum_flux_capacitor_failed')).toBe('internal-error')
   })
@@ -82,7 +82,7 @@ describe('it is total, so nothing unrenderable reaches STATE_COPY (AC 8)', () =>
     },
   )
 
-  it('and a KNOWN token still maps normally — the non-vacuity half (AC 26)', () => {
+  it('and a KNOWN token still maps normally — the non-vacuity half', () => {
     // Everything above resolves to `internal-error`, which `() => 'internal-error'` would also
     // satisfy. This is the assertion that says the clamp is a clamp and not the whole function.
     expect(panelFor('deck_not_found')).toBe('no-active-deck')

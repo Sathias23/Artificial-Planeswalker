@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest'
 import { ATTRIBUTION, sentenceOf } from './copy'
 import { Footer } from './Footer'
 
-describe('the attribution reaches the screen intact (AC 1)', () => {
+describe('the attribution reaches the screen intact', () => {
   it('renders the whole sentence, byte for byte, across its five parts', () => {
     const { container } = render(<Footer />)
 
@@ -48,7 +48,7 @@ describe('the attribution reaches the screen intact (AC 1)', () => {
   })
 })
 
-describe('the links (AC 5)', () => {
+describe('the links', () => {
   it('marks exactly the two runs the copy module marks, by accessible name and href', () => {
     render(<Footer />)
 
@@ -91,7 +91,7 @@ describe('the links (AC 5)', () => {
   })
 })
 
-describe('the semantics (AC 13, AC 17, UX-DR44)', () => {
+describe('the semantics (UX-DR44)', () => {
   it('declares no landmark role of its own — the shell owns contentinfo', () => {
     render(<Footer />)
 
@@ -106,7 +106,7 @@ describe('the semantics (AC 13, AC 17, UX-DR44)', () => {
     expect(screen.queryByRole('region')).toBeNull()
   })
 
-  it('takes no props at all (Q4)', () => {
+  it('takes no props at all', () => {
     // The type-level half is `tsc`'s and the source half is shell.test.ts's; this is the
     // runtime floor. `Footer.length` is the declared parameter count of the function, so a
     // props object added later fails HERE as well as in review.

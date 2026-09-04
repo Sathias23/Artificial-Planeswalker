@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { Badge } from './Badge'
 import { BADGE_TONES } from './tones'
 
-describe('Badge tones (AC 2, AC 6)', () => {
+describe('Badge tones', () => {
   it('names exactly the five tones DESIGN.md declares', () => {
     // The non-vacuity anchor for the loop below: a BADGE_TONES that silently lost a member
     // would make every per-tone assertion pass by iterating over four things, or zero.
@@ -82,7 +82,7 @@ describe('Badge content', () => {
     expect(screen.getByText('60')).toBeInTheDocument()
   })
 
-  it('is a plain span with no role and no interaction (AC 5)', () => {
+  it('is a plain span with no role and no interaction', () => {
     // A badge is a chip on a line of text, not a control. If this ever starts failing because
     // something gave it a role, that is a behavioural contract arriving in a component whose
     // entire specification is that it has none.

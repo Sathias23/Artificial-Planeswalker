@@ -74,7 +74,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('the backoff grows and then STOPS growing (AC 3)', () => {
+describe('the backoff grows and then STOPS growing', () => {
   it('polls immediately, then on 2 s, 4 s, 8 s, 16 s and 30 s — and never longer', async () => {
     const { at, read } = always(NOT_INITIALIZED)
     const { poller } = drive(read)
@@ -160,7 +160,7 @@ describe('the backoff grows and then STOPS growing (AC 3)', () => {
   })
 })
 
-describe('RETRIES_QUIETLY is the retry contract, and it is READ (AC 7)', () => {
+describe('RETRIES_QUIETLY is the retry contract, and it is READ', () => {
   it('does not poll again after a state the map says never retries itself', async () => {
     const { at, read } = always(BROKEN)
     const { poller, panel } = drive(read)
@@ -222,7 +222,7 @@ describe('RETRIES_QUIETLY is the retry contract, and it is READ (AC 7)', () => {
     expect(RETRIES_QUIETLY['internal-error']).toBe(false)
   })
 
-  it('keeps polling the states the map says DO retry — the silent half (AC 26)', async () => {
+  it('keeps polling the states the map says DO retry — the silent half', async () => {
     for (const [outcome, expected] of [
       [NOT_INITIALIZED, 'database-not-initialized'],
       [UNAVAILABLE, 'database-updating'],
@@ -244,7 +244,7 @@ describe('RETRIES_QUIETLY is the retry contract, and it is READ (AC 7)', () => {
   })
 })
 
-describe('the stalled escalation fires on ONE token only (AC 6, Q3)', () => {
+describe('the stalled escalation fires on ONE token only', () => {
   it('escalates after 60 s of continuous database_unavailable, and then stops retrying', async () => {
     const { at, read } = always(UNAVAILABLE)
     const { poller, panel } = drive(read)
@@ -301,7 +301,7 @@ describe('the stalled escalation fires on ONE token only (AC 6, Q3)', () => {
     poller.stop()
   })
 
-  it('lets one good answer reset the clock, so the next outage starts from zero (AC 6)', async () => {
+  it('lets one good answer reset the clock, so the next outage starts from zero', async () => {
     // 30 s of `database_unavailable`, then a 200 at the 60 s mark — the exact tick that WOULD
     // have escalated had it refused again. The 200 ends the poll on its own (`no-active-deck`
     // never retries itself), and restarting the SAME poller is the realistic shape of "reads
@@ -503,7 +503,7 @@ describe('stopping is real, not advisory', () => {
 })
 
 describe('the stalled clock needs OBSERVATIONS, not just elapsed wall time', () => {
-  it('does not escalate off two refusals bracketing a suspend, then does off real ones (AC 26)', async () => {
+  it('does not escalate off two refusals bracketing a suspend, then does off real ones', async () => {
     // Wall time advances through a laptop sleep or a throttled background tab; the schedule
     // does not. Two busy blips separated by a ten-minute nap satisfy "60 s elapsed" — and
     // because the stalled panel never retries itself, escalating here would be terminal.

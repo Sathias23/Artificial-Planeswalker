@@ -42,7 +42,7 @@ beforeEach(() => {
   resetFormatCheckState()
 })
 
-describe('the panel is a titled Panel with no verdict in its chrome (AC 4, Q4)', () => {
+describe('the panel is a titled Panel with no verdict in its chrome', () => {
   it('renders a named region whose h2 is the title', async () => {
     await showing(ALL_PASS_REPORT)
 
@@ -52,7 +52,7 @@ describe('the panel is a titled Panel with no verdict in its chrome (AC 4, Q4)',
     ).toBeVisible()
   })
 
-  it('renders NO count and NO badge in the panel header (Q4)', async () => {
+  it('renders NO count and NO badge in the panel header', async () => {
     await showing(BRAWL_VIOLATION_REPORT)
 
     // `Panel`'s `badges` slot has never been used by any component in this app, which makes it
@@ -71,7 +71,7 @@ describe('the panel is a titled Panel with no verdict in its chrome (AC 4, Q4)',
   })
 })
 
-describe('exactly six rows, in the payload’s order, never sorted (AC 14, AC 5, Q9)', () => {
+describe('exactly six rows, in the payload’s order, never sorted', () => {
   it('renders one list item per row, six of them', async () => {
     await showing(ALL_PASS_REPORT)
 
@@ -100,7 +100,7 @@ describe('exactly six rows, in the payload’s order, never sorted (AC 14, AC 5,
     expect(rendered[5]).toBe(CHECK_LABELS.legality)
   })
 
-  it('renders the six labels, and NOT the machine tokens (AC 15)', async () => {
+  it('renders the six labels, and NOT the machine tokens', async () => {
     await showing(ALL_PASS_REPORT)
 
     for (const check of rowsOf(ALL_PASS_REPORT)) {
@@ -112,7 +112,7 @@ describe('exactly six rows, in the payload’s order, never sorted (AC 14, AC 5,
     expect(panel().textContent).not.toContain('format_recognized')
   })
 
-  it('does NOT ship the mock’s `Banned or restricted` label (Q3, AC 15)', async () => {
+  it('does NOT ship the mock’s `Banned or restricted` label', async () => {
     await showing(ALL_PASS_REPORT)
 
     // A false label: `deck_validator.py:433-452` reports a `restricted` card through the LEGALITY
@@ -123,8 +123,8 @@ describe('exactly six rows, in the payload’s order, never sorted (AC 14, AC 5,
   })
 })
 
-describe('the badge carries the status WORD, and the tone rides beside it (AC 16, 17, 31)', () => {
-  it('renders the three status words rather than the mock’s derived values (Q1)', async () => {
+describe('the badge carries the status WORD, and the tone rides beside it', () => {
+  it('renders the three status words rather than the mock’s derived values', async () => {
     await showing(MULTI_VIOLATION_REPORT)
 
     expect(within(panel()).getAllByText(STATUS_WORDS.violation)).toHaveLength(3)
@@ -138,7 +138,7 @@ describe('the badge carries the status WORD, and the tone rides beside it (AC 16
     }
   })
 
-  it('maps pass→positive, advisory→caution, violation→negative (AC 17)', async () => {
+  it('maps pass→positive, advisory→caution, violation→negative', async () => {
     await showing(MULTI_VIOLATION_REPORT)
 
     const toneOf = (check: string) =>
@@ -156,10 +156,10 @@ describe('the badge carries the status WORD, and the tone rides beside it (AC 16
     expect(toneOf('banned')).toContain('badge-negative')
   })
 
-  it('never produces a fourth tone, and NEVER `neutral` (AC 17)', async () => {
-    // The live WCAG constraint `ui/README.md:1394-1397` records for this story by name: neutral's
-    // `--border-strong` hairline is 1.75:1 on `--surface-panel` (re-measured — the recorded
-    // 1.89:1 is the `--surface-base` figure), under 1.4.11's 3:1 non-text floor. The four
+  it('never produces a fourth tone, and NEVER `neutral`', async () => {
+    // The live WCAG constraint: neutral's `--border-strong` hairline is 1.75:1 on
+    // `--surface-panel` (the 1.89:1 figure quoted elsewhere is the `--surface-base` one), under
+    // 1.4.11's 3:1 non-text floor. The four
     // semantic borders are 9.19 / 6.75 / 10.59 / 6.21:1 and are fine. So a state distinguished by
     // TONE is safe and a state distinguished by the NEUTRAL BORDER is not.
     const seen = new Set<string>()
@@ -192,7 +192,7 @@ describe('the badge carries the status WORD, and the tone rides beside it (AC 16
     for (const badge of badges) expect(badge.textContent?.trim()).not.toBe('')
   })
 
-  it('says it in WORDS, so colour is never the sole carrier (AC 31, UX-DR26/29)', async () => {
+  it('says it in WORDS, so colour is never the sole carrier (UX-DR26/29)', async () => {
     await showing(BRAWL_VIOLATION_REPORT)
 
     // Asserting the WORD, not the class: the row must read the same in greyscale. The class-based
@@ -206,7 +206,7 @@ describe('the badge carries the status WORD, and the tone rides beside it (AC 16
   })
 })
 
-describe('the detail sentence is on the glass — the whole of the user statement (AC 18, Q2)', () => {
+describe('the detail sentence is on the glass — the whole of the user statement', () => {
   it('renders the banned-card sentence the two-slot row could not tell', async () => {
     await showing(BRAWL_VIOLATION_REPORT)
 
@@ -224,7 +224,7 @@ describe('the detail sentence is on the glass — the whole of the user statemen
     }
   })
 
-  it('renders the size sentence a brawl deck sees, minimum and all (AC 28)', async () => {
+  it('renders the size sentence a brawl deck sees, minimum and all', async () => {
     await showing(BRAWL_VIOLATION_REPORT)
 
     // A PASS sentence naming a minimum forty cards below the format's real one, for 18 of 40
@@ -264,7 +264,7 @@ describe('the detail sentence is on the glass — the whole of the user statemen
   })
 })
 
-describe('the formatless report: six rows, no second layout, nothing negative (Q8, AC 20)', () => {
+describe('the formatless report: six rows, no second layout, nothing negative', () => {
   it.each([
     ['a named unrecognised format', FORMATLESS_REPORT],
     ['no format at all', NO_FORMAT_REPORT],
@@ -281,10 +281,10 @@ describe('the formatless report: six rows, no second layout, nothing negative (Q
     expect(within(panel()).getByText(banned.detail)).toBeVisible()
   })
 
-  it('produces NOTHING negative from `is_legal: false` with zero violation rows (AC 19)', async () => {
-    // THE TRAP, as a passing test. `deferred-work.md:2430-2437` homes it here by name and says
-    // nothing machine-checkable stops it; live exposure is ZERO, which is exactly the condition
-    // under which a wrong binding ships green. This fixture is the only way to produce it.
+  it('produces NOTHING negative from `is_legal: false` with zero violation rows', async () => {
+    // THE TRAP, as a passing test: nothing machine-checkable stops `is_legal` being bound to a
+    // headline, and live exposure is ZERO, which is exactly the condition under which a wrong
+    // binding ships green. This fixture is the only way to produce it.
     expect(FORMATLESS_REPORT.is_legal).toBe(false)
     expect(FORMATLESS_REPORT.rows.some((row) => row.status === 'violation')).toBe(false)
 
@@ -299,7 +299,7 @@ describe('the formatless report: six rows, no second layout, nothing negative (Q
     expect(panel().querySelectorAll('.badge-positive')).toHaveLength(3)
   })
 
-  it('renders no `null`, no `undefined` and no format string in its chrome (Q14)', async () => {
+  it('renders no `null`, no `undefined` and no format string in its chrome', async () => {
     await showing(FORMATLESS_REPORT)
 
     expect(panel().textContent).not.toContain('undefined')
@@ -315,7 +315,7 @@ describe('the formatless report: six rows, no second layout, nothing negative (Q
   })
 })
 
-describe('the three silent states draw nothing (Q6, AC 12)', () => {
+describe('the three silent states draw nothing', () => {
   it('renders null before anything has been asked', () => {
     const { container } = render(<FormatCheck />)
 
@@ -344,7 +344,7 @@ describe('the three silent states draw nothing (Q6, AC 12)', () => {
   })
 })
 
-describe('display-only, literally (AC 6, UX-DR21, UX-DR40, UX-DR47)', () => {
+describe('display-only, literally (UX-DR21, UX-DR40, UX-DR47)', () => {
   it('adds ZERO Tab stops and nothing is clickable', async () => {
     const view = await showing(MULTI_VIOLATION_REPORT)
 
@@ -365,7 +365,7 @@ describe('display-only, literally (AC 6, UX-DR21, UX-DR40, UX-DR47)', () => {
     expect(view.container.innerHTML).toBe(before)
   })
 
-  it('adds no `aria-live` region (AC 29, Q16)', async () => {
+  it('adds no `aria-live` region', async () => {
     const view = await showing(ALL_PASS_REPORT)
 
     // `CardDetail`'s single polite region stays the only one. Nothing here moves after first
@@ -374,7 +374,7 @@ describe('display-only, literally (AC 6, UX-DR21, UX-DR40, UX-DR47)', () => {
     expect(view.container.querySelectorAll('[role="status"], [role="alert"]')).toHaveLength(0)
   })
 
-  it('renders CALMLY — no alert role, no exclamation mark, no icon (AC 33, UX-DR30)', async () => {
+  it('renders CALMLY — no alert role, no exclamation mark, no icon (UX-DR30)', async () => {
     const view = await showing(MULTI_VIOLATION_REPORT)
 
     expect(view.container.querySelectorAll('svg, img')).toHaveLength(0)
@@ -383,7 +383,7 @@ describe('display-only, literally (AC 6, UX-DR21, UX-DR40, UX-DR47)', () => {
     expect(view.container.textContent).not.toContain('!')
   })
 
-  it('overrides no list role — the `<ul>` stays a list (AC 5)', async () => {
+  it('overrides no list role — the `<ul>` stays a list', async () => {
     const view = await showing(ALL_PASS_REPORT)
 
     const list = view.container.querySelector('.format-check-rows')

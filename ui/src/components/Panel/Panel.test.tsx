@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
 
 import { Panel } from './Panel'
 
-describe('Panel semantics (AC 15, Q4)', () => {
+describe('Panel semantics', () => {
   it('exposes a titled panel as a NAMED region with its title as an h2', () => {
     // This is the per-panel `role="region"` labelling AppShell.tsx leaves to the panels.
     // A <section> is only exposed as a region WHEN IT HAS A NAME —
@@ -51,7 +51,7 @@ describe('Panel semantics (AC 15, Q4)', () => {
   })
 })
 
-describe('Panel header slots (AC 1, AC 16, AC 17)', () => {
+describe('Panel header slots', () => {
   it('renders title, count and badges together', () => {
     render(<Panel title="Creatures" count={24} badges={<span>legal</span>} />)
 
@@ -75,8 +75,8 @@ describe('Panel header slots (AC 1, AC 16, AC 17)', () => {
     expect(container.querySelector('header')).toBeNull()
   })
 
-  it('RENDERS "0" for count={0}, rather than dropping it (AC 16)', () => {
-    // The single most likely defect in this story. `{count && <span>{count}</span>}` renders
+  it('RENDERS "0" for count={0}, rather than dropping it', () => {
+    // The single most likely defect in a count slot. `{count && <span>{count}</span>}` renders
     // the bare string `0` into the DOM — something, so nobody looks — and `count ? … : null`
     // drops a real zero. A zero count is REAL CONTENT: "CREATURES 0" is the honest state of an
     // empty group, and a group header that silently loses its count in exactly that state is
@@ -103,12 +103,11 @@ describe('Panel header slots (AC 1, AC 16, AC 17)', () => {
     expect(screen.getByText('standard')).toBeInTheDocument()
   })
 
-  it('uses filled() for the badge slot, so an empty shape mounts nothing (AC 17)', () => {
-    // Not raw truthiness. `badges={<></>}` and `badges={[]}` are the shapes that took a
-    // Greptile round and two review rounds to settle in filled() — an empty Fragment is a
-    // React ELEMENT, so every nullish/boolean/string/array check calls it filled while the
-    // browser paints nothing. Re-deriving that here is the reinvention AC 17 forbids; this
-    // test is what proves the helper is actually reached.
+  it('uses filled() for the badge slot, so an empty shape mounts nothing', () => {
+    // Not raw truthiness. `badges={<></>}` and `badges={[]}` are the shapes filled() exists
+    // to settle — an empty Fragment is a React ELEMENT, so every nullish/boolean/string/array
+    // check calls it filled while the browser paints nothing. Re-deriving that here would be
+    // reinvention; this test is what proves the helper is actually reached.
     const { container: fragment } = render(<Panel badges={<></>} />)
     expect(fragment.querySelector('header')).toBeNull()
 
@@ -121,7 +120,7 @@ describe('Panel header slots (AC 1, AC 16, AC 17)', () => {
   })
 })
 
-describe('Panel levels and states (AC 1)', () => {
+describe('Panel levels and states', () => {
   // These four assert the CLASS, and say why: the class is the only part of "default vs
   // overlay" and "rest vs live" that exists in the DOM. What the class MEANS — --surface-panel
   // against --surface-overlay, --shadow-rest against --shadow-raise, the accent title, the
@@ -180,9 +179,9 @@ describe('Panel levels and states (AC 1)', () => {
   })
 })
 
-describe('Panel combined variants (AC 6 — the matrix, not just the axes)', () => {
-  // The review found the axes tested in isolation only, and the isolation was hiding a real
-  // combination decision (the title-less live dot above). These pin the class COMPOSITION —
+describe('Panel combined variants — the matrix, not just the axes', () => {
+  // Axes tested in isolation hide real combination decisions (the title-less live dot
+  // above). These pin the class COMPOSITION —
   // the one thing about combined states that exists in jsdom — so a `classes.join` regression
   // under multiple modifiers cannot pass the single-modifier tests.
   it('composes overlay + live with a full header', () => {

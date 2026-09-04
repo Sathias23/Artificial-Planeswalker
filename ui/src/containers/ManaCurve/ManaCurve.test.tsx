@@ -74,7 +74,7 @@ const MIXED = [
 const renderCurve = (rows: DeckCardSummary[] = MIXED) =>
   render(<ManaCurve boards={boardsOf(rows)} />)
 
-describe('the panel and the figure (AC 4, AC 5)', () => {
+describe('the panel and the figure', () => {
   it('renders a titled Panel whose title is the section name', () => {
     renderCurve()
     const panel = screen.getByRole('region', { name: MANA_CURVE_TITLE })
@@ -97,7 +97,7 @@ describe('the panel and the figure (AC 4, AC 5)', () => {
   })
 })
 
-describe('seven bars, in ascending order, with the last one open-ended (AC 6)', () => {
+describe('seven bars, in ascending order, with the last one open-ended', () => {
   it('draws exactly seven bars', () => {
     const { container } = renderCurve()
     expect(container.querySelectorAll('.mana-curve-bar')).toHaveLength(7)
@@ -119,7 +119,7 @@ describe('seven bars, in ascending order, with the last one open-ended (AC 6)', 
   })
 })
 
-describe('the bar heights are a custom property, and the scale is the tallest bar (AC 17, AC 18)', () => {
+describe('the bar heights are a custom property, and the scale is the tallest bar', () => {
   const heightsOf = (container: HTMLElement) =>
     [...container.querySelectorAll<HTMLElement>('.mana-curve-bar')].map((bar) =>
       bar.style.getPropertyValue('--curve-bar-height'),
@@ -163,7 +163,7 @@ describe('the bar heights are a custom property, and the scale is the tallest ba
   })
 })
 
-describe('the bars are display-only (AC 13, Q11)', () => {
+describe('the bars are display-only', () => {
   it('adds ZERO Tab stops, and the only roles are the seven img bars', () => {
     const { container } = renderCurve()
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(0)
@@ -194,7 +194,7 @@ describe('the bars are display-only (AC 13, Q11)', () => {
   })
 })
 
-describe('the accessible alternative (AC 21, AC 22, AC 23, AC 24)', () => {
+describe('the accessible alternative', () => {
   it('names EVERY bar with its count, not only the first', () => {
     // A loop asserted on `[0]` proves the first element and nothing about the other six.
     const { container } = renderCurve()
@@ -265,7 +265,7 @@ describe('the accessible alternative (AC 21, AC 22, AC 23, AC 24)', () => {
     }
   })
 
-  it('is NOT a live region and adds no aria-live anywhere (AC 24)', () => {
+  it('is NOT a live region and adds no aria-live anywhere', () => {
     // A curve that announced on every deck change would be a second announcer beside
     // CardDetail's single polite region.
     const { container } = renderCurve()
@@ -274,7 +274,7 @@ describe('the accessible alternative (AC 21, AC 22, AC 23, AC 24)', () => {
   })
 })
 
-describe('the empty-curve behaviour (AC 28, Q12)', () => {
+describe('the empty-curve behaviour', () => {
   it('renders NOTHING when the deck has no cards', () => {
     const { container } = renderCurve([])
     expect(container.innerHTML).toBe('')
@@ -301,7 +301,7 @@ describe('the empty-curve behaviour (AC 28, Q12)', () => {
   })
 })
 
-describe('the board policy, through the rendered panel (AC 9)', () => {
+describe('the board policy, through the rendered panel', () => {
   it('counts the commander and ignores the sideboard', () => {
     const { container } = renderCurve([
       row('Atraxa', 'Legendary Creature — Phyrexian Angel', { cmc: 7, commander: true }),
@@ -312,7 +312,7 @@ describe('the board policy, through the rendered panel (AC 9)', () => {
   })
 })
 
-describe('the panel draws no card (AC 20, UX-DR4)', () => {
+describe('the panel draws no card (UX-DR4)', () => {
   it('puts no card-shaped class anywhere in its markup', () => {
     const { container } = renderCurve()
     expect(container.querySelectorAll('.card-shape')).toHaveLength(0)

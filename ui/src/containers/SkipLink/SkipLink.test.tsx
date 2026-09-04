@@ -44,7 +44,7 @@ const targetPanel = (headingText = 'Stand-in heading') => (
   </div>
 )
 
-describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)', () => {
+describe('the skip link is a real control with a real name (UX-DR47)', () => {
   it('renders a real <button> carrying the canonical string', () => {
     render(<SkipLink />)
     const link = screen.getByRole('button', { name: SKIP_LINK_LABEL })
@@ -57,7 +57,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     expect(link.getAttribute('type')).toBe('button')
   })
 
-  it('carries NO tabindex — it is a button, so it is already in the Tab order (AC 12)', () => {
+  it('carries NO tabindex — it is a button, so it is already in the Tab order', () => {
     render(<SkipLink />)
     const link = screen.getByRole('button', { name: SKIP_LINK_LABEL })
 
@@ -67,7 +67,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     expect(link.hasAttribute('tabindex')).toBe(false)
   })
 
-  it('adds no aria-live and announces nothing (AC 26, Q12)', () => {
+  it('adds no aria-live and announces nothing', () => {
     const { container } = render(<SkipLink />)
 
     // This component announces nothing — its accessible name is the announcement. Asserted here
@@ -91,7 +91,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     // the assertion the three absences exist to protect.
   })
 
-  it('adds NO `onKeyDown` — Enter and Space are the browser’s (AC 7)', () => {
+  it('adds NO `onKeyDown` — Enter and Space are the browser’s', () => {
     // A real `<button>` turns both into a `click`, which is why there is no key handler to write
     // and why writing one would be the bug: a `keydown` handler beside the browser's own
     // activation would move focus TWICE for one Enter. `FlipControl.test.tsx:392-407`'s
@@ -117,7 +117,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Stand-in heading' }))
   })
 
-  it('introduces no landmark of its own (AC 2)', () => {
+  it('introduces no landmark of its own', () => {
     // `AppShell.test.tsx` pins the landmark count with a STAND-IN in the `skipLink` slot, so a
     // `<nav>`/`<aside>` wrapper added HERE would keep every shell test green while moving the
     // landmark count the artefacts pin at three. Asserted against the real component: the button
@@ -136,7 +136,7 @@ describe('the skip link is a real control with a real name (AC 1, AC 7, UX-DR47)
   })
 })
 
-describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
+describe('activating it moves focus to the panel heading', () => {
   it('focuses the target panel’s <h2>, and leaves no [tabindex] behind after blur', () => {
     render(
       <>
@@ -200,7 +200,7 @@ describe('activating it moves focus to the panel heading (AC 5, AC 6)', () => {
   })
 })
 
-describe('withdrawal never drops focus to document.body (AC 9, Q4a)', () => {
+describe('withdrawal never drops focus to document.body', () => {
   it('hands focus to the h1 when it unmounts WHILE FOCUSED', () => {
     const { rerender } = render(
       <>

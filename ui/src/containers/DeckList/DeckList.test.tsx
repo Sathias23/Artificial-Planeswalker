@@ -111,7 +111,7 @@ beforeEach(() => {
   resetCardCache()
 })
 
-describe('the panel, its placement and its semantics (AC 4, AC 5)', () => {
+describe('the panel, its placement and its semantics', () => {
   it('is a titled Panel — an h2 that also names the section (UX-DR44)', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
@@ -120,7 +120,7 @@ describe('the panel, its placement and its semantics (AC 4, AC 5)', () => {
     expect(within(panel).getByRole('heading', { level: 2, name: DECK_LIST_TITLE })).toBeVisible()
   })
 
-  it('is at level="default" — the first shipped consumer of that level (AC 33)', () => {
+  it('is at level="default" — the first shipped consumer of that level', () => {
     const { container } = render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     // `panel-overlay` is the class the overlay level adds; its ABSENCE is half the assertion.
@@ -130,7 +130,7 @@ describe('the panel, its placement and its semantics (AC 4, AC 5)', () => {
     expect(container.querySelector('.panel-overlay')).toBeNull()
   })
 
-  it('renders a real ul/li with NO role override (AC 5)', () => {
+  it('renders a real ul/li with NO role override', () => {
     const { container } = render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     for (const list of container.querySelectorAll('ul.deck-list-rows')) {
@@ -143,7 +143,7 @@ describe('the panel, its placement and its semantics (AC 4, AC 5)', () => {
     expect(within(panelOf()).getAllByRole('listitem')).toHaveLength(5)
   })
 
-  it('adds NO aria-live anywhere — this panel is not a live region (AC 30, UX-DR45)', () => {
+  it('adds NO aria-live anywhere — this panel is not a live region (UX-DR45)', () => {
     const { container } = render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
@@ -151,7 +151,7 @@ describe('the panel, its placement and its semantics (AC 4, AC 5)', () => {
   })
 })
 
-describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
+describe('the row', () => {
   it('is a REAL button, and nothing carries a tabindex (UX-DR47)', () => {
     const { container } = render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
@@ -166,7 +166,7 @@ describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(0)
   })
 
-  it('renders the quantity for EVERY row, including 1 — unlike the tile badge (AC 9)', () => {
+  it('renders the quantity for EVERY row, including 1 — unlike the tile badge', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     const panel = panelOf()
@@ -178,7 +178,7 @@ describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
     expect(within(panel).getByText('×34')).toBeVisible()
   })
 
-  it('uses U+00D7, never the letter x (AC 9, UX-DR3)', () => {
+  it('uses U+00D7, never the letter x (UX-DR3)', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     const quantities = [...panelOf().querySelectorAll('.deck-row-quantity')]
@@ -191,7 +191,7 @@ describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
     }
   })
 
-  it('renders the cost through ManaCost, as a labelled pip run (AC 11)', () => {
+  it('renders the cost through ManaCost, as a labelled pip run', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     // `ManaCost` renders `role="img"` with a spoken label; the TWO costless basic lands render
@@ -201,7 +201,7 @@ describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
     for (const run of runs) expect(run).toHaveAttribute('aria-label')
   })
 
-  it('renders NO PIPS for a blank cost — the empty cell stays, keeping the grid track (AC 11)', () => {
+  it('renders NO PIPS for a blank cost — the empty cell stays, keeping the grid track', () => {
     const { container } = render(<DeckList boards={boardsOf([row(LAND_A, { mana_cost: '' })])} />)
 
     // `ManaCost` returns `null`; the `.deck-row-cost` CELL is still rendered on purpose — the
@@ -213,7 +213,7 @@ describe('the row (AC 6, AC 9, AC 10, AC 11)', () => {
   })
 })
 
-describe('the price column that does not exist (AC 12, Q1)', () => {
+describe('the price column that does not exist', () => {
   /**
    * THE ABSENCE, ASSERTED AT THE TYPE.
    *
@@ -234,7 +234,7 @@ describe('the price column that does not exist (AC 12, Q1)', () => {
     expect(_noPrice).toBe(true)
   })
 
-  it('puts no currency on the glass (AC 12)', () => {
+  it('puts no currency on the glass', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     // The rendered half of the same claim: no `$`, and no empty fourth cell pretending to hold
@@ -246,8 +246,8 @@ describe('the price column that does not exist (AC 12, Q1)', () => {
   })
 })
 
-describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, AC 24)', () => {
-  it('renders group headers through GroupHeader, the first production consumer (AC 16)', () => {
+describe('the groups, their order and their counts', () => {
+  it('renders group headers through GroupHeader, the first production consumer', () => {
     const { container } = render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     expect(container.querySelectorAll('.group-header').length).toBeGreaterThan(0)
@@ -255,7 +255,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
     expect(container.querySelector('.group-header-count')).not.toBeNull()
   })
 
-  it('orders sections commander → TYPE_GROUPS → sideboard, and never re-sorts (AC 17, AC 20, AC 21)', () => {
+  it('orders sections commander → TYPE_GROUPS → sideboard, and never re-sorts', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     const headings = within(panelOf())
@@ -272,7 +272,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
     ])
   })
 
-  it('counts SUMMED QUANTITIES, never row counts (AC 18, Q14)', () => {
+  it('counts SUMMED QUANTITIES, never row counts', () => {
     const { container } = render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     const counts = [...container.querySelectorAll('.group-header-count')].map((c) => c.textContent)
@@ -281,7 +281,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
     expect(counts).toEqual(['1', '4', '44', '2'])
   })
 
-  it('omits empty groups and assumes no fixed set — 2 groups here, not 9 (AC 24)', () => {
+  it('omits empty groups and assumes no fixed set — 2 groups here, not 9', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     const headings = within(panelOf())
@@ -299,7 +299,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
     ])
   })
 
-  it('renders a deck whose groups are eight wide, in TYPE_GROUPS order (AC 24)', () => {
+  it('renders a deck whose groups are eight wide, in TYPE_GROUPS order', () => {
     const eight = boardsOf([
       row('c', { type_line: 'Creature — Elf' }),
       row('p', { type_line: 'Legendary Planeswalker — Jace' }),
@@ -328,7 +328,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
     ])
   })
 
-  it('draws no commander or sideboard section when those boards are empty (AC 20, AC 21)', () => {
+  it('draws no commander or sideboard section when those boards are empty', () => {
     render(<DeckList boards={boardsOf([row(CREATURE)])} />)
 
     const headings = within(panelOf())
@@ -337,7 +337,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
     expect(headings).toEqual([DECK_LIST_TITLE, GROUP_LABELS.Creature])
   })
 
-  it('draws the sideboard the GRID deliberately drops (AC 21)', () => {
+  it('draws the sideboard the GRID deliberately drops', () => {
     render(<DeckList boards={boardsOf(THREE_BOARDS)} />)
 
     // The grid deliberately drops the sideboard; this panel is where it is drawn.
@@ -347,7 +347,7 @@ describe('the groups, their order and their counts (AC 16, AC 17, AC 18, AC 19, 
   })
 })
 
-describe('conservation holds on screen (AC 22)', () => {
+describe('conservation holds on screen', () => {
   it('every card lands in exactly one section, and the quantities sum', () => {
     const boards = boardsOf(THREE_BOARDS)
     const { container } = render(<DeckList boards={boards} />)
@@ -369,7 +369,7 @@ describe('conservation holds on screen (AC 22)', () => {
   })
 })
 
-describe('the double-faced row — three shapes, one AC clause (AC 23, Q2)', () => {
+describe('the double-faced row — three shapes, one rule', () => {
   it('shows the FRONT face name, split from the summary', () => {
     render(
       <DeckList
@@ -462,7 +462,7 @@ describe('the double-faced row — three shapes, one AC clause (AC 23, Q2)', () 
   })
 })
 
-describe('a card with no image data or an unrecognised id (AC 15, Q11)', () => {
+describe('a card with no image data or an unrecognised id', () => {
   it('renders IDENTICALLY to any other row, because the list is text-first', () => {
     // The wire CANNOT produce this — `DeckDetail.from_deck` validates a `CardSummary` per row
     // inside the response constructor, so a card-less entry raises rather than arriving. The
@@ -502,7 +502,7 @@ describe('a card with no image data or an unrecognised id (AC 15, Q11)', () => {
   })
 })
 
-describe('inspection — the second consumer, proving the API is location-agnostic (AC 25)', () => {
+describe('inspection — the second consumer, proving the API is location-agnostic', () => {
   it('attaches the five verbs to its own button, exactly as a tile does', () => {
     render(
       <DeckList
@@ -531,7 +531,7 @@ describe('inspection — the second consumer, proving the API is location-agnost
     expect(useInspectionStore.getState().pinnedId).toBe(CREATURE)
   })
 
-  it('marks the live row, and EXACTLY one (AC 13)', () => {
+  it('marks the live row, and EXACTLY one', () => {
     const { container } = render(
       <DeckList
         boards={boardsOf([
@@ -545,8 +545,8 @@ describe('inspection — the second consumer, proving the API is location-agnost
     expect(container.querySelectorAll('.deck-row.is-live')).toHaveLength(1)
   })
 
-  it('keeps the clears KEYED BY ID across a three-row sweep (AC 26)', () => {
-    // The default is a card the sweep never ENDS on (c4-7 review): with `LAND_B` as the default,
+  it('keeps the clears KEYED BY ID across a three-row sweep', () => {
+    // The default is a card the sweep never ENDS on: with `LAND_B` as the default,
     // the closing assertion could not tell "hover won" from "fell back to the cold-open card" —
     // they were the same id. With `CREATURE` there, every mid- and end-sweep assertion below is
     // distinguishable from the fallback, and a wrongly-erased hover surfaces as `CREATURE`.
@@ -582,7 +582,7 @@ describe('inspection — the second consumer, proving the API is location-agnost
     // after `toBe(LAND_B)` would be vacuous.
   })
 
-  it('resolves MIXED INPUT in both directions, and neither clear rewrites recency (AC 27)', () => {
+  it('resolves MIXED INPUT in both directions, and neither clear rewrites recency', () => {
     render(
       <DeckList
         boards={boardsOf([
@@ -651,7 +651,7 @@ describe('inspection — the second consumer, proving the API is location-agnost
   })
 })
 
-describe('the panel re-derives nothing (AC 28)', () => {
+describe('the panel re-derives nothing', () => {
   it('renders rows in the derivation’s order, not one of its own', () => {
     // A re-`sort()` is the second derivation AD-12 forbids, and it is invisible until someone
     // compares the two columns. The fixture is deliberately given in an order that is NOT the
@@ -717,7 +717,7 @@ describe('the panel re-derives nothing (AC 28)', () => {
   })
 })
 
-describe('a deck with no cards at all (Q16)', () => {
+describe('a deck with no cards at all', () => {
   it('renders the titled panel with no rows and NO invented sentence', () => {
     const { container } = render(<DeckList boards={boardsOf([])} />)
 
@@ -732,7 +732,7 @@ describe('a deck with no cards at all (Q16)', () => {
   })
 })
 
-describe('the label map is total over TypeGroup (AC 19, Q5)', () => {
+describe('the label map is total over TypeGroup', () => {
   it('has a label for every group, and none it invented', () => {
     // The TYPE-level coupling lives in `DeckList.tsx` (an import-free `copy.ts` cannot carry a
     // `satisfies`); this is its runtime shadow, which also catches a label emptied to ''.

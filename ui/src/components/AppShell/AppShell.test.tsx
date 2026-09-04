@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest'
 
 import { AppShell } from './AppShell'
 
-describe('AppShell landmarks (AC 14, Q4)', () => {
+describe('AppShell landmarks', () => {
   it('renders exactly one banner, one main and one contentinfo', () => {
     render(<AppShell />)
 
@@ -29,10 +29,10 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
   })
 
-  it('keeps the counts at 1/1/1 WITH a skip link present (c4-11, AC 2)', () => {
-    // The first structural addition to this file in nine stories, and the thing it must not do is
-    // become a fourth landmark. Asserted WITH the slot filled, because the test above renders an
-    // empty shell and would stay green through a `<nav>` or `<aside>` wrapper here.
+  it('keeps the counts at 1/1/1 WITH a skip link present', () => {
+    // The thing a skip-link slot must not do is become a fourth landmark. Asserted WITH the
+    // slot filled, because the test above renders an empty shell and would stay green through
+    // a `<nav>` or `<aside>` wrapper here.
     render(<AppShell skipLink={<button type="button">Skip past the deck grid</button>} />)
 
     expect(screen.getAllByRole('banner')).toHaveLength(1)
@@ -43,7 +43,7 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(screen.queryAllByRole('region')).toHaveLength(0)
   })
 
-  it('renders the skip link OUTSIDE all three landmarks, and FIRST (c4-11, AC 1, AC 2, Q5)', () => {
+  it('renders the skip link OUTSIDE all three landmarks, and FIRST', () => {
     const { container } = render(
       <AppShell
         skipLink={<button type="button">Skip past the deck grid</button>}
@@ -68,12 +68,10 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     ).toBeTruthy()
   })
 
-  it('renders NOTHING in the skip-link slot when it is empty — no placeholder (c4-11)', () => {
-    // The one slot in this file that deliberately breaks the AC 21 placeholder convention. Every
-    // other empty region renders a line naming its owning story; this one renders nothing at all,
-    // because it sits before the header on EVERY surface — including the ones where the link is
-    // correctly absent — so a placeholder would put a story key permanently in the most prominent
-    // position in the document. That is the exact defect the C3 retro's F1 item is about.
+  it('renders NOTHING in the skip-link slot when it is empty — no placeholder', () => {
+    // Nothing may stand in for the skip link: it sits before the header on EVERY surface —
+    // including the ones where the link is correctly absent — so a placeholder would put text
+    // permanently in the most prominent position in the document.
     const { container } = render(<AppShell left={<p>left column content</p>} />)
 
     expect(container.querySelector('.app-shell')?.firstElementChild?.tagName).toBe('HEADER')
@@ -81,11 +79,10 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(container.textContent).not.toContain('Skip past the deck grid')
   })
 
-  it('renders the connection pill AFTER main and BEFORE the footer (c5-7, AC 9, Q1)', () => {
-    // THE DOM-POSITION RULING, ASSERTED RATHER THAN DESCRIBED — this is the machine-checkable
-    // half of dw:4597, which three artefacts each assumed someone else had closed. Nothing in
-    // this app carries a `tabindex`, so document order IS Tab order (c4-6's ruling) and these
-    // two comparisons ARE the claim "the last Tab stop before the footer links".
+  it('renders the connection pill AFTER main and BEFORE the footer', () => {
+    // THE DOM POSITION, ASSERTED RATHER THAN DESCRIBED. Nothing in this app carries a
+    // `tabindex`, so document order IS Tab order and these two comparisons ARE the claim "the
+    // last Tab stop before the footer links".
     render(
       <AppShell
         left={<p>left column content</p>}
@@ -111,7 +108,7 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(screen.getByRole('contentinfo').contains(pill)).toBe(false)
   })
 
-  it('keeps the counts at 1/1/1 WITH a connection pill present (c5-7, AC 9)', () => {
+  it('keeps the counts at 1/1/1 WITH a connection pill present', () => {
     render(
       <AppShell
         connectionPill={<button type="button">Connected</button>}
@@ -124,10 +121,10 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
   })
 
-  it('renders NOTHING in the pill slot when it is empty — no placeholder (c5-7)', () => {
-    // The skip link's exception applied a second time, and for a sharper reason: this element is
-    // FIXED to a window corner on every surface, so a placeholder naming c5-7 would sit on the
-    // glass permanently AND never scroll away. `main` is followed directly by the footer.
+  it('renders NOTHING in the pill slot when it is empty — no placeholder', () => {
+    // The skip link's reason, sharper: this element is FIXED to a window corner on every
+    // surface, so a placeholder would sit on the glass permanently AND never scroll away.
+    // `main` is followed directly by the footer.
     const { container } = render(<AppShell left={<p>left column content</p>} />)
 
     expect(screen.getByRole('main').nextElementSibling?.tagName).toBe('FOOTER')
@@ -142,7 +139,7 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(main.getByText('right column content')).toBeInTheDocument()
   })
 
-  it('does not mark the right column complementary (Q4 — it is not an <aside>)', () => {
+  it('does not mark the right column complementary — it is not an <aside>', () => {
     // The deck list is FR-05's PRIMARY content, satisfied as a permanent second column
     // rather than a toggled alternate view. `complementary` would demote exactly the thing
     // the redesign promoted, so the absence of that role is the assertion.
@@ -152,7 +149,7 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
   })
 })
 
-describe('AppShell header (AC 15, AC 15b, Q3)', () => {
+describe('AppShell header', () => {
   it('carries the product kicker and an h1', () => {
     render(<AppShell />)
 
@@ -161,9 +158,9 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
     expect(banner.getByText('Artificial Planeswalker', { selector: 'span' })).toBeVisible()
   })
 
-  it('lets c4-2 replace the h1 CONTENT without restructuring the header', () => {
-    // AC 15's actual requirement: the element, its level and its position are the shell's;
-    // only the string is c4-2's. If this ever needs more than a prop, the header moved.
+  it('lets a caller replace the h1 CONTENT without restructuring the header', () => {
+    // The element, its level and its position are the shell's; only the string is the
+    // caller's. If this ever needs more than a prop, the header moved.
     render(<AppShell deckName="Boros Aggro — RCQ list" />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Boros Aggro — RCQ list')
@@ -186,7 +183,7 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
     }
   })
 
-  it('never renders an EMPTY h1, even for deckName="" (review, 2026-07-28)', () => {
+  it('never renders an EMPTY h1, even for deckName=""', () => {
     // A default parameter fires only on `undefined`; an empty string from a loading gap in
     // the store would render an empty heading and leave the page effectively heading-less
     // — the exact state the fallback exists to prevent. It is value-aware, and this pins it.
@@ -195,10 +192,10 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Artificial Planeswalker')
   })
 
-  it('reserves both right-hand slots, prop-fed (AC 15b)', () => {
-    // c2-7 supplies Badge and c6-8 supplies the nav pills. If the header did not already
-    // have somewhere to put them, each of those stories would restructure the header
-    // instead of filling it, and the alignment would be re-derived twice.
+  it('reserves both right-hand slots, prop-fed', () => {
+    // Badge and the nav pills arrive from their own components. If the header did not already
+    // have somewhere to put them, each would restructure the header instead of filling it,
+    // and the alignment would be re-derived twice.
     render(<AppShell badges={<span>standard legal</span>} nav={<button>Card groups</button>} />)
 
     const banner = within(screen.getByRole('banner'))
@@ -207,7 +204,7 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
   })
 })
 
-describe('AppShell updating marker (c7-4, UX-DR35, UX-DR42)', () => {
+describe('AppShell updating marker (UX-DR35, UX-DR42)', () => {
   it('marks the identity block and renders the hidden static text while updating', () => {
     const { container } = render(<AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating />)
 
@@ -263,12 +260,11 @@ describe('AppShell updating marker (c7-4, UX-DR35, UX-DR42)', () => {
   })
 })
 
-describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders are retired)', () => {
-  // From c2-1 to 17.4 every empty region rendered a line naming the story that would fill it.
-  // Every region has had an owner since c6-8, so the copy met its scheduled death in 17.5 and
-  // an empty region is now simply absent. The `filled()` SEMANTICS survive — `false`, `[]`, an
-  // empty Fragment and an empty Set are all "empty", a non-empty array is not — and these cases
-  // keep guarding them, because the Welcome surface's single-track grid depends on them too.
+describe('AppShell empty regions render nothing', () => {
+  // An empty region is simply absent: no placeholder text of any kind. The `filled()`
+  // SEMANTICS — `false`, `[]`, an empty Fragment and an empty Set are all "empty", a non-empty
+  // array is not — are guarded here because the Welcome surface's single-track grid depends on
+  // them too.
   const STORY_KEY = /c[0-9]-[0-9]+/
 
   it('puts no story key and no placeholder element on the glass when every region is empty', () => {
@@ -287,7 +283,7 @@ describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders
     expect(screen.getByText('the card grid')).toBeInTheDocument()
   })
 
-  it('treats the idiomatic false as empty (review, 2026-07-28)', () => {
+  it('treats the idiomatic false as empty', () => {
     // `left={hasDeck && <CardGrid />}` passes `false` when there is no deck.
     const { container } = render(<AppShell left={false} />)
 
@@ -303,7 +299,7 @@ describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders
     expect(container.querySelector('.app-shell-column')!.childElementCount).toBe(0)
   })
 
-  it('treats an empty Fragment and an empty Set as empty (Greptile, PR #23)', () => {
+  it('treats an empty Fragment and an empty Set as empty', () => {
     const { container } = render(<AppShell left={<></>} right={new Set() as never} />)
 
     expect(container.querySelectorAll('.app-shell-column')).toHaveLength(1)
@@ -318,7 +314,7 @@ describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders
   })
 })
 
-describe('AppShell single-track grid when the right column is empty (17.5)', () => {
+describe('AppShell single-track grid when the right column is empty', () => {
   it('renders ONE column and marks the grid data-single when `right` is empty', () => {
     render(<AppShell left={<p>welcome</p>} />)
 
@@ -336,7 +332,7 @@ describe('AppShell single-track grid when the right column is empty (17.5)', () 
   })
 })
 
-describe('AppShell overlay slot (AC 7, AC 9)', () => {
+describe('AppShell overlay slot', () => {
   // The slot is an unstyled positioning container: it has no role, and giving it one would
   // invent a landmark the agent view does not want. So these two assert on the ELEMENT, the
   // honest thing to assert about a thing whose whole contract is "exists / does not exist".
@@ -378,7 +374,7 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
     expect(overlayIn(render(<AppShell overlay={new Set() as never} />).container)).toBeNull()
   })
 
-  it('does not CONSUME a one-shot iterable while inspecting it (Greptile, PR #23)', () => {
+  it('does not CONSUME a one-shot iterable while inspecting it', () => {
     // A generator returns itself from [Symbol.iterator](), so spreading it to check for
     // emptiness hands React an exhausted iterator: measured, the region rendered EMPTY —
     // strictly worse than not looking at all. React itself

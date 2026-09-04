@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 
 import { AnalysisRow } from './AnalysisRow'
 
-describe('the arity, both ways (AC 3)', () => {
+describe('the arity, both ways', () => {
   it('renders ONE child, and it is the only thing in the row', () => {
     const { container } = render(
       <AnalysisRow>
@@ -25,7 +25,7 @@ describe('the arity, both ways (AC 3)', () => {
     expect(screen.getByText('Mana curve')).toBeTruthy()
   })
 
-  it('renders TWO children as siblings — the shape c4-9 lands by adding one', () => {
+  it('renders TWO children as siblings — a second panel lands by adding one', () => {
     const { container } = render(
       <AnalysisRow>
         <section>Mana curve</section>

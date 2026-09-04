@@ -135,7 +135,7 @@ afterEach(() => {
   resetInspection()
 })
 
-describe('who gets a control, and who does not (AC 1, AC 2)', () => {
+describe('who gets a control, and who does not', () => {
   it('renders one for a card whose every face carries its own images — shape C', () => {
     hydrateFlippable()
     render(<FlipControl cardId={PATHWAY} />)
@@ -169,7 +169,7 @@ describe('who gets a control, and who does not (AC 1, AC 2)', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('reads TRUTHINESS of the map and not the presence of the key (AC 2, AC 27)', () => {
+  it('reads TRUTHINESS of the map and not the presence of the key', () => {
     // THE EVASION THIS TEST EXISTS FOR. `CardFace` serialises `"image_uris": null` on an unimaged
     // face — the key is THERE — so `'image_uris' in face` is `true` for all 368 shape-B rows and
     // all 79 shape-D rows, and a predicate written that way would put a flip control on every
@@ -251,7 +251,7 @@ describe('who gets a control, and who does not (AC 1, AC 2)', () => {
   })
 })
 
-describe('what it looks like, to the extent jsdom can see it (AC 3, AC 4)', () => {
+describe('what it looks like, to the extent jsdom can see it', () => {
   it('carries the class its chrome hangs on', () => {
     hydrateFlippable()
     render(<FlipControl cardId={PATHWAY} />)
@@ -261,7 +261,7 @@ describe('what it looks like, to the extent jsdom can see it (AC 3, AC 4)', () =
     expect(screen.getByRole('button', { name: FLIP_LABEL })).toHaveClass('flip-control')
   })
 
-  it('draws a STROKE glyph that is hidden from the accessibility tree (AC 4, UX-DR7)', () => {
+  it('draws a STROKE glyph that is hidden from the accessibility tree (UX-DR7)', () => {
     hydrateFlippable()
     const { container } = render(<FlipControl cardId={PATHWAY} />)
     const svg = container.querySelector('svg')!
@@ -284,7 +284,7 @@ describe('what it looks like, to the extent jsdom can see it (AC 3, AC 4)', () =
     expect(svg.textContent).toBe('')
   })
 
-  it('smuggles no authored copy anywhere but the one attribute that owns it (AC 4)', () => {
+  it('smuggles no authored copy anywhere but the one attribute that owns it', () => {
     hydrateFlippable()
     const control = (render(<FlipControl cardId={PATHWAY} />), screen.getByRole('button'))
 
@@ -298,7 +298,7 @@ describe('what it looks like, to the extent jsdom can see it (AC 3, AC 4)', () =
   })
 })
 
-describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () => {
+describe('what a click does, and what it must never do', () => {
   it('advances the face, and a second click brings it back', () => {
     hydrateFlippable()
     render(<FlipControl cardId={PATHWAY} />)
@@ -311,7 +311,7 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
     expect(useFaceStore.getState().faces[PATHWAY]).toBe(0)
   })
 
-  it('is a toggle button, so the face is state rather than an announcement (AC 11, Q11)', () => {
+  it('is a toggle button, so the face is state rather than an announcement', () => {
     // UX-DR45 enumerates the live regions — the connection pill, the agent-view heading and the
     // panel's separate polite pin region — and a flip is not among them; transient changes must
     // not flood the queue. `aria-pressed` gives a keyboard user the state with no region and no
@@ -331,7 +331,7 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
     expect(screen.getByRole('button', { name: FLIP_LABEL })).toBeVisible()
   })
 
-  it('A FLIP IS NOT AN INSPECTION — it touches none of the slice’s verbs (AC 6)', () => {
+  it('A FLIP IS NOT AN INSPECTION — it touches none of the slice’s verbs', () => {
     // Stated twice in shipped source (`inspection.ts:43-54`, `CardTile.tsx:86-92`) and asserted
     // here against the SLICE rather than against a spy: a spy proves that a function this test
     // knew to watch was not called, while the store proves that NOTHING reached it by any route.
@@ -347,11 +347,11 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
     expect(useFaceStore.getState().faces[PATHWAY]).toBe(1)
   })
 
-  it('stops propagation, so a clickable ancestor never sees the click (AC 6)', () => {
-    // The contract `CardTile.test.tsx` has asserted since c4-4, now proven on the real control.
-    // Under the DOM shape Q2 ruled the control is a SIBLING of the tile's button, so nothing
-    // bubbles there anyway — this is the guarantee that survives the control being mounted inside
-    // something clickable, which is exactly what Epic 6's agent-view thumbnails will do.
+  it('stops propagation, so a clickable ancestor never sees the click', () => {
+    // The contract `CardTile.test.tsx` asserts, proven on the real control. The control is a
+    // SIBLING of the tile's button, so nothing bubbles there anyway — this is the guarantee that
+    // survives the control being mounted inside something clickable, such as an agent-view
+    // thumbnail.
     //
     // A REAL LISTENER ON A REAL ANCESTOR rather than a JSX `onClick` on a `<div>`, which
     // `jsx-a11y/no-static-element-interactions` makes an ESLint error — rightly, and the repair is
@@ -394,7 +394,7 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
     }
   })
 
-  it('adds NO `onKeyDown` — Enter and Space are the browser’s (AC 7)', () => {
+  it('adds NO `onKeyDown` — Enter and Space are the browser’s', () => {
     // A real `<button>` turns both into a `click`, which is why there is no key handler to write
     // and why writing one would be the bug: a `keydown` handler beside the browser's own
     // activation fires the flip TWICE for one Space, landing back on the face it started from.
@@ -415,7 +415,7 @@ describe('what a click does, and what it must never do (AC 6, AC 7, AC 11)', () 
   })
 })
 
-describe('the same printing shows the same face everywhere it appears (AC 10)', () => {
+describe('the same printing shows the same face everywhere it appears', () => {
   it('keeps two mounts of the control in step, because the state is not theirs', () => {
     // UX-DR15's "applies everywhere the printing appears", proven with the two mounts that exist
     // today — the tile's and the panel's — standing in for any later mount. One store, two
@@ -445,7 +445,7 @@ describe('the same printing shows the same face everywhere it appears (AC 10)', 
   })
 })
 
-describe('the inspection slice is left entirely alone (AC 6, decide-once rule 15)', () => {
+describe('the inspection slice is left entirely alone', () => {
   it('does not clear a hover or a focus the tile around it has set', () => {
     // The mirror of the "flip is not an inspection" test: not only does the control not WRITE the
     // slice, it does not disturb what is already in it. Both transients and the pin survive a

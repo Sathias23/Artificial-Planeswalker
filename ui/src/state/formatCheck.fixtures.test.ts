@@ -30,7 +30,7 @@ import {
 /** `CHECK_ORDER`, as `deck_validator.py:487-494` declares it. */
 const CHECK_ORDER = ['legality', 'size', 'copy_limit', 'sideboard', 'banned', 'rotation'] as const
 
-describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
+describe('the fixtures model the shipped contract', () => {
   it.each(ALL_FIXTURES)('$name is six rows in CHECK_ORDER', ({ report }) => {
     // Six rows always, in a declared order, is a BACKEND guarantee — pinned on both sides there
     // (`test_routes_format_check.py:208-219`, `test_format_check.py:116`). Pinning it on the
@@ -73,8 +73,8 @@ describe('the fixtures model the shipped contract (AC 26, AC 27)', () => {
     expect(CENSUS.advisory).toBe(CENSUS.decks)
   })
 
-  it('pins the size sentence a brawl deck sees — a minimum 40 BELOW its format’s (AC 28)', () => {
-    // §2's whole finding, kept in the suite rather than only in the record. All 18 `brawl` decks
+  it('pins the size sentence a brawl deck sees — a minimum 40 BELOW its format’s', () => {
+    // Kept in the suite rather than only in the record. All 18 `brawl` decks
     // have a mainboard of EXACTLY 100 (min 100 / max 100, measured on deck ids), and Brawl
     // (Historic) is an exact-100 format per this repo's own shipped skill
     // (`plugin/skills/format-legality/SKILL.md:77`) — while `_MIN_MAINBOARD = 60` applies

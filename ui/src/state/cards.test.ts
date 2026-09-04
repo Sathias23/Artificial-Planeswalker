@@ -135,12 +135,12 @@ afterEach(() => {
 
 // ===================== the three conditions =============================================
 
-describe('the cache distinguishes never-seen, summary-known, loading and hydrated (AC 4)', () => {
+describe('the cache distinguishes never-seen, summary-known, loading and hydrated', () => {
   it('has no entry at all for an id it has never seen — the ONLY meaning of undefined', () => {
     expect(entryOf(SOL_RING)).toBeUndefined()
   })
 
-  it('is keyed by the printing uuid, so two ids are two entries (AC 1)', () => {
+  it('is keyed by the printing uuid, so two ids are two entries', () => {
     seedDeckCards([deckCard(SOL_RING, 'Sol Ring'), deckCard(ARCANE_SIGNET, 'Arcane Signet')])
 
     expect(Object.keys(useCardStore.getState().cards).sort()).toEqual(
@@ -205,7 +205,7 @@ describe('the cache distinguishes never-seen, summary-known, loading and hydrate
 
 // ===================== seeding is free ==================================================
 
-describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => {
+describe('seeding from a deck payload issues ZERO requests', () => {
   // `seedDeckCards` takes no reader — it has nothing to inject — so the ONLY honest request
   // count here is the network door itself. A spy on an unwired local mock would be vacuous: an
   // implementation that fired-and-forgot `hydrateCard(id)` per seeded id (default reader, global
@@ -223,7 +223,7 @@ describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => 
     expect(entryOf(ARCANE_SIGNET)?.status).toBe('hydrated')
   })
 
-  it('walks no deck issuing per-card reads — 99 seeded ids cost 0 requests (AC 6)', () => {
+  it('walks no deck issuing per-card reads — 99 seeded ids cost 0 requests', () => {
     const fetchSpy = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetchSpy)
     const deck = Array.from({ length: 99 }, (_, i) => deckCard(idAt(i + 100), `Card ${i}`))
@@ -258,7 +258,7 @@ describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => 
     expect(reader.read).toHaveBeenCalledTimes(1)
   })
 
-  it('ANSWERS a previously refused id, and still re-asks nothing (AC 11)', async () => {
+  it('ANSWERS a previously refused id, and still re-asks nothing', async () => {
     // The payload is the answer the failed read wanted: an id that 404'd or 503'd earlier is
     // carried whole by the deck detail, so it becomes hydrated rather than staying refused — and
     // hydrated is exactly the tier `hydrateCard` returns from without issuing anything, so a deck
@@ -310,7 +310,7 @@ describe('seeding from a deck payload issues ZERO requests (AC 5, AC 6)', () => 
 
 // ===================== the deduping =====================================================
 
-describe('two simultaneous reads of one id make ONE request (AC 7)', () => {
+describe('two simultaneous reads of one id make ONE request', () => {
   it('shares the in-flight promise and gives both callers its result', async () => {
     const pendingRead = deferredReader()
 
@@ -349,7 +349,7 @@ describe('two simultaneous reads of one id make ONE request (AC 7)', () => {
   })
 })
 
-describe('an already-hydrated id is never re-requested (AC 8)', () => {
+describe('an already-hydrated id is never re-requested', () => {
   it('makes no request at all on the second read', async () => {
     const reader = hydratingReader()
 
@@ -361,7 +361,7 @@ describe('an already-hydrated id is never re-requested (AC 8)', () => {
   })
 })
 
-describe('the in-flight entry is released on EVERY outcome (AC 10)', () => {
+describe('the in-flight entry is released on EVERY outcome', () => {
   // A permanently-pending entry is invisible to a success-path test and turns one bad request
   // into an id that can never be read again: the next caller joins a promise that already
   // settled, so no further request is ever made. Proved on all three outcomes.
@@ -419,7 +419,7 @@ describe('the in-flight entry is released on EVERY outcome (AC 10)', () => {
 
 // ===================== the measured sweep ===============================================
 
-describe('the 100-tile sweep, measured rather than asserted (AC 9)', () => {
+describe('the 100-tile sweep, measured rather than asserted', () => {
   it('fetches each of 99 distinct ids AT MOST ONCE across TWO full sweeps', async () => {
     // 99, because that is the number of distinct tiles in the largest real deck on this machine
     // ("Atraxa Counter Cabinet v2 (owned)", measured: 99 distinct ids, 100 total quantity).
@@ -459,7 +459,7 @@ describe('the 100-tile sweep, measured rather than asserted (AC 9)', () => {
 
 // ===================== refusals and the bound ===========================================
 
-describe('a 404 marks the id unknown and is remembered (AC 11, Q4)', () => {
+describe('a 404 marks the id unknown and is remembered', () => {
   it('records the token and the unknown-card placeholder', async () => {
     const reader = readerAnswering({ kind: 'error', reason: 'card_not_found' })
 
@@ -487,7 +487,7 @@ describe('a 404 marks the id unknown and is remembered (AC 11, Q4)', () => {
   })
 })
 
-describe('a per-id read has a bound on attempts, and it is not the token (AC 12)', () => {
+describe('a per-id read has a bound on attempts, and it is not the token', () => {
   it('terminates for an id that answers 503 FOREVER', async () => {
     // THE TRAP, and the reason the bound exists. A malformed id sent to a backend with no
     // database answers `database_not_initialized` — a token `RETRIES_QUIETLY` says to retry
@@ -564,7 +564,7 @@ describe('a per-id read has a bound on attempts, and it is not the token (AC 12)
     pendingRead.settle({ kind: 'unreachable' })
   })
 
-  it('holds no timer — the loop AC 12 bounds is the CALLER’s, not an internal schedule', async () => {
+  it('holds no timer — the loop it bounds is the CALLER’s, not an internal schedule', async () => {
     const timeout = vi.spyOn(globalThis, 'setTimeout')
     const reader = readerAnswering({ kind: 'error', reason: 'database_unavailable' })
 
@@ -582,7 +582,7 @@ describe('a per-id read has a bound on attempts, and it is not the token (AC 12)
 
 // ===================== the FR-13 posture ================================================
 
-describe('a card refusal NEVER puts a state panel on the glass (AC 13)', () => {
+describe('a card refusal NEVER puts a state panel on the glass', () => {
   it('leaves the system panel exactly where it was after a card_not_found', async () => {
     useSystemStore.setState({ panel: 'no-active-deck', decks: ['Atraxa Counter Cabinet v2'] })
     const before = useSystemStore.getState()
@@ -622,7 +622,7 @@ describe('a card refusal NEVER puts a state panel on the glass (AC 13)', () => {
   })
 })
 
-describe('the token reaches the consumer intact, in states.ts vocabulary (AC 14)', () => {
+describe('the token reaches the consumer intact, in states.ts vocabulary', () => {
   it('records WHICH reason refused the id', async () => {
     await hydrateCard(SOL_RING, readerAnswering({ kind: 'error', reason: 'internal_error' }).read)
 
@@ -649,7 +649,7 @@ describe('the token reaches the consumer intact, in states.ts vocabulary (AC 14)
     })
   })
 
-  it('never produces an IMAGE placeholder — those tokens are not on this route (AC 14)', async () => {
+  it('never produces an IMAGE placeholder — those tokens are not on this route', async () => {
     // `no_image_data` and `image_fetch_failed` map to `named-card` in `PLACEHOLDER_FOR_REASON`,
     // and they are image tokens: `GET /api/cards/{card_id}` publishes `card_not_found` plus the
     // app-wide set and neither of them. Asserted as behaviour in case one ever arrives anyway.
@@ -661,7 +661,7 @@ describe('the token reaches the consumer intact, in states.ts vocabulary (AC 14)
   })
 })
 
-describe('a 400 on a card read IS the unknown-card case (AC 15, Q5)', () => {
+describe('a 400 on a card read IS the unknown-card case', () => {
   it('draws the placeholder rather than nothing at all', async () => {
     // `states.ts` classifies `invalid_request` as NO UI RESPONSE on the premise that "the SPA
     // never generates a malformed request" — and that premise is exactly what fails here: the id
@@ -777,7 +777,7 @@ describe('the DEFAULT reader is the real network door', () => {
  * backend restarted mid-sweep would otherwise leave a deck view with permanent holes that no
  * amount of the app working correctly could fill, and the only recovery would be a reload.
  */
-describe('resetCardAttempts gives the budget back, and only the budget (c5-6, Q6, AC 16)', () => {
+describe('resetCardAttempts gives the budget back, and only the budget', () => {
   const entry = (id: string) => useCardStore.getState().cards[id]
 
   const refusing = (reason: string) => () =>
@@ -888,7 +888,7 @@ describe('resetCardAttempts gives the budget back, and only the budget (c5-6, Q6
     expect(useCardStore.getState()).toBe(before)
   })
 
-  it('creates no orphans — the dw:3666 declare stands unchanged', async () => {
+  it('creates no orphans', async () => {
     // `resetCardCache` bumps a generation precisely because a read in flight when the world is
     // thrown away must write nowhere. This function throws nothing away and bumps nothing, so a
     // read in flight across it settles normally — no orphan guard is needed here.

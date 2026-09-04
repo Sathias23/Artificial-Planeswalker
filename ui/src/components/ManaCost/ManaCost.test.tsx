@@ -25,7 +25,7 @@ const pipText = (container: HTMLElement): string[] => {
 
 const pipCount = (container: HTMLElement): number => container.querySelectorAll('.mana-pip').length
 
-describe('every symbol renders (AC 2) — the epic’s own four cases, and the five it omits', () => {
+describe('every symbol renders — the epic’s own four cases, and the five it omits', () => {
   it('renders braces, hybrid, generic-hybrid, Phyrexian and {X} — all five as ONE pip each', () => {
     const { container } = render(<ManaCost cost="{2}{W/U}{2/R}{B/P}{X}" />)
     expect(pipCount(container)).toBe(5)
@@ -42,7 +42,7 @@ describe('every symbol renders (AC 2) — the epic’s own four cases, and the f
     expect(pipText(container)).toEqual(['', 'P', '', '1000000'])
   })
 
-  it('forwards each symbol’s COLOURS to its pip, not only its glyph (review 2026-07-29)', () => {
+  it('forwards each symbol’s COLOURS to its pip, not only its glyph', () => {
     // The regression nothing else can see: replace `token.colours` with `[]` in ManaCost.tsx
     // and every count, text and aria-label assertion in this file stays green while every cost
     // renders colourless — "wrong without looking wrong", one layer above the parser it was so
@@ -53,7 +53,7 @@ describe('every symbol renders (AC 2) — the epic’s own four cases, and the f
   })
 })
 
-describe('nothing is silently dropped (AC 3, AC 7)', () => {
+describe('nothing is silently dropped', () => {
   it('surfaces an unrecognised symbol as a visible pip showing its own text', () => {
     // The epic's own named test. `{HW}` (Little Girl) and `{S}` (snow) are both real and
     // neither is in the parser's symbol table — which is the point: they must render anyway.
@@ -63,14 +63,14 @@ describe('nothing is silently dropped (AC 3, AC 7)', () => {
     expect(screen.getByText('S')).toBeInTheDocument()
   })
 
-  it('surfaces an INVENTED symbol family — the structural proof, not an enumeration (AC 25)', () => {
+  it('surfaces an INVENTED symbol family — the structural proof, not an enumeration', () => {
     // `{Q/W/E}` is in no list anywhere in this feature. If "never drops" held only because the
     // author happened to know about snow and Little Girl, this is where that would show.
     render(<ManaCost cost="{Q/W/E}" />)
     expect(screen.getByText('Q/W/E')).toBeInTheDocument()
   })
 
-  it('surfaces the ` // ` split-card separator as text between the parts (AC 7)', () => {
+  it('surfaces the ` // ` split-card separator as text between the parts', () => {
     const { container } = render(<ManaCost cost="{2}{B} // {B}" />)
     expect(pipCount(container)).toBe(3)
     expect(container.textContent).toContain('//')
@@ -94,7 +94,7 @@ describe('nothing is silently dropped (AC 3, AC 7)', () => {
     expect(container.querySelectorAll('.mana-cost-text')).toHaveLength(4)
   })
 
-  it('renders malformed input rather than throwing on it (AC 8)', () => {
+  it('renders malformed input rather than throwing on it', () => {
     // Totality, at the component layer. An unclosed brace is the shape a truncated wire value
     // arrives in, and it must render something a human can see is wrong — not nothing, and not
     // a blank screen.
@@ -104,7 +104,7 @@ describe('nothing is silently dropped (AC 3, AC 7)', () => {
   })
 })
 
-describe('an absent cost renders nothing, in all four spellings (AC 4)', () => {
+describe('an absent cost renders nothing, in all four spellings', () => {
   it('renders nothing for undefined, null, empty and whitespace-only', () => {
     // A land's cost. All four are asserted because the wire type may be nullable while this
     // repo's own data uses `''` — picking one and defending it is how the other three become
@@ -121,7 +121,7 @@ describe('an absent cost renders nothing, in all four spellings (AC 4)', () => {
   })
 })
 
-describe('how it is announced (AC 15, Q4)', () => {
+describe('how it is announced', () => {
   it('carries an accessible name on a role="img" wrapper', () => {
     render(<ManaCost cost="{2}{W/U}" />)
     // BY ROLE AND NAME. `aria-label` on a bare <span> is name-prohibited on role="generic", so
@@ -144,7 +144,7 @@ describe('how it is announced (AC 15, Q4)', () => {
   })
 })
 
-describe('the long-cost case (AC 17)', () => {
+describe('the long-cost case', () => {
   it('renders all fifteen pips of B.F.M. — the row wraps, it does not truncate', () => {
     // Whether it WRAPS is a layout question jsdom cannot answer; ManaCost.css decides it in
     // source with `flex-wrap: wrap` and says why. What this asserts is the half a truncating

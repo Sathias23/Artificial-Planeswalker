@@ -51,7 +51,7 @@ const contentOf = (kind: AgentViewKind, over: Partial<AgentViewContent> = {}): A
   // legal member of every arm, but a computed `kind` cannot select one for the compiler.
   ({
     id: `push-${kind}`,
-    ts: '2026-08-12T14:32:00+00:00',
+    ts: '2025-08-12T14:32:00+00:00',
     kind,
     title: AGENT_VIEW_LABELS[kind],
     count: 0,
@@ -67,14 +67,14 @@ afterEach(() => {
   resetAgentView()
 })
 
-describe('the nav renders one pill per kind, in enum order (AC 1, AC 6, Q3)', () => {
-  it('renders exactly five pills — four kinds plus History (17.2)', () => {
+describe('the nav renders one pill per kind, in enum order', () => {
+  it('renders exactly five pills — four kinds plus History', () => {
     render(<AgentViewsNav />)
     expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
-  it('renders them in the ruled order — Suggestions, Swaps, Tier list, Card groups, History', () => {
-    // Q3 took the wire enum's order over the mock's and the IA table's. `PILL_ORDER` derives it
+  it('renders them in the order Suggestions, Swaps, Tier list, Card groups, History', () => {
+    // The wire enum's order wins over the mock's and the IA table's. `PILL_ORDER` derives it
     // from the vocabulary table's declaration order rather than authoring it a second time, so
     // this assertion is what keeps that derivation honest: a reordered table reorders the glass.
     // History renders LAST, outside the map (immediately after the Card groups pill), which is
@@ -89,13 +89,13 @@ describe('the nav renders one pill per kind, in enum order (AC 1, AC 6, Q3)', ()
     ])
   })
 
-  it('names the group on the glass (Q5)', () => {
+  it('names the group on the glass', () => {
     render(<AgentViewsNav />)
     expect(screen.getByText(NAV_GROUP_LABEL)).toBeTruthy()
   })
 
-  it('adds NO navigation landmark (Q5, UX-DR44)', () => {
-    // The absence is the ruling: the pills open overlays, they do not navigate. Its positive
+  it('adds NO navigation landmark (UX-DR44)', () => {
+    // The absence is deliberate: the pills open overlays, they do not navigate. Its positive
     // twin is the assertion above — the group IS named, visibly, which is what the landmark
     // would otherwise have been reached for.
     render(<AgentViewsNav />)
@@ -103,7 +103,7 @@ describe('the nav renders one pill per kind, in enum order (AC 1, AC 6, Q3)', ()
   })
 })
 
-describe('a kind with no push this session is QUIET (AC 1, Q2)', () => {
+describe('a kind with no push this session is QUIET', () => {
   it('renders every pill disabled on a cold open', () => {
     render(<AgentViewsNav />)
     for (const pill of screen.getAllByRole('button')) {
@@ -166,7 +166,7 @@ describe('a kind with no push this session is QUIET (AC 1, Q2)', () => {
   })
 })
 
-describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () => {
+describe('a kind that HAS pushed is active and shows its time', () => {
   it('drops `disabled` on that kind’s pill and no other', () => {
     // The non-vacuity control for every "is active" assertion below: exactly one pill changes.
     openAgentView(contentOf('suggestions'))
@@ -187,7 +187,7 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
   })
 
   it('renders the push time in a <time> carrying the raw ts', () => {
-    const ts = '2026-08-12T14:32:00+00:00'
+    const ts = '2025-08-12T14:32:00+00:00'
     openAgentView(contentOf('suggestions', { ts }))
     const { container } = render(<AgentViewsNav />)
     const time = container.querySelector('time')!
@@ -201,8 +201,8 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
   it('shows a DIFFERENT time for a different ts — the formatter is really reading it', () => {
     // The non-vacuity twin of the assertion above, which a formatter returning a constant would
     // otherwise satisfy.
-    const morning = '2026-08-12T04:05:00+00:00'
-    const evening = '2026-08-12T19:45:00+00:00'
+    const morning = '2025-08-12T04:05:00+00:00'
+    const evening = '2025-08-12T19:45:00+00:00'
     expect(pushTimeLabel(morning)).not.toBe(pushTimeLabel(evening))
   })
 
@@ -220,7 +220,7 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
     expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
-  it('stays active and shows no time when the ts is entirely ABSENT (review fix, 2026-08-12)', () => {
+  it('stays active and shows no time when the ts is entirely ABSENT', () => {
     // Distinct from the "unparseable" case above (a present-but-garbage `ts` string): this is a
     // retained push whose `ts` KEY is missing altogether — the other half of `agentEventOf`'s
     // "validates only `kind`" gap. Activeness must come from `useAgentViewHasPush` (retention
@@ -246,7 +246,7 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
   })
 })
 
-describe('the unread dot (AC 3, Q6)', () => {
+describe('the unread dot', () => {
   /** Open `first`, then push `second` over it — the only way to make anything unread. */
   const displace = (first: AgentViewKind, second: AgentViewKind): void => {
     openAgentView(contentOf(first))
@@ -285,7 +285,7 @@ describe('the unread dot (AC 3, Q6)', () => {
   })
 })
 
-describe('clicking an active pill re-opens its view (AC 4)', () => {
+describe('clicking an active pill re-opens its view', () => {
   it('puts the SAME content back — object identity, not a rebuild', () => {
     const pushed = contentOf('suggestions')
     openAgentView(pushed)
@@ -307,8 +307,8 @@ describe('clicking an active pill re-opens its view (AC 4)', () => {
     expect(useAgentViewStore.getState().content).toBe(second)
   })
 
-  it('needs no onKeyDown — Enter is the button’s own click (UX-DR39, dw:49)', () => {
-    // The absence dw:49 asked this story for, with its positive twin: the CLICK the browser
+  it('needs no onKeyDown — Enter is the button’s own click (UX-DR39)', () => {
+    // The absence, with its positive twin: the CLICK the browser
     // synthesises from Enter does reach the verb, which is why no handler is needed. A synthetic
     // keydown must NOT be what re-opens the view — that path is starved while a view is open.
     openAgentView(contentOf('suggestions'))
@@ -330,7 +330,7 @@ describe('clicking an active pill re-opens its view (AC 4)', () => {
 const historyPush = (n: number, kind: AgentViewKind = 'suggestions'): AgentViewContent =>
   contentOf(kind, {
     id: `push-h${n}`,
-    ts: `2026-08-22T10:${String(n).padStart(2, '0')}:00+00:00`,
+    ts: `2025-08-22T10:${String(n).padStart(2, '0')}:00+00:00`,
     title: `Push ${n}`,
   })
 
@@ -342,7 +342,7 @@ const entries = (): HTMLButtonElement[] => [
   ...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-entry'),
 ]
 
-describe('the History pill is quiet until the first push of ANY kind (17.2)', () => {
+describe('the History pill is quiet until the first push of ANY kind', () => {
   it('renders disabled with its OWN sentence in both channels, outside the accessible name', () => {
     render(<AgentViewsNav />)
     const pill = historyPill()
@@ -398,7 +398,7 @@ describe('the History pill is quiet until the first push of ANY kind (17.2)', ()
   })
 })
 
-describe('the popover lists the session’s pushes, newest first (17.2)', () => {
+describe('the popover lists the session’s pushes, newest first', () => {
   beforeEachHistory()
 
   it('toggles open on click, with aria-expanded following', () => {
@@ -412,7 +412,7 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
     expect(historyPill().getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('associates pill and popover programmatically — aria-controls resolves while open (review finding 10)', () => {
+  it('associates pill and popover programmatically — aria-controls resolves while open', () => {
     render(<AgentViewsNav />)
     fireEvent.click(historyPill())
     const controls = historyPill().getAttribute('aria-controls')
@@ -441,8 +441,8 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
       AGENT_VIEW_LABELS.swaps,
     )
     const time = held[0].querySelector('time')!
-    expect(time.getAttribute('datetime')).toBe('2026-08-22T10:03:00+00:00')
-    expect(time.textContent).toBe(pushTimeLabel('2026-08-22T10:03:00+00:00'))
+    expect(time.getAttribute('datetime')).toBe('2025-08-22T10:03:00+00:00')
+    expect(time.textContent).toBe(pushTimeLabel('2025-08-22T10:03:00+00:00'))
   })
 
   it('omits the title when the agent supplied none — the fallback is not read out twice', () => {
@@ -471,7 +471,7 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
     expect(useAgentViewStore.getState().content?.id).toBe('push-bad')
   })
 
-  it('carries its measured viewport-top as the height clamp’s anchor term (Greptile #97 r2)', () => {
+  it('carries its measured viewport-top as the height clamp’s anchor term', () => {
     // jsdom has no layout, so the measured rect is zeroes and the property reads `0px` — the
     // CSS fallback value. The assertion pins the WIRING (deleting the measurement effect or the
     // style channel goes red); the real subtraction is a browser behaviour the eye-check owns.
@@ -481,7 +481,7 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
     expect(popover()!.style.getPropertyValue('--history-popover-right')).toBe('0px')
   })
 
-  it('re-measures both anchor terms on window resize while open (Greptile #97 r3, r4)', () => {
+  it('re-measures both anchor terms on window resize while open', () => {
     // jsdom's own rects never change, so the resize path is proven by substituting the
     // measurement itself: after a spied rect and a resize event, the properties carry the new
     // figures — deleting the resize listener leaves them at the mount-time values and goes red.
@@ -520,7 +520,7 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
   })
 })
 
-describe('the popover’s four dismissals (17.2)', () => {
+describe('the popover’s four dismissals', () => {
   beforeEachHistory()
 
   it('entry activation closes FIRST (focus → pill), then opens that exact push’s view', () => {
@@ -556,7 +556,7 @@ describe('the popover’s four dismissals (17.2)', () => {
     expect(consumed).toBe(true)
   })
 
-  it('Esc with focus on the PILL — inside the wrapper, outside the popover — closes and CONSUMES (review finding 3)', () => {
+  it('Esc with focus on the PILL — inside the wrapper, outside the popover — closes and CONSUMES', () => {
     // The toggle puts focus exactly here, so this is the ordinary second-Esc position. The
     // consuming listener sits on the WRAPPER, not the popover root, precisely so this keystroke
     // is consumed too — an active pin elsewhere must survive it (UX-DR39's amended order).
@@ -594,8 +594,8 @@ describe('the popover’s four dismissals (17.2)', () => {
     expect(document.activeElement).toBe(swapsPill)
   })
 
-  it('stays closed when the view closes right after a push closed it (review finding 1)', () => {
-    // The regression this pins: the first shipped form parked the `open` reset in a
+  it('stays closed when the view closes right after a push closed it', () => {
+    // The regression this pins: an `open` reset parked in a
     // requestAnimationFrame, and a view closed before that frame fired cancelled the reset in
     // the effect cleanup — the popover then sprang back uninvited the moment the view left the
     // glass. Fake timers hold every frame back, so the close-before-frame ordering is exact.
@@ -641,7 +641,7 @@ describe('the popover’s four dismissals (17.2)', () => {
   })
 })
 
-describe('the popover’s enter fade starts from a state and settles (17.2, review finding 7)', () => {
+describe('the popover’s enter fade starts from a state and settles', () => {
   beforeEachHistory()
 
   // Fake timers, for `AgentView.test.tsx:234-258`'s exact reason: this is the one popover

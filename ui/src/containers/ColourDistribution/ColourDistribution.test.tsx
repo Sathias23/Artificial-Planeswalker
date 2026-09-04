@@ -113,7 +113,7 @@ afterEach(() => {
   resetCardCache()
 })
 
-describe('the panel and the figure (AC 4, AC 5)', () => {
+describe('the panel and the figure', () => {
   it('renders a titled Panel whose title is the section name', () => {
     renderBar()
     const panel = screen.getByRole('region', { name: COLOUR_DISTRIBUTION_TITLE })
@@ -138,7 +138,7 @@ describe('the panel and the figure (AC 4, AC 5)', () => {
   })
 })
 
-describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () => {
+describe('the bar: one segment per colour, in WUBRG order', () => {
   it('draws one segment per colour the deck actually has, and none for the rest', () => {
     const { container } = renderBar()
     expect(segmentsIn(container).map((s) => s.className)).toEqual([
@@ -148,7 +148,7 @@ describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () =>
     ])
   })
 
-  it('carries the RAW PIP COUNT on the named channel — not a percentage (Q13, AC 19)', () => {
+  it('carries the RAW PIP COUNT on the named channel — not a percentage', () => {
     // The whole of "no division by zero is possible": there is no division at this call site at
     // all. `flex-grow` distributes the track's free space in the browser, so the geometry is
     // exact whatever the printed percentages round to.
@@ -171,14 +171,14 @@ describe('the bar: one segment per colour, in WUBRG order (AC 15, AC 19)', () =>
     }
   })
 
-  it('names no --mana-* token in markup — the class is the only way in (AC 16)', () => {
+  it('names no --mana-* token in markup — the class is the only way in', () => {
     const { container } = renderBar()
     expect(container.innerHTML).not.toContain('--mana-')
     expect(container.querySelectorAll('[fill]')).toHaveLength(0)
   })
 })
 
-describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)', () => {
+describe('the legend is the accessible data path (UX-DR18)', () => {
   it('hides the BAR from the accessibility tree, and names nothing inside it', () => {
     // THE EXACT INVERSE OF THE MANA CURVE, where every bar carries `role="img"` and a name.
     // UX-DR18 says the bar is `aria-hidden` and the legend is the data path, and the reason is
@@ -222,11 +222,10 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
     expect(within(container).getAllByRole('listitem')).toHaveLength(3)
   })
 
-  it('keeps the legend PIP decorative — no label, no doubled announcement (Q9 iv, AC 25)', () => {
-    // `ManaPip`'s `label` prop was written "for c4-9's legend" and this story does not use it:
-    // the entry already reads its colour, count and percentage as text, and a labelled pip
-    // beside its own text count is the doubled announcement that docstring warns about. The
-    // prediction in `ManaPip.tsx` is corrected in this commit rather than left standing.
+  it('keeps the legend PIP decorative — no label, no doubled announcement', () => {
+    // `ManaPip`'s `label` prop is not used here: the entry already reads its colour, count and
+    // percentage as text, and a labelled pip beside its own text count is the doubled
+    // announcement that prop's docstring warns about.
     const { container } = renderBar()
     const pips = [...container.querySelectorAll('.mana-pip')]
     expect(pips).toHaveLength(3)
@@ -244,9 +243,9 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
     ])
   })
 
-  it('ships NO visually-hidden block — the third-instance trigger does not fire (AC 29)', () => {
-    // c4-8 recorded a third-instance promotion trigger for the clip-rect idiom: whoever writes
-    // the third block promotes it to `src/styles/`. This story writes none — the legend is
+  it('ships NO visually-hidden block — the third-instance trigger does not fire', () => {
+    // The clip-rect idiom carries a third-instance promotion trigger: whoever writes the third
+    // visually-hidden block promotes it to `src/styles/`. This panel writes none — the legend is
     // VISIBLE text, which is what UX-DR18's "the legend is the accessible data path" means — so
     // the trigger does not fire, and that is asserted rather than left as an absence.
     const { container } = renderBar()
@@ -255,7 +254,7 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
     expect(container.querySelectorAll('[hidden]')).toHaveLength(0)
   })
 
-  it('is NOT a live region and adds no aria-live anywhere (AC 26)', () => {
+  it('is NOT a live region and adds no aria-live anywhere', () => {
     // LOAD-BEARING HERE in a way it was not for the curve: this panel's numbers MOVE during the
     // hydration sweep, so a live region would announce a changing percentage ~99 times.
     const { container } = renderBar()
@@ -264,7 +263,7 @@ describe('the legend is the accessible data path (AC 20, AC 23, AC 24, UX-DR18)'
   })
 })
 
-describe('the panel is display-only (AC 27, UX-DR40, UX-DR47)', () => {
+describe('the panel is display-only (UX-DR40, UX-DR47)', () => {
   it('adds ZERO Tab stops and carries no role anywhere', () => {
     const { container } = renderBar()
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(0)
@@ -284,7 +283,7 @@ describe('the panel is display-only (AC 27, UX-DR40, UX-DR47)', () => {
   })
 })
 
-describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q2, Q3)', () => {
+describe('the panel reads the hydration cache, and starts nothing', () => {
   // `Ayara, Widow of the Realm // Ayara, Furnace Queen` — blank at the top level, `{1}{B}{B}` on
   // its front face, and the namesake of the deck with the largest bar in the corpus.
   const AYARA_DFC = card(
@@ -341,7 +340,7 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
     ).toEqual(['2', '1'])
   })
 
-  it('leaves the cache untouched — it reads, and starts no fetch (AC 8, don’t-break 10)', () => {
+  it('leaves the cache untouched — it reads, and starts no fetch', () => {
     // `hydrateCard`/`hydrateDeckCards` are `App.tsx`'s alone. If this panel ever called one, the
     // cache would gain a `loading` entry on render.
     expect(useCardStore.getState().cards).toEqual({})
@@ -350,7 +349,7 @@ describe('the panel reads the hydration cache, and starts nothing (AC 7, AC 8, Q
   })
 })
 
-describe('the empty case (AC 32, Q10)', () => {
+describe('the empty case', () => {
   it('renders NOTHING when the deck has no cards', () => {
     const { container } = renderBar([])
     expect(container.innerHTML).toBe('')
@@ -381,7 +380,7 @@ describe('the empty case (AC 32, Q10)', () => {
   })
 })
 
-describe('the panel draws no card (AC 22, UX-DR4)', () => {
+describe('the panel draws no card (UX-DR4)', () => {
   it('puts no card-shaped class anywhere in its markup', () => {
     const { container } = renderBar()
     expect(container.querySelectorAll('.card-shape')).toHaveLength(0)

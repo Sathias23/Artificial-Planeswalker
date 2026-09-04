@@ -130,7 +130,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 26)', () => {
+describe('the panel is always there, and it is a region', () => {
   it('renders through Panel at overlay level, named "Card detail" (UX-DR44)', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
@@ -143,7 +143,7 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     expect(container.querySelector('.panel-overlay')).not.toBeNull()
   })
 
-  it('names the panel, NOT the card — the string c4-11’s skip link can rely on (AC 26)', () => {
+  it('names the panel, NOT the card — the string the skip link can rely on', () => {
     seedSummary(ATRAXA)
     render(<CardDetail boards={oneCardDeck} />)
 
@@ -155,7 +155,7 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     expect(screen.getByText(/Atraxa/)).toBeVisible()
   })
 
-  it('is NOT a live region — the H4/C1 fix, asserted so it cannot come back (AC 24)', () => {
+  it('is NOT a live region — asserted so it cannot come back', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
     const region = screen.getByRole('region', { name: PANEL_TITLE })
@@ -173,7 +173,7 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     expect(region.contains(live[0])).toBe(false)
   })
 
-  it('is not a modal: no trap, no aria-modal, no dialog role (AC 25, UX-DR38)', () => {
+  it('is not a modal: no trap, no aria-modal, no dialog role (UX-DR38)', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
 
@@ -212,7 +212,7 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
   })
 })
 
-describe('the cold-open target, with no interaction at all (AC 8, AC 9, Q15)', () => {
+describe('the cold-open target, with no interaction at all', () => {
   it('targets the first card the GRID draws, and the two agree', () => {
     // THE CROSS-CHECK THAT MAKES `coldOpenTargetOf` A SECOND WRITING RATHER THAN A SECOND RULE
     // (AD-12). `CardGrid`'s flattening expression is repeated in the slice; what keeps the two
@@ -240,9 +240,10 @@ describe('the cold-open target, with no interaction at all (AC 8, AC 9, Q15)', (
     expect(within(panel).getByText('Atraxa, Praetors’ Voice')).toBeVisible()
   })
 
-  it('survives a deck with nothing in either board — no crash, no stray card (AC 9)', () => {
-    // `boardsOf([])` is three empty boards, which is a real state: c4-12 owns the COPY for it,
-    // and what this story owes is a resolution that is total and a panel that is still there.
+  it('survives a deck with nothing in either board — no crash, no stray card', () => {
+    // `boardsOf([])` is three empty boards, which is a real state: the empty-deck COPY is owned
+    // elsewhere, and what this panel owes is a resolution that is total and a panel that is
+    // still there.
     const { container } = render(<CardDetail boards={boardsOf([])} />)
 
     expect(screen.getByRole('region', { name: PANEL_TITLE })).toBeVisible()
@@ -253,7 +254,7 @@ describe('the cold-open target, with no interaction at all (AC 8, AC 9, Q15)', (
   })
 })
 
-describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', () => {
+describe('what the panel draws, and when', () => {
   it('renders name, cost, type line and oracle text from the SUMMARY tier, with no spinner', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
@@ -275,7 +276,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     expect(container.textContent).not.toMatch(/loading/i)
   })
 
-  it('asks for the card face at size=large, through the one builder (AC 15, AD-11)', () => {
+  it('asks for the card face at size=large, through the one builder (AD-11)', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
     const img = container.querySelector('img')!
@@ -292,7 +293,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     expect([...container.textContent.matchAll(/Atraxa, Praetors’ Voice/g)]).toHaveLength(1)
   })
 
-  it('consumes the shared card shape and re-declares none of it (AC 30, UX-DR4)', () => {
+  it('consumes the shared card shape and re-declares none of it (UX-DR4)', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
 
@@ -310,8 +311,8 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     expect(art.classList.contains('card-shape')).toBe(true)
   })
 
-  it('renders the FRONT FACE once hydration lands — the 100%-blank population (AC 13, Q1)', () => {
-    // THE MEASUREMENT THIS WHOLE STORY TURNS ON. All 3,225 corpus cards carrying `card_faces`
+  it('renders the FRONT FACE once hydration lands — the 100%-blank population', () => {
+    // THE MEASUREMENT THIS WHOLE PANEL TURNS ON. All 3,225 corpus cards carrying `card_faces`
     // have a BLANK top-level `oracle_text` and 2,274 carry the degenerate `Card // Card` type
     // line, so for that population the face is the ONLY source of a type line and rules text.
     // Six of the 99 cards in the largest real deck are in it — the MDFC Pathways, whose shape
@@ -369,7 +370,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     expect(screen.getByText(/Flying, vigilance/)).toBeVisible()
   })
 
-  it('does not blank what it was already showing while a read is in flight (AC 13)', () => {
+  it('does not blank what it was already showing while a read is in flight', () => {
     seedSummary(ATRAXA)
     render(<CardDetail boards={oneCardDeck} />)
 
@@ -381,7 +382,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
     expect(screen.getByText(/Flying, vigilance/)).toBeVisible()
   })
 
-  it('renders NO price — satisfied by absence, at the type (AC 14)', () => {
+  it('renders NO price — satisfied by absence, at the type', () => {
     seedHydrated(ATRAXA, record(ATRAXA))
     const { container } = render(<CardDetail boards={oneCardDeck} />)
 
@@ -398,7 +399,7 @@ describe('what the panel draws, and when (AC 11, AC 12, AC 13, AC 15, AC 30)', (
   })
 })
 
-describe('a card with no picture, and a card the app does not know (AC 16, AC 17, AC 18)', () => {
+describe('a card with no picture, and a card the app does not know', () => {
   it('draws the NAMED placeholder when the art fails — never a broken-image glyph', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
@@ -417,8 +418,8 @@ describe('a card with no picture, and a card the app does not know (AC 16, AC 17
     expect(screen.getAllByText('Atraxa, Praetors’ Voice').length).toBeGreaterThan(0)
   })
 
-  it('never puts a state panel on the glass for a card refusal (AC 18, FR-13)', () => {
-    // c4-1 AC 13: `panelFor()` is not called on the card path, because `card_not_found` maps to
+  it('never puts a state panel on the glass for a card refusal (FR-13)', () => {
+    // `panelFor()` is not called on the card path, because `card_not_found` maps to
     // `null` there and `panelFor` clamps `null` to `internal-error` — which would replace a
     // working deck view with "The companion hit a bug" because ONE card was missing.
     useCardStore.setState((state) => ({
@@ -442,7 +443,7 @@ describe('a card with no picture, and a card the app does not know (AC 16, AC 17
     expect(screen.getByText(UNKNOWN_CARD_LABEL)).toBeVisible()
   })
 
-  it('refuses to make an unknown card the inspection target at all (AC 17, UX-DR22)', () => {
+  it('refuses to make an unknown card the inspection target at all (UX-DR22)', () => {
     seedSummary(ATRAXA)
     useCardStore.setState((state) => ({
       cards: {
@@ -468,7 +469,7 @@ describe('a card with no picture, and a card the app does not know (AC 16, AC 17
   })
 })
 
-describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
+describe('pin, release, and the one announcement', () => {
   it('carries the pinned ring only while pinned, and offers the unpin control with it', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
@@ -493,7 +494,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     expect(unpin.closest('.panel-header')).not.toBeNull()
   })
 
-  it('releases on the unpin control, and hover resumes control (AC 20)', () => {
+  it('releases on the unpin control, and hover resumes control', () => {
     seedSummary(ATRAXA)
     seedSummary('id-Other', { name: 'Some Other Card' })
     const { container } = render(<CardDetail boards={oneCardDeck} />)
@@ -509,7 +510,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     expect(screen.getByText('Some Other Card')).toBeVisible()
   })
 
-  it('releases on Esc, from anywhere on the document (AC 22, Q12, UX-DR39)', () => {
+  it('releases on Esc, from anywhere on the document (UX-DR39)', () => {
     seedSummary(ATRAXA)
     render(<CardDetail boards={oneCardDeck} />)
     act(() => togglePin(ATRAXA))
@@ -529,7 +530,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     // its own half — the bubble listener releases the pin when nothing is above it.
   })
 
-  it('lets the pin outlive the panel, and stops listening when it does (AC 5, Q6)', () => {
+  it('lets the pin outlive the panel, and stops listening when it does', () => {
     seedSummary(ATRAXA)
     const panel = render(<CardDetail boards={oneCardDeck} />)
     act(() => togglePin(ATRAXA))
@@ -553,7 +554,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     clearPin()
   })
 
-  it('announces a pin EXACTLY once, in the separate polite region (AC 23, UX-DR45)', () => {
+  it('announces a pin EXACTLY once, in the separate polite region (UX-DR45)', () => {
     seedSummary(ATRAXA)
     const { container } = render(<CardDetail boards={oneCardDeck} />)
     const region = container.querySelector('[aria-live]')!
@@ -576,7 +577,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     expect(region.textContent).toBe('Pinned — Atraxa, Praetors’ Voice')
   })
 
-  it('says nothing on a TRANSIENT change, however many there are (AC 24)', () => {
+  it('says nothing on a TRANSIENT change, however many there are', () => {
     seedSummary(ATRAXA)
     seedSummary('id-Other', { name: 'Some Other Card' })
     const { container } = render(<CardDetail boards={oneCardDeck} />)
@@ -591,7 +592,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     }
   })
 
-  it('moves focus to the panel title when unpin is activated (review 2026-08-05)', () => {
+  it('moves focus to the panel title when unpin is activated', () => {
     seedSummary(ATRAXA)
     render(<CardDetail boards={oneCardDeck} />)
     act(() => togglePin(ATRAXA))
@@ -614,8 +615,8 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     expect(title.hasAttribute('tabindex')).toBe(false)
   })
 
-  it('announces LATE, and still exactly once, when the pin precedes the name (review 2026-08-05)', () => {
-    // The slice deliberately does not refuse an id the cache has never seen — Epic 6's
+  it('announces LATE, and still exactly once, when the pin precedes the name', () => {
+    // The slice deliberately does not refuse an id the cache has never seen — the agent view's
     // thumbnails are that population. A capture keyed on the id alone would speak `''` and stay
     // silent forever: "exactly once" silently becoming ZERO is the defect; one late capture,
     // settling the first time a name exists, is the repair.
@@ -649,7 +650,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
   })
 })
 
-describe('the deck transition is where an inspection dies (review 2026-08-05, amended c7-4)', () => {
+describe('the deck transition is where an inspection dies', () => {
   it('clears a pin and a stale hover when the deck is REPLACED', () => {
     // FR-22 deck loads are live: the agent calls `load_deck` and the glass follows with no
     // refresh. Without this clearing, a pin from deck A outranks deck B's cold-open target
@@ -697,9 +698,9 @@ describe('the deck transition is where an inspection dies (review 2026-08-05, am
     expect(screen.getByText('Atraxa, Praetors’ Voice')).toBeVisible()
   })
 
-  it('keeps a pin across a SAME-DECK refetch — new boards reference, card in both lists (c7-4)', () => {
-    // THE BEHAVIOUR CHANGE AT ITS SEAM. Before c7-4 every c7-3 settle minted a new `boards`
-    // reference and the reference-comparison eviction released the pin — the R9-closed defect.
+  it('keeps a pin across a SAME-DECK refetch — new boards reference, card in both lists', () => {
+    // THE MEMBERSHIP RULE AT ITS SEAM. Every agent-edit settle mints a new `boards` reference,
+    // and a reference-comparison eviction would release the pin on each one.
     // Under the membership rule the pinned card is in BOTH lists, so the pin survives; the
     // TRANSIENTS still die (ephemeral by contract, stale by construction on any replacement).
     seedSummary(ATRAXA)
@@ -718,7 +719,7 @@ describe('the deck transition is where an inspection dies (review 2026-08-05, am
   })
 })
 
-describe('the panel updates in place on hover AND on focus (AC 10, UX-DR14)', () => {
+describe('the panel updates in place on hover AND on focus (UX-DR14)', () => {
   it('follows the target wherever it comes from, with no remount', () => {
     seedSummary(ATRAXA)
     seedSummary('id-Other', { name: 'Some Other Card' })
@@ -756,7 +757,7 @@ describe('the panel updates in place on hover AND on focus (AC 10, UX-DR14)', ()
  * by eye. That `?size=large&face=1` is a fourth distinct browser-cache key is likewise
  * a browser fact: jsdom loads no images at all.
  */
-describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
+describe('the panel follows the flipped face', () => {
   /** A flippable printing, hydrated: two faces, each carrying its own images (shape C). */
   const PATHWAY = 'id-Clearwater'
   const pathwayCard = (): Card => ({
@@ -789,7 +790,7 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
 
   afterEach(resetFaces)
 
-  it('carries its OWN copy of the control, pinned inside the art box (AC 12)', () => {
+  it('carries its OWN copy of the control, pinned inside the art box', () => {
     seedHydrated(PATHWAY, pathwayCard())
     const { container } = render(<CardDetail boards={pathwayDeck} />)
 
@@ -802,13 +803,13 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     expect(control.classList.contains('flip-control')).toBe(true)
   })
 
-  it('renders NO control for a single-faced card, in the panel as in the grid (AC 2)', () => {
+  it('renders NO control for a single-faced card, in the panel as in the grid', () => {
     seedHydrated(ATRAXA, record(ATRAXA))
     render(<CardDetail boards={oneCardDeck} />)
     expect(screen.queryByRole('button', { name: FLIP_LABEL })).toBeNull()
   })
 
-  it('renders the BACK face in all four fields once flipped (AC 11)', () => {
+  it('renders the BACK face in all four fields once flipped', () => {
     seedHydrated(PATHWAY, pathwayCard())
     const { container } = render(<CardDetail boards={pathwayDeck} />)
 
@@ -831,7 +832,7 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     expect(container.querySelectorAll('.mana-pip-u')).toHaveLength(0)
   })
 
-  it('asks the image route for the SAME face the text came from (AC 11, AC 13)', () => {
+  it('asks the image route for the SAME face the text came from', () => {
     seedHydrated(PATHWAY, pathwayCard())
     const { container } = render(<CardDetail boards={pathwayDeck} />)
     const srcOf = (selector: string) => container.querySelector(selector)!.getAttribute('src')
@@ -865,7 +866,7 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     expect(screen.getByText('Land // Land')).toBeVisible()
   })
 
-  it('flips from the PANEL’s control without pinning, setting or clearing anything (AC 6)', () => {
+  it('flips from the PANEL’s control without pinning, setting or clearing anything', () => {
     seedHydrated(PATHWAY, pathwayCard())
     render(<CardDetail boards={pathwayDeck} />)
     const before = useInspectionStore.getState()
@@ -878,8 +879,8 @@ describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
     expect(screen.getByText('Murkwater Pathway')).toBeVisible()
   })
 
-  it('keeps the control while the shown face’s art has FAILED (Q8)', () => {
-    // The panel's half of Q8's ruling, and the reason the two art branches were merged into ONE
+  it('keeps the control while the shown face’s art has FAILED', () => {
+    // The panel's half of the same decision, and the reason the two art branches share ONE
     // art box: the placeholder replaces the FACES, not the box, so the control survives inside it
     // and a face whose picture failed can always be flipped out of.
     seedHydrated(PATHWAY, pathwayCard())

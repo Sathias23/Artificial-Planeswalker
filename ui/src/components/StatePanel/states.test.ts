@@ -22,7 +22,7 @@ import {
   RETRIES_QUIETLY,
 } from './states'
 
-describe('the state maps mean what the wire contract says (review 2026-07-29)', () => {
+describe('the state maps mean what the wire contract says', () => {
   it('routes each token to its own panel — the values, not merely the totality', () => {
     expect(PANEL_FOR_REASON.deck_not_found).toBe('no-active-deck')
     expect(PANEL_FOR_REASON.database_not_initialized).toBe('database-not-initialized')
@@ -62,8 +62,8 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
     expect(PLACEHOLDER_FOR_REASON.card_not_found).toBe('unknown-card')
   })
 
-  it('sends both of c3-5 image failures to the NAMED-CARD placeholder, not the unknown one', () => {
-    // Same treatment as the seventh and eighth tokens, for the same reason: the type-level
+  it('sends both image failures to the NAMED-CARD placeholder, not the unknown one', () => {
+    // Same treatment as `card_not_found`, for the same reason: the type-level
     // asserts prove these two are classified, never WHICH WAY. Swapping either into
     // `NO_UI_RESPONSE` type-checks perfectly and silently deletes the tile CardPlaceholder renders.
     expect(PANEL_FOR_REASON.no_image_data).toBeNull()

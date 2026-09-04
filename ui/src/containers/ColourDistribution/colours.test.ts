@@ -225,7 +225,7 @@ const wholeStringPips = (rows: DeckCardSummary[]): Partial<Record<ManaColour, nu
   return counts
 }
 
-describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the deck it moves', () => {
+describe('pips come from the FRONT FACE, and `Prismatic Dragon` is the deck it moves', () => {
   it('counts only the front half of the ten Omen rows, and the back half is 26 pips it drops', () => {
     // FRONT: W 2, U 8, B 6, R 4, G 6 — 26 pips.
     expect(countsOf(PRISMATIC_OMENS)).toEqual({ w: 2, u: 8, b: 6, r: 4, g: 6 })
@@ -236,8 +236,8 @@ describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the de
     expect(wholeStringPips(PRISMATIC_OMENS)).toEqual({ w: 4, u: 13, b: 16, r: 8, g: 11 })
   })
 
-  it('reproduces the deck-level 71-versus-45 measurement (AC 6)', () => {
-    // The whole deck, measured read-only at `1ed2e83`: whole string 71 pips ordered
+  it('reproduces the deck-level 71-versus-45 measurement', () => {
+    // The whole deck, measured against the shipped database: whole string 71 pips ordered
     // B > U > G > R > W; front face 45 pips ordered U > B ≈ G > R > W.
     //
     // ⚠️ `OTHER_ROWS = 19` is a RECORDED MEASUREMENT, not a suite-derived number — the
@@ -288,7 +288,7 @@ describe('Q1 — pips come from the FRONT FACE, and `Prismatic Dragon` is the de
 // Hydration
 // ---------------------------------------------------------------------------------------
 
-describe('Q2 — the blank-cost faced cards contribute their real pips once hydrated (AC 7)', () => {
+describe('the blank-cost faced cards contribute their real pips once hydrated', () => {
   // `Ayara, Widow of the Realm // Ayara, Furnace Queen` — the deck's own namesake in
   // `Ayara Black Devotion`, blank at the top level, `{1}{B}{B}` on its front face.
   const AYARA = card(
@@ -335,7 +335,7 @@ describe('Q2 — the blank-cost faced cards contribute their real pips once hydr
 // What one symbol contributes
 // ---------------------------------------------------------------------------------------
 
-describe('Q4(a) — a hybrid pip credits EVERY colour it can be paid with', () => {
+describe('a hybrid pip credits EVERY colour it can be paid with', () => {
   it('gives `{W/U}` one white and one blue, so the total exceeds the symbol count', () => {
     // `Sokka, Lateral Strategist` — `{1}{W/U}{W/U}`, live in `Aanging Loose`.
     const SOKKA = card(
@@ -365,7 +365,7 @@ describe('Q4(a) — a hybrid pip credits EVERY colour it can be paid with', () =
   })
 })
 
-describe('Q4(b) — Phyrexian is a MODIFIER, never a third colour', () => {
+describe('Phyrexian is a MODIFIER, never a third colour', () => {
   it('counts `{U/P}` as one blue pip and nothing else', () => {
     // `Tezzeret's Gambit` — `{3}{U/P}`, live in `Dragon-God Superfriends`. Life is not a colour.
     const GAMBIT = card("Tezzeret's Gambit", '{3}{U/P}', 'Sorcery', 4, ['U'])
@@ -373,7 +373,7 @@ describe('Q4(b) — Phyrexian is a MODIFIER, never a third colour', () => {
   })
 })
 
-describe('Q4(c) — a generic-hybrid credits its COLOUR only', () => {
+describe('a generic-hybrid credits its COLOUR only', () => {
   it('counts `{2/W}{2/B}{2/G}` as one pip each and the generic halves as none', () => {
     // `Kin-Tree Severance` — the corpus's generic-hybrid shape. ZERO live copies, so this
     // is a corpus card exercising a rule no real deck reaches today, and the test says so.
@@ -382,7 +382,7 @@ describe('Q4(c) — a generic-hybrid credits its COLOUR only', () => {
   })
 })
 
-describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless segment', () => {
+describe('generic and `{X}` count for nobody, and invent no colourless segment', () => {
   it('gives a colourless artifact no segment at all', () => {
     // A generic cost is `colours: []` in the tokeniser, which is the whole test — no `unknown`
     // special case is needed either, because an `unknown` token has no `colours` field.
@@ -410,7 +410,7 @@ describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless
     expect(distributionOf(mixed).segments.map((s) => s.colour)).toEqual(['b', 'c'])
   })
 
-  it('drops `{S}` snow — an `unknown` token contributes nothing, pinned (review 2026-08-06)', () => {
+  it('drops `{S}` snow — an `unknown` token contributes nothing, pinned', () => {
     // `parse.ts` classifies `{S}` as `unknown`, so a snow pip renders in a deck row (unknown
     // tokens draw) yet is silently absent from this bar. Zero `{S}` symbols in any real deck;
     // this pins the CURRENT behaviour so a `classify` change surfaces here rather than as a
@@ -431,7 +431,7 @@ describe('Q4(d) — generic and `{X}` count for nobody, and invent no colourless
   })
 })
 
-describe('Q4(e) — lands are excluded, by the FRONT-FACE WHOLE-WORD test (AC 10)', () => {
+describe('lands are excluded, by the FRONT-FACE WHOLE-WORD test', () => {
   it('drops a land that carries a real coloured cost', () => {
     // `Glade of the Pump Spells` — `Land`, `{2}{G}`. A land that taps for mana is a SOURCE, not
     // a demand, and the panel's question is "does my mana base match my SPELLS".
@@ -497,7 +497,7 @@ describe('Q4(e) — lands are excluded, by the FRONT-FACE WHOLE-WORD test (AC 10
 // Which rows, and how many of each
 // ---------------------------------------------------------------------------------------
 
-describe('the board policy: commander + mainboard, sideboard excluded (AC 11, Q6)', () => {
+describe('the board policy: commander + mainboard, sideboard excluded', () => {
   const MAIN = card('Doom Blade', '{1}{B}', 'Instant', 2, ['B'])
   const COMMANDER = card(
     // Straight apostrophe and real `colors`, both verbatim from the DB.
@@ -523,7 +523,7 @@ describe('the board policy: commander + mainboard, sideboard excluded (AC 11, Q6
   })
 })
 
-describe('counts are SUMMED QUANTITIES, never row counts (AC 12)', () => {
+describe('counts are SUMMED QUANTITIES, never row counts', () => {
   it('multiplies a ×4 row by four', () => {
     // `Pond Prophet` — `{G/U}{G/U}`, live at ×4 in `Astonishing Ant-Man`. Four copies, two
     // hybrid symbols each, both colours credited: 8 green and 8 blue from ONE row.
@@ -537,10 +537,10 @@ describe('counts are SUMMED QUANTITIES, never row counts (AC 12)', () => {
 // The percentages
 // ---------------------------------------------------------------------------------------
 
-describe('Q14 — the displayed percentage is rounded and NEED NOT sum to 100 (AC 21)', () => {
-  // A HAND-ASSEMBLED set of real corpus rows, not a corpus deck — declared (review 2026-08-06,
-  // ruled): no real deck lands on three exactly-equal colours, and the 33/33/33 rounding edge is
-  // the whole point of this pin. AC 38's eye-check is where real corpus decks render.
+describe('the displayed percentage is rounded and NEED NOT sum to 100', () => {
+  // A HAND-ASSEMBLED set of real corpus rows, not a corpus deck, deliberately: no real deck
+  // lands on three exactly-equal colours, and the 33/33/33 rounding edge is the whole point of
+  // this pin. The eye-check is where real corpus decks render.
   const evenThree = [
     row(card('Doom Blade', '{1}{B}', 'Instant', 2, ['B'])),
     row(card('Lightning Bolt', '{R}', 'Instant', 1, ['R'])),
@@ -584,7 +584,7 @@ describe('Q14 — the displayed percentage is rounded and NEED NOT sum to 100 (A
 // The empty case, asserted against the DERIVATION
 // ---------------------------------------------------------------------------------------
 
-describe('the zero-pip case (AC 32, Q10)', () => {
+describe('the zero-pip case', () => {
   it('is EMPTY, not a bar of zeroes, for a deck with no cards', () => {
     const { segments, total } = distributionOf([])
     expect(segments).toEqual([])
@@ -620,7 +620,7 @@ describe('the zero-pip case (AC 32, Q10)', () => {
 // Purity
 // ---------------------------------------------------------------------------------------
 
-describe('the derivation is pure and copies nothing (AC 13, AD-12, don’t-break 5)', () => {
+describe('the derivation is pure and copies nothing (AD-12)', () => {
   it('returns the same answer twice and mutates neither argument', () => {
     const rows = [...PRISMATIC_OMENS]
     const boards = boardsOf(rows)

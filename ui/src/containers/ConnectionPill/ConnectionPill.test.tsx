@@ -41,8 +41,8 @@ const detail = (name: string): DeckDetail => ({
   mainboard_count: 1,
   sideboard_count: 0,
   distinct_cards: 1,
-  created_at: '2026-07-01T00:00:00Z',
-  updated_at: '2026-08-01T00:00:00Z',
+  created_at: '2025-07-01T00:00:00Z',
+  updated_at: '2025-08-01T00:00:00Z',
   cards: [],
 })
 
@@ -71,7 +71,7 @@ beforeEach(() => {
   useDeckStore.setState({ deck: INITIAL_DECK_STATE })
 })
 
-describe('the dot reports the status, and never carries it alone (AC 2, AC 3, AC 4)', () => {
+describe('the dot reports the status, and never carries it alone', () => {
   it.each([
     ['live', 'is-live'],
     ['reconnecting', 'is-reconnecting'],
@@ -93,7 +93,7 @@ describe('the dot reports the status, and never carries it alone (AC 2, AC 3, AC
   })
 
   it.each(['live', 'reconnecting', 'down'] as ConnectionStatus[])(
-    'names the %s state in WORDS, not in colour alone (AC 4)',
+    'names the %s state in WORDS, not in colour alone',
     (status) => {
       applyConnection(status)
       render(<ConnectionPill />)
@@ -102,10 +102,10 @@ describe('the dot reports the status, and never carries it alone (AC 2, AC 3, AC
     },
   )
 
-  it('carries the retrying-quietly note in the down state (AC 5)', () => {
-    // The last unmirrored clause of `EXPERIENCE.md`'s disconnected row, and it is TRUE rather than
-    // reassuring: `RETRIES_QUIETLY.disconnected === true` and c5-6's loop reads that map to decide
-    // whether to keep scheduling. `copy-tails.test.ts` is where the two are held together.
+  it('carries the retrying-quietly note in the down state', () => {
+    // The last clause of `EXPERIENCE.md`'s disconnected row, and it is TRUE rather than
+    // reassuring: `RETRIES_QUIETLY.disconnected === true` and the socket loop reads that map to
+    // decide whether to keep scheduling. `copy-tails.test.ts` is where the two are held together.
     applyConnection('down')
     render(<ConnectionPill />)
 
@@ -113,7 +113,7 @@ describe('the dot reports the status, and never carries it alone (AC 2, AC 3, AC
   })
 })
 
-describe('the deck name comes from the DECK SLICE (AC 6)', () => {
+describe('the deck name comes from the DECK SLICE', () => {
   it('names the loaded deck beside the state', () => {
     loadDeck('Sultai Midrange')
     applyConnection('live')
@@ -141,7 +141,7 @@ describe('the deck name comes from the DECK SLICE (AC 6)', () => {
     expect(screen.getByText('Ghired, Conclave Exile')).toBeInTheDocument()
   })
 
-  it('still knows a deck is loaded in the DOWN state, and withholds the name anyway (Q3)', () => {
+  it('still knows a deck is loaded in the DOWN state, and withholds the name anyway', () => {
     // THE LANDMINE THIS COMPONENT IS SHAPED AROUND, from the other side. `surfaceOf` returns a
     // PANEL surface whenever `connection === 'down'` while the deck slice underneath still holds
     // the deck — so a pill reading the surface would be indistinguishable from this one here, and
@@ -168,7 +168,7 @@ describe('the deck name comes from the DECK SLICE (AC 6)', () => {
   })
 })
 
-describe('the pill is a real focusable control (AC 8, UX-DR47)', () => {
+describe('the pill is a real focusable control (UX-DR47)', () => {
   it('is a <button>, not a div with a tabindex', () => {
     applyConnection('live')
     render(<ConnectionPill />)
@@ -203,9 +203,9 @@ describe('the pill is a real focusable control (AC 8, UX-DR47)', () => {
     )
   })
 
-  it('still claims NO behaviour it does not have (scope fence, revised at 17.1)', () => {
-    // The tooltip shipped at 17.1, so `aria-describedby` is now asserted PRESENT (in its own
-    // describe below) — but a tooltip is a description, not a popup the button controls, so the
+  it('still claims NO behaviour it does not have (scope fence)', () => {
+    // The tooltip exists, so `aria-describedby` is asserted PRESENT (in its own describe
+    // below) — but a tooltip is a description, not a popup the button controls, so the
     // popup-shaped claims stay banned, and `title` stays banned because the visible tooltip is
     // the one channel (UX-DR39's hover-only ban; two channels could disagree).
     loadDeck('Sultai Midrange')
@@ -218,7 +218,7 @@ describe('the pill is a real focusable control (AC 8, UX-DR47)', () => {
   })
 })
 
-describe('the tooltip names the port and the last-confirmed instance (story 17.1, AC 1–2)', () => {
+describe('the tooltip names the port and the last-confirmed instance', () => {
   const tooltip = () => screen.getByRole('tooltip')
 
   it('wires aria-describedby to the tooltip, and the description IS its text', () => {
@@ -283,9 +283,9 @@ describe('the tooltip names the port and the last-confirmed instance (story 17.1
     expect(pill().nextElementSibling).toBe(tooltip())
   })
 
-  it('leaves the pinned accessible NAME exactly as c5-7 shipped it', () => {
-    // The description must not leak into the name computation — the byte-identical claim AC-3
-    // makes about this story.
+  it('leaves the pinned accessible NAME byte-identical with the tooltip present', () => {
+    // The description must not leak into the name computation: the accessible name is
+    // byte-identical with or without the tooltip present.
     loadDeck('Sultai Midrange')
     applyConnection('live')
     render(<ConnectionPill />)
@@ -377,8 +377,8 @@ describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)',
     expect(tooltip().className).toContain('is-suppressed')
   })
 
-  it('CLEARS on focus after an unrelated Escape — a new session must not inherit the latch (PR #96)', () => {
-    // The Greptile scenario: Escape pressed anywhere — unpinning the card detail is the common
+  it('CLEARS on focus after an unrelated Escape — a new session must not inherit the latch', () => {
+    // The scenario: Escape pressed anywhere — unpinning the card detail is the common
     // case — reaches the document listener with the pill neither hovered nor focused, and
     // without an entry-time reset the user's NEXT visit to the pill would silently reveal
     // nothing. A new entry is a new intent.
@@ -466,7 +466,7 @@ describe('the page port is window.location’s, never a configured number', () =
   })
 })
 
-describe('the announcement is a transition, not a level (AC 10, Q4)', () => {
+describe('the announcement is a transition, not a level', () => {
   it('ships a polite live region that is EMPTY at rest', () => {
     applyConnection('live')
     render(<ConnectionPill />)
@@ -525,7 +525,7 @@ describe('the announcement is a transition, not a level (AC 10, Q4)', () => {
     expect(region()?.textContent).toBe(CONNECTION_WORDS.down)
   })
 
-  it('stays SILENT when only the INSTANCE ID changes (story 17.1 — identity is not a status)', () => {
+  it('stays SILENT when only the INSTANCE ID changes — identity is not a status', () => {
     // The dot never carries state alone and the region announces status TRANSITIONS only; an
     // identity confirmation is data for the tooltip, not a transition, and the capture being
     // keyed on the status alone is what makes this true by construction — the deck-name rule's

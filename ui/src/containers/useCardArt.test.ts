@@ -33,7 +33,7 @@ import { useCardArt } from './useCardArt'
  * through the returned handlers, never awaited.
  */
 
-describe('the verdict belongs to the PICTURE, which is a card AND a face (c4-6 Q7)', () => {
+describe('the verdict belongs to the PICTURE, which is a card AND a face', () => {
   it('starts in `loading` and settles on the handler it is given', () => {
     const { result } = renderHook(() => useCardArt('a-card'))
     expect(result.current.state).toBe('loading')
@@ -42,7 +42,7 @@ describe('the verdict belongs to the PICTURE, which is a card AND a face (c4-6 Q
     expect(result.current.state).toBe('shown')
   })
 
-  it('re-arms when the CARD changes — c4-4’s repair, unchanged', () => {
+  it('re-arms when the CARD changes', () => {
     // A consumer handed a different card on the same mount would otherwise keep the old card's
     // `'shown'` (opacity 1 over pixels that have not arrived) or its `'failed'` (a placeholder for
     // a card whose picture is fine). That is the ordinary case in the detail panel, where ONE
@@ -57,8 +57,8 @@ describe('the verdict belongs to the PICTURE, which is a card AND a face (c4-6 Q
     expect(result.current.state).toBe('loading')
   })
 
-  it('re-arms when the FACE changes and the card does NOT — c4-6’s repair (Q7)', () => {
-    // THE ASSERTION PROBE (g) FOUND MISSING. `?face=1` is a different URL and therefore a
+  it('re-arms when the FACE changes and the card does NOT', () => {
+    // THE ASSERTION THE COMPONENT SUITES CANNOT MAKE. `?face=1` is a different URL and therefore a
     // different browser-cache entry, so a face change is a new picture even though it is the same
     // card. Without it a consumer that swapped faces in ONE element would sit at `'shown'` over an
     // `<img>` whose new `src` had not arrived — the old face at full opacity, with no silent well.
@@ -93,7 +93,7 @@ describe('the verdict belongs to the PICTURE, which is a card AND a face (c4-6 Q
     expect(result.current.state).toBe('failed')
   })
 
-  it('treats an omitted face as face 0, so every c4-4/c4-5 caller is unchanged', () => {
+  it('treats an omitted face as face 0, so every existing caller is unchanged', () => {
     // The default is what made this a one-line change for two existing consumers rather than an
     // edit to both. `useCardArt(id)` and `useCardArt(id, 0)` must be the same picture.
     const { result, rerender } = renderHook(

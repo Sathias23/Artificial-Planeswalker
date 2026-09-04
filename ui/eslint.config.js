@@ -42,7 +42,7 @@ const INLINE_STYLE_BANS = [
       'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
       'guard in tests/token-usage.test.ts can see it. A style attribute that is not a ' +
       'literal object (or a literal directly under one `as` cast) hides its keys from ' +
-      'every static reader, so it cannot be the named-channel form c4-8 opened. Put the ' +
+      'every static reader, so it cannot be the named-channel form. Put the ' +
       'rule in a .css file and reach values through var(--…). See ui/README.md, ' +
       '"The token layer".',
   },
@@ -63,8 +63,8 @@ const INLINE_STYLE_BANS = [
       'whose keys are all DECLARED runtime channels (today: --curve-bar-height, ' +
       '--colour-bar-share, --history-popover-top, --history-popover-right), with no ' +
       'spread — a bare `--` prefix is not enough, because a ' +
-      'custom property can override a real design token for every descendant (c4-8, ' +
-      'AC 17; c4-9, AC 19). See ui/README.md, "The token layer".',
+      'custom property can override a real design token for every descendant. ' +
+      'See ui/README.md, "The token layer".',
   },
 ]
 

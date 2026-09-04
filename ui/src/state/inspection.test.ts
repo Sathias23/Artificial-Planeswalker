@@ -71,14 +71,14 @@ afterEach(() => {
   resetCardCache()
 })
 
-describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () => {
+describe('the three inputs, and the order they win in', () => {
   it('resolves to nothing at all before a deck exists', () => {
     // Not a bug and not an empty state: `App` mounts the panel only for a loaded deck, so
     // this is the shape the slice holds for the one paint before `setDefaultTarget` runs.
     expect(targetIdOf(useInspectionStore.getState())).toBeNull()
   })
 
-  it('targets the cold-open card with no interaction (AC 8, FR-17, UX-DR20)', () => {
+  it('targets the cold-open card with no interaction (FR-17, UX-DR20)', () => {
     setDefaultTarget('id-Atraxa')
     expect(targetIdOf(useInspectionStore.getState())).toBe('id-Atraxa')
   })
@@ -94,7 +94,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
     expect(targetIdOf(useInspectionStore.getState())).toBe('id-Atraxa')
   })
 
-  it('lets a pin outrank hover, so hover no longer overrides it (AC 19)', () => {
+  it('lets a pin outrank hover, so hover no longer overrides it', () => {
     setDefaultTarget('id-Atraxa')
     togglePin('id-Forest')
     setHovered('id-Llanowar Elves')
@@ -105,7 +105,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
     expect(useInspectionStore.getState().hoveredId).toBe('id-Llanowar Elves')
   })
 
-  it('releases on a SECOND click of the same card — never a double-click (AC 20, UX-DR39)', () => {
+  it('releases on a SECOND click of the same card — never a double-click (UX-DR39)', () => {
     setDefaultTarget('id-Atraxa')
     setHovered('id-Llanowar Elves')
     togglePin('id-Forest')
@@ -122,7 +122,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
     expect(useInspectionStore.getState().pinnedId).toBe('id-Island')
   })
 
-  it('releases on clearPin — the Esc and unpin-control path (AC 20)', () => {
+  it('releases on clearPin — the Esc and unpin-control path', () => {
     setDefaultTarget('id-Atraxa')
     togglePin('id-Forest')
     clearPin()
@@ -163,7 +163,7 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
   })
 })
 
-describe('hover and focus are TWO slots, resolved by recency (PR #44 P1, UX-DR14)', () => {
+describe('hover and focus are TWO slots, resolved by recency (UX-DR14)', () => {
   it('a mouse-leave cannot strand a still-focused tile', () => {
     // THE DEFECT THIS PREVENTS: Tab-focus tile A, sweep the mouse over B and away. With one
     // shared slot the leave erased A's target and the panel snapped to the cold-open card while
@@ -211,7 +211,7 @@ describe('hover and focus are TWO slots, resolved by recency (PR #44 P1, UX-DR14
   })
 })
 
-describe('an unknown card cannot become the inspection target (AC 17, UX-DR22)', () => {
+describe('an unknown card cannot become the inspection target (UX-DR22)', () => {
   /** The cache entry `hydrateCard` writes for a `card_not_found` / malformed id. */
   const unknown = (cardId: string) => {
     useCardStore.setState((state) => ({
@@ -248,7 +248,7 @@ describe('an unknown card cannot become the inspection target (AC 17, UX-DR22)',
     expect(targetIdOf(useInspectionStore.getState())).toBe('id-Atraxa')
   })
 
-  it('refuses it on click too — a pin is the same contract with a longer life (AC 19)', () => {
+  it('refuses it on click too — a pin is the same contract with a longer life', () => {
     unknown('id-ghost')
     togglePin('id-ghost')
     expect(useInspectionStore.getState().pinnedId).toBeNull()
@@ -284,8 +284,8 @@ describe('an unknown card cannot become the inspection target (AC 17, UX-DR22)',
   })
 })
 
-describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)', () => {
-  // The four-row truth table of the R9 rule (ruling 2026-08-14), plus the sideboard row. The
+describe('pin eviction is a membership transition, not a deck lookup', () => {
+  // The four-row truth table of the membership-transition rule, plus the sideboard row. The
   // verb reads only the TWO DECKLISTS handed to it — no pin-time classification anywhere — and
   // its caller (`CardDetail`'s boards effect, via `deckMemory`) is `CardDetail.test.tsx`'s and
   // `App.test.tsx`'s to prove; what is pinned here is the rule itself.
@@ -303,7 +303,7 @@ describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)'
     expect(targetIdOf(useInspectionStore.getState())).toBe('id-Ponder')
   })
 
-  it('survives absent → absent — the pinned suggestion, with no special-casing (c6-7 debt)', () => {
+  it('survives absent → absent — the pinned suggestion, with no special-casing', () => {
     togglePin('id-Birds of Paradise')
 
     evictDepartedPin(deckWith('Ponder'), deckWith('Ponder', 'Opt'))
@@ -311,7 +311,7 @@ describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)'
     expect(useInspectionStore.getState().pinnedId).toBe('id-Birds of Paradise')
   })
 
-  it('survives present → present — the same-deck refetch this story exists for', () => {
+  it('survives present → present — the same-deck refetch', () => {
     togglePin('id-Forest')
 
     evictDepartedPin(deckWith('Forest', 'Ponder'), deckWith('Forest', 'Opt'))
@@ -385,7 +385,7 @@ describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)'
   })
 })
 
-describe('the cold-open target is the grid’s own visual order (AC 8, AC 9, Q15)', () => {
+describe('the cold-open target is the grid’s own visual order', () => {
   it('is the commander, because the grid draws the commander first', () => {
     // UX-DR20 says "the first card of the first type group"; `boards.commander` is a SEPARATE
     // board the grid draws BEFORE the type groups, so the literal reading and the on-screen
@@ -415,14 +415,14 @@ describe('the cold-open target is the grid’s own visual order (AC 8, AC 9, Q15
     expect(coldOpenTargetOf(boards)).toBe('id-Ponder')
   })
 
-  it('is TOTAL over a deck with nothing in either board (AC 9)', () => {
-    // `boardsOf([])` is three empty boards, and c4-12 owns the copy for what that looks like.
-    // What this story owes is no crash and no half-resolved target.
+  it('is TOTAL over a deck with nothing in either board', () => {
+    // `boardsOf([])` is three empty boards; the empty-deck copy is the panel's concern. What
+    // this slice owes is no crash and no half-resolved target.
     expect(coldOpenTargetOf(boardsOf([]))).toBeNull()
   })
 })
 
-describe('the selectors return primitives, which is the whole of Q7', () => {
+describe('the selectors return primitives', () => {
   it('gives a tile a boolean rather than an object', () => {
     setDefaultTarget('id-Atraxa')
     const live = renderHook(() => useIsLiveTarget('id-Atraxa'))

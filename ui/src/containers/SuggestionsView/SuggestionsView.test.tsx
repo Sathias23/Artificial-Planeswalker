@@ -127,7 +127,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('an empty push renders the artefact’s line (c6-6 AC 4, UX-DR33, AD-7)', () => {
+describe('an empty push renders the artefact’s line (UX-DR33, AD-7)', () => {
   it('renders the sentence, with the wire kind substituted', () => {
     render(<SuggestionsView kind="suggestions" items={[]} />)
 
@@ -160,8 +160,8 @@ describe('an empty push renders the artefact’s line (c6-6 AC 4, UX-DR33, AD-7)
     expect(screen.queryByRole('region')).toBeNull()
   })
 
-  it('REPLACES the list rather than sitting inside one (c4-12 semantics, DESIGN.md)', () => {
-    // `components.empty-push-line`, added to DESIGN.md by this story: a `<p>` inside a `<ul>` is
+  it('REPLACES the list rather than sitting inside one (DESIGN.md)', () => {
+    // DESIGN.md's `components.empty-push-line`: a `<p>` inside a `<ul>` is
     // invalid against UX-DR44's mandated list semantics, and an empty list beside the sentence
     // announces "list, 0 items" to a screen-reader user BEFORE the sentence explaining why.
     const { container } = render(<SuggestionsView kind="suggestions" items={[]} />)
@@ -171,8 +171,8 @@ describe('an empty push renders the artefact’s line (c6-6 AC 4, UX-DR33, AD-7)
   })
 })
 
-describe('the rows, and their anatomy (AC 1, AC 5, UX-DR24, UX-DR44)', () => {
-  it('renders a real ul/li — one li per item, in payload order (AC 5, UX-DR44)', () => {
+describe('the rows, and their anatomy (UX-DR24, UX-DR44)', () => {
+  it('renders a real ul/li — one li per item, in payload order (UX-DR44)', () => {
     seedHydrated('c-1')
     seedHydrated('c-2')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM, OTHER]} />)
@@ -191,7 +191,7 @@ describe('the rows, and their anatomy (AC 1, AC 5, UX-DR24, UX-DR44)', () => {
     expect(container.querySelector('.suggestions-view-empty')).toBeNull()
   })
 
-  it('renders every slot DESIGN.md names, in a row that has them all (AC 1)', () => {
+  it('renders every slot DESIGN.md names, in a row that has them all', () => {
     seedHydrated('c-1', { name: 'Llanowar Elves', mana_cost: '{G}' })
     const { container } = render(
       <SuggestionsView
@@ -212,10 +212,10 @@ describe('the rows, and their anatomy (AC 1, AC 5, UX-DR24, UX-DR44)', () => {
     expect(row.querySelector('.suggestion-row-reason')).toHaveTextContent(ITEM.reason)
   })
 
-  it('renders the wire CATEGORY in the badge, and no badge without one (Q1)', () => {
-    // Q1's ruling made visible: the "action badge" DESIGN.md described has no wire backing — the
-    // only badge-bearing datum is `category` — and both artefacts were annotated in this story's
-    // first commit. An absent category renders no pill at all, rather than an empty one.
+  it('renders the wire CATEGORY in the badge, and no badge without one', () => {
+    // The "action badge" has no wire backing — the only badge-bearing datum is `category`, and
+    // DESIGN.md and EXPERIENCE.md are both annotated to say so. An absent category renders no
+    // pill at all, rather than an empty one.
     seedHydrated('c-1')
     seedHydrated('c-2')
     const { container } = render(
@@ -230,7 +230,7 @@ describe('the rows, and their anatomy (AC 1, AC 5, UX-DR24, UX-DR44)', () => {
     expect(rowAt(container, 0).querySelector('.badge')).toHaveClass('badge-neutral')
   })
 
-  it('renders the confidence TOKEN verbatim, and nothing when it is absent (AC 1)', () => {
+  it('renders the confidence TOKEN verbatim, and nothing when it is absent', () => {
     seedHydrated('c-1')
     seedHydrated('c-2')
     const { container } = render(
@@ -296,8 +296,8 @@ describe('the rows, and their anatomy (AC 1, AC 5, UX-DR24, UX-DR44)', () => {
   })
 })
 
-describe('the thumbnail (AC 4, AC 6, AC 7, UX-DR36, AD-11, AD-12)', () => {
-  it('draws from the backend PROXY at the unspelled rendition (AC 7, Q4)', () => {
+describe('the thumbnail (UX-DR36, AD-11, AD-12)', () => {
+  it('draws from the backend PROXY at the unspelled rendition', () => {
     seedHydrated('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
 
@@ -312,7 +312,7 @@ describe('the thumbnail (AC 4, AC 6, AC 7, UX-DR36, AD-11, AD-12)', () => {
     expect(image?.getAttribute('src')).not.toContain('scryfall')
   })
 
-  it('carries alt="" EXACTLY — the name is announced once, from the row text (AC 6)', () => {
+  it('carries alt="" EXACTLY — the name is announced once, from the row text', () => {
     seedHydrated('c-1', { name: 'Llanowar Elves' })
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
 
@@ -359,7 +359,7 @@ describe('the thumbnail (AC 4, AC 6, AC 7, UX-DR36, AD-11, AD-12)', () => {
     expect(placeholder).not.toHaveTextContent('Unknown card')
   })
 
-  it('honours the flip STATE and renders no flip CONTROL (Q5, EXPERIENCE.md:85)', () => {
+  it('honours the flip STATE and renders no flip CONTROL (EXPERIENCE.md:85)', () => {
     seedHydrated('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
     expect(container.querySelector('.suggestion-row-image')).toHaveAttribute(
@@ -386,10 +386,8 @@ describe('the thumbnail (AC 4, AC 6, AC 7, UX-DR36, AD-11, AD-12)', () => {
   })
 })
 
-describe('one bad entry costs one row and never the push (AC 4, FR-13, AD-7, dw:209)', () => {
-  it('degrades an UNKNOWN id to the placeholder while its reason still renders (AC 4)', () => {
-    // c6-6's AC 3, structurally deferred to this story by Brad's Q2 ruling because its subject —
-    // a rendered entry — did not exist there. This is that discharge.
+describe('one bad entry costs one row and never the push (FR-13, AD-7)', () => {
+  it('degrades an UNKNOWN id to the placeholder while its reason still renders', () => {
     seedUnknown('c-1')
     seedHydrated('c-2')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM, OTHER]} />)
@@ -410,7 +408,7 @@ describe('one bad entry costs one row and never the push (AC 4, FR-13, AD-7, dw:
     expect(rowAt(container, 1)).toHaveTextContent(OTHER.reason)
   })
 
-  it('shows the truncated id on the unknown thumbnail — the only identity left (c4-3)', () => {
+  it('shows the truncated id on the unknown thumbnail — the only identity left', () => {
     seedUnknown('abcdef0123456789')
     const { container } = render(
       <SuggestionsView kind="suggestions" items={[{ ...ITEM, card_id: 'abcdef0123456789' }]} />,
@@ -419,7 +417,7 @@ describe('one bad entry costs one row and never the push (AC 4, FR-13, AD-7, dw:
     expect(container.querySelector('.card-placeholder-id')).toHaveTextContent('abcdef01')
   })
 
-  it('keeps a card whose PICTURE failed fully inspectable (c4-1 AC 13)', () => {
+  it('keeps a card whose PICTURE failed fully inspectable', () => {
     // The distinction `entry.placeholder` exists to carry: a `no_image_data` refusal is NOT an
     // unknown card. The app knows its name, cost and type line, so the row draws the named
     // placeholder and the store lets it be inspected.
@@ -521,8 +519,8 @@ describe('one bad entry costs one row and never the push (AC 4, FR-13, AD-7, dw:
   })
 })
 
-describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)', () => {
-  it('sets the target on hover and on focus, in their OWN slots (AC 2)', () => {
+describe('the inspection contract, verb for verb (UX-DR14, UX-DR20)', () => {
+  it('sets the target on hover and on focus, in their OWN slots', () => {
     seedHydrated('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
     const row = rowAt(container, 0)
@@ -538,7 +536,7 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(useInspectionStore.getState().lastTransient).toBe('focus')
   })
 
-  it('clears each slot on the matching leave, keyed by id (AC 2)', () => {
+  it('clears each slot on the matching leave, keyed by id', () => {
     seedHydrated('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
     const row = rowAt(container, 0)
@@ -553,7 +551,7 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(useInspectionStore.getState().focusedId).toBeNull()
   })
 
-  it('pins on click and RELEASES on a second single click (AC 2, UX-DR20)', () => {
+  it('pins on click and RELEASES on a second single click (UX-DR20)', () => {
     seedHydrated('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
     const row = rowAt(container, 0)
@@ -584,7 +582,7 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(screen.getAllByRole('button')).toHaveLength(1)
   })
 
-  it('marks EXACTLY the live row, and marks it on hover, focus and pin (AC 3)', () => {
+  it('marks EXACTLY the live row, and marks it on hover, focus and pin', () => {
     seedHydrated('c-1')
     seedHydrated('c-2')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM, OTHER]} />)
@@ -602,10 +600,10 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(rows(container).filter((r) => r.classList.contains('is-live'))).toHaveLength(1)
   })
 
-  it('REFUSES every verb on an unknown-card row, through the store (Q3, UX-DR22)', () => {
-    // The refusal is `inspection.ts`'s `inspectable()`, written for "Epic 6's thumbnails, whose
-    // ids do not come from a deck at all" — this surface, named a story and a half before it
-    // existed. What this test proves is that the row actually ROUTES through it: the handlers are
+  it('REFUSES every verb on an unknown-card row, through the store (UX-DR22)', () => {
+    // The refusal is `inspection.ts`'s `inspectable()`, written for thumbnails whose ids do not
+    // come from a deck at all — exactly this surface. What this test proves is that the row
+    // actually ROUTES through it: the handlers are
     // attached to an unknown row exactly as to any other, and the store is what says no.
     seedUnknown('c-1')
     const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
@@ -653,7 +651,7 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(document.activeElement).not.toBe(document.body)
   })
 
-  it('releases a stale hover, focus AND pin when the entry resolves to unknown (Greptile P1)', () => {
+  it('releases a stale hover, focus AND pin when the entry resolves to unknown', () => {
     // `inspectable()` only refuses an id it ALREADY knows is dead — it has no opinion about one
     // that is ABOUT TO become dead. A suggestion id starts life `undefined`, which IS
     // inspectable (deliberately, for deck cards' cold-open hover), so a real interaction in the
@@ -696,7 +694,7 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
   })
 })
 
-describe('hydration is this view’s own (AC 7, AD-12)', () => {
+describe('hydration is this view’s own (AD-12)', () => {
   const cardCalls = () =>
     (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
       .map(([input]) => String(input))

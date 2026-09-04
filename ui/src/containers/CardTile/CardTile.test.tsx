@@ -73,7 +73,7 @@ afterEach(() => {
   resetFaces()
 })
 
-describe('the tile points at our own origin and nowhere else (AC 3)', () => {
+describe('the tile points at our own origin and nowhere else', () => {
   it('asks the app for the picture, not the CDN', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
     const img = imageOf(container)!
@@ -107,18 +107,17 @@ describe('the tile points at our own origin and nowhere else (AC 3)', () => {
     expect(cardImageUrl('x', 'normal')).not.toBe(cardImageUrl('x'))
   })
 
-  it('takes a FACE when a caller genuinely needs one — c4-6s flip (AC 13, AC 24)', () => {
-    // STILL ONE BUILDER. `imageUrl.ts`'s header instructed this story by name — "c4-6 adds `face`
-    // here, beside `size`, and inherits the encoding below for free" — and this is that carried
-    // out, in the same function, with no second template string anywhere in `src/`.
+  it('takes a FACE when a caller genuinely needs one — the flip', () => {
+    // STILL ONE BUILDER. `face` sits beside `size` in the same function and inherits the encoding
+    // for free, with no second template string anywhere in `src/`.
     expect(cardImageUrl('x', undefined, 1)).toBe('/api/card-image/x?face=1')
     expect(cardImageUrl('x', 'large', 1)).toBe('/api/card-image/x?size=large&face=1')
     // The id is still encoded with both parameters attached.
     expect(cardImageUrl('a?b=1', 'large', 1)).toBe('/api/card-image/a%3Fb%3D1?size=large&face=1')
   })
 
-  it('NEVER spells `face=0`, which is the warm grid cache not being split (AC 13, AC 27)', () => {
-    // The sharpest of this story's don't-breaks, and the one an evasion probe targets by name.
+  it('NEVER spells `face=0`, which is the warm grid cache not being split', () => {
+    // The sharpest don't-break in this file.
     // Every tile passes its face index unconditionally, and 2,027 of 2,027 deck rows start at 0 —
     // so a builder that spelled the default would rewrite EVERY grid URL in the app and throw the
     // whole warm browser cache away on the commit that shipped a flip control.
@@ -133,14 +132,14 @@ describe('the tile points at our own origin and nowhere else (AC 3)', () => {
     }
   })
 
-  it('encodes an id that would otherwise address a different route (c4-1 Q5)', () => {
+  it('encodes an id that would otherwise address a different route', () => {
     // The id comes out of `deck_cards`, a column with no shape constraint. Unencoded, a `/` in
     // it would silently walk up the path rather than producing a refusal the tile can draw.
     expect(cardImageUrl('../decks')).toBe('/api/card-image/..%2Fdecks')
     expect(cardImageUrl('a?b=1')).toBe('/api/card-image/a%3Fb%3D1')
   })
 
-  it('defers decode but NOT loading (Q7)', () => {
+  it('defers decode but NOT loading', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
     const img = imageOf(container)!
 
@@ -155,7 +154,7 @@ describe('the tile points at our own origin and nowhere else (AC 3)', () => {
   })
 })
 
-describe('the shape is consumed, never re-declared (AC 4, AC 7)', () => {
+describe('the shape is consumed, never re-declared', () => {
   it('carries `card-shape` on the box every state fills', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
     const art = container.querySelector('.card-tile')!
@@ -171,7 +170,7 @@ describe('the shape is consumed, never re-declared (AC 4, AC 7)', () => {
     expect(art.classList.contains('card-shape')).toBe(true)
   })
 
-  it('puts the well and the image in the SAME box, which is what makes AC 7 structural', () => {
+  it('puts the well and the image in the SAME box, which is what makes the no-reflow guarantee structural', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
     const art = container.querySelector('.card-tile')!
 
@@ -183,7 +182,7 @@ describe('the shape is consumed, never re-declared (AC 4, AC 7)', () => {
   })
 })
 
-describe('the three art states (AC 8)', () => {
+describe('the three art states', () => {
   it('shows the silent well before anything has arrived', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
 
@@ -221,12 +220,12 @@ describe('the three art states (AC 8)', () => {
     expect(container.querySelector('.card-placeholder')).not.toBeNull()
   })
 
-  it('reaches the named placeholder from an EVENT, with no token anywhere (AC 8)', () => {
-    // The record's claim, asserted AT THE TYPE (review 2026-08-04 — the first spelling of this
-    // test inspected `Object.keys` of its own fixture, which could never contain the banned
-    // names by construction). A DOM `error` carries no status code and no wire token, so one
-    // render answers `404 no_image_data`, `502 image_fetch_failed` and `503` alike — and that is
-    // NOT c4-3's AC 16 being violated, because there is no `entry.placeholder` and no
+  it('reaches the named placeholder from an EVENT, with no token anywhere', () => {
+    // Asserted AT THE TYPE, not by inspecting `Object.keys` of a fixture — a fixture could never
+    // contain the banned names by construction, so that would pass vacuously. A DOM `error`
+    // carries no status code and no wire token, so one render answers `404 no_image_data`,
+    // `502 image_fetch_failed` and `503` alike — and that is NOT a wire-token re-derivation,
+    // because there is no `entry.placeholder` and no
     // `entry.reason` in this path at all. The interface is what the claim is about, so the
     // assertion reads the interface: the day someone adds a `placeholder` or `reason` prop to
     // `CardTileProps`, this line stops compiling.
@@ -235,7 +234,7 @@ describe('the three art states (AC 8)', () => {
     expect(declaresNoWireToken).toBe(true)
   })
 
-  it('does not re-arm the error, because the backend answers from memory for 300 s (c3-8)', () => {
+  it('does not re-arm the error, because the backend answers from memory for 300 s', () => {
     const { container, rerender } = render(<CardTile {...BLACK_LOTUS} />)
     fireEvent.error(imageOf(container)!)
     // A RE-RENDER with the same props — `rerender`, not a click (a click triggers no state change
@@ -276,7 +275,7 @@ describe('the three art states (AC 8)', () => {
   })
 })
 
-describe('the caption (AC 5, AC 6)', () => {
+describe('the caption', () => {
   it('renders the name below the art, verbatim and UNSPLIT', () => {
     render(<CardTile cardId="x" name="Barkchannel Pathway // Tidechannel Pathway" />)
     // The longest name in the largest real deck (42 characters), and it is rendered whole: four
@@ -294,7 +293,7 @@ describe('the caption (AC 5, AC 6)', () => {
   })
 })
 
-describe('the quantity badge (AC 9, AC 10)', () => {
+describe('the quantity badge', () => {
   it('renders ×N above one copy, with U+00D7 and not the letter x', () => {
     render(<CardTile {...BLACK_LOTUS} quantity={4} />)
 
@@ -331,7 +330,7 @@ describe('the quantity badge (AC 9, AC 10)', () => {
     expect(nan.container.textContent).not.toContain('NaN')
   })
 
-  it('sits INSIDE the card, in the corner c4-6 does not own', () => {
+  it('sits INSIDE the card, in the corner the flip control does not own', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} quantity={2} />)
     const badge = container.querySelector('.card-tile-quantity')!
     // Positioned against the card box rather than the card-plus-caption, so "inside {spacing.2}
@@ -357,7 +356,7 @@ describe('the quantity badge (AC 9, AC 10)', () => {
  * with a diff. The suite's existing DOM-event idiom is `fireEvent.load` / `.error` a few blocks
  * up, and this is the same idiom applied to a pointer.
  */
-describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR20)', () => {
+describe('the tile sets the inspection target (UX-DR14, UX-DR20)', () => {
   it('sets the target on hover and lets go on leave', () => {
     render(<CardTile {...BLACK_LOTUS} />)
     const tile = screen.getByRole('button')
@@ -402,8 +401,8 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     expect(useInspectionStore.getState().focusedId).toBe('second-card')
   })
 
-  it('a mouse-leave does not strand a still-focused tile (PR #44 P1)', () => {
-    // THE REPORTED DEFECT, at the tile's own wiring: Tab-focus one tile, sweep the mouse over
+  it('a mouse-leave does not strand a still-focused tile', () => {
+    // THE ERASED-FOCUS DEFECT, at the tile's own wiring: Tab-focus one tile, sweep the mouse over
     // another and away. The leave clears only the POINTER slot, so the focused tile takes the
     // target back — the panel and the live ring stay consistent with the focus ring on screen.
     const focused = render(<CardTile {...BLACK_LOTUS} />)
@@ -418,7 +417,7 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     expect(targetIdOf(useInspectionStore.getState())).toBe(BLACK_LOTUS.cardId)
   })
 
-  it('pins on click, and releases on a SECOND single click (AC 19, AC 20)', () => {
+  it('pins on click, and releases on a SECOND single click', () => {
     render(<CardTile {...BLACK_LOTUS} />)
     const tile = screen.getByRole('button')
 
@@ -432,7 +431,7 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     expect(useInspectionStore.getState().pinnedId).toBeNull()
   })
 
-  it('refuses to pin a card the app does not know (AC 17, UX-DR22)', () => {
+  it('refuses to pin a card the app does not know (UX-DR22)', () => {
     // The refusal lives in the SLICE, not here — which is why this tile needs no `inspectable`
     // prop and the placeholder needed no API change. The tile is where it is checked from,
     // because the agent view's thumbnails click the same way.
@@ -476,7 +475,7 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     expect(useInspectionStore.getState().pinnedId).toBe('other')
   })
 
-  it('carries `is-live` when it IS the target, and nothing when it is not (AC 34)', () => {
+  it('carries `is-live` when it IS the target, and nothing when it is not', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
     const tile = container.querySelector('button')!
 
@@ -507,7 +506,7 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
  * STRUCTURE: which element is a descendant of which, what order they appear in, which handlers
  * fire, and what the accessible name comes out as.
  */
-describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
+describe('the tile flips', () => {
   /** Shape C — the only shape that gets a control. See `FlipControl.test.tsx` for all four. */
   const hydrateFlippable = (cardId: string, name: string) => {
     useCardStore.setState((state) => ({
@@ -548,7 +547,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
   }
   const flipOf = (container: HTMLElement) => container.querySelector('.flip-control')
 
-  it('renders NO control for an ordinary card, so 35,483 tiles are unchanged (AC 2)', () => {
+  it('renders NO control for an ordinary card, so 35,483 tiles are unchanged', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
     expect(flipOf(container)).toBeNull()
     // …and exactly ONE image, which is the whole of the scoping: the second stacked face is
@@ -556,7 +555,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(container.querySelectorAll('img')).toHaveLength(1)
   })
 
-  it('renders a control and a SECOND stacked face for a flippable card (AC 1, Q10)', () => {
+  it('renders a control and a SECOND stacked face for a flippable card', () => {
     hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
     const { container } = render(<CardTile {...PATHWAY} />)
 
@@ -570,11 +569,12 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     for (const img of images) expect(img.getAttribute('src')).not.toContain('size=')
   })
 
-  it('IS VALID HTML: no interactive element inside the tile’s button (AC 19)', () => {
-    // THE RULING Q2 TURNED ON, ASSERTED STRUCTURALLY. React builds the DOM imperatively, so an
-    // invalid nesting really does survive into the tree — there is no parser to unnest it — and a
-    // `<button>` inside a `<button>` is not reliably exposed as a separate control by assistive
-    // technology. Measured at Task 0: React 19.2 warns about it in its DEVELOPMENT build only, so
+  it('IS VALID HTML: no interactive element inside the tile’s button', () => {
+    // THE FACT THE SIBLING SHAPE TURNS ON, ASSERTED STRUCTURALLY. React builds the DOM
+    // imperatively, so an invalid nesting really does survive into the tree — there is no parser
+    // to unnest it — and a `<button>` inside a `<button>` is not reliably exposed as a separate
+    // control by assistive technology. Measured: React 19.2 warns about it in its DEVELOPMENT
+    // build only, so
     // the console is not the thing protecting anyone here. This assertion is.
     hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
     const { container } = render(<CardTile {...PATHWAY} />)
@@ -588,10 +588,10 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(tile.contains(flipOf(container))).toBe(false)
   })
 
-  it('puts the control IMMEDIATELY AFTER its own tile in document order (AC 8, UX-DR40)', () => {
-    // ASSERTED AS DOCUMENT ORDER OVER A RENDERED GRID, not as a `tabindex` value — the story asks
-    // for exactly that, because `tabindex` on a real `<button>` is absent by design and a test
-    // reading one would assert nothing. Two tiles, one flippable, so "immediately after its OWN
+  it('puts the control IMMEDIATELY AFTER its own tile in document order (UX-DR40)', () => {
+    // ASSERTED AS DOCUMENT ORDER OVER A RENDERED GRID, not as a `tabindex` value, because
+    // `tabindex` on a real `<button>` is absent by design and a test reading one would assert
+    // nothing. Two tiles, one flippable, so "immediately after its OWN
     // tile" is distinguishable from "somewhere in the list" and from a trailing group.
     hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
     const { container } = render(
@@ -618,12 +618,12 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(focusable[0].parentElement).not.toBe(focusable[2].parentElement)
   })
 
-  it('does not let the control join the tile’s accessible name (AC 18)', () => {
-    // The pinned spelling, re-proven on a tile that HAS a control (review 2026-08-04 measured
-    // `Black Lotus ×4` with `computeAccessibleName`, including the space `dom-accessibility-api`
-    // puts between two `aria-labelledby` references). The control is outside the button, so it
-    // cannot contribute — but "cannot" is exactly the kind of claim the DOM change could have
-    // falsified, which is why AC 18 asks for it to be re-proven rather than assumed.
+  it('does not let the control join the tile’s accessible name', () => {
+    // The pinned spelling, proven on a tile that HAS a control (`computeAccessibleName` gives
+    // `Black Lotus ×4`, including the space `dom-accessibility-api` puts between two
+    // `aria-labelledby` references). The control is outside the button, so it cannot contribute
+    // — but "cannot" is exactly the kind of claim the sibling shape could falsify, which is why
+    // it is proven rather than assumed.
     hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
     render(<CardTile {...PATHWAY} quantity={4} />)
 
@@ -633,7 +633,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(screen.getAllByRole('button')).toHaveLength(2)
   })
 
-  it('flips WITHOUT pinning, setting or clearing the inspection (AC 6)', () => {
+  it('flips WITHOUT pinning, setting or clearing the inspection', () => {
     hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
     const { container } = render(<CardTile {...PATHWAY} />)
 
@@ -648,7 +648,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(container.querySelector('.card-faces')!.getAttribute('data-flipped')).toBe('true')
   })
 
-  it('keeps the tile’s hover target while the pointer is ON the control (Q2)', () => {
+  it('keeps the tile’s hover target while the pointer is ON the control', () => {
     // THE DEFECT THE FRAME EXISTS TO PREVENT. `mouseenter`/`mouseleave` do not fire between an
     // element and its descendants — which is why a control INSIDE the button would be tempting.
     // With the control outside for validity, the containment has to be restored one element
@@ -666,7 +666,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(useInspectionStore.getState().hoveredId).toBe(PATHWAY.cardId)
   })
 
-  it('keeps the tile’s FOCUS target when focus moves to its own control (Q2, UX-DR14)', () => {
+  it('keeps the tile’s FOCUS target when focus moves to its own control (UX-DR14)', () => {
     // The keyboard half of the same repair, and the reason `onFocus`/`onBlur` moved to the frame
     // rather than staying on the button: `focusin`/`focusout` BUBBLE, so a frame-level handler
     // sees the control's focus as the tile's. Without that, Tabbing from a tile to its own flip
@@ -685,7 +685,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(useInspectionStore.getState().focusedId).toBe(PATHWAY.cardId)
   })
 
-  it('re-arms the art state when the face changes (Q7)', () => {
+  it('re-arms the art state when the face changes', () => {
     // `?face=1` is a different browser-cache key, so a flip is always a cold fetch the first time
     // — and a hook keyed on `cardId` alone would leave the tile at `'shown'` over bytes that had
     // not arrived. Each face carries its own `data-loaded`, which is the observable half.
@@ -701,8 +701,8 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(faces()[1].getAttribute('data-loaded')).toBe('true')
   })
 
-  it('draws the placeholder for whichever face FAILED, and keeps the control (Q8)', () => {
-    // THE RULING, ASSERTED BOTH WAYS. A card whose BACK picture failed shows its front normally
+  it('draws the placeholder for whichever face FAILED, and keeps the control', () => {
+    // ASSERTED BOTH WAYS. A card whose BACK picture failed shows its front normally
     // and the named placeholder once flipped — `?face=1` is a different negative-cache key, so
     // the two faces genuinely fail independently. And the control survives the failed branch,
     // because it is outside the button the placeholder replaces the contents of: a face that
@@ -720,14 +720,14 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
     expect(flipOf(container)).not.toBeNull()
   })
 
-  it('survives a re-render over NEW BOARDS, and even an unmount — no snap-back (AC 9)', () => {
-    // UX-DR15 asks for flip state to persist across a `deck_changed` re-render, and the story
-    // asks for that to be proven by RE-RENDERING OVER NEW BOARDS rather than by asserting the
-    // store in isolation. This test's first spelling re-rendered ONE tile with a changed
-    // `quantity` — which a `useState` inside the component would have passed identically, so it
-    // could not tell the module-scope store from local state (review 2026-08-06). Now the boards
-    // really are new objects through the real `boardsOf` derivation, and the harder half is
-    // asserted too: the tile is UNMOUNTED entirely (a board without the card) and remounted, and
+  it('survives a re-render over NEW BOARDS, and even an unmount — no snap-back', () => {
+    // UX-DR15 asks for flip state to persist across a `deck_changed` re-render, and that is
+    // proven by RE-RENDERING OVER NEW BOARDS rather than by asserting the store in isolation.
+    // Re-rendering ONE tile with a changed `quantity` would not do — a `useState` inside the
+    // component would pass that identically, so it could not tell the module-scope store from
+    // local state. The boards really are new objects through the real `boardsOf` derivation, and
+    // the harder half is asserted too: the tile is UNMOUNTED entirely (a board without the card)
+    // and remounted, and
     // the face survives — the one behaviour no component-local state could fake. The face slice
     // is deliberately NOT cleared on a deck transition, which is the opposite of what
     // `deckMemory` does to the inspection slice — see `src/state/faces.ts`'s header for why both
@@ -778,7 +778,7 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
   })
 })
 
-describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
+describe('what a screen reader gets', () => {
   it('is a real button, in the Tab order', () => {
     render(<CardTile {...BLACK_LOTUS} />)
     const tile = screen.getByRole('button')
@@ -805,7 +805,7 @@ describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
     expect(container.querySelector('.card-tile-caption')).not.toBeNull()
   })
 
-  it('announces the card name EXACTLY ONCE (Q4, AC 11)', () => {
+  it('announces the card name EXACTLY ONCE', () => {
     render(<CardTile {...BLACK_LOTUS} />)
 
     // THE MEASUREMENT UX-DR48'S GRID-TILE CLAUSE RESTS ON IS FALSE HERE. That clause keeps
@@ -849,7 +849,7 @@ describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
     expect(container.querySelector('.card-placeholder-name')!.textContent).toBe('Black Lotus')
   })
 
-  it('carries the quantity into the accessible name rather than hiding it (Q6)', () => {
+  it('carries the quantity into the accessible name rather than hiding it', () => {
     render(<CardTile {...BLACK_LOTUS} quantity={4} />)
 
     // UX-DR16 delegates the accessible quantity signal to "the group-header count and the
@@ -872,7 +872,7 @@ describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
     expect(screen.getByText('×4').getAttribute('aria-hidden')).toBeNull()
   })
 
-  it('smuggles no authored copy into a read-aloud attribute (AC 10)', () => {
+  it('smuggles no authored copy into a read-aloud attribute', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} quantity={4} />)
     const tile = container.querySelector('button')!
 
@@ -885,7 +885,7 @@ describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
   })
 })
 
-describe('the quantity badge flashes ONCE on a changed quantity, and only then (c7-5, UX-DR16)', () => {
+describe('the quantity badge flashes ONCE on a changed quantity, and only then (UX-DR16)', () => {
   // Fake timers ONLY here, for the AgentView entry-animation suite's recorded reason: this is
   // the one behaviour in this file with a FRAME in the middle of it — vitest's fake clock
   // stands in for `requestAnimationFrame`, which is what lets both ENDS of the flash be
