@@ -1,10 +1,10 @@
-"""Spellbook wire → ``ComboRecord`` normalization and snapshot import (Story 6.2).
+"""Spellbook wire → ``ComboRecord`` normalization and snapshot import.
 
 The normalize-at-import seam (AD-11): each wire variant from the Commander Spellbook
 bulk export becomes a validated :class:`~src.data.schemas.combo.ComboRecord`
 (``bucket=None``) exactly once, HERE — the snapshot tables store canonical rows, never
 raw wire JSON. The bracket vocabulary is a **closed letter→token map**: anything
-outside the seven known letters is a hard error that aborts the import (the 5.6 "no
+outside the seven known letters is a hard error that aborts the import (the "no
 speculative aliases" contract; the ``ComboBracketTag`` Literal is the second line of
 defense). No fuzzy fallback, ever — an unknown tag must never map to a wrong Bracket
 floor.
@@ -43,7 +43,7 @@ from src.data.schemas.combo import ComboBracketTag, ComboRecord, name_keys
 
 logger = logging.getLogger(__name__)
 
-#: The closed wire-letter → canonical-token bracket map (AC 2). Spellbook renamed its
+#: The closed wire-letter → canonical-token bracket map. Spellbook renamed its
 #: tag vocabulary after the spine froze the six ``ComboBracketTag`` tokens; this map is
 #: semantically lossless — Spellbook's own derived bracket numbers coincide exactly
 #: with ``BRACKET_TAG_TO_BRACKET`` under ``C→PRECON_APPROPRIATE``, ``E→CASUAL``.

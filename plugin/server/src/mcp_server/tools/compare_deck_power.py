@@ -1,4 +1,4 @@
-"""The ``compare_deck_power`` edge tool (Story 7.5 — the final Epic-7 slice).
+"""The ``compare_deck_power`` edge tool.
 
 Answers "did my edit make the deck stronger, and what changed?" server-side
 (FR26): two sequential runs of the existing :func:`~src.mcp_server.tools.
@@ -10,11 +10,11 @@ own** (AD-1/AD-2): format resolution, commander resolution, combo
 provisioning, ``score()``, and block assembly all happen inside the composed
 assess pipeline — compare only arranges two of its outputs into deltas.
 
-Delta direction (decide-once #2): every signed delta is **b − a**.
+Delta direction: every signed delta is **b − a**.
 ``deck_id_a`` is the baseline ("before"), ``deck_id_b`` the candidate
 ("after") — matching the PRD §3 walkthrough ``compare_deck_power(old_id,
 new_id)``. Bracket "change" is the endpoint pair, never signed arithmetic
-(decide-once #3: ``None − 2`` is meaningless; Standard sides are ``None``).
+(``None − 2`` is meaningless; Standard sides are ``None``).
 
 Deterministic per AD-8/NFR1: every diff list is computed via set difference
 then ``sorted()`` (bytewise ascending — never insertion order), all deltas
@@ -45,7 +45,7 @@ COMPARE_SCHEMA_VERSION: Final = "1"
 
 
 class VectorDelta(BaseModel):
-    """Field-wise **b − a** deltas over the FR16 7-dimension vector (AC 3).
+    """Field-wise **b − a** deltas over the FR16 7-dimension vector.
 
     Mirrors :class:`~src.mcp_server.tools.assess_deck_power.AssessmentVector`
     exactly — same seven fields, same declaration order (declaration order IS
@@ -75,11 +75,11 @@ class VectorDelta(BaseModel):
 
 
 class ComboBucketChange(BaseModel):
-    """One combo variant present on both sides whose bucket flipped (AC 3).
+    """One combo variant present on both sides whose bucket flipped.
 
     A plain ``spellbook_id`` set-difference would report "no change" for the
     headline almost_included → included completion flip — this record makes
-    it visible (decide-once #4). ``bucket_a`` is the baseline bucket,
+    it visible. ``bucket_a`` is the baseline bucket,
     ``bucket_b`` the candidate's.
 
     Attributes:
@@ -96,9 +96,9 @@ class ComboBucketChange(BaseModel):
 
 
 class Comparison(BaseModel):
-    """The fixed-shape comparison block — all keys always present (AC 3, AD-7).
+    """The fixed-shape comparison block — all keys always present (AD-7).
 
-    Every signed delta is **b − a** (deck_a is the baseline, decide-once #2).
+    Every signed delta is **b − a** (deck_a is the baseline).
     Diff lists are bytewise-sorted ascending (set difference then ``sorted()``,
     AD-8). Per-side facts (``bracket``, booleans, ``data_vintage``,
     ``confidence``) are carried verbatim from the two assessments — a delta
@@ -115,7 +115,7 @@ class Comparison(BaseModel):
         tier_a: Deck_a's tier label, verbatim.
         tier_b: Deck_b's tier label, verbatim.
         bracket_a: Deck_a's Commander bracket floor, verbatim (pair, not
-            arithmetic — decide-once #3); ``None`` for Standard.
+            arithmetic); ``None`` for Standard.
         bracket_b: Deck_b's Commander bracket floor, verbatim; ``None`` for
             Standard.
         game_changers_added: GC names in deck_b only, sorted ascending.
@@ -172,14 +172,14 @@ class Comparison(BaseModel):
 class CompareDeckPowerResult(BaseModel):
     """Structured result of ``compare_deck_power`` — the versioned AD-7 sibling.
 
-    Status vocabulary (decide-once #1): ``ok`` only when both sides assessed
+    Status vocabulary: ``ok`` only when both sides assessed
     ``ok`` AND their resolved formats agree; the failing side is nameable from
     the status alone (``deck_a_failed`` / ``deck_b_failed`` /
     ``both_decks_failed``), with the underlying per-side assess status
     token(s) named in ``summary``. ``database_not_initialized`` is its own
     global status (both sides fail identically — it's not a side fault).
     ``format_mismatch`` fires when ``format`` was omitted and the two decks
-    resolved to different formats (AC 5). An assess-side ``error`` triages as
+    resolved to different formats. An assess-side ``error`` triages as
     the side-failure status, so top-level ``error`` is reserved-but-defensive
     (an ``ok`` assess result missing its assessment block — structurally
     unreachable). None of these ever surface as ``isError=True`` at the wire.
@@ -214,13 +214,13 @@ class CompareDeckPowerResult(BaseModel):
 
 
 def _build_comparison(a: Assessment, b: Assessment) -> Comparison:
-    """Pure delta assembly over two Assessment blocks — subtraction only (AC 2).
+    """Pure delta assembly over two Assessment blocks — subtraction only.
 
     No I/O, no recomputation: field-wise ``b − a`` on the numbers, set
     difference then ``sorted()`` on the list flags (AD-8 — never insertion
     order), and verbatim pass-through of the per-side blocks. Combos are
     diffed on ``spellbook_id``; ids present on both sides with a different
-    bucket become :class:`ComboBucketChange` entries (decide-once #4 — a
+    bucket become :class:`ComboBucketChange` entries (a
     plain id set-difference would hide the almost_included → included flip).
 
     Args:
@@ -283,7 +283,7 @@ def _build_comparison(a: Assessment, b: Assessment) -> Comparison:
 
 
 def _build_summary(comparison: Comparison, *, deck_id_a: str, deck_id_b: str) -> str:
-    """Project the human summary from the comparison block alone (decide-once #5).
+    """Project the human summary from the comparison block alone.
 
     Ids only — deck names are not on ``Assessment`` and threading them in
     would add a second derivation path. Deterministic: score movement with
@@ -328,7 +328,7 @@ async def compare_deck_power(
 
     Runs the existing ``assess_deck_power`` helper twice on the same session
     (sequential awaits — one ``AsyncSession`` is never used concurrently) and
-    subtracts the two returned blocks. Status triage (decide-once #1):
+    subtracts the two returned blocks. Status triage:
     ``database_not_initialized`` from either side is global; otherwise a
     non-ok side yields the side-naming failure status with the underlying
     assess token(s) in ``summary``; with ``format`` omitted, differing
@@ -357,7 +357,7 @@ async def compare_deck_power(
     result_b = await assess_deck_power(session, deck_id=deck_id_b, format=format)
 
     # Global before side-fault: an un-imported DB fails both sides identically,
-    # so naming a side would misattribute a global condition (AC 4).
+    # so naming a side would misattribute a global condition.
     if "database_not_initialized" in (result_a.status, result_b.status):
         return CompareDeckPowerResult(
             status="database_not_initialized",
@@ -396,7 +396,7 @@ async def compare_deck_power(
     assessment_a = result_a.assessment
     assessment_b = result_b.assessment
     if assessment_a is None or assessment_b is None:
-        # Reserved-but-defensive (decide-once #1): status="ok" always carries
+        # Reserved-but-defensive: status="ok" always carries
         # its block, so this branch is structurally unreachable through the
         # real assess helper — but a silent None here would crash the diff.
         return CompareDeckPowerResult(

@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for the local Commander Spellbook combo snapshot (Story 6.2).
+"""SQLAlchemy ORM models for the local Commander Spellbook combo snapshot.
 
 All three tables are written ONLY by ``scripts/import_spellbook_combos.py`` and are
 read-only everywhere else (AD-5). Rows are canonical ``ComboRecord``-shaped data, not
@@ -7,7 +7,7 @@ raw wire JSON (AD-11): ``bucket`` and the derived ``type`` /
 computes them per assessment, so re-tuning heuristics never forces a re-import.
 
 Like ``card_vec``, the snapshot is a build prerequisite, never committed: a fresh
-checkout has empty tables and Story 6.3's repository treats empty as absent
+checkout has empty tables and the snapshot repository treats empty as absent
 (``combo_data_unavailable``).
 """
 
@@ -89,7 +89,7 @@ class ComboVariantModel(Base):
 
 
 class ComboVariantPieceModel(Base):
-    """Piece-name lookup index row for Story 6.3's relevance filter.
+    """Piece-name lookup index row for the snapshot repository's relevance filter.
 
     One row per (``spellbook_id``, ``name_key``), where the keys come from the shared
     :func:`src.data.schemas.combo.name_keys` normalization — a DFC piece name

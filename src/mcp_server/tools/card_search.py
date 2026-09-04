@@ -21,7 +21,7 @@ from src.data.repositories.card import CardRepository
 from src.data.schemas.card import CardSummary
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
-# Validation vocabularies (AC4). Colors are the WUBRG codes as stored on cards;
+# Validation vocabularies. Colors are the WUBRG codes as stored on cards;
 # rarity/games are matched case-insensitively against these canonical values.
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_RARITIES = frozenset({"common", "uncommon", "rare", "mythic", "special", "bonus"})

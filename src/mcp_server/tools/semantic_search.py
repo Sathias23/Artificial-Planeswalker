@@ -1,12 +1,12 @@
-"""Structured semantic-search logic for the ``semantic_search_cards`` MCP tool (Story 2.4).
+"""Structured semantic-search logic for the ``semantic_search_cards`` MCP tool.
 
 The **first sync tool helper**: it validates inputs gracefully (mirroring ``card_search.py``'s
-``ok``/``empty``/``invalid`` contract), embeds the natural-language query via the Story 2.1
+``ok``/``empty``/``invalid`` contract), embeds the natural-language query via the
 :class:`~src.search.embedder.Embedder` (symmetric plain ``encode`` — *not* a query-specific
-embedding), runs the Story 2.4 :func:`~src.search.query.hybrid_search` (KNN + ``vec0`` metadata
+embedding), runs :func:`~src.search.query.hybrid_search` (KNN + ``vec0`` metadata
 pre-filter + JOIN-to-``cards`` legality/games + oracle de-dup), and projects each
 :class:`~src.search.query.CardHit` to a lightweight ``CardSummary`` wrapped with its vec0
-``distance``. Unlike the Epic-1 tools this is **synchronous** over a
+``distance``. Unlike the card and deck tools this is **synchronous** over a
 :class:`~src.search.connection.ConnectionFactory` connection (the vector index is reachable only on
 the sync sqlite-vec connection), not ``async`` over an ``AsyncSession``. Stateless (D5):
 ``format``/``games`` and every filter are per-call parameters; nothing is retained between calls.
@@ -41,7 +41,7 @@ _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
 
 # Upper bound on ``limit``: kept well under ``hybrid_search``'s ``over_fetch_k`` (200) so the
-# over-fetch can never be starved by the requested ``limit`` (Pre-Epic-3 Targeted Gate G2).
+# over-fetch can never be starved by the requested ``limit``.
 _MAX_LIMIT = 50
 
 
@@ -96,7 +96,7 @@ def _validation_error(
 
     Guards the inputs the MCP boundary cannot type-check (``color_mode`` is a ``Literal`` validated
     by FastMCP). Crucially, the **empty/whitespace query** is caught here so the embedder's
-    ``encode`` is never called with ``""`` (which raises ``ValueError`` per the Story 2.1
+    ``encode`` is never called with ``""`` (which raises ``ValueError`` per the embedder's
     hardening). Keeps failures graceful and unit-testable — callers surface the message as
     ``status="invalid"``.
     """
@@ -158,7 +158,7 @@ def semantic_search_cards(
         conn: A sync ``sqlite3.Connection`` from
             :class:`~src.search.connection.ConnectionFactory` (sqlite-vec loaded; sees both
             ``card_vec`` and ``cards`` in the single DB file).
-        embedder: The Story 2.1 :class:`~src.search.embedder.Embedder` used to embed ``query``.
+        embedder: The :class:`~src.search.embedder.Embedder` used to embed ``query``.
         query: The natural-language search query (must be non-empty / non-whitespace).
         colors: Colour codes (W/U/B/R/G) matched per ``color_mode`` (vec0 metadata pre-filter).
         color_mode: How ``colors`` is matched — ``any`` / ``all`` / ``exact`` / ``at_most``.

@@ -7,11 +7,11 @@ This module provides business logic for validating deck construction rules:
   that are merely not in the format
 - Clear error messages for rule violations
 
-It also holds the **row projection** both shells render from (:func:`format_check`,
-story c3-3): ``validate_deck`` reports only what is *wrong*, while a panel needs a
+It also holds the **row projection** both shells render from (:func:`format_check`):
+``validate_deck`` reports only what is *wrong*, while a panel needs a
 row per check including the ones that passed. The projection lives here rather than
 in a shell so there is one implementation of it (AD-1) — the same reasoning that
-moved c3-1's deck-count projection down into ``src/data/schemas``.
+put the deck-count projection down in ``src/data/schemas``.
 
 All functions are pure business logic with no database or UI dependencies.
 """
@@ -160,48 +160,22 @@ def validate_card_addition(deck: Deck, card: Card, quantity: int) -> ValidationR
     return ValidationResult(is_valid=True, error_message=None)
 
 
-# --- Whole-deck validation (Story 1.6, additive) ---
+# --- Whole-deck validation ---
 
-# Constructed-format (Standard) construction limits — Phase-1 scope (D-1.6b).
+# Constructed-format (Standard) construction limits (D-1.6b).
 # The size limits apply regardless of the ``format`` string; the per-card
 # legality check and the copy limit are format-aware (singleton formats get a
 # 1-copy limit). Commander/Brawl 100-card minima remain out of scope (a
-# documented limitation).
+# documented limitation), and the size check is shown on a panel a person
+# looks at, so its wording must stay true in every format.
 #
-# Restated at c3-3, because that story changed WHO READS IT. Until then this
-# limitation was reported to an agent, which could caveat it; c3-3 puts the size
-# check on a panel a person looks at.
-#
-# ⚠️ CORRECTED AT c4-10, AND THE PREVIOUS VERSION OF THIS COMMENT WAS BACKWARDS.
-# It read: "Brawl and standardbrawl are genuinely 60, so the 20 brawl-family
-# decks in the real deck table are correct and only Commander is affected —
-# measured, not assumed." Every clause of that is wrong except the last four
-# words, and c4-10 is the story that put the sentence in front of a person.
-#
-# What is actually true, measured read-only against the shipped database by
-# driving the real ASGI app (c4-10 Task 0):
-#
-#   * This repo's OWN SHIPPED SKILL says Brawl (Historic) is 100 EXACT and
-#     Standard Brawl is 60 — plugin/skills/format-legality/SKILL.md:76-78. The
-#     two are different formats and the old comment conflated them under
-#     "brawl-family".
-#   * The database agrees with the skill. All 18 `brawl` decks have a mainboard
-#     of exactly 100 (min 100 / max 100). There are 2 `standardbrawl` decks,
-#     genuinely 60.
-#   * There are 0 commander decks, so the named at-risk population is EMPTY,
-#     while the actually-affected one is the largest single format in the table:
-#     18 of 40 decks, 45%, each shown "the minimum is 60" for an exact-100
-#     format.
-#
-# No verdict changes today, because all 18 sit at exactly 100 — the defect is in
-# the SENTENCE, not the badge. A 61-card Brawl deck would be told `pass`, and a
-# 99-card one would be told the minimum is 60.
-#
-# STILL deliberately NOT fixed here (c4-10 Q13): a per-format minimum is a rule
+# The known gap: Brawl (Historic) is 100 EXACT and Standard Brawl is 60
+# (plugin/skills/format-legality/SKILL.md), and they are different formats.
+# A 61-card Brawl deck is told `pass`, and a 99-card one is told the minimum
+# is 60. This is deliberately NOT fixed here: a per-format minimum is a rule
 # change in this module with MCP blast radius (`validate_deck` serves the agent
 # tools too), and it needs its own vocabulary decision for EXACT-vs-MINIMUM
-# formats before a sentence can be written for either. Ledgered in
-# deferred-work.md with all four numbers and a named home.
+# formats before a sentence can be written for either.
 _MIN_MAINBOARD = 60
 _MAX_SIDEBOARD = 15
 _MAX_COPIES = 4
@@ -272,7 +246,7 @@ A named alias rather than an inline ``Literal`` so :data:`CHECK_FOR_RULE` can be
 its members: a rule added here without a row assignment fails
 ``test_format_check.py::TestRuleCoverage`` by name, instead of silently vanishing from the panel.
 
-``banned_card`` is c3-3's addition (Q2, Brad 2026-07-31). Before it, a banned card and a card
+``banned_card`` splits out what used to be one violation: a banned card and a card
 simply not printed into the format were one ``format_legality`` violation, which UX-DR21 lists as
 two separate checks. ``restricted`` is deliberately **not** a member: a restricted card is legal
 with a 1-copy limit, which this validator does not model, so it keeps reporting as
@@ -334,7 +308,7 @@ def validate_deck(
     - **Format legality:** each distinct card must be ``legal`` in ``format``.
       A card whose legality is exactly ``banned`` is reported as ``banned_card``;
       anything else that is not ``legal`` — ``not_legal``, and also ``restricted``
-      — is reported as ``format_legality`` (c3-3, Q2). The two are separate
+      — is reported as ``format_legality``. The two are separate
       because UX-DR21 asks for them as separate checks; ``restricted`` stays with
       the plain legality rule because a restricted card is legal with a 1-copy
       limit, which this validator does not model.
@@ -351,8 +325,8 @@ def validate_deck(
     violation deliberately does not attribute its minimum to ``format``: it
     reports "the minimum is 60", not "commander requires at least 60", which
     would be a false statement about a format this function never consulted.
-    Story c3-3 renders that sentence on a panel a person reads, which is why the
-    wording was made true in every format rather than usually true.
+    :func:`format_check` renders that sentence on a panel a person reads, which is why
+    the wording was made true in every format rather than usually true.
 
     Args:
         deck: The deck to validate (mainboard and sideboard via ``deck_cards``).
@@ -398,8 +372,8 @@ def validate_deck(
                     # Deliberately does NOT attribute the minimum to `format`. It used to read
                     # "{format} requires at least 60", which is false for Commander — the limit
                     # is applied regardless of format (D-1.6b) — and rendered a gap when there
-                    # was no format at all. c3-3 puts this sentence in front of a person for the
-                    # first time, so it was made true in every format rather than usually true.
+                    # was no format at all. `format_check` puts this sentence in front of a
+                    # person, so it was made true in every format rather than usually true.
                     f"Mainboard has {mainboard_count} cards; the minimum is {_MIN_MAINBOARD}."
                 ),
             )
@@ -459,7 +433,7 @@ def validate_deck(
         # (measured over the shipped corpus: not_legal 516,401 / legal 362,238 / banned 1,275 /
         # restricted 89) and only `banned` splits off here. Note what this deliberately does NOT
         # do: `restricted` falls through to the same branch it always did, so the split changes
-        # no verdict for a restricted card (c3-3, Q2 — ledgered, not fixed).
+        # no verdict for a restricted card (a known, unmodelled limitation).
         if known_format:
             legality = card.legalities.get(format)
             if legality == "banned":
@@ -496,7 +470,7 @@ def validate_deck(
     )
 
 
-# --- The row projection (Story c3-3) ---
+# --- The row projection ---
 
 FormatCheckStatus = Literal["pass", "advisory", "violation"]
 """How one check came out. Exactly three outcomes, and no fourth.
@@ -615,14 +589,14 @@ class FormatCheckReport(BaseModel):
 _ROTATION_DETAIL = (
     "Rotation exposure cannot be checked: the local card data carries no set release dates."
 )
-"""Why the rotation row is permanently advisory (c3-3, Q3).
+"""Why the rotation row is permanently advisory.
 
 Measured on the shipped database rather than assumed: ``cards`` has 23 columns and none of them
 is a release date, there is no sets table, and the importer reads ``released_at`` only to pick a
 canonical printing before discarding it. Answering rotation properly needs a schema change, an
 importer change, a migration, a full re-import **and** a rotation-schedule source Scryfall's bulk
-data does not provide — which is its own story, ledgered in ``deferred-work.md``. Until then the
-honest answer is that this cannot be determined, which is what ``advisory`` is for.
+data does not provide — which is its own piece of work. Until then the honest answer is that this
+cannot be determined, which is what ``advisory`` is for.
 """
 
 
@@ -632,7 +606,7 @@ def _summarise(violations: list[DeckViolation]) -> str:
     The headlined violation is chosen by **sorting on card name**, not by taking the first as
     produced. Production order follows ``deck.deck_cards``, whose own schema documents that order
     as not meaningful — effectively Scryfall UUID order — so "the first offender" would have named
-    an arbitrary card that no reader could predict (review, 2026-08-01). Alphabetical is
+    an arbitrary card that no reader could predict. Alphabetical is
     arbitrary too, but it is *stable and explicable*, and it no longer depends on how the
     relationship happened to load. Whole-deck violations carry no card name and sort first.
 
@@ -660,7 +634,7 @@ def _unanswerable(format: str, subject: str) -> str:
         A sentence naming the format when there is one to name. An empty format gets prose
         rather than a quoted empty string, which is true but reads as a bug. The empty-format
         wording blames no one: the format can be absent because the deck has none *or* because a
-        caller passed a blank one, and this function cannot tell which (review, 2026-08-01).
+        caller passed a blank one, and this function cannot tell which.
     """
     if not format:
         return f"There is no format to check against, so {subject} could not be checked."
@@ -689,9 +663,9 @@ def format_check(deck: Deck) -> FormatCheckReport:
     Returns:
         A ``FormatCheckReport`` carrying one row per check, in ``CHECK_ORDER``.
     """
-    # The format is always the deck's own. A what-if `format=` override existed briefly and was
-    # stripped at review (2026-08-01): the route never passed it, and `validate_deck` already
-    # takes an explicit format for any caller asking a what-if question.
+    # The format is always the deck's own. There is no what-if `format=` override: the route
+    # never needed one, and `validate_deck` already takes an explicit format for any caller
+    # asking a what-if question.
     checked = deck.format
     report = validate_deck(deck, format=checked or "")
     normalised = report.format
@@ -704,7 +678,7 @@ def format_check(deck: Deck) -> FormatCheckReport:
             by_check[row].append(violation)
 
     # THE STRUCTURAL *PASS* SENTENCES NEVER NAME A FORMAT, and that is a correctness rule rather
-    # than a style choice (review, 2026-08-01). `_MIN_MAINBOARD` is applied regardless of format
+    # than a style choice. `_MIN_MAINBOARD` is applied regardless of format
     # (D-1.6b, restated above), so a sentence of the shape "{format} requires at least 60" is an
     # affirmative claim about a format the validator never consulted — and for Commander it is
     # simply false, stated on a panel a person reads. It also read as a bug when there was no
@@ -743,7 +717,7 @@ def format_check(deck: Deck) -> FormatCheckReport:
         # Unreachable today (validate_deck skips the per-card check when the format is unknown, so
         # no legality or banned violation can coexist with an unrecognised format), but the
         # projection was *assuming* that rather than checking it, and the assumption lives in a
-        # different function (review, 2026-08-01).
+        # different function.
         elif not recognized and name in unanswerable and not by_check[name]:
             rows.append(FormatCheckRow(check=name, status="advisory", detail=unanswerable[name]))
         elif by_check[name]:

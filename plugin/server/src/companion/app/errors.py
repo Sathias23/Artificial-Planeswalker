@@ -1,6 +1,6 @@
 """Every non-2xx the companion can produce, funnelled into one typed body (AD-16).
 
-Three rules hold this module together, and each of them is a decision a later story inherits rather
+Three rules hold this module together, and each of them is a decision later code inherits rather
 than re-makes:
 
 * **The status is derived from the token, never chosen at the call site.** :data:`STATUS_BY_REASON`
@@ -60,7 +60,7 @@ STATUS_BY_REASON: dict[ErrorReason, int] = {
 Every token in :data:`~src.companion.contracts.ErrorReason` appears exactly once; a test pins the
 two sets equal, so a future token without a status fails loudly instead of defaulting.
 
-**Why ``forbidden`` is 403 and not 401** (c3-4, Q2). RFC 9110 §15.5.2 requires a ``401`` to carry a
+**Why ``forbidden`` is 403 and not 401.** RFC 9110 §15.5.2 requires a ``401`` to carry a
 ``WWW-Authenticate`` challenge, and this app's raise path structurally **cannot**:
 :func:`companion_error_handler` calls :func:`error_response` with no ``headers=``, and the parameter
 exists for the ``HTTPException`` path alone. A ``401`` here would therefore either ship
@@ -69,7 +69,7 @@ would ever use. ``403`` carries no such requirement and is the honest status for
 presented and refused* when there is no challenge-response scheme to advertise — the companion
 mints one token per process and publishes it in the discovery file; there is nothing to negotiate.
 
-**Why c3-5's pair splits across 404 and 502** (Q2). ``no_image_data`` is a statement about the
+**Why the two image tokens split across 404 and 502.** ``no_image_data`` is a statement about the
 *resource*: this card, at this face, has no artwork — a permanent fact of the local row, and 404
 is the status for "the thing you addressed is not there". ``image_fetch_failed`` is a statement
 about an *upstream*: the URL was known and the CDN did not deliver. RFC 9110 §15.6.3 defines 502
@@ -85,28 +85,19 @@ class CompanionError(Exception):
     """A modelled failure: one of the closed reason tokens, on its way to a typed response.
 
     Endpoints raise this instead of building a response, so the status, the body shape and the
-    serialisation all stay in one place. The callers so far are c1-6 (``get_session``, for a missing
-    or unpopulated database), c3-1 (``read_deck``, for a missing deck), c3-2 (``read_card``, for
-    a missing card), c3-3 (``read_deck_format_check``, for a missing deck again) and c3-4
-    (:func:`~src.companion.app.security.require_agent_token`, for a refused credential).
-
-    **c5-5's oversized push is NOT on that list, and the reason is this class's own rule.** The
-    story was predicted here as the next caller; it turned out to need the opposite. The body cap
-    is middleware (:class:`~src.companion.app.body_cap.BodyCapMiddleware`), so it sits *outside*
-    ``ExceptionMiddleware`` and must **send** ``payload_too_large`` rather than raise it — exactly
-    what the "Middleware does not raise this" paragraph below requires. The caller list is
-    therefore unchanged by c5-5, which is the prediction being falsified rather than fulfilled.
-
-    c3-4's is the first caller that is **not an endpoint body and not a** ``GET``: it is a
-    dependency guarding a ``PUT``, which works for the same reason c1-6's session dependency does —
-    dependencies are solved inside Starlette's ``ExceptionMiddleware``, so what they raise reaches
-    a handler. Position in the stack is the rule, not "only route bodies may raise".
+    serialisation all stay in one place. Callers include route bodies (a missing deck or card) and
+    dependencies (``get_session`` for a missing or unpopulated database,
+    :func:`~src.companion.app.security.require_agent_token` for a refused credential). A
+    dependency may raise it for the same reason a route body may — dependencies are solved inside
+    Starlette's ``ExceptionMiddleware``, so what they raise reaches a handler. Position in the
+    stack is the rule, not "only route bodies may raise".
 
     **Middleware does not raise this.** A user middleware sits *outside* Starlette's
     ``ExceptionMiddleware``, so a handler registered with ``add_exception_handler`` can never see
     what one of them raises — the caller would get ``500 internal_error`` and a false traceback
-    instead of the intended token. c1-5's ``Host`` check therefore calls :func:`error_response` and
-    sends the body itself; any later middleware must do the same.
+    instead of the intended token. The ``Host`` check and the body cap
+    (:class:`~src.companion.app.body_cap.BodyCapMiddleware`) therefore call :func:`error_response`
+    and send the body themselves; any later middleware must do the same.
 
     Args:
         reason: The token this failure reports; its status comes from :data:`STATUS_BY_REASON`.
@@ -144,25 +135,25 @@ def error_response(
             mapping — do not pass this from an endpoint.
         headers: Headers to carry on the response. Also only for the ``HTTPException`` path:
             Starlette's route-miss 405 arrives with the RFC-mandated ``Allow``, and a later
-            story's exception may carry ``WWW-Authenticate`` or ``Retry-After`` — dropping them
+            exception may carry ``WWW-Authenticate`` or ``Retry-After`` — dropping them
             would make the typed body a downgrade. A caller's own ``Cache-Control`` overrides the
             ``no-store`` default below; nothing sends one today.
 
     Returns:
         A ``JSONResponse`` whose body is exactly ``{"reason": "<token>"}``, marked ``no-store``.
     """
-    # `no-store` on EVERY typed error, feature-wide, and it is load-bearing rather than hygiene
-    # (c3-5, AC 15). A route cannot attach headers — the whole point of deriving the status from
-    # the token is that a call site cannot shape the response — so the only place this can be
-    # said is here. It has to be said: RFC 9111 §4.2.2 lists 404 among the statuses a cache may
-    # store *heuristically*, with no explicit freshness at all, and c3-5 answers 404 for a card
-    # whose image is momentarily unavailable. Cached, one bad minute would leave a permanently
+    # `no-store` on EVERY typed error, feature-wide, and it is load-bearing rather than hygiene.
+    # A route cannot attach headers — the whole point of deriving the status from the token is
+    # that a call site cannot shape the response — so the only place this can be said is here. It
+    # has to be said: RFC 9111 §4.2.2 lists 404 among the statuses a cache may store
+    # *heuristically*, with no explicit freshness at all, and a 404 from this app can describe a
+    # card the next database import will add. Cached, one bad minute would leave a permanently
     # broken tile in that tab. No modelled failure in this app is worth re-serving from a cache:
     # every one of them is either about right now (503, 502) or about a request that will be
     # answered the same way anyway (400, 403, 404).
     #
-    # The override is honoured by HEADER semantics, not dict semantics (review 2026-08-01): HTTP
-    # names are case-insensitive and dict keys are not, so a plain `**` merge over a caller's
+    # The override is honoured by HEADER semantics, not dict semantics: HTTP names are
+    # case-insensitive and dict keys are not, so a plain `**` merge over a caller's
     # `cache-control` would put TWO conflicting Cache-Control headers on the wire.
     merged: dict[str, str] = {"Cache-Control": "no-store"}
     for name, value in dict(headers or {}).items():
@@ -177,47 +168,24 @@ def error_response(
 def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
     """Declare *reasons* to OpenAPI, so the generated TypeScript knows the shape (AD-12, NFR-03).
 
-    A Pydantic model that no route references never enters ``components.schemas``, and ``c2-3``'s
-    generator would emit nothing for it. This is the one construction site for that declaration:
-    ``build_app()`` uses it per **include** — app-wide until c3-4, whose DB-free, cap-free
-    active-deck routes were the first that an app-wide ``503``/``413`` declaration would lie
-    about — and the per-route callers declare only the tokens their own
-    endpoints can produce: c3-1's ``GET /api/deck/{deck_id}`` declares ``deck_not_found`` (and its
-    sibling ``GET /api/decks`` deliberately declares nothing, having no 404 to give), c3-2's
-    ``GET /api/cards/{card_id}`` declares ``card_not_found``, c3-3's
-    ``GET /api/deck/{deck_id}/format-check`` declares ``deck_not_found`` again — the same token on
-    a third route, which is the ordinary case and needs nothing new here — c3-4's
-    ``PUT /api/active-deck`` declares ``forbidden`` (its sibling ``GET /api/active-deck`` declares
-    nothing, being credential-free and having no failure of its own to model), and c3-5's
-    ``GET /api/card-image/{scryfall_id}`` declares **three** — ``card_not_found``,
-    ``no_image_data`` and ``image_fetch_failed`` — the most any route has declared, and the first
-    to put two tokens under one status by declaration rather than by inheritance (both 404s land
-    in one entry naming each, which is what the grouping below exists for).
+    A Pydantic model that no route references never enters ``components.schemas``, and the
+    TypeScript generator would emit nothing for it. This is the one construction site for that
+    declaration. ``build_app()`` uses it per **include** for the tokens every route in a router
+    shares, and the per-route callers declare only the tokens their own endpoints can produce:
+    ``GET /api/deck/{deck_id}`` declares ``deck_not_found`` while its sibling ``GET /api/decks``
+    declares nothing, having no 404 to give; ``PUT /api/active-deck`` declares ``forbidden`` and
+    ``payload_too_large`` while the credential-free, body-less ``GET`` beside it declares nothing;
+    ``GET /api/card-image/{scryfall_id}`` declares three. The declaration is about what the
+    *operation* can answer — a body-less ``GET`` never publishes a 413 — and not about which frame
+    raised it: ``forbidden`` comes from a dependency, so a reader looking for the raise will not
+    find it in the route function. A route whose **success** body is not JSON merges this mapping
+    into a hand-written ``200`` entry rather than passing it as ``responses=`` wholesale; the
+    declarations this builds are per status and describe the error bodies, so nothing here
+    changes.
 
-    c5-5 follows, and is the first caller to **narrow** rather than add: its include declares
-    ``invalid_request | forbidden | payload_too_large | internal_error`` for ``POST /agent/events``,
-    and — the part that touched other routes — it removed ``payload_too_large`` from both *shared*
-    include sets in ``build_app()``, so the six body-less ``GET``s stopped publishing a 413 none of
-    them can answer. ``PUT /api/active-deck`` gained it at the route beside its ``forbidden``. The
-    declaration is about what the *operation* can answer, and c5-5 is the story that made that
-    sentence true of the whole document rather than of the newest routes only.
-
-    c3-5 is also the first caller on a route whose **success** body is not JSON. That changes
-    nothing here — the declarations this builds are per status and describe the error bodies —
-    but it is worth stating, because the route merges this mapping into a hand-written ``200``
-    entry rather than passing it as ``responses=`` wholesale.
-
-    c3-4 is also the first caller whose token comes from a **dependency** rather than the endpoint
-    body. That changes nothing here — the declaration is about what the *operation* can answer, not
-    about which frame raised it — but it is worth stating, because a reader looking for the
-    ``forbidden`` raise will not find it in the route function.
-
-    Note that ``deck_not_found`` and ``card_not_found`` share a status without being
-    interchangeable — the grouping below is by status, so a route declaring both would document
-    one 404 naming both tokens.
-
-    Tokens sharing a status (both database tokens are 503) collapse into a single entry whose
-    description names each of them, rather than one silently overwriting the other.
+    Tokens sharing a status (both database tokens are 503; ``deck_not_found`` and
+    ``card_not_found`` are both 404 without being interchangeable) collapse into a single entry
+    whose description names each of them, rather than one silently overwriting the other.
 
     Args:
         *reasons: The tokens the annotated routes may answer with.
@@ -251,10 +219,10 @@ def without_auto_validation_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
     The ``invalid_request`` handler makes that response permanently unreachable — validation
     failures answer ``400`` — but FastAPI re-documents it on every route with validated input,
-    which would put a shape the API never emits into c2-3's generated TypeScript. Declaring an
-    explicit 422 used to displace it as a side effect; the 413 ruling freed 422 entirely, so the
-    displacement now happens here, at schema-build time, for every current and future route
-    (caught by Greptile on PR #12: the first validated route silently resurrected the auto-422).
+    which would put a shape the API never emits into the generated TypeScript. No route declares a
+    422 of its own (over-cap answers 413), so nothing displaces the auto-422 as a side effect; the
+    removal happens here, at schema-build time, for every current and future route — a per-route
+    displacement silently resurrects it on the first validated route that forgets.
 
     Only entries referencing the auto-generated component are removed — a deliberate, explicitly
     declared 422 would survive untouched.
@@ -308,9 +276,9 @@ async def companion_error_handler(request: Request, exc: Exception) -> JSONRespo
 async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Answer a request-validation failure with ``400 invalid_request``.
 
-    Replaces FastAPI's default ``422 {"detail": [...]}`` for two reasons: 422 belongs to
-    ``payload_too_large`` under AD-16, and the default body is a second error shape the UI would
-    have to parse. The detail itself is **logged, never returned** — it echoes the caller's own
+    Replaces FastAPI's default ``422 {"detail": [...]}`` for two reasons: 422 is not a status any
+    token carries under AD-16, and the default body is a second error shape the UI would have to
+    parse. The detail itself is **logged, never returned** — it echoes the caller's own
     input straight back over a port any page in the browser can reach.
 
     Args:
@@ -373,9 +341,8 @@ def supported_methods(request: Request) -> frozenset[str]:
     one route's* method set (``routing.py:283``: ``headers = {"Allow": ", ".join(self.methods)}``).
     One path served by two single-method routes therefore advertises only the first of them.
 
-    That was unreachable until c3-4: every path in this app had exactly one method, so the first
-    partial match was also the only one. ``/api/active-deck`` is the first path with two, and a
-    ``POST`` to it measured ``Allow: GET`` — omitting the ``PUT`` that is the whole point of the
+    ``/api/active-deck`` is served by two single-method routes, and a ``POST`` to it measured
+    ``Allow: GET`` — omitting the ``PUT`` that is the whole point of the
     resource. RFC 9110 §15.5.6 requires the field to list *the target resource's* supported methods,
     so that answer is not merely unhelpful, it is wrong: a client reading it concludes the resource
     cannot be written.
@@ -399,8 +366,8 @@ def supported_methods(request: Request) -> frozenset[str]:
         by nothing. A future non-root ``Mount`` would have children that silently never match here
         (degrading to Starlette's incomplete header) or, for a child at ``/``, match paths it does
         not serve. This is a *different* hole from the attribute-walk soft failure above: that one
-        finds no leaves; this one finds them and asks them the wrong question. The story that adds
-        a non-root mount owns the prefix-stripping walk (c3-4 review; ledgered).
+        finds no leaves; this one finds them and asks them the wrong question. Whatever adds a
+        non-root mount owns the prefix-stripping walk.
     """
     methods: set[str] = set()
     for route in _leaf_routes(request.app.routes):
@@ -416,7 +383,7 @@ def supported_methods(request: Request) -> frozenset[str]:
 async def http_exception_handler(request: Request, exc: Exception) -> Response:
     """Answer an ``HTTPException`` with the typed body, keeping the framework's status and headers.
 
-    An unknown path's 404, a 405, and any ``HTTPException`` a later story raises are *framework
+    An unknown path's 404, a 405, and any ``HTTPException`` later code raises are *framework
     misses*, not modelled UX states — there is no token for "you asked for a path that does not
     exist", and inventing one would breach the closed set. So the status is preserved and the token
     says only which half of the world the failure came from: ``invalid_request`` for 4xx (the
@@ -476,13 +443,13 @@ async def database_error_handler(request: Request, exc: Exception) -> JSONRespon
     the **"Database updating"** state, which the UI retries quietly. ``ArgumentError``,
     ``InvalidRequestError`` and ``CompileError`` are us telling ourselves we wrote bad code; they
     are deterministic, retrying them is pointless, and they must fall through to
-    :class:`UnhandledErrorMiddleware`'s ``500 internal_error`` — the distinction the c1-4 review
-    added ``internal_error`` for. The MCP side catches ``DatabaseError`` in every tool, so a reader
-    moving between the two shells meets one rule (AD-1).
+    :class:`UnhandledErrorMiddleware`'s ``500 internal_error`` — the distinction ``internal_error``
+    exists for. The MCP side catches ``DatabaseError`` in every tool, so a reader moving between
+    the two shells meets one rule (AD-1).
 
     Registering it here rather than in :mod:`src.companion.app.deps` is what makes every data-backed
     route inherit the mapping with no per-route ceremony — the dependency's own readiness probe as
-    much as the route bodies c3-1 onward will add.
+    much as the route bodies.
 
     **Why the parameters are never logged.** ``str(exc)`` carries the failing statement *and its
     bound parameters* (verified: ``[parameters: (...)]``), which on this path can be anything a
@@ -534,9 +501,9 @@ class UnhandledErrorMiddleware:
         Args:
             scope: The connection scope. Non-``http`` scopes (``lifespan`` and ``websocket``) pass
                 straight through — there is no JSON body to send on those. That is **permanent**
-                rather than a gap awaiting a story: c5-3's Q6 ruled that the WebSocket upgrade
-                catches its own faults and answers with a close code (``1011``), so this middleware
-                keeps one shape instead of growing a second for one caller. See
+                rather than a gap: the WebSocket upgrade catches its own faults and answers with a
+                close code (``1011``), so this middleware keeps one shape instead of growing a
+                second for one caller. See
                 :func:`src.companion.app.ws.websocket_upgrade`.
             receive: The ASGI receive channel.
             send: The ASGI send channel, wrapped so we know whether the response already started.
@@ -567,7 +534,7 @@ class UnhandledErrorMiddleware:
                 # let it go up to ServerErrorMiddleware and die honestly — and let that outer
                 # layer do the logging, so every failure is logged exactly once by exactly one net.
                 raise
-            # Reaches stderr through the root handler c1-9's entry point configures (and via
+            # Reaches stderr through the root handler the entry point configures (and via
             # logging.lastResort in any process that configures none); the client still gets only
             # the token.
             logger.exception(
@@ -592,14 +559,11 @@ def install_error_handling(app: FastAPI) -> None:
     * anything else — ``500 internal_error`` from :class:`UnhandledErrorMiddleware`, which is where
       a deterministic ``ArgumentError`` or ``InvalidRequestError`` correctly lands.
 
-    Kept as a single function so the endpoint stories (c1-6, c3-1, c5-5) wire nothing new — they
-    raise :class:`CompanionError` and the plumbing is already there. **c5-5 is listed for its
-    route**, whose ``forbidden`` arrives through the shipped ``AgentToken`` dependency with no new
-    plumbing; its *body cap* is the other shape. Middleware is the deliberate exception, and there
-    are now two instances of it rather than one: c1-5's ``Host`` check and c5-5's
-    :class:`~src.companion.app.body_cap.BodyCapMiddleware`. Both *send* their typed body rather
-    than raising (see :class:`CompanionError`'s docstring), and both install through their own
-    ``install_*`` call in ``build_app()``, not here.
+    Kept as a single function so endpoints wire nothing new — they raise :class:`CompanionError`
+    and the plumbing is already there. Middleware is the deliberate exception, and there are two
+    instances of it: the ``Host`` check and :class:`~src.companion.app.body_cap.BodyCapMiddleware`.
+    Both *send* their typed body rather than raising (see :class:`CompanionError`'s docstring), and
+    both install through their own ``install_*`` call in ``build_app()``, not here.
 
     Call this **last** in ``build_app()``: ``app.user_middleware[0]`` is the most recently added
     middleware, so adding :class:`UnhandledErrorMiddleware` last is what puts it outermost, where it

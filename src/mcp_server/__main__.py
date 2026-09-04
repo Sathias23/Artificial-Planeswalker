@@ -1,7 +1,7 @@
 """Entry point for Artificial-Planeswalker: a subcommand dispatcher over two processes (AD-14).
 
 The transport is selected here — and only here — so HTTP/SSE can swap in later
-without changing any tool definition (AC2 / D7). Defaults to ``stdio``; override
+without changing any tool definition (D7). Defaults to ``stdio``; override
 via the ``MCP_TRANSPORT`` environment variable.
 
 Run with:
@@ -13,13 +13,13 @@ Run with:
 subcommand rather than moving, because every installed MCP client configuration points at this
 module. Both ``.mcp.json`` files invoke ``python -m src.mcp_server`` directly and therefore never
 pass through the console script at all, which is what makes the addition safe;
-``tests/integration/mcp_server/test_entry_point.py`` pins both files, so a future story cannot
-quietly rewrite them into a subcommand form.
+``tests/integration/mcp_server/test_entry_point.py`` pins both files, so they cannot quietly be
+rewritten into a subcommand form.
 
 **stdout belongs to whoever owns the process.** On the MCP path stdout carries the JSON-RPC stream
 and nothing else — every diagnostic here goes to stderr, and nothing on that path configures logging
 or imports anything under ``src/companion/``. The companion process inverts this (AD-15): it owns
-its terminal, so it prints its launch URL to stdout and — from this story onward — configures the
+its terminal, so it prints its launch URL to stdout and configures the
 root logger so records from ``src.*`` finally reach the user on stderr.
 
 **The companion import is function-local, by AD-3.** ``from src.companion.app.server import run``
@@ -143,8 +143,7 @@ def _usage_error(message: str) -> int:
             on screen.
 
     Returns:
-        ``2`` — the status ``argparse`` would have used, and the only non-zero this program mints
-        (c1-9 Decide-once #5).
+        ``2`` — the status ``argparse`` would have used, and the only non-zero this program mints.
     """
     print(f"artificial-planeswalker: error: {message}", file=sys.stderr)
     _usage(sys.stderr)
@@ -156,14 +155,14 @@ def _parse_companion_args(args: Sequence[str]) -> tuple[int | None, bool] | str:
 
     Accepts ``--port N`` and ``--port=N``, in that one form pair only, **at most once** — this CLI
     has no alias-override use case, so a repeated ``--port`` is almost certainly a typo and
-    silently letting the last one win could select an unintended port (Greptile PR #16, ruled by
-    Brad 2026-07-26). A non-integer value is likewise a *usage* error — unlike a stale environment
+    silently letting the last one win could select an unintended port. A non-integer value is
+    likewise a *usage* error — unlike a stale environment
     variable it is something the user typed in this invocation — while an out-of-range integer is
     not: it flows through to
     :func:`src.companion.app.server.resolve_preferred_port`, which logs a warning and uses the
     default, exactly as it treats ``COMPANION_PORT``.
 
-    ``--open`` (17.4) is a bare flag and takes no value: ``--open=yes`` is an unrecognized
+    ``--open`` is a bare flag and takes no value: ``--open=yes`` is an unrecognized
     argument like any other, and giving it twice is the same typo ``--port`` twice is. Order
     between the two options is free.
 
@@ -213,8 +212,8 @@ def _run_companion(args: Sequence[str]) -> int:
         malformed invocation.
     """
     if any(arg in ("-h", "--help") for arg in args):
-        # A user asking for help has made no error, wherever the flag sits (Decide-once #5,
-        # extended by the c1-9 review ruling): usage on stdout, exit 0 — never the stderr banner.
+        # A user asking for help has made no error, wherever the flag sits: usage on stdout,
+        # exit 0 — never the stderr banner.
         _usage()
         return 0
     parsed = _parse_companion_args(args)
@@ -223,7 +222,7 @@ def _run_companion(args: Sequence[str]) -> int:
     port, open_browser = parsed
 
     # AD-15: this process owns its terminal, so unlike the MCP process it configures the root
-    # logger — and this is what finally surfaces the records c1-3, c1-7 and c1-8 already emit
+    # logger — and this is what surfaces the records the companion modules already emit
     # (the port fallback, the discovery-write warnings, the reclaim notice). It must happen before
     # run() is called, because the earliest of those records is emitted inside run() before uvicorn
     # exists. INFO rather than DEBUG: read_discovery and probe_health log their ordinary
@@ -267,7 +266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Returns:
         ``0`` when the requested thing ran (or the user asked for help), ``2`` for an unknown
-        subcommand or a malformed option (c1-9 Decide-once #5).
+        subcommand or a malformed option.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:

@@ -6,16 +6,15 @@ never by its name or by the URL it came from:
 * a **JSON array** — one top-level ``[...]`` of card objects. Scryfall's historic ``download_uri``
   format, and the shape of every fixture in this repository.
 * **JSONL**, optionally **gzip-compressed** — one card object per line. Scryfall's
-  ``jsonl_download_uri`` format, which is what the live API serves as of 2026-08.
+  ``jsonl_download_uri`` format, which is what the live API currently serves.
 
-**Why detection is content-based.** The 2026-08-02 break that motivated this module's rewrite was
-found when Scryfall replaced ``download_uri``/``size`` with
-``jsonl_download_uri``/``compressed_size`` and changed the payload from an array to gzip'd JSONL.
-Keying the parser on a ``.gz`` suffix would
+**Why detection is content-based.** The break that motivated this module's rewrite came when
+Scryfall replaced ``download_uri``/``size`` with ``jsonl_download_uri``/``compressed_size`` and
+changed the payload from an array to gzip'd JSONL. Keying the parser on a ``.gz`` suffix would
 put the same class of assumption back in a new place — a filename is a claim *about* bytes, and the
-bytes are available. This is the same rule c3-7's D1 ruling settled for the image cache (*the
-``Content-Type`` header wins over the URL suffix*), applied to the importer, and it is why the
-existing array fixtures keep working with no edit and no flag.
+bytes are available. This is the same rule the image cache follows (*the ``Content-Type`` header
+wins over the URL suffix*), applied to the importer, and it is why the existing array fixtures keep
+working with no edit and no flag.
 """
 
 import gzip

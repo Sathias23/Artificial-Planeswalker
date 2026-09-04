@@ -1,48 +1,42 @@
 """``POST /agent/events`` — the agent pushes to the glass, and learns who was listening (FR-06).
 
-**The one endpoint the whole event contract exists for.** c5-1 froze the six-kind envelope union,
-c5-3 opened the socket and c5-4 built the fan-out; this is the route that joins them, and it is
-deliberately thin: validate, authorise, broadcast, report the number. Every hard decision it relies
-on was made somewhere else and is *inherited* rather than restated here.
+**The one endpoint the whole event contract exists for.** The six-kind envelope union, the socket
+and the fan-out each live elsewhere; this is the route that joins them, and it is deliberately
+thin: validate, authorise, broadcast, report the number. Every hard decision it relies on was made
+somewhere else and is *inherited* rather than restated here.
 
 **What it inherits, and therefore does not implement.**
 
 * The credential is :data:`~src.companion.app.security.AgentToken` and nothing else — no ``Header``
-  declaration, no security class, no second comparison. ``PUT /api/active-deck`` (c3-4) is the
-  first caller; this is the second, and the whole contract comes with it: the header spelling, the
-  fail-closed comparison, and a ``forbidden`` token that is byte-identical whether the credential
-  was missing, malformed or simply wrong. Which of the three it was goes to the log alone.
+  declaration, no security class, no second comparison. ``PUT /api/active-deck`` uses the same
+  gate, and the whole contract comes with it: the header spelling, the fail-closed comparison, and
+  a ``forbidden`` token that is byte-identical whether the credential was missing, malformed or
+  simply wrong. Which of the three it was goes to the log alone.
 * The body is the :data:`~src.companion.contracts.AgentEvent` union, validated by FastAPI as an
   ordinary request-body annotation. A violated field cap is a pydantic ``RequestValidationError``
-  and answers **400** ``invalid_request`` through the shipped AD-16 handler — *not* 413. That is a
-  ruled deviation from the epic's "any cap → 413" wording (Q7, Brad 2026-08-08): field caps are
-  pydantic constraints, and reclassifying them per-route would mean introspecting pydantic error
-  internals for a distinction AD-8's tool layer folds back into one ``payload_rejected`` token
-  anyway. **413 is the envelope byte cap alone**, enforced pre-parse by
-  :class:`~src.companion.app.body_cap.BodyCapMiddleware` before this module is reached. What the
-  epic AC actually protects — *rejected, never truncated; a partial render is impossible* — holds
-  in both arms.
+  and answers **400** ``invalid_request`` through the AD-16 handler — *not* 413. That is deliberate:
+  field caps are pydantic constraints, and reclassifying them per-route would mean introspecting
+  pydantic error internals for a distinction AD-8's tool layer folds back into one
+  ``payload_rejected`` token anyway. **413 is the envelope byte cap alone**, enforced pre-parse by
+  :class:`~src.companion.app.body_cap.BodyCapMiddleware` before this module is reached. The
+  property that matters — *rejected, never truncated; a partial render is impossible* — holds in
+  both arms.
 * The fan-out is one awaited call to :func:`~src.companion.app.ws.broadcast`. There is no second
-  loop, no re-serialisation and no route-level ``try``: that function is proven total
-  (``test_ws.py::test_the_broadcast_helpers_are_total``), so a per-client fault is contained to its
-  own socket and reported as a smaller number rather than as an exception.
+  loop, no re-serialisation and no route-level ``try``: that function is total, so a per-client
+  fault is contained to its own socket and reported as a smaller number rather than as an
+  exception.
 
 **No database, at all** (AD-7, NFR-05). Not a ``DbSession``, not a repository import, not a 503
 path — and card ids are **never** checked against the corpus. An id naming no card is accepted and
 relayed: validating it would put a database read on the push path AD-7 forbids one on, and would
 let a single unknown id discard an otherwise legitimate finding. The UI degrades that entry and
-renders the rest (EXPERIENCE.md), which is the behaviour the whole no-DB ruling buys.
+renders the rest (EXPERIENCE.md), which is the behaviour the no-database rule buys.
 
-**The number in the response is the delivered count** (Q1, Brad 2026-08-08) — what ``broadcast()``
-returned, not what :attr:`~src.companion.app.state.ConnectionRegistry.connected_count` holds. They
-differ only when a client fails mid-fan-out, and in exactly that window the delivered count is the
-truthful answer to "how many browsers saw it", which is the question this endpoint exists to
-answer. ``connected_count`` remains — but **not for the reason this paragraph used to give**. It
-said the count "remains for the c5-7 connection pill, which wants the other number"; c5-7 shipped
-on 2026-08-08 and the pill wants neither number. It reports the browser's own socket status and
-the active deck's name (FR-15, UX-DR29) and calls this backend not at all. Recorded as a falsified
-prediction; the honest owner of that property is a future status surface, and even c10-1 — the
-nearest candidate — reads ``GET /health`` rather than a client count.
+**The number in the response is the delivered count** — what ``broadcast()`` returned, not what
+:attr:`~src.companion.app.state.ConnectionRegistry.connected_count` holds. They differ only when a
+client fails mid-fan-out, and in exactly that window the delivered count is the truthful answer to
+"how many browsers saw it", which is the question this endpoint exists to answer.
+``connected_count`` is what ``GET /health`` reports instead: a live gauge, not a delivery receipt.
 
 **A novel first path segment**, and the only thing standing between ``/agent`` and the SPA
 catch-all is registration order in ``build_app()`` — ``/api``'s belt-and-braces seed in

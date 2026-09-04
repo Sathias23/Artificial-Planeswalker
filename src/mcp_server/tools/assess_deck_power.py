@@ -1,14 +1,14 @@
-"""The ``assess_deck_power`` edge tool (Stories 7.1/7.2/7.3 — the full slice).
+"""The ``assess_deck_power`` edge tool.
 
 Loads a deck via ``DeckRepository.get_deck_with_cards`` (full nested ``Card``
 rows — assessment needs ``type_line``/``cmc``/``oracle_text``/``legalities``/
 ``game_changer``, so the lightweight projections are unusable here), resolves
 the scoring format to a profile, resolves commanders per AD-13, and assembles
-the frozen :class:`ResolvedDeckInputs` seam. Story 7.2 adds snapshot-backed
-combo provisioning (read-only, AD-5), the single ``score()`` invocation (AD-2),
-and the AD-6 degradation ladder — level + reasons carried with the
-:class:`CoreAssessment` on the frozen :class:`ScoredAssessment` seam. Story 7.3
-completes the output contract: the ``status="ok"`` path serializes that seam
+the frozen :class:`ResolvedDeckInputs` seam. Then snapshot-backed combo
+provisioning (read-only, AD-5), the single ``score()`` invocation (AD-2), and
+the AD-6 degradation ladder — level + reasons carried with the
+:class:`CoreAssessment` on the frozen :class:`ScoredAssessment` seam. The
+output contract: the ``status="ok"`` path serializes that seam
 into the fixed-shape AD-7 ``assessment`` block (:class:`Assessment` — pure
 field-for-field assembly, zero recomputation), deterministically per AD-8
 (pre-sorted lists, integer scores, no call-time clock — "as of" facts come only
@@ -52,9 +52,8 @@ logger = logging.getLogger(__name__)
 #: AD-7: every result carries the result-schema version, independent of status.
 SCHEMA_VERSION: Final = "1"
 
-#: The first format→profile map in the codebase (decide-once). v1 keeps the
-#: epic's closed ``commander | standard`` contract — see :func:`_resolve_format`
-#: for the brawl-family rationale.
+#: The format→profile map. v1 keeps the closed ``commander | standard``
+#: contract — see :func:`_resolve_format` for the brawl-family rationale.
 _FORMAT_PROFILES: Final[dict[str, FormatProfile]] = {
     "commander": COMMANDER_PROFILE,
     "standard": STANDARD_PROFILE,
@@ -65,14 +64,14 @@ _SUPPORTED_FORMATS_HINT: Final = (
     'Pass format="commander" or format="standard" to choose a profile explicitly.'
 )
 
-#: How the commanders tuple was resolved (AD-13); plain data on the seam so 7.2
-#: can emit ``commander_unidentified`` without re-deriving anything.
+#: How the commanders tuple was resolved (AD-13); plain data on the seam so the
+#: confidence ladder can emit ``commander_unidentified`` without re-deriving anything.
 CommanderResolution = Literal["flagged", "inferred", "unidentified"]
 
 #: The fixed FR21/AD-3 multiplayer-variance caveat sentence, appended to the
 #: ``summary`` iff ``profile.multiplayer_variance_caveat`` — profile-driven
 #: prose, NEVER a confidence reason, never a token (AD-6). Module ``Final`` so
-#: Stories 7.4/7.5 can assert against the exact sentence.
+#: callers can assert against the exact sentence.
 MULTIPLAYER_VARIANCE_CAVEAT: Final = (
     "Note: multiplayer Commander outcomes vary widely with politics, seat order, "
     "and table power — treat this score as a deck-strength read, not a win-rate "
@@ -113,7 +112,7 @@ class DataVintage(BaseModel):
     """ "As of" facts from stored input metadata ONLY — never a call-time clock (FR22/AD-8).
 
     An absent combo snapshot renders as ``null``-valued fixed keys, never a
-    missing key or conditional sub-object (decide-once #2: AD-7 bans
+    missing key or conditional sub-object (AD-7 bans
     format-conditional keys; flat scalar keys diff cleanest). The vintage and
     the ``combo_data_unavailable`` reason are independent facts — a meta row
     with zero variants serializes verbatim even though the token fired.
@@ -169,9 +168,9 @@ class AssessmentFlags(BaseModel):
         combos: The matched :class:`~src.data.schemas.combo.ComboRecord` rows
             verbatim (AD-11), buckets populated, sorted by ``spellbook_id``.
             Derived heuristics (``type``, ``earliest_turn_estimate``) are
-            deliberately NOT emitted (decide-once #3: they are PROVISIONAL
+            deliberately NOT emitted (they are PROVISIONAL
             core-internal values; freezing them into the diff surface would
-            ossify 5.9-owned tuning). ``bucket`` per record already gives
+            ossify core-internal tuning). ``bucket`` per record already gives
             callers the included/almost_included split (FR13).
         structural_gaps: The closed FR9 gap tokens, bytewise ascending.
         mass_land_denial: Whether any mass-land-denial card is present.
@@ -196,14 +195,14 @@ class Assessment(BaseModel):
     Every field is always present: Standard holds ``bracket=None`` plus
     ``False`` flag booleans, never a missing or conditional key. Serialization
     is AD-8-deterministic — all collections arrive pre-sorted from their
-    producers (re-sorting here would mask a producer regression 7.4 wants to
-    catch), every dimension score is an ``int``, and no field is
-    datetime-derived. Story 7.5 diffs two of these — the field names are its
-    delta keys.
+    producers (re-sorting here would mask a producer regression), every
+    dimension score is an ``int``, and no field is datetime-derived.
+    ``compare_deck_power`` diffs two of these — the field names are its delta
+    keys.
 
     Attributes:
         format: The resolved profile key (``"commander"`` | ``"standard"``) —
-            7.5 reads it for the ``format_mismatch`` check (decide-once #4).
+            ``compare_deck_power`` reads it for the ``format_mismatch`` check.
         vector: The 7-dimension integer vector.
         for_format_score: The FR19 0-100 for-format aggregate (no 1-10 scale
             anywhere).
@@ -211,7 +210,7 @@ class Assessment(BaseModel):
         bracket: ``CoreAssessment.bracket_floor`` renamed at the boundary (the
             scorer docstring pins the mapping); ``{2, 3, 4}`` under Commander,
             always ``None`` for Standard — never omitted. Phrased as a floor
-            in the summary (decide-once #5).
+            in the summary.
         data_vintage: "As of" facts from stored input metadata (FR22/AD-8).
         confidence: The AD-6 level + reasons.
         flags: The NFR2 explainability payload.
@@ -235,9 +234,7 @@ class AssessDeckPowerResult(BaseModel):
     Uses ``summary`` (AD-7's field name) rather than the siblings' ``message`` —
     a deliberate divergence: the human summary is a pure deterministic
     projection of the ``assessment`` block into this field (FR22).
-    ``schema_version`` stays ``"1"``: the block was documented as pending from
-    7.1, so completing it IS v1, not a bump (decide-once #1) — the first
-    post-release shape change bumps it.
+    ``schema_version`` is ``"1"``; the first post-release shape change bumps it.
 
     Attributes:
         status: ``ok`` (deck scored — ``assessment`` populated),
@@ -268,10 +265,10 @@ class AssessDeckPowerResult(BaseModel):
 
 @dataclass(frozen=True)
 class ResolvedDeckInputs:
-    """Frozen carrier of the resolved assessment inputs — the 7.2/7.3 seam.
+    """Frozen carrier of the resolved assessment inputs.
 
     Carries exactly what ``score()`` needs (mainboard ``DeckCard`` rows +
-    resolved commander names + profile) plus the resolution facts 7.2 turns
+    resolved commander names + profile) plus the resolution facts turned
     into confidence tokens (``commander_resolution``, ``unresolved_count``).
 
     Attributes:
@@ -283,7 +280,7 @@ class ResolvedDeckInputs:
             ``()`` when unidentified.
         commander_resolution: How ``commanders`` was resolved (AD-13).
         unresolved_count: Mainboard rows whose nested card failed to resolve
-            (structural FK join — normally 0), for 7.2's ``cards_unresolved``.
+            (structural FK join — normally 0), for the ``cards_unresolved`` token.
     """
 
     deck: Deck
@@ -297,16 +294,16 @@ class ResolvedDeckInputs:
 
 @dataclass(frozen=True)
 class ScoredAssessment:
-    """Frozen carrier of the scored assessment — the Story 7.3 seam (AD-2).
+    """Frozen carrier of the scored assessment (AD-2).
 
     Bundles the resolved inputs, the pure core result, the snapshot vintage, and
-    the edge-assembled confidence so 7.3 can serialize the full assessment block
+    the edge-assembled confidence so the full assessment block can be serialized
     without re-deriving anything.
 
     Attributes:
         inputs: The resolved-inputs seam this scoring run consumed.
         core: The frozen ``score()`` result (dimensions, tier, combos, signals).
-        vintage: The combo-snapshot metadata row for 7.3's ``data_vintage``, or
+        vintage: The combo-snapshot metadata row for ``data_vintage``, or
             ``None`` when combos are disabled or the meta row is absent — may be
             ``None`` even when no degradation token fired (a profile choice is
             not a degradation, AD-6).
@@ -349,9 +346,8 @@ async def _provision_combos(
         the ``combo_data_unavailable`` token applies.
 
     Raises:
-        pydantic.ValidationError: On a corrupt stored snapshot row — loud by design
-            (Story 6.3 contract); catching it here would hide data corruption behind
-            a fake degradation token.
+        pydantic.ValidationError: On a corrupt stored snapshot row — loud by design;
+            catching it here would hide data corruption behind a fake degradation token.
     """
     if not profile.combos_enabled:
         return (), None, False
@@ -380,11 +376,10 @@ def _derive_confidence(
     below IS the sorted order (``CONFIDENCE_REASON_TOKENS`` is defined pre-sorted).
     Tokens never embed counts; the counts stay separate structured facts on the seam.
 
-    The reasons→level ladder — the first edge confidence policy in the codebase
-    (decide-once, Story 7.2): **0 reasons → ``"high"``, exactly 1 → ``"medium"``,
+    The reasons→level ladder: **0 reasons → ``"high"``, exactly 1 → ``"medium"``,
     ≥2 → ``"low"``.** Count-based and symmetric by deliberate v1 choice: no
     calibration data justifies per-token severity weights yet. Hand-tuned and
-    adjustable (NFR8); Stories 7.3/7.4 pin it in the output contract.
+    adjustable (NFR8) and pinned in the output contract.
 
     Args:
         unresolved_count: Mainboard rows whose card failed to resolve (FR3).
@@ -419,7 +414,7 @@ def _derive_confidence(
 def _resolve_format(
     format: str | None, stored: str | None, *, has_flagged_commander: bool
 ) -> str | None:
-    """Resolve the scoring format via the decide-once ladder (FR2).
+    """Resolve the scoring format via a fixed ladder (FR2).
 
     The ladder, deterministic and crash-free:
 
@@ -435,12 +430,10 @@ def _resolve_format(
     4. Anything else (brawl-family, ``historic``, unknown, ``None``) →
        unresolved (``None``); the tool returns ``unsupported_format``.
 
-    Brawl-family decision (G-R2 calibration input, owned here): G-R2's throwaway
-    harness provisionally mapped ``brawl``/``standardbrawl`` → the Commander
-    profile and flagged the mapping itself as provisional; the same run showed
-    ``mana_efficiency = 0`` on every real Brawl deck under the Commander
-    Karsten/pip math — auto-mapping Brawl would bake that distortion in
-    silently. v1 therefore keeps the epic's closed ``commander | standard``
+    Brawl-family decision: a calibration run that mapped ``brawl``/``standardbrawl``
+    → the Commander profile showed ``mana_efficiency = 0`` on every real Brawl
+    deck under the Commander Karsten/pip math — auto-mapping Brawl would bake
+    that distortion in silently. v1 therefore keeps the closed ``commander | standard``
     contract: brawl-family resolves to ``unsupported_format`` with the
     explicit-override hint, so forcing ``format="commander"`` is the caller's
     visible choice, never a silent guess.
@@ -494,8 +487,8 @@ def _resolve_commanders(
 ) -> tuple[tuple[str, ...], CommanderResolution]:
     """Resolve commanders per AD-13: flagged → inferred → unidentified.
 
-    Degenerate flag states (the 6.1 review deferral, handled read-side only)
-    resolve honestly: more than two flagged mainboard rows, or flags present
+    Degenerate flag states (handled read-side only; the write side does not
+    prevent them) resolve honestly: more than two flagged mainboard rows, or flags present
     only in the sideboard, yield ``unidentified`` with a warning — never a
     silently picked subset, never an inference over a degenerate state.
 
@@ -547,10 +540,10 @@ def _commander_text(commanders: tuple[str, ...], resolution: CommanderResolution
 
 
 def _build_assessment(scored: ScoredAssessment) -> Assessment:
-    """Serialize the :class:`ScoredAssessment` seam into the AD-7 block (AC 1/2).
+    """Serialize the :class:`ScoredAssessment` seam into the AD-7 block.
 
     A pure field-for-field mapping — zero recomputation, zero I/O (the seam was
-    built so this story re-derives nothing). The only renames happen at this
+    built so this step re-derives nothing). The only renames happen at this
     boundary, exactly as the scorer docstring pins them: ``bracket_floor`` →
     ``bracket`` and ``game_changers.card_names`` → ``flags.game_changers``.
 
@@ -613,11 +606,11 @@ def _build_summary(
 
     Pure and deterministic: assembled facts plus stable deck-identity inputs
     in, prose out — no clock, no randomness, no iteration over unsorted
-    sources (decide-once #6: one derivation path, nothing recomputed from raw
+    sources (one derivation path, nothing recomputed from raw
     cards). Combo counts are bucket-split so a shortfall-1 variant never reads
-    as a live combo (AC 5); the Bracket is phrased as a *floor* (Commander
+    as a live combo; the Bracket is phrased as a *floor* (Commander
     only) so nobody reads it as an exact rating, and cEDH candidacy stays
-    candidacy — never "Bracket 5" (decide-once #5). The multiplayer-variance
+    candidacy — never "Bracket 5". The multiplayer-variance
     caveat is appended iff the profile says so — prose, never a reason (AD-6).
 
     Args:
@@ -752,11 +745,11 @@ async def assess_deck_power(
     profile = _FORMAT_PROFILES[resolved_format]
 
     # Structural resolution count (FR3): the FK join makes a missing nested card
-    # abnormal, but 7.2's cards_unresolved token needs the fact captured.
+    # abnormal, but the cards_unresolved token needs the fact captured.
     # NOTE: this is structurally 0 today — DeckCard.card is a required (non-optional)
     # field, so an orphaned deck_cards row fails Deck.model_validate inside
     # get_deck_with_cards before it ever reaches here; dc.card is never None. Kept per
-    # AC5 ("structural, FK join => normally 0"). Story 7.2 must NOT treat this as a live
+    # the contract ("structural, FK join => normally 0"). Do NOT treat this as a live
     # cards_unresolved source until the shared load path tolerates a null nested card.
     unresolved_count = sum(1 for dc in mainboard if dc.card is None)
 
@@ -775,10 +768,10 @@ async def assess_deck_power(
     )
 
     # The new combo reads sit under the same DatabaseError → error contract as the
-    # deck load (7.1 AC6/NFR3): they run outside the guard above, and the snapshot
+    # deck load (NFR3): they run outside the guard above, and the snapshot
     # repo swallows only OperationalError, so a sibling DatabaseError here would
     # otherwise escape uncaught to the client. ValidationError on a corrupt stored
-    # row stays loud by design (decide-once #5) — corruption surfaces, not degrades.
+    # row stays loud by design — corruption surfaces, not degrades.
     try:
         variants, vintage, combo_data_unavailable = await _provision_combos(
             session, inputs.mainboard, inputs.profile

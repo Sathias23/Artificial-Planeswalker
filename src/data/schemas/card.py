@@ -42,12 +42,11 @@ IMAGE_DISCRIMINATOR = (
     "its faces carry names and costs but no images of their own. Some cards have no image data "
     "anywhere, which is ordinary and not an error."
 )
-"""The image discriminator, stated **once**, where the data lives (Q6, Brad 2026-08-01).
+"""The image discriminator, stated **once**, where the data lives.
 
-Until this story the same three paragraphs lived in :class:`Card`'s docstring and in
+Previously the same three paragraphs lived in :class:`Card`'s docstring and in
 ``routes/cards.py``'s ``read_card`` docstring, regenerated into two places in ``openapi.json``
-with no drift gate between them; ``deferred-work.md`` homed the repair here by name, because
-c3-5's image route would otherwise have made it a third copy.
+with no drift gate between them; the image route would otherwise have made it a third copy.
 
 It is attached as the ``description`` of every ``image_uris`` field rather than written into a
 class docstring, for two reasons. A docstring is a literal and cannot interpolate a constant, so
@@ -78,8 +77,8 @@ class CardFace(BaseModel):
         The header above is the truncation marker; see this module's docstring. Below it, the
         Python detail.
 
-        **Why** ``extra="allow"``, **and it is load-bearing rather than lenient** (Q4, Brad
-        2026-08-01). A census over the 6,455 face objects in the shipped 38,261-card database
+        **Why** ``extra="allow"``, **and it is load-bearing rather than lenient.** A census
+        over the 6,455 face objects in the shipped 38,261-card database
         found **24 distinct keys**: ``object``, ``name``, ``mana_cost`` and ``oracle_text`` on all
         of them, ``type_line`` on 6,445, ``image_uris`` on 5,556, then ``artist``, ``artist_id``,
         ``illustration_id``, ``colors``, ``power``/``toughness`` (935), ``flavor_text``,
@@ -88,13 +87,13 @@ class CardFace(BaseModel):
         tools, so Pydantic's default — silently dropping unknown keys — would truncate
         ``lookup_card_by_name``'s output for every one of those cards.
         ``test_card_face_schema.py`` proves a real 24-key face round-trips with no key lost and
-        no value changed. c3-4 chose ``extra="forbid"`` for a *request* model with no clients;
-        this is a *response* model with live consumers, and the two situations are opposites.
+        no value changed. ``extra="forbid"`` suits a *request* model with no clients; this is a
+        *response* model with live consumers, and the two situations are opposites.
 
         **Why every named field is optional.** Only ``name``/``mana_cost``/``oracle_text`` are
         present on 100% of the corpus today, and a required field would turn a future import that
         omitted one into a ``ValidationError`` raised in the middle of a full-corpus read — the
-        failure mode the Epic 1 retro NULL-coercion gate exists to prevent. The cost is that
+        failure mode the NULL-coercion validators exist to prevent. The cost is that
         ``model_dump()`` emits an explicit ``null`` for a key the source object omitted (the 10
         faces with no ``type_line``, say); that is additive to an MCP payload, never a
         truncation, and it is asserted rather than assumed.
@@ -134,14 +133,12 @@ class Card(BaseModel):
         ``from_attributes=True`` is set, so ``Card.model_validate(card_model)`` builds one
         directly from a ``CardModel`` ORM row, which is how ``CardRepository`` returns it. The
         ``field_validator``s at the bottom of the class coerce the NULLs real Scryfall data
-        stores for text/list/dict fields into empty values (Epic 1 retro gate) so a read over the
+        stores for text/list/dict fields into empty values so a read over the
         full corpus never raises ``ValidationError``; ``game_changer`` is deliberately excluded
         from them (AD-4).
 
-        The three image paragraphs that used to sit above this header are now
-        :data:`IMAGE_DISCRIMINATOR`, attached to the fields they describe (Q6, c3-5). They were
-        duplicated verbatim in ``read_card``'s docstring with no gate between the copies, and
-        c3-5's image route would have made a third.
+        The image rule is :data:`IMAGE_DISCRIMINATOR`, attached to the fields it describes, so
+        that ``read_card``'s docstring and the image route never carry diverging copies.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -197,10 +194,9 @@ class Card(BaseModel):
     # Game availability ("paper", "arena", "mtgo")
     games: list[str] = []
 
-    # NULL-coercion (Epic 1 retro gate): real Scryfall data stores NULL for these fields
-    # on tokens / split cards / lands. The schema keeps the non-optional types but coerces
-    # NULL to an empty default so reads (e.g. Epic 2's embedding builder over the full
-    # corpus) never raise ValidationError.
+    # NULL-coercion: real Scryfall data stores NULL for these fields on tokens / split cards /
+    # lands. The schema keeps the non-optional types but coerces NULL to an empty default so
+    # reads (e.g. the embedding builder over the full corpus) never raise ValidationError.
     @field_validator("oracle_text", "mana_cost", mode="before")
     @classmethod
     def _coerce_none_to_empty_str(cls, v: Any) -> Any:

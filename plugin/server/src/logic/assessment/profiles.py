@@ -1,7 +1,7 @@
 """Per-format frozen scoring constants: the ``FormatProfile`` data bags (AD-3, FR4).
 
 One passive, typed, frozen, versioned constants bag per supported format — no scattered magic
-numbers, no per-format strategy classes. The scorer (Stories 5.3-5.9) *reads and branches on*
+numbers, no per-format strategy classes. The scorer *reads and branches on*
 a profile; a profile never scores anything and holds no behavior.
 
 **The AD-3 contract:**
@@ -18,9 +18,9 @@ a profile; a profile never scores anything and holds no behavior.
   version. That vintage belongs to the imported snapshots (AD-7); carrying it here would let
   the profile lie about what data was actually used.
 
-**Provisional values — Story 5.9 owns tuning.** The initial weights and win-turn bands below
-are hand-picked, documented starting points (deck-assess research / addendum §C). Story 5.9
-hand-tunes them against the calibration benchmark (NFR8): edit the value, bump the profile's
+**Provisional values.** The initial weights and win-turn bands below
+are hand-picked, documented starting points (deck-assess research / addendum §C), then
+hand-tuned against the calibration benchmark (NFR8): edit the value, bump the profile's
 version, re-run the benchmark. Tests verify shape and invariants only, never exact numbers.
 """
 
@@ -29,8 +29,8 @@ from typing import Final, Literal
 
 from src.logic.assessment.mana_base import KarstenFormula
 
-#: The AD-7 closed 7-dimension key set, in the AC/spine listing order (the one canonical home —
-#: Story 5.7's vector and 5.8's aggregate import it from here so the key set can never fork).
+#: The AD-7 closed 7-dimension key set, in the spine listing order (the one canonical home —
+#: the dimension vector and the aggregate import it from here so the key set can never fork).
 DIMENSIONS: Final[tuple[str, ...]] = (
     "speed",
     "consistency",
@@ -41,9 +41,9 @@ DIMENSIONS: Final[tuple[str, ...]] = (
     "combo_potential",
 )
 
-#: The FR24 descriptive tier vocabulary (Story 5.8) — a CLOSED set on the AD-7 result shape
+#: The FR24 descriptive tier vocabulary — a CLOSED set on the AD-7 result shape
 #: and the AD-8 byte-identical diff surface: renaming a label is a breaking schema change,
-#: never a 5.9 tuning knob. Canonical home is here beside :data:`DIMENSIONS` (the
+#: never a tuning knob. Canonical home is here beside :data:`DIMENSIONS` (the
 #: one-canonical-home rule) because ``FormatProfile.tier_thresholds`` parameterizes the
 #: score→label mapping onto it.
 TierLabel = Literal["Unfocused", "Focused", "Tuned", "High-Power", "Competitive"]
@@ -66,7 +66,7 @@ class DimensionWeights:
     """Aggregate weights over the closed dimension set (AD-7). Sum to 1.0.
 
     Exactly one ``float`` field per entry in :data:`DIMENSIONS` — mypy makes a missing or
-    extra dimension a type error rather than a runtime surprise in Story 5.8's aggregate.
+    extra dimension a type error rather than a runtime surprise in the aggregate.
 
     Attributes:
         speed: Weight of the expected-win-turn dimension.
@@ -93,8 +93,8 @@ class FormatProfile:
 
     Per-dimension mapping parameters (the signal→0-100 curve slots, NFR8) currently comprise
     ``win_turn_band`` (the ``speed`` curve's anchor), ``weights``, and ``tier_thresholds``
-    (the FR24 score→label cuts) — the only parameters yet defensible from research. Stories
-    5.3-5.8 extend this shape *additively* as real curves land (an additive field on a frozen
+    (the FR24 score→label cuts) — the only parameters yet defensible from research. The
+    shape extends *additively* as real curves land (an additive field on a frozen
     dataclass is cheap by design); every such edit bumps ``format_profile_version``.
 
     Attributes:
@@ -103,17 +103,17 @@ class FormatProfile:
         rubric: Scoring-rubric selector (FR18/FR20 fork): ``"brackets"`` scores against the
             Commander Brackets rubric; ``"heuristic_only"`` rides the heuristic-only fork.
         win_turn_band: Inclusive expected-win-turn band ``(lo, hi)``, ``lo <= hi`` — the
-            ``speed`` dimension's mapping anchor (Story 5.7).
+            ``speed`` dimension's mapping anchor.
         karsten_formula: Which published Karsten regression/anchor family the scorer
-            applies for this format (Story 5.7) — the 5.4/5.5 ``KarstenFormula`` selector,
-            now profile-driven (AD-3) so ``dimension_vector`` needs no ``rubric`` branch.
-        weights: Aggregate weights over the closed 7-dimension set; sum to 1.0 (Story 5.8).
+            applies for this format — the ``KarstenFormula`` selector,
+            profile-driven (AD-3) so ``dimension_vector`` needs no ``rubric`` branch.
+        weights: Aggregate weights over the closed 7-dimension set; sum to 1.0.
         tier_thresholds: Four strictly ascending inclusive lower cut points in ``(0, 100)``,
             one per band 2-5 of :data:`TIER_LABELS` (band 1 implicitly starts at 0) — the
-            FR24 score→label mapping parameter (Story 5.8). Per-profile so Story 5.9 anchors
+            FR24 score→label mapping parameter. Per-profile so calibration anchors
             each format's cuts against its own benchmark without cross-format math.
-        combos_enabled: Whether combo provisioning runs for this format (Epic 7 branches on
-            this; Story 4.2 context).
+        combos_enabled: Whether combo provisioning runs for this format (the edge branches on
+            this).
         multiplayer_variance_caveat: Whether the edge emits the fixed multiplayer-variance
             ``summary`` caveat (AD-6). Never a confidence reason.
     """
@@ -128,17 +128,17 @@ class FormatProfile:
     multiplayer_variance_caveat: bool
 
 
-#: Commander (multiplayer, Bracket-rubric) profile. Values benchmark-tuned by Story 5.9.
+#: Commander (multiplayer, Bracket-rubric) profile. Values benchmark-tuned.
 COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
     # v4: weights re-spread toward combo_potential/speed + the shared CEDH_TUTOR_MIN tuning
-    # (Story 5.9 benchmark calibration, AD-3 bump rule — behavior change, not just literals).
+    # (benchmark calibration, AD-3 bump rule — behavior change, not just literals).
     format_profile_version="commander-v4",
     rubric="brackets",  # Commander scores against the Brackets rubric (FR18).
     # Casual-Commander games are typically decided around turns 7-10 (deck-assess §1 format
-    # research); cEDH candidacy (much faster wins) is flagged separately in 5.7.
+    # research); cEDH candidacy (much faster wins) is flagged separately by the Bracket floor.
     win_turn_band=(7, 10),
-    karsten_formula="commander",  # Karsten 99-card regression + Commander pip anchors (5.4).
-    # 5.9 benchmark-calibrated spread (NFR8). Evidence: under the v3 spread the Talrand
+    karsten_formula="commander",  # Karsten 99-card regression + Commander pip anchors.
+    # Benchmark-calibrated spread (NFR8). Evidence: under the v3 spread the Talrand
     # precon (67) outscored the Tymna cEDH list (65) — no threshold cut can order that.
     # At v1 curves, interaction (100 for every Commander anchor) and mana_efficiency
     # (0 for most 99-card decks under the Karsten delta) carry NO separation, while
@@ -156,7 +156,7 @@ COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
         combo_potential=0.30,
     ),
     # FR24 label cuts (inclusive lower bounds of bands 2-5; band 1 starts at 0). The even
-    # quintiles survived 5.9 calibration unchanged for Commander: with the v4 weights the
+    # quintiles survived calibration unchanged for Commander: with the v4 weights the
     # benchmark anchors order cleanly around them (precons/Atraxa 44-54 in Tuned, cEDH
     # 68/71 in High-Power) with >= 6-point margins to the 40/60 cuts.
     tier_thresholds=(20, 40, 60, 80),
@@ -164,17 +164,17 @@ COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
     multiplayer_variance_caveat=True,  # Multiplayer politics/variance caveat in summary (AD-6).
 )
 
-#: Standard (1v1, heuristic-only) profile. Values benchmark-tuned by Story 5.9.
+#: Standard (1v1, heuristic-only) profile. Values benchmark-tuned.
 STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
     # v4: tier_thresholds anchored against the four Standard benchmark bands + the shared
-    # CEDH_TUTOR_MIN tuning (Story 5.9 benchmark calibration, AD-3 bump rule).
+    # CEDH_TUTOR_MIN tuning (benchmark calibration, AD-3 bump rule).
     format_profile_version="standard-v4",
     rubric="heuristic_only",  # Standard has no Brackets; heuristic-only fork (FR20).
     # 1v1 Standard games are typically decided around turns 5-8 (deck-assess §1 format
     # research) — faster than multiplayer Commander.
     win_turn_band=(5, 8),
-    karsten_formula="sixty_card",  # Karsten 60-card regression + published pip anchors (5.4).
-    # The v3 spread survived 5.9 calibration unchanged for Standard: FR20 emphasizes
+    karsten_formula="sixty_card",  # Karsten 60-card regression + published pip anchors.
+    # The v3 spread survived calibration unchanged for Standard: FR20 emphasizes
     # curve/interaction/Karsten-60 — speed, interaction, and mana efficiency lead; combo
     # potential is a minor signal in modern Standard. Sum = 1.0. Benchmark scores under it:
     # jank 23 / lifegain 32 / mono-red 58 / Dimir 73 — cleanly ordered, so only the cuts
@@ -188,16 +188,16 @@ STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
         card_advantage=0.10,
         combo_potential=0.05,
     ),
-    # FR24 label cuts, 5.9-anchored against the four Standard benchmark bands (NFR8 / FR20
+    # FR24 label cuts, anchored against the four Standard benchmark bands (NFR8 / FR20
     # exact-label gate): jank pile 23 < 28 (Unfocused), mono-white lifegain 32 in [28, 45)
     # (Focused), mono-red aggro 58 in [45, 65) (Tuned), Dimir midrange 73 in [65, 85)
     # (High-Power) — every anchor sits >= 5 points from its nearest cut. Anchoring each
-    # format's cuts against its OWN benchmark is what closes the 5.7-deferred sixty_card
-    # scale-comparability item: the raw 0-100 aggregates are never compared across formats,
+    # format's cuts against its OWN benchmark is what settles sixty_card
+    # scale comparability: the raw 0-100 aggregates are never compared across formats,
     # so per-format cut placement absorbs any scale skew (no cross-format math exists).
     tier_thresholds=(28, 45, 65, 85),
     # FR20's heuristic inputs literally include combos; the Commander-centric Spellbook
-    # snapshot will match few/no Standard combos, which is fine and unpenalized. If Epic 7
+    # snapshot will match few/no Standard combos, which is fine and unpenalized. If the edge
     # finds Standard combo provisioning pathological, flipping this is a data edit + version
     # bump — exactly the AD-3 workflow.
     combos_enabled=True,

@@ -19,7 +19,7 @@ async def read_health(request: Request) -> HealthResponse:
     ``status="ok"``. The lifespan is a real precondition: served without one (no supported path
     does), the missing ``instance_id`` is an unhandled error, not a modelled state.
 
-    ``clients`` is the connection registry's live count (17.4) — how many tabs hold a WebSocket at
+    ``clients`` is the connection registry's live count — how many tabs hold a WebSocket at
     this instant, read through ``connection_registry`` in ``src.companion.app.state`` like every
     other reader of that state. ``None`` when the registry does not exist — a constructed but
     never-started app, which no supported serving path produces but a test can — and the optional

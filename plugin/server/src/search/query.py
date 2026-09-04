@@ -15,8 +15,8 @@ vectors; results are **de-duplicated by ``oracle_id``** (nearest printing kept) 
 ``limit`` — mirroring the relational ``search_cards`` unique-oracle behaviour.
 
 This function is **embed-agnostic**: it takes a *vector*, not a query string, so both
-``semantic_search_cards`` (Story 2.4, the embedded NL query) and ``find_similar_cards`` (Story 2.5,
-a seed card's stored vector) reuse it. It is pure sync and framework-free (no Pydantic) — the MCP
+``semantic_search_cards`` (the embedded NL query) and ``find_similar_cards`` (a seed card's
+stored vector) reuse it. It is pure sync and framework-free (no Pydantic) — the MCP
 tool layer projects :class:`CardHit` to its Pydantic result.
 """
 
@@ -100,7 +100,7 @@ def _coerce_json_list(raw: str | None) -> list[str]:
     """Decode a nullable JSON-text list column (``cards.colors``) into a ``list[str]``.
 
     The column is JSON stored as text over raw ``sqlite3`` (e.g. ``'["R"]'``, ``'[]'``, ``NULL``,
-    or ``'null'``), so ``None`` / empty / a JSON ``null`` all coerce to ``[]`` (Story 2.3 lesson).
+    or ``'null'``), so ``None`` / empty / a JSON ``null`` all coerce to ``[]``.
 
     Args:
         raw: The raw column value (JSON text, or ``None``).
@@ -143,12 +143,12 @@ def _color_predicates(colors: Sequence[str], color_mode: ColorMode) -> list[str]
 
 
 def get_card_vector(conn: sqlite3.Connection, card_id: str) -> NDArray[np.float32] | None:
-    """Read a card's **stored** embedding back out of ``card_vec`` by primary key (Story 2.5).
+    """Read a card's **stored** embedding back out of ``card_vec`` by primary key.
 
     A **point lookup** by the TEXT primary key — *not* a KNN: ``SELECT embedding FROM card_vec
     WHERE card_id = ?`` (no ``MATCH`` / ``k``). On sqlite-vec v0.1.9 the ``embedding`` column comes
-    back as the compact ``float32`` BLOB :func:`sqlite_vec.serialize_float32` wrote at index time
-    (Story 2.3), which :func:`numpy.frombuffer` deserializes straight into a
+    back as the compact ``float32`` BLOB :func:`sqlite_vec.serialize_float32` wrote at index time,
+    which :func:`numpy.frombuffer` deserializes straight into a
     :data:`~src.search.embedder.EMBEDDING_DIM`-length ``float32`` array. The vector is byte-for-byte
     the one the card was indexed under, so feeding it back into :func:`hybrid_search` ranks the card
     at distance ≈ 0 (round-trip safe — both ends use the same encoding). This is how
@@ -195,7 +195,7 @@ def index_is_populated(conn: sqlite3.Connection) -> bool:
     be empty. Both cases must be distinguished from a genuine no-match so the search tools can
     return a graceful "build the index first" status instead of letting a raw
     ``sqlite3.OperationalError`` (*no such table*) escape — or silently reporting ``empty`` (the
-    Pre-Epic-3 Targeted Gate G3 guard the skills suite sits on top of).
+    guard the skills suite sits on top of).
 
     The existence probe reads ``sqlite_master`` so the missing-table case returns ``False`` rather
     than raising; the table name is a schema constant (never interpolated user input).
@@ -267,8 +267,8 @@ def hybrid_search(
 ) -> list[CardHit]:
     """Run the hybrid KNN + JOIN query and return de-duplicated, ranked :class:`CardHit` rows.
 
-    Embeds nothing — the caller supplies ``query_vector`` (the embedded NL query in Story 2.4, or a
-    seed card's stored vector in Story 2.5). The query vector and **every** filter value are bound
+    Embeds nothing — the caller supplies ``query_vector`` (the embedded NL query, or a
+    seed card's stored vector). The query vector and **every** filter value are bound
     as parameters; the only SQL-literal identifiers are schema constants (table/column names and
     the colour flag columns). Over-fetches ``over_fetch_k`` candidates from the KNN so the JOIN-side
     legality/games trim and the oracle-id de-dup can pare the set down to ``limit`` without starving
@@ -300,7 +300,7 @@ def hybrid_search(
             ``find_similar_cards`` to remove the seed card (and all its other printings) so results
             are genuine alternatives, not the seed echoed back. The skip happens inside the
             nearest-first de-dup loop *before* a hit consumes a ``limit`` slot, so the over-fetch /
-            ``limit`` accounting stays correct. Default ``None`` preserves the Story 2.4 behaviour.
+            ``limit`` accounting stays correct. Default ``None`` excludes nothing.
 
     Returns:
         A list of :class:`CardHit`, nearest-first, one per ``oracle_id``, at most ``limit`` long.

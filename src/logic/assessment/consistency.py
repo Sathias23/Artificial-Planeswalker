@@ -1,11 +1,11 @@
-"""FR17/FR7/FR9 consistency, interaction-detail & structural-coverage signals (Story 5.5).
+"""FR17/FR7/FR9 consistency, interaction-detail & structural-coverage signals.
 
 Raw signals only: exact hypergeometric access probabilities (FR17), interaction
 instant-speed/CMC detail (FR7), and rule-of-8 redundancy plus the closed
-``structural_gaps`` token enum (FR9). Downstream stories map these onto scores — the
-signal→0–100 ``consistency``/``interaction`` mapping is Story 5.7's, the aggregate
-weighting Story 5.8's, and combo matching (earliest-turn math, Spellbook records) Story
-5.6's. Everything here is a pure function over already-loaded Pydantic schemas
+``structural_gaps`` token enum (FR9). Downstream modules map these onto scores — the
+signal→0–100 ``consistency``/``interaction`` mapping is ``dimensions``', the aggregate
+weighting ``aggregate``'s, and combo matching (earliest-turn math, Spellbook records)
+``combos``'. Everything here is a pure function over already-loaded Pydantic schemas
 (:class:`Card` / :class:`DeckCard`) — no network, DB, clock, file I/O, or randomness
 (AD-2); FR17 is analytic by requirement (no Monte Carlo). Every result is a frozen slots
 dataclass or plain tuple with deterministically ordered contents (AD-8): identical input
@@ -14,14 +14,14 @@ always yields identical output.
 One vocabulary (AD-10): category membership comes from
 :mod:`src.logic.assessment.classifiers` (``classify_card`` / ``classify_deck``) and
 land/spell counts from :func:`src.logic.assessment.mana_base.compute_curve` — this module
-never re-implements oracle-text patterns, land detection, or CMC bucketing. The board-wipe
-sub-tag 5.3 deferred "to 5.5 if its 8×8 math needs one" is NOT needed: the v1 baselines
-operate on the coarse ``INTERACTION`` count, so the existing taxonomy suffices.
+never re-implements oracle-text patterns, land detection, or CMC bucketing. No board-wipe
+sub-tag is needed: the v1 baselines operate on the coarse ``INTERACTION`` count, so the
+existing taxonomy suffices.
 
 Sideboard rows are NOT filtered — deck-composition policy belongs to the caller: filter
-``sideboard=False`` first if you want played-cards-only signals (the 5.3/5.4 precedent).
+``sideboard=False`` first if you want played-cards-only signals (the core-wide precedent).
 Consequence: sideboard rows inflate deck size and category counts symmetrically; the edge
-(Epic 7) passes mainboard-only rows.
+passes mainboard-only rows.
 """
 
 import math
@@ -45,14 +45,14 @@ from src.logic.assessment.classifiers import (
 from src.logic.assessment.mana_base import KarstenFormula, compute_curve
 
 # ---------------------------------------------------------------------------
-# FR17 hypergeometric access (Task 2)
+# FR17 hypergeometric access
 # ---------------------------------------------------------------------------
 
 #: The v1 cards-seen convention: ``cards_seen(turn) = OPENING_HAND_SIZE + turn`` with
 #: turn 0 = the opening hand (the on-the-draw reading). Derived from the research doc's
 #: own worked example — "1 copy in 99 cards ≈ 12% by turn 5" is exactly 12 seen cards,
 #: ``12/99`` (docs/deck-assess.md:154). No mulligan modeling in v1; an on-the-play
-#: variant is a Story 5.9 refinement.
+#: variant is a possible refinement.
 OPENING_HAND_SIZE: Final = 7
 
 
@@ -139,7 +139,7 @@ def land_access_by_turn(deck_cards: Sequence[DeckCard], turn: int) -> float:
 
 
 # ---------------------------------------------------------------------------
-# FR9 rule-of-8 redundancy signals (Task 4)
+# FR9 rule-of-8 redundancy signals
 # ---------------------------------------------------------------------------
 
 
@@ -194,10 +194,10 @@ def redundancy_signals(deck_cards: Sequence[DeckCard]) -> tuple[RedundancySignal
 
 
 # ---------------------------------------------------------------------------
-# FR7 interaction detail (Task 5)
+# FR7 interaction detail
 # ---------------------------------------------------------------------------
 
-#: Instant-speed policy (decide-once, v1): a card is instant-speed when ``"instant"``
+#: Instant-speed policy (v1): a card is instant-speed when ``"instant"``
 #: appears in its lowercased ``type_line`` OR ``"flash"`` is among its lowercased
 #: ``keywords``. Multi-face type lines are ``//``-joined at top level, so an
 #: "Instant // Sorcery" split counts instant-speed — conservative, accepted v1.
@@ -232,7 +232,7 @@ class InteractionSignals:
         cmc_distribution: ``(cmc_bucket, quantity-aware count)`` pairs over interaction
             cards, sorted ascending by bucket. Buckets are ``int(cmc)`` (floor —
             fractional ``cmc`` exists only on un-set cards; multi-face ``cmc`` is
-            Scryfall's front-face value) — the same bucketing policy as 5.4's
+            Scryfall's front-face value) — the same bucketing policy as
             :class:`~src.logic.assessment.mana_base.CurveSignals`.
     """
 
@@ -246,7 +246,7 @@ def interaction_signals(deck_cards: Sequence[DeckCard]) -> InteractionSignals:
     """Compute the FR7 interaction-detail signals, quantity-aware and zero-safe.
 
     Joins :func:`classify_card`'s ``INTERACTION`` tag back to each card's type line,
-    keywords, and ``cmc`` (the per-card join the 5.3 docstring promises 5.5). An empty
+    keywords, and ``cmc`` (the per-card join the classifier docstring promises). An empty
     or interaction-free deck yields zeroed signals — never raises. Sideboard rows are
     included — filter first if unwanted.
 
@@ -279,13 +279,13 @@ def interaction_signals(deck_cards: Sequence[DeckCard]) -> InteractionSignals:
 
 
 # ---------------------------------------------------------------------------
-# FR9 structural-coverage gaps (Task 6)
+# FR9 structural-coverage gaps
 # ---------------------------------------------------------------------------
 
-# The closed structural_gaps token vocabulary (AD-6) — this module owns it; Epic 7's
+# The closed structural_gaps token vocabulary (AD-6) — this module owns it; the edge's
 # flags.structural_gaps serializes exactly these tokens, sorted bytewise (AD-8). Tokens
 # are count-free snake_case: counts already live in the redundancy/classify_deck signals.
-# Land adequacy is deliberately NOT a gap token — 5.4's Karsten flood/screw flags already
+# Land adequacy is deliberately NOT a gap token — the Karsten flood/screw flags already
 # own land-count adequacy, and two sources for one fact would let them disagree.
 
 #: FR9 gap token: card-draw count below the formula baseline.
@@ -306,13 +306,13 @@ STRUCTURAL_GAP_TOKENS: Final[tuple[str, ...]] = (
     WINCON_MISSING,
 )
 
-#: PROVISIONAL per-formula gap baselines (Story 5.9's benchmark pass owns tuning) —
+#: PROVISIONAL per-formula gap baselines —
 #: "below baseline" means ``count < baseline`` (strictly less), quantity-aware counts.
 #: Commander: the documented "<6 ramp or <6 interaction is a weakness signal" line
 #: (docs/deck-assess.md:123); the Command Zone template (~10/10/10) is the aspirational
 #: reference, the 6-line is the *gap* threshold — 8×8 theory. Sixty-card: ramp is not a
 #: structural requirement (baseline 0 → the token simply never fires); draw 4 /
-#: interaction 6 are honest provisional guesses that 5.9's Standard anchors calibrate.
+#: interaction 6 are honest provisional guesses that the Standard benchmark anchors calibrate.
 #: Consequence: :data:`RAMP_BELOW_BASELINE` is permanently unreachable for every
 #: ``sixty_card`` deck (a quantity-aware count can never be negative) — intentional, not
 #: a bug; ramp simply isn't part of the 60-card structural-coverage read.
@@ -349,8 +349,7 @@ def structural_gaps(deck_cards: Sequence[DeckCard], *, formula: KarstenFormula) 
         deck_cards: The deck's card associations.
         formula: The format fork — ``"commander"`` or ``"sixty_card"`` — as an explicit
             parameter so this module stays profile-independent (the
-            :data:`KarstenFormula` selector 5.4 established; the 5.7/5.8 caller picks
-            per format).
+            :data:`KarstenFormula` selector; the caller picks per format).
 
     Returns:
         A tuple of :data:`STRUCTURAL_GAP_TOKENS` members, sorted ascending bytewise

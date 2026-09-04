@@ -25,7 +25,7 @@ from src.search.schema import (
 
 logger = logging.getLogger(__name__)
 
-# --- Read/write SQL (built from the Story 2.2 schema constants, never string literals) -------
+# --- Read/write SQL (built from the schema constants, never string literals) -----------------
 #: The eight columns the builder writes per ``card_vec`` row: PK + vector + the six metadata cols.
 _VEC_INSERT_COLS = (CARD_ID_COL, EMBEDDING_COL, *METADATA_COLS)
 _VEC_INSERT_SQL = (
@@ -181,7 +181,7 @@ def compose_card_text(
     because :func:`content_hash` of this string is the incremental builder's change-detection
     signal — any change here invalidates every stored hash. Because stripping only alters the text
     of cards that *have* reminder text, a normal incremental build re-embeds exactly those cards
-    and skips the rest (no ``--rebuild`` needed). Story 2.6's RAG eval must embed *queries* against
+    and skips the rest (no ``--rebuild`` needed). The RAG eval must embed *queries* against
     vectors built from this exact recipe, so it is the single canonical composition.
 
     The result is **never empty**: ``cards.name`` is ``NOT NULL`` and non-empty, so the embedder
@@ -210,7 +210,7 @@ def compose_card_text(
 
 
 def content_hash(text: str) -> str:
-    """Return the SHA-256 hex digest of ``text`` — the per-card change-detection signal (AC2).
+    """Return the SHA-256 hex digest of ``text`` — the per-card change-detection signal.
 
     A pure function of the **composite text only** (never the model name or ``EMBEDDING_DIM``):
     it answers "did this card's embeddable text change since the last build?". It therefore does
@@ -245,9 +245,9 @@ def build_card_embeddings(
     ``cards`` in chunks of ``batch_size``, composing :func:`compose_card_text` per card, hashing
     it (:func:`content_hash`), and classifying each card against the stored hashes as **new**,
     **changed**, or **unchanged**. Only new + changed cards are embedded (so a re-run re-embeds
-    nothing if nothing changed — AC2). Each chunk's writes happen in **one transaction** committed
-    per chunk: changed cards are DELETE-then-INSERTed (``vec0`` rejects ``INSERT OR REPLACE`` —
-    AC3), new cards are plain INSERTs, and every embedded card's hash is UPSERTed into
+    nothing if nothing changed). Each chunk's writes happen in **one transaction** committed
+    per chunk: changed cards are DELETE-then-INSERTed (``vec0`` rejects ``INSERT OR REPLACE``),
+    new cards are plain INSERTs, and every embedded card's hash is UPSERTed into
     ``card_embedding_meta`` — atomically, so a card is hash-recorded iff its current vector is
     written. An interruption between chunks leaves completed chunks durable and the index
     converges with no duplicates or orphan hashes on the next run.
@@ -263,8 +263,8 @@ def build_card_embeddings(
             builder both reads ``cards`` and writes ``card_vec``/``card_embedding_meta`` on it.
         embedder: An :class:`~src.search.embedder.Embedder`; its
             :meth:`~src.search.embedder.Embedder.encode_batch` is called once per chunk on only
-            the new/changed subset (this is where the Story 2.1 ``batch_size`` deferral is
-            resolved — by chunking the read here, not by modifying ``Embedder``).
+            the new/changed subset (``batch_size`` is honoured by chunking the read here, not
+            by modifying ``Embedder``).
         batch_size: Cards read (and upper-bounded per ``encode_batch`` call) per chunk.
         limit: If set, only the first ``limit`` cards are processed (fast dev/test runs).
         prune: If ``True``, after the build remove orphan ``card_vec``/``card_embedding_meta`` rows
@@ -409,8 +409,8 @@ def _process_chunk(
     if not pending:
         return
 
-    # Bounded by batch_size (default 1000 → ~1.5 MB float32); resolves the Story 2.1 batch_size
-    # deferral at the builder, without modifying Embedder.
+    # Bounded by batch_size (default 1000 → ~1.5 MB float32); the bound lives at the builder,
+    # without modifying Embedder.
     vectors = embedder.encode_batch(texts)
 
     delete_params: list[tuple[str]] = [(p.card_id,) for p in pending if p.changed]

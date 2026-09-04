@@ -5,30 +5,27 @@ The read model's one asymmetric resource: **the browser reads it, the agent writ
 credential (AD-5); the ``PUT`` is credential-gated because setting what a user is looking at is an
 agent action, and the agent is the party the discovery file hands a token to.
 
-Its own module rather than a section of :mod:`.decks`, and that cost a hand-synchronised edit in
-``build_app()`` and another in ``test_spa.py``'s differential router list (Q1, Brad 2026-08-01).
-The alternative — joining ``decks.router`` — was free, and wrong: every route there takes a
-``DbSession`` and that module's docstring is written entirely about reading saved decks. An
-authenticated in-memory write that touches no database is not a deck read, and hiding it there
-would have made a shipped docstring false to save two lines.
+Its own module rather than a section of :mod:`.decks`, at the cost of a hand-synchronised edit in
+``build_app()`` and another in ``test_spa.py``'s differential router list. The alternative —
+joining ``decks.router`` — was free, and wrong: every route there takes a ``DbSession`` and that
+module's docstring is written entirely about reading saved decks. An authenticated in-memory write
+that touches no database is not a deck read, and hiding it there would have made a shipped
+docstring false to save two lines.
 
 **There is deliberately no database here at all.** Not a ``DbSession``, not a repository import, not
-a ``503`` path — this is the first route since ``/health`` with no data dependency. That is AD-16's
-ruling and not an oversight: *deck-existence validation for* ``companion_set_active_deck`` *belongs
-to the MCP tool — it has DB access and it is the one that must report* ``deck_not_found`` *to the
-agent; the backend stores what it is given.* A ``PUT`` naming a deck that does not exist therefore
-**succeeds**, and the UI meets the ordinary ``deck_not_found`` path when it tries to fetch it.
+a ``503`` path. AD-16 is explicit: *deck-existence validation for* ``companion_set_active_deck``
+*belongs to the MCP tool — it has DB access and it is the one that must report* ``deck_not_found``
+*to the agent; the backend stores what it is given.* A ``PUT`` naming a deck that does not exist
+therefore **succeeds**, and the UI meets the ordinary ``deck_not_found`` path when it tries to fetch
+it.
 
 The state is in memory and dies with the process (:mod:`src.companion.app.state`), so a restart
 reports none — FR-07's specified behaviour, not a limitation.
 
-**The ``PUT`` now broadcasts, in one awaited line and no more** (c5-4). What this module gained is
-a call to :func:`src.companion.app.ws.broadcast_active_deck_changed` after the store and before the
-return; what it deliberately did **not** gain is a hook, a callback registry, an event bus or any
-knowledge of the envelope — the id, the timestamp and the wire shape are all minted in ``ws.py``,
-which is where the fan-out lives. The prediction this paragraph used to carry ("c5-4 adds one call
-after the store, to a handler that will exist by then") is spent, and the reason it was worth
-writing is visible in the diff that fulfilled it: one line, no scaffolding to delete.
+**The ``PUT`` broadcasts, in one awaited line and no more.** The route calls
+:func:`src.companion.app.ws.broadcast_active_deck_changed` after the store and before the return;
+it deliberately holds no hook, callback registry, event bus or any knowledge of the envelope — the
+id, the timestamp and the wire shape are all minted in ``ws.py``, which is where the fan-out lives.
 
 **A broadcast failure cannot reach the caller.** The fan-out contains every per-client fault and
 returns a delivery count rather than raising, so a ``PUT`` that stored successfully answers ``200``
@@ -36,9 +33,9 @@ whether zero, one or twenty tabs were listening (NFR-04's fire-and-forget). Refu
 failed stores never reach the call at all — it sits on the success path, after the write.
 
 Both bodies are unwrapped (AD-16), and both declare ``deck_id`` identically, so the "none" state is
-a value rather than a second shape. The models themselves are two, not one, since c6-2: the write
-answers :class:`~src.companion.contracts.ActiveDeckSetReceipt` — the read's shape plus the delivered
-client count, which the ``GET``'s audience has no use for and the agent's cannot do without.
+a value rather than a second shape. The models themselves are two, not one: the write answers
+:class:`~src.companion.contracts.ActiveDeckSetReceipt` — the read's shape plus the delivered client
+count, which the ``GET``'s audience has no use for and the agent's cannot do without.
 """
 
 from fastapi import APIRouter, Request
@@ -100,12 +97,10 @@ async def read_active_deck(request: Request) -> ActiveDeck:
     return ActiveDeck(deck_id=_slot(request).deck_id)
 
 
-# `payload_too_large` joins `forbidden` here at c5-5, not in `build_app()`'s include: this route
-# has a body and can genuinely answer 413 now that the pre-parse cap exists, while the sibling
-# `GET` above carries no body and still cannot. Declaring per-operation is the whole point of the
-# curation c5-5 did to the two shared include sets (Q4, Brad 2026-08-08) — the cap is enforced by
-# `BodyCapMiddleware` for BOTH body endpoints with one mechanism, but only the operations that can
-# answer it say so.
+# `payload_too_large` is declared here, per operation, rather than in `build_app()`'s include: this
+# route has a body and can genuinely answer 413, while the sibling `GET` above carries no body and
+# cannot. The cap is enforced by `BodyCapMiddleware` for BOTH body endpoints with one mechanism,
+# but only the operations that can answer it say so.
 @router.put(
     "/active-deck",
     response_model=ActiveDeckSetReceipt,
@@ -147,32 +142,25 @@ async def set_active_deck(
     Returns:
         The active deck as it now stands, plus the delivered client count.
 
-        **The write's shape diverged from the read's at c6-2** (Q1, Brad 2026-08-09). c3-4 answered
-        this operation with :class:`~src.companion.contracts.ActiveDeck` under a "one shape serves
-        the read, the write and the change notification" ruling; what broke it is that the *agent*
-        asks a question the browser never does — **did anyone see it?** — and the answer was already
-        in hand and being discarded. ``deck_id`` is declared exactly as the read declares it, so the
-        divergence is one added field and nothing else. The read is untouched, which is the half
-        AD-5 cares about: the SPA never calls this operation.
+        **The write's shape diverges from the read's by one field.** The *agent* asks a question
+        the browser never does — **did anyone see it?** — and the answer is already in hand from
+        the fan-out. ``deck_id`` is declared exactly as the read declares it, so the divergence is
+        one added field and nothing else. The read is untouched, which is the half AD-5 cares
+        about: the SPA never calls this operation.
 
-        **The claim that shape was also the change notification's was checked against the shipped
-        notification at c5-4, and review found the correction itself needed correcting
-        (2026-08-08).** The broadcast does not carry an
-        :class:`~src.companion.contracts.ActiveDeck`; it carries an
-        :class:`~src.companion.contracts.ActiveDeckChangedEvent` whose ``payload`` is an
-        :class:`~src.companion.contracts.ActiveDeckChangedPayload`. Those are two different classes
-        with the same field and the same nullability — ``{deck_id: string | null}`` — but **not**
-        the same bound: :class:`~src.companion.contracts.ActiveDeck` declares ``deck_id`` as a bare
+        **The change notification is a different class with the same field.** The broadcast
+        carries an :class:`~src.companion.contracts.ActiveDeckChangedEvent` whose ``payload`` is
+        an :class:`~src.companion.contracts.ActiveDeckChangedPayload` — the same field name and
+        the same nullability as this body (``{deck_id: string | null}``), but **not** the same
+        bound: :class:`~src.companion.contracts.ActiveDeck` declares ``deck_id`` as a bare
         ``str | None`` with no length cap and no blank-refusal, while
         :class:`~src.companion.contracts.ActiveDeckChangedPayload` bounds it at
         ``_MAX_DECK_ID_LENGTH`` and refuses a blank string. A client that can read this response
-        body can read that payload with the same field name and the same nullability — that is the
-        property the sentence was making — but must not assume the two validate identically. It is
-        **not** a claim that one Pydantic model is reused across both, and it never was: c5-1 minted
-        a separate payload class deliberately, so that a later deck-agnostic signal could diverge in
-        validation without touching this endpoint's contract — which is exactly the divergence that
-        exists today. This precision lives down here because the paragraphs above ``Args:`` ship
-        into ``components.schemas``, and editing it costs no schema regeneration (c3-9, AC 20/22).
+        body can read that payload, but must not assume the two validate identically. The
+        separate payload class is deliberate, so that a later deck-agnostic signal can diverge in
+        validation without touching this endpoint's contract. This precision lives down here
+        because the paragraphs above ``Args:`` ship into ``components.schemas``, and editing it
+        costs no schema regeneration.
     """
     slot = _slot(request)
     slot.set(body.deck_id)
@@ -180,13 +168,13 @@ async def set_active_deck(
     # read from the slot rather than from `body` (echo-what-was-stored), but a *single* read: the
     # broadcast below awaits, and a second `PUT` landing during that await can rewrite the slot
     # before a later read would see it. Reading the slot again after the broadcast would let this
-    # request's own response disagree with both what it stored and what it just broadcast (review
-    # finding, 2026-08-08). `broadcast_active_deck_changed` never raises (AC 18) — a client that
-    # cannot be written to is that client's problem, and this mutation already succeeded.
+    # request's own response disagree with both what it stored and what it just broadcast.
+    # `broadcast_active_deck_changed` never raises — a client that cannot be written to is that
+    # client's problem, and this mutation already succeeded.
     deck_id = slot.deck_id
-    # The fan-out has always returned its delivered count; until c6-2 this route discarded it.
-    # Capturing it is the whole of the wire change — no second broadcast, no registry sample, and
-    # no new failure mode: the helper still cannot raise, so a count is always in hand.
+    # The fan-out returns its delivered count, and capturing it is the whole of the difference
+    # between the read's shape and the write's — no second broadcast, no registry sample, and no
+    # new failure mode: the helper cannot raise, so a count is always in hand.
     delivered = await broadcast_active_deck_changed(request.app, deck_id)
     # Answered from the captured value, not a fresh slot read: "echo back what was stored" stays
     # true even if a second `PUT` rewrites the slot while this one's broadcast is still in flight.

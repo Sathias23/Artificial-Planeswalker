@@ -57,14 +57,14 @@ class ConnectionFactory:
     left untouched. No module should call ``sqlite3.connect`` directly; obtaining connections
     here guarantees the ``sqlite-vec`` extension is always loaded and WAL is always on.
 
-    **Concurrency (AC3 / NFR6):** the search tools run their sync helpers on worker threads
+    **Concurrency (NFR6):** the search tools run their sync helpers on worker threads
     (``asyncio.to_thread``), and a ``sqlite3`` connection is not safe to share across threads.
     Each thread therefore receives its **own** connection, created lazily on first
     ``get_connection()`` call and cached in a ``threading.local`` store. The stdlib default
     ``check_same_thread=True`` guard is kept (never set it to ``False`` to "share" a connection —
     that risks corruption).
 
-    **apsw seam (AC4):** a future environment whose driver lacks ``enable_load_extension`` can
+    **apsw seam:** a future environment whose driver lacks ``enable_load_extension`` can
     select ``driver="apsw"``. apsw is a Phase-1 *contingency only* — it is **not** implemented,
     so selecting it raises ``NotImplementedError`` with guidance. The default and only supported
     driver is stdlib ``sqlite3``. (An ``ApswConnectionFactory`` adapter would slot in here.)

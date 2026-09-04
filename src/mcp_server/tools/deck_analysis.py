@@ -1,4 +1,4 @@
-"""Structured deck-analysis logic for the Epic-1 analysis tools (Story 1.6).
+"""Structured deck-analysis logic for the analysis tools.
 
 Wraps the existing ``src/logic`` curve/synergy/validator over a full deck loaded
 via ``DeckRepository.get_deck_with_cards`` (eager full ``Card`` rows — analysis

@@ -27,15 +27,12 @@ drift from ``src/mcp_server/server.py``. Readiness is likewise
 :func:`src.data.database.is_database_initialized`, the same function every MCP tool uses: a second
 definition here would let the two shells disagree about the same file (AD-1). The verdict is
 re-probed on every request and never cached — that is what lets a database created while the backend
-runs be picked up with no restart, at a cost of a few tiny SELECTs against local SQLite (noted for
-c10-3, which owns latency hardening).
+runs be picked up with no restart, at a cost of a few tiny SELECTs against local SQLite.
 
-**Why there is no ``mode=ro``.** PRD NFR-02 names it; AD-2 deliberately overrides it. ``mode=ro``
-drags in the WAL ``-shm`` Windows landmine and ``immutable`` would foreclose FR-16. Read-only is
-enforced structurally instead, by ``tests/unit/companion/test_import_boundary.py`` — nothing under
-``src/companion`` can reach a write path. **The PRD amendment was made by story 15.3 on
-2026-08-18** — NFR-02 now names this test as the enforcement and no longer names ``mode=ro``, and
-``tests/unit/companion/test_prd_reconciliation.py`` bans the spelling from returning.
+**Why there is no ``mode=ro``.** ``mode=ro`` drags in the WAL ``-shm`` Windows landmine and
+``immutable`` would foreclose FR-16 (AD-2). Read-only is enforced structurally instead, by
+``tests/unit/companion/test_import_boundary.py`` — nothing under ``src/companion`` can reach a write
+path — and PRD NFR-02 names that test as the enforcement.
 
 The exception→token mapping lives next door in :mod:`src.companion.app.errors`
 (:func:`~src.companion.app.errors.install_error_handling`), not here: that module is already the one
@@ -71,7 +68,7 @@ a database *name*, and an existence check on it would refuse a perfectly valid U
 def database_file(url: str) -> Path | None:
     """Return the SQLite file *url* addresses, or ``None`` when it addresses no file.
 
-    Pure and total, so AC 3's matrix is testable without an engine. ``None`` means **skip the
+    Pure and total, so the URL matrix is testable without an engine. ``None`` means **skip the
     existence check and create the engine**; it never means "not initialized".
 
     Args:
@@ -108,8 +105,8 @@ class Database:
     A note on what the lock currently buys, so a later reader does not mistake defence for
     necessity: :meth:`_create` is **fully synchronous**, so on single-threaded asyncio the
     check-then-assign in :meth:`session_factory` cannot actually be interleaved today, and a
-    ``gather`` of concurrent first requests creates one engine with or without the lock (measured —
-    see the story's Debug Log). The lock is kept because it is free and because the *next* await
+    ``gather`` of concurrent first requests creates one engine with or without the lock (measured).
+    The lock is kept because it is free and because the *next* await
     added to the creation path — an async pre-check, a migration probe — would otherwise reintroduce
     silent double-creation, whose symptom is an orphaned second connection pool that nothing
     disposes. ``test_deps.py`` pins the two properties that do have teeth: the lock is per-instance,
@@ -170,7 +167,7 @@ class Database:
             CompanionError: ``database_not_initialized`` when the resolved SQLite file is absent.
         """
         # Resolved here and never at import, module or construction time: database_url() reaches
-        # data_dir(), which mkdirs (Gotcha 2). First-request time is acceptable; earlier is not.
+        # data_dir(), which mkdirs. First-request time is acceptable; earlier is not.
         url = database_url()
         path = database_file(url)
         if path is not None and not path.exists():
@@ -241,10 +238,10 @@ def database(app: FastAPI) -> Database | None:
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     """Yield a session for one request, refusing early if the database is not ready.
 
-    Raising here is correct and is the opposite of c1-5's send-don't-raise ruling: a dependency is
-    solved inside the router, which is *inside* Starlette's ``ExceptionMiddleware``, so a
-    :class:`~src.companion.app.errors.CompanionError` raised from here does reach its handler and
-    does answer with its own token (verified). c1-5's middleware sits on the other side of that
+    Raising here is correct, and the opposite of the send-don't-raise rule middleware follows: a
+    dependency is solved inside the router, which is *inside* Starlette's ``ExceptionMiddleware``,
+    so a :class:`~src.companion.app.errors.CompanionError` raised from here does reach its handler
+    and does answer with its own token (verified). Middleware sits on the other side of that
     boundary — the difference is position in the stack, not the exception.
 
     Readiness is re-probed on **every** request and never cached. That is deliberate: a database
@@ -287,24 +284,21 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 """The annotation every data-backed handler writes, and the only one it should.
 
-Stories c3-1 (``GET /api/decks``, ``GET /api/deck/{deck_id}``), c3-2
-(``GET /api/cards/{card_id}``), c3-3 (``GET /api/deck/{deck_id}/format-check``) and c3-5
-(``GET /api/card-image/{scryfall_id}``) annotate a parameter with this and inherit the whole
-contract: the lazy engine, the readiness probe, the ``503`` tokens and the shared recipe. None of
-them re-derives any of it. **All four are shipped and did exactly that** — none constructs an
-engine, calls ``is_database_initialized``, reads ``request.app.state`` or writes a
-``try/except DatabaseError``, and each proves the two ``503`` answers through its real routes.
+``GET /api/decks``, ``GET /api/deck/{deck_id}``, ``GET /api/deck/{deck_id}/format-check``,
+``GET /api/cards/{card_id}`` and ``GET /api/card-image/{scryfall_id}`` annotate a parameter with
+this and inherit the whole contract: the lazy engine, the readiness probe, the ``503`` tokens and
+the shared recipe. None of them re-derives any of it — none constructs an engine, calls
+``is_database_initialized``, reads ``request.app.state`` or writes a ``try/except DatabaseError``.
 
-c3-5 is the first consumer that goes on to do something the database knows nothing about: it reads
-one row, then fetches a URL from that row over the internet. **The previous version of this
-paragraph said it did so "after the session closes", and that is measurably wrong** (c3-6 Task 0,
-2026-08-01). FastAPI runs a ``yield``-dependency's teardown *after* the endpoint returns, so the
-session — and its checked-out connection — is held for the **whole** handler body, the outbound
-fetch included. Measured directly: the pool reports ``checkedout() == 1`` while ``fetch_image`` is
-awaited, and ``0`` once the response is out.
+The image route goes on to do something the database knows nothing about: it reads one row, then
+fetches a URL from that row over the internet — **while the session is still open**. FastAPI runs a
+``yield``-dependency's teardown *after* the endpoint returns, so the session — and its checked-out
+connection — is held for the **whole** handler body, the outbound fetch included. Measured
+directly: the pool reports ``checkedout() == 1`` while ``fetch_image`` is awaited, and ``0`` once
+the response is out.
 
-That is load-bearing rather than trivia, because c3-6 put a **queue** in front of that fetch, so a
-request can now hold a connection while waiting its turn. The pool is SQLAlchemy's default —
+That is load-bearing rather than trivia, because a pacing **queue** sits in front of that fetch, so
+a request can hold a connection while waiting its turn. The pool is SQLAlchemy's default —
 ``AsyncAdaptedQueuePool``, size 5 + overflow 10 = **15 connections**, ``pool_timeout`` **30 s**
 (all four read off the live pool object). Under the shipped pacing a 99-tile burst drains in
 ~9.9 s, so at most 15 requests sit inside the route at once and the rest wait outside it: a second
@@ -312,26 +306,23 @@ queue in front of the first, inefficient and harmless. **It works by arithmetic,
 A pacer slower than roughly 0.3 s per tile would push a deck-sized burst past the pool timeout and
 raise ``sqlalchemy.exc.TimeoutError``, which is **not** a ``DatabaseError`` and would therefore
 surface as ``500 internal_error`` rather than ``503``. Pinned by
-``test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool`` and ledgered on **c4-1**,
-which already carries this route's whole-row-read entry; releasing the session before fetching is
-the clean answer and belongs beside that story's hydration cache, not here (Q6, Brad 2026-08-01).
+``test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool``; releasing the session
+before fetching is the clean answer and belongs beside a hydration cache, not here.
 
 The outbound client and the pacer are *separate* app-state resources (``images.image_client``,
 ``images.image_pacer``), created by the same lifespan and deliberately not routed through here:
 this module owns the engine, not every effectful thing a route might need.
 
-**c3-4 deliberately does not join that list, and its absence is a ruling rather than an oversight.**
-``GET``/``PUT /api/active-deck`` take no session at all — they are the first routes since
-``/health`` with no database dependency — because AD-16 rules that deck-existence validation for
-``companion_set_active_deck`` belongs to the **MCP tool**: it has database access and it is the one
-that must report ``deck_not_found`` to the agent, so the backend stores what it is given. The
-consequence to expect when reading that module: neither operation can answer ``503``, and an active
-deck id that resolves to nothing is a legitimate state.
+**``GET``/``PUT /api/active-deck`` deliberately take no session at all**, because AD-16 rules that
+deck-existence validation for ``companion_set_active_deck`` belongs to the **MCP tool**: it has
+database access and it is the one that must report ``deck_not_found`` to the agent, so the backend
+stores what it is given. The consequence to expect when reading that module: neither operation can
+answer ``503``, and an active deck id that resolves to nothing is a legitimate state.
 
 Mind the two spellings, which are not a typo: the deck detail route is **singular**
 ``/api/deck/{deck_id}`` and the card route is **plural** ``/api/cards/{card_id}``. Each matches
-the PRD, the spine, the epic split — and c3-3's format check hangs off the singular one as
-``/api/deck/{deck_id}/format-check``, so the deck spelling now has two routes behind it.
+the PRD and the spine, and the format check hangs off the singular one as
+``/api/deck/{deck_id}/format-check``, so the deck spelling has two routes behind it.
 
 Example:
     >>> from typing import get_args

@@ -1,6 +1,6 @@
-"""FR16/FR18 dimension vector, Commander Bracket floor & cEDH candidacy (Story 5.7).
+"""FR16/FR18 dimension vector, Commander Bracket floor & cEDH candidacy.
 
-The seam where raw signals become scores: this module consumes the 5.3-5.6 signal
+The seam where raw signals become scores: this module consumes the signal
 emitters (:mod:`classifiers`, :mod:`mana_base`, :mod:`consistency`, :mod:`combos`) plus
 the :class:`~src.logic.assessment.profiles.FormatProfile` and produces the fixed
 7-dimension integer vector (FR16, AD-7), the WotC Bracket decision-tree floor (FR18),
@@ -8,27 +8,27 @@ and the cEDH candidacy flag — candidacy only, never an asserted Bracket 5. Eve
 a pure function over already-loaded schemas — no network, DB, clock, randomness, or
 logging (AD-2); identical input always yields identical output (AD-8 spirit).
 
-Decide-once policies (each documented at its code site):
+Policies (each documented at its code site):
 
 - **Rounding:** every dimension passes through :func:`_to_score` — clamp to
   ``[0.0, 100.0]`` then round half-up via ``int(x + 0.5)`` (never ``round()``, whose
   banker's rounding at ``.5`` is a reviewer surprise).
 - **Baseline floor 2, cap 4:** Brackets 1 and 5 are intent-declared, so the computed
   floor range is ``{2, 3, 4}`` (see :data:`BASELINE_BRACKET_FLOOR`).
-- **Chain refinement:** the extra-turn refinement 5.3 deferred here — a quantity-aware
+- **Chain refinement:** the extra-turn refinement the classifier leaves here — a quantity-aware
   count of :data:`~src.logic.assessment.classifiers.EXTRA_TURN` cards at or above
   :data:`EXTRA_TURN_CHAIN_MIN` is chain-capable; a single extra-turn card never raises
   the floor (WotC's "low quantities, not chained" language).
 - **Included-only floor raises:** only ``bucket == "included"`` combo records ever raise
   the floor — an ``almost_included`` combo is not in the deck, and a ``bucket=None``
   record (never matched) contributes nothing anywhere, treated explicitly rather than
-  falling through an ``if/elif`` (the 5.6 defense-in-depth lesson).
+  falling through an ``if/elif`` (defense in depth).
 - **Tutors never feed the floor:** WotC removed tutor restrictions from Brackets in
   Oct 2025 (docs/deck-assess.md:119; the ``classifiers.TUTOR`` docstring warning) —
   tutor counts inform cEDH candidacy and the soft dimensions only.
-- **Sideboard rows are NOT filtered** (standing 5.3-5.6 policy): deck-composition
-  belongs to the caller; Epic 7 passes mainboard-only rows.
-- **One ``classify_deck`` per entry point** (the logged 5.3 deferred-work item): each
+- **Sideboard rows are NOT filtered** (standing core policy): deck-composition
+  belongs to the caller; the edge passes mainboard-only rows.
+- **One ``classify_deck`` per entry point:** each
   public function classifies the deck exactly once and feeds every gate from those locals
   — never ``detect_mass_land_denial`` + ``detect_extra_turn_cards`` back-to-back, and
   opener/land-access probabilities are computed from the locals via
@@ -40,8 +40,8 @@ Decide-once policies (each documented at its code site):
   the deck may be scanned more than once per public call — cheap and correctness-neutral;
   not worth threading pre-computed arguments through their signatures.
 
-All mapping curves and gate constants are PROVISIONAL v1 values — Story 5.9 hand-tunes
-them against the calibration benchmark (NFR8). Tests verify shape, clamps, and monotone
+All mapping curves and gate constants are PROVISIONAL v1 values, hand-tuned
+against the calibration benchmark (NFR8). Tests verify shape, clamps, and monotone
 directions, never exact curve outputs.
 """
 
@@ -89,15 +89,15 @@ from src.logic.assessment.mana_base import (
 from src.logic.assessment.profiles import FormatProfile
 
 # ---------------------------------------------------------------------------
-# Bracket-floor gate constants (AC4/AC5) — PROVISIONAL v1, Story 5.9 owns tuning
+# Bracket-floor gate constants — PROVISIONAL v1
 # ---------------------------------------------------------------------------
 
-#: The computed floor's baseline (decide-once): Bracket 1 (Exhibition) is intent-declared
+#: The computed floor's baseline: Bracket 1 (Exhibition) is intent-declared
 #: exactly like Bracket 5 — card data cannot distinguish a deliberate theme build from a
 #: core deck, and WotC's own guidance is "bracket up when in doubt" — so the computed
 #: floor never claims B1 (effective range ``{2, 3, 4}``). FR18's "1-5" is the scale
-#: domain, not an emission requirement. This also anchors the 5.1 benchmark (precons
-#: expected ~B2; 5.9 tolerance ``[expected, expected+1]``).
+#: domain, not an emission requirement. This also anchors the calibration benchmark (precons
+#: expected ~B2; tolerance ``[expected, expected+1]``).
 BASELINE_BRACKET_FLOOR: Final = 2
 
 #: The computed floor's cap: Bracket 5 is never asserted — :attr:`BracketFloorSignal.cedh_candidate`
@@ -110,7 +110,7 @@ GC_BRACKET_THREE_MIN: Final = 1
 #: Game Changer gate (addendum §C): ``>= 4`` confirmed Game Changers floor at Bracket 4.
 GC_BRACKET_FOUR_MIN: Final = 4
 
-#: Extra-turn chain threshold (the 5.3-deferred chain refinement, provisional): a deck
+#: Extra-turn chain threshold (the chain refinement, provisional): a deck
 #: with this many extra-turn effects (quantity-aware) is chain-capable -> floor 4. A
 #: single Time Warp is a B2/B3-legal quantity per WotC's "low quantities, not chained".
 EXTRA_TURN_CHAIN_MIN: Final = 2
@@ -122,14 +122,14 @@ EARLY_COMBO_TURN_MAX: Final = 6
 #: cEDH candidacy leg (provisional): an included infinite combo deployable by this turn.
 CEDH_COMBO_TURN_MAX: Final = 4
 
-#: cEDH candidacy leg (5.9 benchmark-tuned): quantity-aware ``TUTOR`` count at or above
+#: cEDH candidacy leg (benchmark-tuned): quantity-aware ``TUTOR`` count at or above
 #: this. Tutors inform candidacy only — never the floor (see the module docstring).
-#: Tuned 4 -> 3 by the Story 5.9 benchmark: the classifier's FR6 tutor definition
+#: Tuned 4 -> 3 by the benchmark: the classifier's FR6 tutor definition
 #: (search to hand/top of library) deliberately excludes battlefield tutors (Green Sun's
 #: Zenith class) and library-exile effects (Demonic Consultation class), so real cEDH
 #: lists undercount — the committed Kinnan list carries exactly 3 tagged tutors (Gamble,
 #: Mystical Tutor, Worldly Tutor) and failed candidacy on this leg alone at 4. A shared
-#: tuning constant: this change bumped BOTH format_profile_versions (v3 -> v4, AC9).
+#: tuning constant: changing it bumps BOTH format_profile_versions (AD-3 bump rule).
 CEDH_TUTOR_MIN: Final = 3
 
 #: cEDH candidacy leg (provisional): average mana value at or below this (dense fast
@@ -137,9 +137,9 @@ CEDH_TUTOR_MIN: Final = 3
 CEDH_AVG_MV_MAX: Final = 2.5
 
 # ---------------------------------------------------------------------------
-# Dimension-curve constants — PROVISIONAL v1 (5.9 owns the numbers). Per-format
-# parameters are Final dicts keyed by KarstenFormula (the 5.4 _FORMULA_ANCHORS /
-# 5.5 STRUCTURAL_GAP_BASELINES precedent) rather than new profile fields (AC6).
+# Dimension-curve constants — PROVISIONAL v1. Per-format
+# parameters are Final dicts keyed by KarstenFormula (the _FORMULA_ANCHORS /
+# STRUCTURAL_GAP_BASELINES precedent) rather than new profile fields.
 # ---------------------------------------------------------------------------
 
 #: ``speed``: avgMV pivot — each point of average mana value above/below this shifts the
@@ -164,7 +164,7 @@ _CONSISTENCY_LAND_WEIGHT: Final = 0.15
 #: ``consistency``: the land-access blend term reads P(made every land drop) by this turn.
 _CONSISTENCY_LAND_ACCESS_TURN: Final = 4
 #: Tutor bonuses are additive-only (never part of a ratio) so "adding a tutor never
-#: lowers the score" — a 5.9 monotonicity property — holds by construction; capped so
+#: lowers the score" — a tested monotonicity property — holds by construction; capped so
 #: tutel density cannot dominate a curve.
 _TUTOR_BONUS_COUNT_CAP: Final = 6
 _TUTOR_CONSISTENCY_BONUS: Final = 2.0
@@ -188,7 +188,7 @@ _INTERACTION_TARGETS: Final[dict[KarstenFormula, int]] = {"commander": 10, "sixt
 #: ``interaction`` sub-targets: instant-speed and cheap (cmc <= 2) interaction counts
 #: that max their terms — counts, deliberately NOT the recommended ratio blend: a ratio
 #: term lets one sorcery-speed (or expensive) addition dilute the share faster than the
-#: count term compensates, inverting the AC8 "swapping filler for interaction never
+#: count term compensates, inverting the "swapping filler for interaction never
 #: lowers interaction" direction; count-based sub-terms are monotone under any
 #: interaction swap by construction.
 _INSTANT_INTERACTION_TARGETS: Final[dict[KarstenFormula, int]] = {"commander": 5, "sixty_card": 4}
@@ -201,7 +201,7 @@ _INTERACTION_INSTANT_WEIGHT: Final = 20.0
 _INTERACTION_CHEAP_WEIGHT: Final = 10.0
 
 #: ``mana_efficiency`` penalties: points per land beyond the Karsten tolerance band and
-#: points per missing colored source (the 5.4 pip deficit).
+#: points per missing colored source (the ``mana_base`` pip deficit).
 _LAND_DELTA_PENALTY: Final = 6.0
 _PIP_DEFICIT_PENALTY: Final = 3.0
 
@@ -224,7 +224,7 @@ _COMBO_EARLINESS_PER_TURN: Final = 2.0
 
 
 # ---------------------------------------------------------------------------
-# Shared rounding policy (AC2)
+# Shared rounding policy
 # ---------------------------------------------------------------------------
 
 
@@ -240,7 +240,7 @@ def _to_score(value: float) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Game Changer signal (AC3) — the AD-4 read side
+# Game Changer signal — the AD-4 read side
 # ---------------------------------------------------------------------------
 
 
@@ -256,7 +256,7 @@ class GameChangerSignal:
     Attributes:
         known_count: Quantity-aware count of cards whose ``game_changer is True``.
         card_names: Unique contributing (True-only) names, sorted ascending bytewise —
-            Epic 7's ``flags.game_changers`` explainability payload.
+            the edge's ``flags.game_changers`` explainability payload.
         unknown_count: Quantity-aware count of cards whose ``game_changer is None``.
     """
 
@@ -266,10 +266,10 @@ class GameChangerSignal:
 
 
 def game_changer_signal(deck_cards: Sequence[DeckCard]) -> GameChangerSignal:
-    """Count confirmed and unknown Game Changers across a deck (AC3).
+    """Count confirmed and unknown Game Changers across a deck.
 
     Identity checks (``is True`` / ``is None``) keep the three states distinct — no bool
-    coercion anywhere. Sideboard rows are NOT filtered (standing 5.3-5.6 policy); an
+    coercion anywhere. Sideboard rows are NOT filtered (standing core policy); an
     empty deck yields a zeroed signal, never raises.
 
     Args:
@@ -293,7 +293,7 @@ def game_changer_signal(deck_cards: Sequence[DeckCard]) -> GameChangerSignal:
 
 
 # ---------------------------------------------------------------------------
-# Bracket floor + cEDH candidacy (AC4/AC5)
+# Bracket floor + cEDH candidacy
 # ---------------------------------------------------------------------------
 
 
@@ -304,7 +304,7 @@ class BracketFloorSignal:
     Attributes:
         floor: The computed Bracket floor, always in ``{2, 3, 4}`` (baseline 2, cap 4 —
             Brackets 1 and 5 are intent-declared, never computed).
-        game_changers: The AC3 Game Changer read that fed the GC gate.
+        game_changers: The Game Changer read that fed the GC gate.
         mass_land_denial: Whether any ``MASS_LAND_DENIAL``-tagged card is present.
         mass_land_denial_names: Unique tagged card names, sorted ascending bytewise.
         extra_turn_chain: Whether the quantity-aware ``EXTRA_TURN`` count reaches
@@ -315,7 +315,7 @@ class BracketFloorSignal:
             deployable by :data:`EARLY_COMBO_TURN_MAX`.
         early_two_card_infinite_ids: The driving ``spellbook_id``s, sorted ascending
             bytewise.
-        cedh_candidate: The AC5 candidacy flag — the ONLY Bracket-5 surface; candidacy,
+        cedh_candidate: The candidacy flag — the ONLY Bracket-5 surface; candidacy,
             never an assertion.
     """
 
@@ -333,7 +333,7 @@ class BracketFloorSignal:
 def bracket_floor(
     deck_cards: Sequence[DeckCard], *, matched_combos: Sequence[ComboRecord]
 ) -> BracketFloorSignal:
-    """Walk the WotC Bracket decision tree to a floor — deterministic, capped at 4 (AC4).
+    """Walk the WotC Bracket decision tree to a floor — deterministic, capped at 4.
 
     The floor is the ``max()`` of the gate contributions, clamped to
     :data:`BRACKET_FLOOR_MAX`:
@@ -351,7 +351,7 @@ def bracket_floor(
       never raise the floor — you cannot trigger a Bracket rule with a card you don't
       play.
 
-    cEDH candidacy (AC5) is folded into the signal — see the field docs. Tutors and the
+    cEDH candidacy is folded into the signal — see the field docs. Tutors and the
     average mana value are read for candidacy only, never the floor. Sideboard rows are
     NOT filtered; an empty deck with no combos yields floor 2 with all flags False.
 
@@ -364,7 +364,7 @@ def bracket_floor(
     Returns:
         The frozen :class:`BracketFloorSignal`; identical input yields identical output.
     """
-    counts = classify_deck(deck_cards)  # the ONE classify_deck call (5.3 deferred item)
+    counts = classify_deck(deck_cards)  # the ONE classify_deck call
     curve = compute_curve(deck_cards)  # the ONE compute_curve call (cEDH avgMV leg)
     game_changers = game_changer_signal(deck_cards)
 
@@ -388,7 +388,7 @@ def bracket_floor(
     fast_infinite = False
     for record in matched_combos:
         if record.bucket != "included":
-            # almost_included / bucket=None: explicitly no floor contribution (AC4).
+            # almost_included / bucket=None: explicitly no floor contribution.
             continue
         floor = max(floor, BRACKET_TAG_TO_BRACKET[record.bracket_tag])
         kind = combo_type(record)
@@ -405,7 +405,7 @@ def bracket_floor(
 
     floor = min(floor, BRACKET_FLOOR_MAX)
 
-    # AC5 candidacy (provisional v1 rule; 5.9 may retune or relax to a k-of-n vote):
+    # cEDH candidacy (provisional v1 rule; tuning may relax it to a k-of-n vote):
     # dense fast mana + tutors + compact early combo (docs/deck-assess.md:186). The
     # tutor count and average mana value inform THIS flag only, never the floor.
     cedh_candidate = (
@@ -429,7 +429,7 @@ def bracket_floor(
 
 
 # ---------------------------------------------------------------------------
-# The 7-dimension vector (AC2)
+# The 7-dimension vector
 # ---------------------------------------------------------------------------
 
 
@@ -473,22 +473,22 @@ def _speed_score(
     earliest_infinite_turn: int | None,
     win_turn_band: tuple[int, int],
 ) -> int:
-    """Map an estimated win turn inversely onto the profile band (PROVISIONAL, 5.9-owned).
+    """Map an estimated win turn inversely onto the profile band (PROVISIONAL).
 
     ``estimate = mid(band) + (avgMV - pivot) - min(cap, ramp / per_turn)``, shortcut to
     ``earliest included infinite combo turn + 1`` when one exists, then linearly mapped
     ``[band hi + 2 -> 0, band lo - 2 -> 100]``. A deck with no spells cannot win at all
     -> 0 (degrade-not-raise; also keeps the empty-deck vector all-zero). Monotone under
-    the AC8 SWAP directions (deck size held constant): swapping filler for a CHEAP
+    the tested SWAP directions (deck size held constant): swapping filler for a CHEAP
     (cmc <= 2) ramp spell, lowering avgMV, or an earlier included combo never lowers the
     score. (Adding an EXPENSIVE ramp spell raises avgMV and can net-lower it — the
-    literal "adding X" monotonicity properties are Story 5.9's, asserted on calibrated
+    literal "adding X" monotonicity properties are asserted on calibrated
     curves.)
     """
     if curve.spell_count == 0:
         return 0
     band_lo, band_hi = win_turn_band
-    # 5.9 guard (the 5.6 lesson: malformed input must not masquerade as signal): an
+    # Guard (malformed input must not masquerade as signal): an
     # inverted band would flip the linear map's sign and quietly score fast decks slow.
     if band_lo > band_hi:
         raise ValueError(f"malformed win_turn_band: lo {band_lo} > hi {band_hi}")
@@ -531,7 +531,7 @@ def _resilience_score(
     """Blend win-route redundancy, instant-speed share, and draw density (PROVISIONAL).
 
     This is the documented resilience PROXY — see :func:`dimension_vector`'s docstring.
-    The draw baseline is 5.5's ``STRUCTURAL_GAP_BASELINES`` value (imported, not
+    The draw baseline is the ``STRUCTURAL_GAP_BASELINES`` value (imported, not
     restated).
     """
     draw_baseline = STRUCTURAL_GAP_BASELINES[formula][CARD_DRAW]
@@ -544,11 +544,11 @@ def _resilience_score(
 
 
 def _interaction_score(interaction: InteractionSignals, formula: KarstenFormula) -> int:
-    """Map interaction density and quality onto 0-100 (PROVISIONAL, 5.9-owned).
+    """Map interaction density and quality onto 0-100 (PROVISIONAL).
 
     Count-based sub-terms (total / instant-speed / cheap counts against per-formula
     targets) — see the deviation note on :data:`_INSTANT_INTERACTION_TARGETS`: the
-    recommended ratio blend inverts under the AC8 swap direction; counts are monotone
+    recommended ratio blend inverts under the tested swap direction; counts are monotone
     under any interaction swap by construction. Zero interaction -> 0.
     """
     if interaction.count == 0:
@@ -569,7 +569,7 @@ def _interaction_score(interaction: InteractionSignals, formula: KarstenFormula)
 def _mana_efficiency_score(land_delta: float, total_pip_deficit: int) -> int:
     """Start at 100, subtract Karsten-delta and pip-deficit penalties (PROVISIONAL).
 
-    Reuses 5.4's :data:`~src.logic.assessment.mana_base.KARSTEN_TOLERANCE_LANDS` band —
+    Reuses the :data:`~src.logic.assessment.mana_base.KARSTEN_TOLERANCE_LANDS` band —
     a deck inside the tolerance with no color deficits scores 100.
     """
     penalty = _LAND_DELTA_PENALTY * max(0.0, abs(land_delta) - KARSTEN_TOLERANCE_LANDS)
@@ -581,8 +581,8 @@ def _card_advantage_score(draw_count: int, tutor_count: int, formula: KarstenFor
     """Draw density against the per-formula target plus the additive tutor bonus.
 
     Structural cap: the count term maxes at 80 and the tutor bonus at 18, so the
-    dimension tops out at 98, never 100 — kept deliberately after the 5.9 calibration
-    pass (the 5.8-deferred disposition): the 2-point headroom is invisible under the
+    dimension tops out at 98, never 100 — kept deliberately after the calibration
+    pass: the 2-point headroom is invisible under the
     aggregate weights and benchmark cuts, and re-normalizing the two terms to sum to
     100 would change every deck's score for zero benchmark benefit.
     """
@@ -594,7 +594,7 @@ def _card_advantage_score(draw_count: int, tutor_count: int, formula: KarstenFor
 def _combo_potential_score(
     matched_combos: Sequence[ComboRecord], deck_cards: Sequence[DeckCard]
 ) -> int:
-    """Sum per-record credit + earliness bonuses, clamp at 100 (PROVISIONAL, 5.9-owned).
+    """Sum per-record credit + earliness bonuses, clamp at 100 (PROVISIONAL).
 
     Credit by derived type (:data:`_COMBO_TYPE_CREDIT`); ``almost_included`` earns half
     its included credit (partial credit — the floor never sees it); ``bucket=None``
@@ -627,29 +627,28 @@ def dimension_vector(
     matched_combos: Sequence[ComboRecord],
     profile: FormatProfile,
 ) -> DimensionVector:
-    """Produce the FR16 7-dimension vector for a deck under a format profile (AC2).
+    """Produce the FR16 7-dimension vector for a deck under a format profile.
 
     Works identically under both profiles — the only format fork is the
     ``profile.karsten_formula`` selector (no ``rubric`` branch) feeding the Karsten
     formula, structural baselines, and per-formula curve targets. Shared signals are
     gathered once per call (one :func:`~src.logic.assessment.classifiers.classify_deck`
-    and one direct :func:`~src.logic.assessment.mana_base.compute_curve` — the 5.3
-    deferred-work rule; ``karsten_land_delta`` below re-derives the curve internally, a
+    and one direct :func:`~src.logic.assessment.mana_base.compute_curve`;
+    ``karsten_land_delta`` below re-derives the curve internally, a
     cheap correctness-neutral second scan) and every dimension helper reads those locals.
     Every dimension is clamped and rounded through the one shared policy
     (:func:`_to_score`).
 
     **Resilience is a documented proxy.** No protection/recursion classifier category
-    exists (adding one is an AD-10 vocabulary change owned by Story 5.9's tuning pass),
+    exists (adding one is an AD-10 vocabulary change),
     so v1 resilience blends win-route redundancy (how many of the three ``WINCON_*``
     categories are non-zero), draw-engine access (rebuilding after a wipe), and the
     instant-speed interaction share (holding up answers). It does NOT measure hexproof,
     counterspell protection, or recursion loops.
 
     An empty deck yields a full (all-zero) vector — degrade, never raise. Sideboard rows
-    are NOT filtered (standing 5.3-5.6 policy). All mapping curves are PROVISIONAL v1
-    models (5.9 owns the numbers); tests verify shape, clamps, and the AC8 monotone
-    directions only.
+    are NOT filtered (standing core policy). All mapping curves are PROVISIONAL v1
+    models; tests verify shape, clamps, and the monotone directions only.
 
     Args:
         deck_cards: The deck's card associations (quantity-aware).
@@ -661,7 +660,7 @@ def dimension_vector(
         The frozen :class:`DimensionVector`; identical input yields identical output.
     """
     formula = profile.karsten_formula
-    counts = classify_deck(deck_cards)  # the ONE classify_deck call (5.3 deferred item)
+    counts = classify_deck(deck_cards)  # the ONE classify_deck call
     curve = compute_curve(deck_cards)  # the one direct compute_curve (karsten re-curves internally)
     karsten = karsten_land_delta(deck_cards, formula=formula)
     pip_signals = compute_pip_signals(deck_cards, formula=formula)
