@@ -2,7 +2,7 @@
 title: 'Indexed name lookup, single-transaction import, off-loop search tools'
 type: 'refactor'
 created: '2026-09-04'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'edfaba13efaaa8fef6b455e3acec5ad9852b1196'
 review_loop_iteration: 0
 context: ['_bmad-output/specs/spec-quality-audit-p1/SPEC.md', '_bmad-output/specs/spec-quality-audit-p1/batches.md']
