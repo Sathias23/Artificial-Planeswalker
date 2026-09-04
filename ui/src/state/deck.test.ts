@@ -47,6 +47,12 @@ const summary = (name: string, typeLine: string): CardSummary => ({
   colors: [],
   rarity: 'rare',
   set_code: 'tst',
+  set_name: 'Test Set',
+  collector_number: '1',
+  oracle_id: 'oracle-1',
+  color_identity: [],
+  legalities: {},
+  games: [],
 })
 
 const row = (name: string, typeLine: string): DeckCardSummary => ({
@@ -437,7 +443,7 @@ describe('the boot is total even against inputs the wire cannot produce (review 
 })
 
 describe('the deck payload seeds the card cache, for ZERO requests (AC 17)', () => {
-  it('populates the summary tier and issues no request of its own', async () => {
+  it('populates the HYDRATED tier and issues no request of its own', async () => {
     // The count is taken on `globalThis.fetch` — the real network path — because "costs zero
     // requests" is a claim about the network and not about an injected function.
     const fetchMock = vi.fn<typeof fetch>(() =>
@@ -449,10 +455,10 @@ describe('the deck payload seeds the card cache, for ZERO requests (AC 17)', () 
     await boot({ kind: 'active-deck', deckId: ATRAXA_DECK_ID }, { kind: 'deck', deck: payload })
 
     expect(useCardStore.getState().cards['id-Llanowar Elves']).toEqual({
-      status: 'summary',
-      summary: payload.cards[0].card,
+      status: 'hydrated',
+      card: payload.cards[0].card,
     })
-    expect(useCardStore.getState().cards['id-Forest']?.status).toBe('summary')
+    expect(useCardStore.getState().cards['id-Forest']?.status).toBe('hydrated')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -1171,10 +1177,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
 
   // TYPED TABLE, not an inline literal: c4-1 lost a diagnosis to an untyped `it.each` widening a
   // discriminant to `string`, which fails `tsc -b` while `npm test` stays green.
-  const deferring: [string, DeckState][] = [
-    ['booting', INITIAL_DECK_STATE],
-    ['none', { status: 'none' }],
-  ]
+  const deferring: [string, DeckState][] = [['none', { status: 'none' }]]
 
   it.each(deferring)('defers to the system panel while %s (AC 7)', (_label, deck) => {
     expect(surfaceOf(deck, system('database-not-initialized'))).toEqual({
@@ -1187,6 +1190,26 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     })
   })
 
+  it('shows NOTHING while booting, whatever the poller has decided', () => {
+    // The whole point of the arm: `INITIAL_SYSTEM_STATE.panel` is `no-active-deck`, and painting
+    // it before the active-deck read settles draws the Welcome hero on the way to a deck view.
+    expect(surfaceOf(INITIAL_DECK_STATE, system('no-active-deck'))).toEqual({ kind: 'booting' })
+    expect(surfaceOf(INITIAL_DECK_STATE, system('database-not-initialized'))).toEqual({
+      kind: 'booting',
+    })
+  })
+
+  it('exits booting on EVERY settle path the boot has', () => {
+    const settled: DeckState[] = [
+      { status: 'none' },
+      loaded,
+      { status: 'refused', reason: null, panel: 'internal-error' },
+    ]
+    for (const deck of settled) {
+      expect(surfaceOf(deck, system('no-active-deck')).kind).not.toBe('booting')
+    }
+  })
+
   it('is never both — every input produces exactly one surface', () => {
     const states: DeckState[] = [
       INITIAL_DECK_STATE,
@@ -1196,7 +1219,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
     ]
     for (const deck of states) {
       const surface = surfaceOf(deck, INITIAL_SYSTEM_STATE)
-      expect(['deck', 'panel']).toContain(surface.kind)
+      expect(['deck', 'panel', 'booting']).toContain(surface.kind)
     }
   })
 

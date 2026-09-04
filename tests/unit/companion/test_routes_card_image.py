@@ -29,6 +29,7 @@ from src.companion.app import images
 from src.companion.app.main import build_app
 from src.companion.app.routes import cards as cards_route
 from src.companion.app.spa import _IMMUTABLE_CACHE_CONTROL
+from src.data.database import create_engine
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
 from tests.unit.companion.conftest import (
@@ -390,6 +391,32 @@ class TestDatabaseStatesOutrankParameterValidation:
 
         assert response.status_code == 503
         assert response.json() == {"reason": "database_not_initialized"}
+
+    async def test_a_warm_tile_against_an_absent_database_still_answers_503(
+        self, image_shapes, lifespan_client, cdn, tmp_path, monkeypatch
+    ):
+        """The disk cache is consulted before the card row, but never before the session.
+
+        ``DbSession`` is a dependency, so it resolves before the handler body runs — a warm tile
+        cannot answer ``200`` from disk while the database is unusable. The cache lives under the
+        data directory, not beside the database file, so re-pointing ``CARDS_DATABASE_URL`` leaves
+        the warmed file exactly where the second app will look for it.
+        """
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            cold = await client.get(path)
+        assert cold.status_code == 200
+        assert len(cdn.requested) == 1
+
+        _point_at(monkeypatch, tmp_path / "missing.db")
+        async with lifespan_client(build_app()) as client:
+            warm = await client.get(path)
+
+        assert warm.status_code == 503
+        assert warm.json() == {"reason": "database_not_initialized"}
+        # The disk hit was never reached: no second CDN request, and no image bytes.
+        assert len(cdn.requested) == 1
 
     async def test_the_same_bogus_size_against_a_ready_database_answers_400(
         self, image_shapes, lifespan_client, cdn
@@ -1633,6 +1660,85 @@ class TestTheWarmAnswerMatchesTheColdOne:
             == warm.headers["x-content-type-options"]
             == "nosniff"
         )
+
+    async def test_a_warm_hit_consults_no_card_row(
+        self, image_shapes, lifespan_client, cdn, monkeypatch
+    ):
+        """THE DISK CACHE IS THE ROUTE'S FIRST AUTHORITY, asserted as an absence of a DB read.
+
+        A key only enters the cache through the write at the bottom of the handler, which is
+        reachable only after ``card_not_found``, ``no_image_data`` and the size lookup have all
+        passed — so every cached key was validated on the way in. Re-validating it on the way out
+        buys nothing and costs one row read per warm tile: 99 of them on the largest real deck,
+        on every open.
+
+        Spied on the repository rather than timed, because "it got faster" is not falsifiable and
+        "it did not read the row" is.
+        """
+        from src.data.repositories.card import CardRepository
+
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            cold = await client.get(path)
+
+            reads: list[str] = []
+            original = CardRepository.get_by_id
+
+            async def spy(self, card_id):
+                reads.append(card_id)
+                return await original(self, card_id)
+
+            monkeypatch.setattr(CardRepository, "get_by_id", spy)
+            warm = await client.get(path)
+
+        assert cold.status_code == warm.status_code == 200
+        assert cold.content == warm.content
+        # The spy was armed for the warm request only, and it saw nothing.
+        assert reads == []
+        # …and no CDN request either, which is what makes this a WARM hit rather than a second
+        # cold one that happened to skip the row.
+        assert len(cdn.requested) == 1
+
+    async def test_a_warm_tile_survives_its_card_row_being_deleted(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """The one behaviour the reordering trades away, ledgered as a test rather than as prose.
+
+        A card whose row is deleted while its tile is still cached answers ``200`` from disk
+        instead of ``404 card_not_found``. Accepted: the row is still consulted on every MISS, so
+        no new key can enter the cache unvalidated, and the alternative is a database read per
+        warm tile to catch a case that only a mid-session re-import produces.
+        """
+        from sqlalchemy import delete
+
+        from src.data.models.card import CardModel
+
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            cold = await client.get(path)
+            assert cold.status_code == 200
+
+            from src import paths
+
+            engine = create_engine(paths.database_url())
+            try:
+                async with engine.begin() as connection:
+                    await connection.execute(
+                        delete(CardModel).where(CardModel.id == SINGLE_FACE_ID)
+                    )
+            finally:
+                await engine.dispose()
+
+            warm = await client.get(path)
+            # Non-vacuity: the row really is gone, and the JSON route says so.
+            missing = await client.get(f"/api/cards/{SINGLE_FACE_ID}")
+
+        assert missing.status_code == 404
+        assert warm.status_code == 200
+        assert warm.content == cold.content
+        assert len(cdn.requested) == 1
 
     async def test_the_one_named_divergence_is_the_content_type_parameter(
         self, ready_db, lifespan_client, monkeypatch

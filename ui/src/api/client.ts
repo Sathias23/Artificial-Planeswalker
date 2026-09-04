@@ -29,8 +29,8 @@
  * **c4-2** adds the real deck bootstrap. It inherits a poll that already calls `GET /api/decks`,
  * and its job is to read the DECK rather than the deck NAMES: c3-9 renders the `no-active-deck`
  * panel for every `200`, because until c4-2 there is no deck view to show. It also inherits
- * {@link readCard}'s seeding partner — `seedCardSummaries` in `src/state/cards.ts` — which turns
- * the `DeckCardSummary[]` its own fetch already returns into the cache's summary tier for free.
+ * {@link readCard}'s seeding partner — `seedDeckCards` in `src/state/cards.ts` — which turns
+ * the `DeckCardSummary[]` its own fetch already returns into HYDRATED cache entries for free.
  *
  * ================= WHY THE DECK POLL IS SAFE TO RETRY, AND A CARD READ IS NOT ===========
  *
@@ -813,12 +813,12 @@ const mergedSignal = (
  * `cache: 'no-store'` on both, for two different reasons that happen to agree. For the deck poll
  * the whole point is to observe the backend CHANGE state underneath it: `deps.get_session`
  * re-probes readiness on every request and never caches (FR-22), and a client-side cache would be
- * the one place that promise could still be broken. For a card read the reason is
- * determinism: `GET /api/cards/{card_id}` sets **no** cache headers at all (ledgered, and
- * re-homed by c4-1 Q7 — see `deferred-work.md`), so a browser is free to apply heuristic freshness
- * to it and serve a row from before a database refresh. The app's own in-memory cache is the
- * caching layer here — one request per id per tab — so `no-store` costs nothing and removes the
- * only source of staleness that is not ours.
+ * the one place that promise could still be broken. For a card read the reason is determinism:
+ * `GET /api/cards/{card_id}` now sends `Cache-Control: private, max-age=3600`, which is right for
+ * the BROWSER (a reload, a second tab) and wrong for this reader, whose own in-memory cache
+ * already guarantees one request per id per tab. `no-store` keeps that guarantee honest — a read
+ * this module actually issues is a read it wanted fresh — and costs nothing, because the reads it
+ * skips are the ones it never makes.
  *
  * Args:
  *   path: The request path.

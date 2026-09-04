@@ -698,6 +698,7 @@ _REPO_READ_METHODS = frozenset(
         # DeckRepository
         "get_deck",
         "list_decks",
+        "list_deck_summaries",
         "find_deck_by_name",
         "get_deck_with_cards",
         # CardRepository

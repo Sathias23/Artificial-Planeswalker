@@ -12,12 +12,12 @@
  *
  * ================= WHY THE INITIAL PANEL IS `no-active-deck` ============================
  *
- * It is what shipped in c2-9 and it is still true before the first answer arrives: there is no
- * active deck, and an empty deck list renders nothing extra. The alternatives are worse in a way
- * a human would see — rendering no panel at all hands the shell's `left` slot back to its
- * placeholder line (the one naming c4-4 and c4-8), and picking a database state before asking the
- * backend would be a guess presented as a fact. On localhost the first answer lands in
- * milliseconds, so what this constant really governs is the first frame, not a state anyone reads.
+ * It is the honest value the moment the active-deck read answers `null`, and picking a database
+ * state before asking the backend would be a guess presented as a fact. What it is NOT is a first
+ * frame: `surfaceOf` masks this panel behind its `booting` arm until the active-deck read settles,
+ * so a cold open that is about to render a deck never paints the Welcome surface (or fetches its
+ * hero art) on the way there. This constant governs what the panel says once booting ends, not
+ * what the first commit draws.
  *
  * ================= WHY THE POLLER LIVES IN AN EFFECT AND NOT AT MODULE SCOPE ============
  *

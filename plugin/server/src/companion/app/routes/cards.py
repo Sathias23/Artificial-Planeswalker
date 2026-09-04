@@ -9,14 +9,14 @@ measurement that made it free: adding a route to an **existing** router owes not
 ``build_app()``'s ordering block and nothing to ``test_spa.py``'s differential router list — both
 verified unchanged.
 
-**They do not share a cache story, and this sentence used to say they did.** Until c3-7 that
-phrase described nothing on either side; c3-7 then gave the image route a disk cache and the card
-route still has none, which would have made it actively false. It is corrected rather than
-implemented, on a ruling (Q1's sub-question, Brad 2026-08-01): a card row's cache story is
-``ETag``/conditional requests over a database read, which shares nothing with a file on disk but
-the word — implementing it here would be a second mechanism smuggled in under a docstring's
-phrasing. ``GET /api/cards/{card_id}`` therefore still sets no cache headers, and that remains
-ledgered on **c4-1** beside the hydration cache it belongs with.
+**They do not share a cache story.** The image route caches bytes on disk and serves them with a
+year-long immutable lifetime; the card route caches nothing of its own and instead tells the
+browser it may hold a card row for an hour (``Cache-Control: private, max-age=3600`` on the ``200``
+and on nothing else). ``private`` because the companion is a single-operator loopback app and no
+shared cache should ever hold this; an hour because a card row only changes when the local database
+is re-imported. Conditional requests (``ETag``/``If-None-Match``) are deliberately **not** added:
+they would trade a cheap SQLite read for a round trip, which is the opposite of what the cold open
+needs.
 
 **This module holds a lookup and a proxy**, which is a change from c3-2, where it held only a
 lookup — the sentence *"there is deliberately nothing here but a lookup"* stopped being true the
@@ -24,8 +24,8 @@ moment ``read_card_image`` landed and has been rewritten rather than left to mis
 still true is why: ``CardRepository.get_by_id`` already returns the exact ``Card`` schema **both**
 routes need, so AD-1's "no second card shape in this shell" is satisfied by writing no projection
 at all — no ``from_deck``-style constructor, no counts, no ``select``, and no image-specific
-query. The cost of that, stated rather than optimised: an image request reads the whole card row
-(ledgered for **c4-1**, beside the hydration cache).
+query. The cost of that, stated rather than optimised: an image request that has to *fetch* reads
+the whole card row. A warm disk-cache hit no longer does — see ``read_card_image``.
 
 The **mechanism** behind the image route is not here. Face resolution and the outbound fetch live
 in :mod:`src.companion.app.images`, which is where the spine's Structural Seed draws them and
@@ -93,6 +93,17 @@ anchor. ``\\A``/``\\z`` would state it unambiguously but are not valid ECMA rege
 pattern is published into the OpenAPI document for the UI to read.
 """
 
+CARD_CACHE_CONTROL = "private, max-age=3600"
+"""How long a browser may hold one card row, and who may hold it.
+
+``private`` keeps the row out of any shared cache: the companion binds to loopback for one
+operator, so a proxy caching a card row is never a case this app wants to be correct for.
+``max-age=3600`` because the only thing that changes a card row is a local database re-import,
+which is a deliberate operator action measured in minutes, not seconds. Stamped on the ``200``
+alone — a ``404`` or a ``503`` carries nothing, so a card that arrives with the next import is
+never hidden behind a remembered miss.
+"""
+
 CardId = Annotated[str, Path(pattern=_CARD_ID_PATTERN)]
 """The path parameter's type: a string, constrained, never parsed into a ``uuid.UUID``.
 
@@ -107,7 +118,7 @@ CardId = Annotated[str, Path(pattern=_CARD_ID_PATTERN)]
     response_model=Card,
     responses=error_responses("card_not_found"),
 )
-async def read_card(card_id: CardId, session: DbSession) -> Card:
+async def read_card(card_id: CardId, session: DbSession, response: Response) -> Card:
     """Return everything known about one card printing.
 
     The canonical record behind a printing id: its name, mana cost, converted mana cost, type
@@ -122,6 +133,11 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
 
     ``prices`` is absent from this response, not empty: the local database holds no price data of
     any kind.
+
+    A found card is cacheable by the browser for an hour (``Cache-Control: private, max-age=3600``);
+    a card row only changes when the local database is re-imported. Every other answer — including
+    ``404 card_not_found`` — carries no cache header at all, so a card that appears after an import
+    is never hidden by a remembered miss.
 
     Warning:
         The ``400`` for a malformed id is not unconditional. Dependencies resolve before
@@ -145,6 +161,9 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
             into the wire-visible ``Warning:`` section at review round 2, 2026-07-31, precisely
             because this ``Args:`` section is truncated off the wire.)
         session: The request-scoped database session (see ``DbSession``).
+        response: FastAPI's injected response object, used to stamp ``Cache-Control`` on the
+            success path only. Stamped **after** the lookup, so the ``CompanionError`` raised for
+            a miss is answered by the app-wide handler's own response, which never sees this one.
 
     Returns:
         The card, unwrapped.
@@ -155,6 +174,7 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
     card = await CardRepository(session).get_by_id(card_id)
     if card is None:
         raise CompanionError("card_not_found")
+    response.headers["Cache-Control"] = CARD_CACHE_CONTROL
     return card
 
 
@@ -295,6 +315,34 @@ async def read_card_image(
             tell a remembered failure from a fresh one and has no reason to);
             ``internal_error`` if the lifespan never ran.
     """
+    # THE DISK CACHE IS THE FIRST THING THIS ROUTE CONSULTS, ahead of the database read below.
+    #
+    # A key only enters the cache through the write at the bottom of this function, which is
+    # reachable only after `card_not_found`, `no_image_data` and the size lookup have all passed
+    # — so every cached key was validated on the way in, and re-validating it on the way out buys
+    # nothing but a database read per warm tile. On a 99-tile warm deck that is 99 row reads to
+    # confirm what the file on disk already proves.
+    #
+    # The one behaviour this trades away, stated rather than hidden: a card whose row is deleted
+    # while its tile is still cached is answered `200` from disk instead of `404 card_not_found`
+    # until the cache is cleared. Accepted — the row is still consulted on every MISS, so no new
+    # key can enter the cache unvalidated.
+    #
+    # It is also read BEFORE the pacer (c3-7 AC 6, NFR-06). A check inside `pacer.slot()` would
+    # cache correctly and pace a warm deck anyway: 99 tiles that never leave the machine would
+    # take 9.9 seconds and would hold the CDN's rate budget against requests that issue no request
+    # at all. `test_routes_card_image.py` measures that on c3-6's injected clock — a warm burst
+    # advances it by ZERO spacing intervals where the cold burst advances it by 98 — rather than
+    # asserting this comment.
+    #
+    # `DbSession` is still a dependency of this handler, so a warm hit against an unusable
+    # database is still `503`: dependencies resolve before any line here runs.
+    cache = image_cache(request.app)
+    if cache is not None:
+        cached = await cache.read(scryfall_id, size, face)
+        if cached is not None:
+            return _image_response(*cached)
+
     card = await CardRepository(session).get_by_id(scryfall_id)
     if card is None:
         raise CompanionError("card_not_found")
@@ -316,26 +364,12 @@ async def read_card_image(
         logger.info("Card %s face %d carries no %s image", scryfall_id, face, size)
         raise CompanionError("no_image_data")
 
-    # The cache is consulted BEFORE the pacer, and the order is the whole point (c3-7 AC 6,
-    # NFR-06). A check inside `pacer.slot()` would cache correctly and pace a warm deck anyway:
-    # 99 tiles that never leave the machine would take 9.9 seconds and would hold the CDN's rate
-    # budget against requests that issue no request at all. `test_routes_card_image.py` measures
-    # that on c3-6's injected clock — a warm burst advances it by ZERO spacing intervals where
-    # the cold burst advances it by 98 — rather than asserting this comment.
-    #
-    # It is also consulted after `card_not_found`, `no_image_data` and the size lookup, so every
-    # key the cache ever sees has already been validated by the route above.
-    cache = image_cache(request.app)
-    if cache is not None:
-        cached = await cache.read(scryfall_id, size, face)
-        if cached is not None:
-            return _image_response(*cached)
-
     # The negative cache is consulted AFTER the disk read and BEFORE the wiring guard, and each
     # half of that placement is a decision (c3-8):
     #
-    # * after the disk read, because a key with a warm entry is served whatever its failure
-    #   history — the picture is on this machine and no memory of a past outage should hide it;
+    # * after the disk read (which is now the route's first act), because a key with a warm entry
+    #   is served whatever its failure history — the picture is on this machine and no memory of a
+    #   past outage should hide it;
     # * before the wiring guard, because a remembered failure needs neither a client nor a pacer,
     #   and asking for them first would report `internal_error` for a request that needs nothing;
     # * OUTSIDE `pacer.slot()`, for the same reason the disk read is (c3-7 AC 6): a request that
@@ -350,10 +384,10 @@ async def read_card_image(
     # bounds every one after it, which is what EXPERIENCE.md's "no request storms" means here.
     #
     # What a remembered answer still costs, also stated: everything ABOVE this line — a database
-    # session, the card read and the face resolution — runs on every request, remembered or not,
-    # because the token fidelity of `card_not_found` and `no_image_data` requires the row before
-    # the failure history may speak. "Answered from memory" is true of the CDN, not of the DB
-    # (review 2026-08-02).
+    # session, the card read and the face resolution — runs on every request that MISSES the disk
+    # cache, remembered or not, because the token fidelity of `card_not_found` and `no_image_data`
+    # requires the row before the failure history may speak. "Answered from memory" is true of the
+    # CDN, not of the DB. A warm hit skips all of it.
     remembered = negative_cache(request.app)
     if remembered is not None and remembered.is_backing_off(scryfall_id, size, face):
         # DEBUG, not INFO, and the asymmetry with the record site below is the point (review

@@ -22,6 +22,8 @@ import { describe, expectTypeOf, it } from 'vitest'
 import type {
   Card,
   CardFace,
+  DeckCardSummary,
+  DeckDetail,
   ErrorReason,
   ErrorResponse,
   FormatCheckReport,
@@ -144,5 +146,22 @@ describe('generated wire types (AD-12)', () => {
     expectTypeOf<FormatCheckRow['detail']>().toEqualTypeOf<string>()
     expectTypeOf<FormatCheckReport['mainboard_count']>().toEqualTypeOf<number>()
     expectTypeOf<FormatCheckReport['sideboard_count']>().toEqualTypeOf<number>()
+  })
+
+  /**
+   * THE PIN THE COLD-OPEN REQUEST DIET RESTS ON.
+   *
+   * A deck row's `card` is the WHOLE `Card`, not a bounded summary. Everything downstream follows
+   * from it: `seedDeckCards` writes each row in as a `hydrated` entry, the flip control reads
+   * `card_faces` off the deck payload, and no surface sweeps the deck one id at a time. A
+   * regeneration that put a narrower shape back on this field would leave every one of those
+   * still compiling — the tiers are structurally compatible — and quietly restore 99 requests.
+   */
+  it('pins a deck row card as the FULL Card — the whole request diet depends on it', () => {
+    expectTypeOf<DeckCardSummary['card']>().toEqualTypeOf<Card>()
+    expectTypeOf<DeckDetail['cards'][number]>().toEqualTypeOf<DeckCardSummary>()
+    // The counts still ride on the detail, so the header badges need no second request either.
+    expectTypeOf<DeckDetail['mainboard_count']>().toEqualTypeOf<number>()
+    expectTypeOf<DeckDetail['distinct_cards']>().toEqualTypeOf<number>()
   })
 })

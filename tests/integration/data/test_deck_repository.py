@@ -11,7 +11,7 @@ from src.data.database import create_engine, create_session_factory, init_databa
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.repositories.deck import DeckRepository
-from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry
+from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry, DeckSummary
 
 # The wall clock is too coarse to separate two repository calls: datetime.now(UTC) advances in
 # ~593 us steps on the maintainer's Windows box, while a create/update round-trip against the
@@ -331,6 +331,89 @@ async def test_list_decks_orders_deterministically_on_created_at_tie(
     # Tie broken by id ascending, and stable across repeated calls.
     assert first == sorted(d.id for d in created)
     assert first == second
+
+
+async def test_list_deck_summaries_is_empty_when_no_decks_exist(
+    deck_repo: DeckRepository,
+) -> None:
+    """An empty table is an empty list, not a row of zeroes."""
+    assert await deck_repo.list_deck_summaries() == []
+
+
+async def test_list_deck_summaries_equals_the_python_projection(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    """THE EQUIVALENCE THE COMPANION'S LIST ROUTE RESTS ON, over the awkward deck shapes.
+
+    ``list_deck_summaries`` computes the three counts as SQL aggregates instead of summing an
+    eager-loaded ``deck_cards`` collection in Python. That is only a safe substitution if the two
+    agree on every shape the corpus contains, so the assertion is the whole ``DeckSummary`` — not
+    the counts alone — against ``DeckSummary.from_deck`` over the same decks in the same order.
+
+    Three decks, chosen for the cases an average one would not exercise: both boards plus a
+    commander plus a card held in BOTH boards (``distinct_cards`` must count it once), a
+    sideboard-only deck (``mainboard_count`` must be 0 rather than NULL), and an empty deck (the
+    outer join matches nothing and must coalesce to three zeroes).
+    """
+    both = await deck_repo.create_deck(name="Both boards", format="commander", tags=["x"])
+    await deck_repo.add_card_to_deck(both.id, "card-bolt", 4)
+    await deck_repo.add_card_to_deck(both.id, "card-forest", 1, commander=True)
+    await deck_repo.add_card_to_deck(both.id, "card-bolt", 2, sideboard=True)
+
+    side = await deck_repo.create_deck(name="Sideboard only", format="standard")
+    await deck_repo.add_card_to_deck(side.id, "card-forest", 5, sideboard=True)
+
+    empty = await deck_repo.create_deck(name="Empty", format="modern")
+
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    await _set_created_at(session, both.id, base + timedelta(minutes=2))
+    await _set_created_at(session, side.id, base + timedelta(minutes=1))
+    await _set_created_at(session, empty.id, base)
+
+    summaries = await deck_repo.list_deck_summaries()
+    expected = [DeckSummary.from_deck(deck) for deck in await deck_repo.list_decks()]
+
+    # Non-vacuity: three decks, three DIFFERENT count triples — an implementation returning the
+    # same numbers for every deck could not pass.
+    assert len(summaries) == 3
+    triples = {(s.mainboard_count, s.sideboard_count, s.distinct_cards) for s in summaries}
+    assert triples == {(5, 2, 2), (0, 5, 1), (0, 0, 0)}
+    assert summaries == expected
+    # …and the order is the list route's contract: created_at DESC, id.
+    assert [s.id for s in summaries] == [both.id, side.id, empty.id]
+
+
+async def test_list_deck_summaries_breaks_a_created_at_tie_by_id(
+    deck_repo: DeckRepository, session: AsyncSession
+) -> None:
+    """The same tie-breaker ``list_decks`` has, because the route's order must not change."""
+    tie = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    created = []
+    for i in range(5):
+        deck = await deck_repo.create_deck(name=f"Tie Deck {i}", format="standard")
+        await _set_created_at(session, deck.id, tie)
+        created.append(deck)
+
+    first = [s.id for s in await deck_repo.list_deck_summaries()]
+    second = [s.id for s in await deck_repo.list_deck_summaries()]
+
+    assert first == sorted(d.id for d in created)
+    assert first == second
+
+
+async def test_list_deck_summaries_honours_the_format_filter(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """The filter narrows the rows and does not disturb the counts of the ones it keeps."""
+    kept = await deck_repo.create_deck(name="Standard Deck", format="standard")
+    await deck_repo.add_card_to_deck(kept.id, "card-bolt", 3)
+    await deck_repo.create_deck(name="Modern Deck", format="modern")
+
+    summaries = await deck_repo.list_deck_summaries(format_filter="standard")
+
+    assert [s.name for s in summaries] == ["Standard Deck"]
+    assert summaries[0].mainboard_count == 3
+    assert summaries[0].distinct_cards == 1
 
 
 async def test_list_decks_filtered_by_format(deck_repo: DeckRepository) -> None:

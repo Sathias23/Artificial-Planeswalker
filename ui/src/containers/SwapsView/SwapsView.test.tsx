@@ -42,19 +42,21 @@ const summary = (id: string, over: Partial<CardSummary> = {}): CardSummary => ({
   colors: ['G'],
   rarity: 'common',
   set_code: 'tst',
+  set_name: 'Test Set',
+  collector_number: '1',
+  oracle_id: 'oracle-1',
+  color_identity: [],
+  legalities: {},
+  games: [],
   ...over,
 })
 
-const card = (id: string, over: Partial<Card> = {}): Card =>
-  ({
-    ...summary(id),
-    oracle_id: `oracle-${id}`,
-    set_name: 'Test Set',
-    collector_number: '1',
-    color_identity: ['G'],
-    legalities: {},
-    ...over,
-  }) as Card
+const card = (id: string, over: Partial<Card> = {}): Card => ({
+  ...summary(id),
+  oracle_id: `oracle-${id}`,
+  color_identity: ['G'],
+  ...over,
+})
 
 const seedHydrated = (id: string, over: Partial<Card> = {}) => {
   useCardStore.setState((state) => ({

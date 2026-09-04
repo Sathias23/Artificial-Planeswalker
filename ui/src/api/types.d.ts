@@ -75,8 +75,9 @@ export interface paths {
          * @description Return one saved deck in full: its metadata, its counts and every card in it.
          *
          *     The whole decklist, with each entry naming its quantity, which board it belongs
-         *     to, whether it is the commander, and a summary of the card itself. The order of
-         *     ``cards`` is not meaningful — see ``DeckDetail``.
+         *     to, whether it is the commander, and the whole card record itself — legalities, image
+         *     URLs and faces included — so a client needs no follow-up request per card. The order of
+         *     ``cards`` is not meaningful — see ``DeckDetailFull``.
          */
         get: operations["read_deck_api_deck__deck_id__get"];
         put?: never;
@@ -146,6 +147,11 @@ export interface paths {
          *
          *     ``prices`` is absent from this response, not empty: the local database holds no price data of
          *     any kind.
+         *
+         *     A found card is cacheable by the browser for an hour (``Cache-Control: private, max-age=3600``);
+         *     a card row only changes when the local database is re-imported. Every other answer — including
+         *     ``404 card_not_found`` — carries no cache header at all, so a card that appears after an import
+         *     is never hidden by a remembered miss.
          *
          *     Warning:
          *         The ``400`` for a malformed id is not unconditional. Dependencies resolve before
@@ -557,45 +563,14 @@ export interface components {
             [key: string]: unknown;
         };
         /**
-         * CardSummary
-         * @description The card fields needed to identify and display a card in a list.
+         * DeckCardFull
+         * @description One card entry in a deck, carrying the whole card record rather than a summary.
          *
-         *     A bounded subset of the full card record: name, mana cost, converted mana
-         *     cost, type line, oracle text, colours, rarity and set code. It omits the
-         *     heavy detail fields — legalities, image URIs and card faces — so a response
-         *     carrying many cards stays small. Fetch the full card separately when that
-         *     detail is needed.
+         *     The same quantity, board and commander fields as a bounded deck entry, but ``card``
+         *     is the full card record — legalities, image URLs and card faces included — so a
+         *     view that renders a decklist needs no follow-up request per card.
          */
-        CardSummary: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Mana Cost */
-            mana_cost: string;
-            /** Cmc */
-            cmc: number;
-            /** Type Line */
-            type_line: string;
-            /** Oracle Text */
-            oracle_text: string;
-            /** Colors */
-            colors: string[];
-            /** Rarity */
-            rarity: string;
-            /** Set Code */
-            set_code: string;
-        };
-        /**
-         * DeckCardSummary
-         * @description One card entry in a deck: how many, which board, and the card itself.
-         *
-         *     Carries the quantity, whether the entry is sideboard, whether it is the
-         *     commander, and a summary of the card. The card is a bounded summary rather
-         *     than the full card record, so a decklist stays small; fetch the full card
-         *     separately when detail (legalities, images, faces) is needed.
-         */
-        DeckCardSummary: {
+        DeckCardFull: {
             /** Card Id */
             card_id: string;
             /** Quantity */
@@ -607,7 +582,7 @@ export interface components {
              * @default false
              */
             commander: boolean;
-            card: components["schemas"]["CardSummary"];
+            card: components["schemas"]["Card"];
         };
         /**
          * DeckChangedEvent
@@ -656,17 +631,18 @@ export interface components {
             deck_id?: string | null;
         };
         /**
-         * DeckDetail
+         * DeckDetailFull
          * @description A saved deck's metadata, card counts and full card list.
          *
-         *     Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``
-         *     per entry. This is the whole decklist — the shape a deck view renders from.
+         *     Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardFull`` per entry,
+         *     each embedding the complete card record. This is what a browser client renders a
+         *     deck view from in a single request.
          *
-         *     The order of ``cards`` is **not** meaningful and is not the order the cards
-         *     were added. A consumer that wants a stable presentation order (by type, by
-         *     mana value, by name) must sort them itself.
+         *     The order of ``cards`` is **not** meaningful and is not the order the cards were
+         *     added. A consumer that wants a stable presentation order (by type, by mana value, by
+         *     name) must sort them itself.
          */
-        DeckDetail: {
+        DeckDetailFull: {
             /** Id */
             id: string;
             /** Name */
@@ -708,7 +684,7 @@ export interface components {
              * Cards
              * @default []
              */
-            cards: components["schemas"]["DeckCardSummary"][];
+            cards: components["schemas"]["DeckCardFull"][];
         };
         /**
          * DeckSummary
@@ -788,8 +764,9 @@ export interface components {
          *       either the printing carries no image data at all (79 cards in the shipped corpus), or the
          *       requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
          *       view renders normally and that one slot draws the **named Card placeholder** (the card's
-         *       name, mana cost and type line, which the client already holds from
-         *       ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.
+         *       name, mana cost and type line, which the client already holds — from the deck detail's
+         *       embedded card, or from ``GET /api/cards/{card_id}`` for an id outside the deck). Never a
+         *       grey rectangle, a 1×1 pixel or a generic card back.
          *     * ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN
          *       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
          *       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
@@ -1421,7 +1398,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeckDetail"];
+                    "application/json": components["schemas"]["DeckDetailFull"];
                 };
             };
             /** @description reason: invalid_request */

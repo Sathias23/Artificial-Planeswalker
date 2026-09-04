@@ -38,9 +38,10 @@
  *        state — **no error, no stale deck**, and `deck.ts:339` short-circuits a null id with no
  *        second request (AC 6);
  *      - the **card attempt counters**, so ids the outage burned through their three attempts are
- *        askable again (Q6). Nothing here re-requests them: the boot's fresh `DeckDetail` is a new
- *        object, so `App.tsx`'s sweep effect fires on it and `hydrateDeckCards` re-asks the ids
- *        that are now re-armed. One trigger, one mechanism, no second sweep.
+ *        askable again (Q6). Nothing here re-requests them, and a deck's own cards need no
+ *        re-request at all: the boot's fresh `DeckDetail` carries every card, so `seedDeckCards`
+ *        rewrites them from the one response. The re-armed counters are for ids OUTSIDE the deck,
+ *        which the agent views ask for themselves.
  *
  * 3b. **a `suggestions` push** (story c6-6) → the agent view opens, with no click anywhere in
  *    it (UX-DR34, the confirmed 2026-07-25 arrival ruling). This is the FOURTH signal and the

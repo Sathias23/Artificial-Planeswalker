@@ -76,25 +76,29 @@ export type DeckSummary = Schemas['DeckSummary']
 export type Card = Schemas['Card']
 
 /**
- * The bounded card fields a list response carries: name, mana cost, cmc, type line, oracle text,
- * colours, rarity, set code — no legalities, no images, no faces.
+ * The card fields a deck row carries.
  *
- * **Consumer: the `summary` tier of the card cache** (`src/state/cards.ts`). This is the tier that
- * makes `EXPERIENCE.md`'s *"name and cost are known at hover time and render immediately, the rest
- * fills in place — no spinner"* mechanically true: the summaries arrive already embedded in the
- * deck payload, so a consumer can draw a tile before any per-card request exists.
+ * **An alias of {@link Card}**, and it used to be a genuinely narrower shape: the deck detail once
+ * embedded a bounded `CardSummary` (name, mana cost, cmc, type line, oracle text, colours, rarity,
+ * set code and nothing more) and every tile that needed legalities, images or faces paid one
+ * `GET /api/cards/{card_id}` for them — 99 requests on the largest real deck. The deck detail now
+ * embeds the whole record, so the two are the same type and the name is kept only because it reads
+ * correctly at the call sites that want *"whatever the deck row carried"*.
+ *
+ * The bounded `CardSummary` still exists in `src/data/schemas` and still rides on the MCP
+ * `load_deck` payload, where every field is an LLM token. It simply no longer reaches this wire.
  */
-export type CardSummary = Schemas['CardSummary']
+export type CardSummary = Card
 
 /**
  * One entry of `DeckDetail.cards`: the quantity, the board, the commander flag — and an embedded
- * {@link CardSummary}.
+ * whole {@link Card}.
  *
- * **Consumer: `seedCardSummaries` in `src/state/cards.ts`**, the AC 5 entry point **c4-2** calls
- * with the deck payload it fetches. c4-1 takes these as an ARGUMENT and never goes and gets them:
- * `GET /api/deck/{deck_id}` is c4-2's route, not this story's.
+ * **Consumer: `seedDeckCards` in `src/state/cards.ts`**, which writes every row into the card
+ * cache as a HYDRATED entry. That is what makes the per-card sweep unnecessary: the deck detail is
+ * the only card request a deck view makes.
  */
-export type DeckCardSummary = Schemas['DeckCardSummary']
+export type DeckCardSummary = Schemas['DeckCardFull']
 
 /**
  * The body of `GET /api/deck/{deck_id}`: a saved deck's metadata, its three counts and its
@@ -103,8 +107,7 @@ export type DeckCardSummary = Schemas['DeckCardSummary']
  * **Consumer: `readDeck` in `src/api/client.ts`, and the `deck` arm of the deck slice**
  * (`src/state/deck.ts`, story c4-2). This is the payload the app's whole deck view is derived
  * from — the type grouping, the header's name and badges, and (via {@link DeckCardSummary})
- * the card cache's summary tier, all out of ONE request. Measured on the largest real deck on
- * this machine (99 distinct cards, 100 total): **47,458 bytes, one request**.
+ * the card cache itself, every entry hydrated, all out of ONE request.
  *
  * Ledgered since c3-2 and declined twice on the same reason — an export with no consumer is
  * dead code (c3-2 declined it; c4-1 declined it again, having no fetch for it). This commit is
@@ -116,7 +119,7 @@ export type DeckCardSummary = Schemas['DeckCardSummary']
  * not meaningful… A consumer that wants a stable presentation order (by type, by mana value, by
  * name) must sort them itself."* `src/state/deckGroups.ts` is that consumer.
  */
-export type DeckDetail = Schemas['DeckDetail']
+export type DeckDetail = Schemas['DeckDetailFull']
 
 /**
  * The body of `GET /api/active-deck`: which deck the companion is displaying, or `null`.

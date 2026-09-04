@@ -27,7 +27,6 @@ import { SkipLink } from './containers/SkipLink/SkipLink'
 // dance, and `keyboard-floor.test.ts:787` still finds exactly one module that writes `.tabIndex`.
 import { focusHome } from './containers/focusHome'
 import { closeAgentView, useOpenAgentView } from './state/agentView'
-import { hydrateDeckCards } from './state/cards'
 import { useAgentConnection } from './state/connection'
 import { surfaceOf, useDeckState, useDeckUpdating } from './state/deck'
 import { deckIsEmpty } from './state/deckGroups'
@@ -197,15 +196,13 @@ export default function App() {
   // React runs effects in DECLARATION ORDER, and hooks called here run their effects BEFORE this
   // component's own two `useEffect` blocks below. So the order on a cold open is: the poll's
   // `GET /api/decks`, the boot's `GET /api/active-deck`, this loop's `GET /api/session`, then —
-  // once the ticket lands, a round trip later — the upgrade, and only then the 99-card sweep and
-  // the format check. The mint is one small request ahead of the sweep; the UPGRADE is not in the
-  // HTTP queue at all once established, which is the point of a socket.
+  // once the ticket lands, a round trip later — the upgrade, and the deck detail and the format
+  // check. The mint is one small request ahead of them; the UPGRADE is not in the HTTP queue at
+  // all once established, which is the point of a socket.
   //
-  // ⚠️ Declared HERE, above both `useEffect` blocks, and **the two blocks below are not moved**.
-  // Their relative order is measured and load-bearing (`:245-267` and `:341-359` each name the
-  // other's queue position, worth ~180 ms of the six-surface layout); adding a hook call above
-  // them changes neither, and this comment exists so the next reader can see that was checked
-  // rather than assumed.
+  // ⚠️ Declared HERE, above the effect block below. The deck-wide card sweep that used to sit
+  // between them is gone — the deck detail embeds every card, so there is nothing to sweep — and
+  // with it the ~180 ms of queue contention its ordering against the format check was worth.
   useAgentConnection()
   // THE UPDATING FLAG (c7-4, UX-DR35, UX-DR42). A hook call above the two measured effect
   // blocks, exactly as `useAgentConnection` was added — the blocks below are NOT moved and
@@ -245,85 +242,6 @@ export default function App() {
   // prevent, in the one file that already reads the derivation three ways.
   const emptyDeck = deck !== null && deckIsEmpty(deck.boards)
 
-  // THE DECK-WIDE HYDRATION SWEEP (c4-6, Q1, AC 23), AND ITS PLACEMENT IS THE DECISION.
-  //
-  // c4-6's flip control must render "when its tile renders", and whether a card HAS a back face
-  // lives only in the hydrated record — `CardSummary` carries neither `card_faces` nor
-  // `image_uris`. So something has to hydrate the deck rather than one card at a time. The two
-  // alternatives were priced and declined in that story's Q1: a derived field on `CardSummary` is
-  // an MCP-visible schema change, and a control that appears only once a card happens to be
-  // inspected would materialise a Tab stop mid-traverse (UX-DR40 puts it "immediately after its
-  // own tile").
-  //
-  // ==== WHY HERE, AND NOT IN `createDeckBoot` BESIDE `seedCardSummaries` ================
-  // React runs effects AFTER the DOM commit, so the sweep is off the render's critical path: the
-  // grid draws from the summary tier and never waits for a card record. Called from the boot
-  // instead, the same 99 reads would be issued before React had rendered a single tile.
-  //
-  // **AND THE STRONGER CLAIM THIS COMMENT USED TO MAKE IS FALSE — MEASURED, AND CORRECTED
-  // RATHER THAN SMOOTHED OVER.** It read "by the time this line runs the browser has already
-  // queued all ~99 image requests, so the sweep takes the connection pool BEHIND the pictures".
-  // Measured over four cold-cache Chrome runs against the real 99-card Atraxa deck, the first
-  // card-record request starts **6–10 ms BEFORE** the first image request every time
-  // (108/114, 757/765, 583/593, 105/113 ms). The commit sets the `src` attributes; the browser
-  // dispatches those loads asynchronously, and this effect gets there first. React's ordering
-  // buys "not on the render path", not "behind the pictures".
-  //
-  // ==== WHAT IT COSTS, AS A NUMBER (AC 23) ==============================================
-  // At most one request per DISTINCT card id, once per deck per tab: **99** for the largest of the
-  // 42 real decks (40 when this was first measured at c4-6 — the count moved, the maximum did
-  // not; re-keyed at c4-12 per AC 30), fewer for all the others. `hydrateCard` dedupes in flight, refuses a hydrated
-  // id and never re-asks a terminal refusal, so a re-render costs nothing and the ceiling holds.
-  // `App.test.tsx` pins the count for its own fixture rather than trusting this comment.
-  //
-  // The wall-clock price, measured the only way that means anything — the same deck, the same
-  // machine, a fresh browser profile each time, with this line and without it. Time from
-  // navigation to the LAST of the deck's images:
-  //
-  //   with the sweep    1,594 · 1,793 · 1,795 · 847 ms      (99 card reads, all settled by ~1.0 s)
-  //   without it          343 ·   753 ·   538 · 352 ms      (1 card read)
-  //
-  // So the tail of the cold open roughly TRIPLES — about **+1.2 s** on the largest real deck —
-  // while first paint is untouched (32–128 ms either way, because the grid never waits for this).
-  // That is the price of AC 1 being true at all: `CardSummary` carries neither `card_faces` nor
-  // `image_uris`, so without these reads no tile can know it has a back face and no flip control
-  // exists. It is a COLD-OPEN cost, once per deck per tab, and it is stated here rather than
-  // discovered later.
-  //
-  // `detail` is the dependency because it is the DECK's identity as far as this file is
-  // concerned: `deck.ts` writes it once per boot, so it changes exactly when the deck does. This
-  // reads the payload's own `cards` array verbatim — not `boards` — so it is not a second
-  // flattening of the derivation `deckGroups.ts` owns (AD-12), and it therefore also covers the
-  // sideboard rows c4-7 will draw.
-  //
-  // ==== ⚠️ THIS EFFECT IS DECLARED FIRST, AND THAT IS LOAD-BEARING (c4-12, Q10, AC 20) ==
-  // React runs effects in DECLARATION ORDER, so the 99 reads below are issued BEFORE the format
-  // check declared under them. The transport is HTTP/1.1 (`server.py` — uvicorn's default h11, no
-  // h2) and Chrome caps 6 connections per origin, so that ordering decides where the format
-  // check's single request sits in the queue. **Measured over CDP against the committed SPA and
-  // the running backend, Chrome 151, 2026-08-07, on the real 99-card Atraxa deck:**
-  //
-  //   as shipped (this first)     format-check request at queue position 106–107; full layout
-  //                               311 / 363 / 428 ms (min/median/max, n=5, fresh profile)
-  //   the two blocks SWAPPED      queue position 7; full layout 120 / 185 / 520 ms (n=5)
-  //
-  // So the order is worth roughly **180 ms of the six-surface layout time** and it is nobody's
-  // accident: this comment and the one below now each name the other's queue position, because
-  // before this story neither mentioned the other at all and the next reader would have reordered
-  // them without knowing what moved.
-  //
-  // **NOT SWAPPED, and that is the ruling rather than an oversight.** The budget is NFR-05's
-  // 1 second and the shipped order meets it with ≥572 ms of headroom in every one of the 13
-  // recorded runs across all three arms (n=5 fresh profile, n=5 warm HTTP cache, n=3 cold image
-  // cache; worst full layout 428 ms), so the swap is an unrequested behaviour change to the cold-open
-  // path — measured, recorded, and left for whoever owns the improvement. It also is not free:
-  // the swapped arm's spread was WIDER (120–520 ms against 311–428 ms), because moving the format
-  // check ahead of the sweep moves it ahead of the images too.
-  useEffect(() => {
-    if (detail === null) return
-    hydrateDeckCards(detail.cards.map((row) => row.card_id))
-  }, [detail])
-
   // THE FORMAT CHECK'S ONE READ (c4-10, Q5, Q6, Q7, AC 9–12).
   //
   // ==== WHY IT IS DRIVEN FROM HERE AND NOT FROM THE PANEL ==============================
@@ -331,8 +249,7 @@ export default function App() {
   // and `.setState` in every container module) and `App.tsx` may not either
   // (`posture.test.ts:344-357` asserts this file does not match the network family). `client.ts`
   // is the one door, so `src/state/formatCheck.ts` owns the request and this line owns the
-  // DECISION to make it — the same split `hydrateDeckCards` above already uses, one story later.
-  // This file calls a state action and imports no client.
+  // DECISION to make it. This file calls a state action and imports no client.
   //
   // ==== WHY NOT INSIDE `createDeckBoot`, WHICH IS THE OBVIOUS PLACE ====================
   // It would make a panel's data a FIRST-PAINT dependency of the whole deck view, and it would
@@ -395,25 +312,17 @@ export default function App() {
   // report from the previous deck outlives it. (First written as "the teardown arm is
   // UNCONDITIONAL" — literally false about the shape; corrected at code review 2026-08-07.)
   //
-  // ==== ⚠️ THIS EFFECT IS DECLARED SECOND, BEHIND THE SWEEP (c4-12, Q10, AC 20) ========
-  // The other half of the decision written above the sweep — read that comment for the numbers;
-  // this one states the consequence FOR THIS PANEL, because it is the one that pays for it.
-  //
+  // ==== WHERE THIS REQUEST NOW SITS IN THE QUEUE ======================================
   // This request costs the backend **5.0 ms** (measured in-process, of which `format_check()`
-  // itself is 0.07 ms — the rest is a duplicated `get_deck_with_cards` the route's own comment
-  // flags). It is nonetheless **the last of AC 15's six named surfaces to paint, by a wide
-  // margin**: `FormatCheck` renders `null` until its report lands, so the panel does not exist
-  // until this request is answered — and because the effect above is declared first, the request
-  // is queued at position **106–107** behind the 99-card sweep and the images, through six HTTP/1.1
-  // sockets. Measured 2026-08-07 in Chrome: the other five surfaces are all in the DOM at ~205 ms
-  // and this one arrives at 311–428 ms. **A 5 ms read is 200 ms of the layout time.**
+  // itself is 0.07 ms — the rest is a duplicated `get_deck_with_cards`). It used to be the last
+  // of AC 15's six named surfaces to paint by a wide margin, queued at position **106–107**
+  // behind a 99-request per-card sweep through six HTTP/1.1 sockets: measured 2026-08-07 in
+  // Chrome, the other five surfaces were in the DOM at ~205 ms and this one arrived at
+  // 311–428 ms. The sweep is gone (the deck detail embeds every card), so this is now the fourth
+  // request the tab makes and the ~180 ms of queue contention it was worth is not spent at all.
   //
-  // Moving this block ABOVE the sweep puts it at queue position 7 and roughly halves the number.
-  // It is not done here (the budget is met with headroom either way — see the sweep's comment),
-  // and this note exists so that the day someone needs the 180 ms, the lever is already priced.
-  //
-  // ⚠️ DO NOT REORDER EITHER BLOCK WITHOUT RE-MEASURING. That is the whole reason both comments
-  // now name the other's queue position.
+  // `FormatCheck` still renders `null` until its report lands, so the panel does not exist until
+  // this request is answered — the ordering matters, it is just no longer contended.
   useEffect(() => {
     if (detail === null || emptyDeck) {
       clearFormatCheck()
@@ -436,7 +345,7 @@ export default function App() {
   // ==== THE SURFACE TRANSITION'S FOCUS RESCUE (c7-6, epic AC 9, UX-DR46) ================
   //
   // ⚠️ APPENDED BELOW THE TWO MEASURED EFFECT BLOCKS, WHICH ARE NOT MOVED. Their relative order
-  // is worth ~180 ms of the six-surface layout (see both comments above); this block issues no
+  // is worth ~180 ms of the six-surface layout (see the comment above); this block issues no
   // request at all, so it cannot displace either one in the queue, and it is last so that it
   // cannot be mistaken for a reordering of them.
   //
@@ -600,7 +509,13 @@ export default function App() {
               <ColourDistribution boards={surface.boards} />
             </AnalysisRow>
           </>
-        ) : surface.panel === 'no-active-deck' ? (
+        ) : surface.kind ===
+          'booting' /* NOTHING, DELIBERATELY, until the active-deck read settles. `INITIAL_SYSTEM_STATE`'s
+             panel is `no-active-deck`, so without this arm the first frame of every cold open
+             drew the Welcome surface — hero art and all — on the way to a deck view. No image, no
+             copy, no reserved box: an `aria-busy` region would announce a wait that is one
+             localhost round trip long. `surfaceOf` cannot latch here; every settle path leaves
+             `booting`. */ ? null : surface.panel === 'no-active-deck' ? (
           /* THE WELCOME SURFACE (17.5): the same no-active-deck panel, with the hero art above
              it. The other five system panels stay bare — no hero, no layout change. The shell
              renders a single track here because `right` is empty. */

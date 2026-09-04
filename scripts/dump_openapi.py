@@ -28,6 +28,12 @@ six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
 (``/api/card-image/{scryfall_id}``) took it to **twelve components and seven paths**, adding
 ``CardFace``; and story **c5-2** (``/api/session``) took it to **thirteen components and eight
 paths**, adding ``SessionTicket`` — the first addition since c3-5, and the first from Epic C5.
+The cold-open request diet then moved the component count DOWN for the first time (31 -> 30, paths
+unchanged at 9): ``GET /api/deck/{deck_id}`` now answers with ``DeckDetailFull``/``DeckCardFull``,
+which embed the whole ``Card``. Two components in, three out — ``DeckDetail``, ``DeckCardSummary``
+and ``CardSummary`` become unreachable from any route the moment the deck detail stops nesting
+them, and the MCP tools that still use all three put nothing on this wire. Reachability from a
+route is the rule, in both directions.
 
 That last one is worth a sentence because it is the **inverse of the story immediately before it**.
 c5-1 defined sixteen models and moved neither count, since a model no route references never

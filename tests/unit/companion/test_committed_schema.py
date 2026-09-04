@@ -232,6 +232,13 @@ class TestTheComponentSet:
         # count the read has no use for (Q1, Brad 2026-08-09). It is the second component the
         # *browser* never sees: the SPA reads only the token-free `GET` (AD-5), so this shape exists
         # in the generated TypeScript for completeness rather than for a caller.
+        #
+        # THIRTY as of the cold-open request diet, and it is the first time this set has SHRUNK.
+        # `GET /api/deck/{deck_id}` answers with `DeckDetailFull`/`DeckCardFull`, which embed the
+        # whole `Card` so a deck view needs no per-card request. `DeckDetail`, `DeckCardSummary`
+        # and `CardSummary` are still defined in `src/data/schemas` and still ride on the MCP
+        # `load_deck` payload, where every field is an LLM token — they are simply unreachable
+        # from any route, and reachability is what puts a model in this document.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
             "ActiveDeckChangedEvent",
@@ -240,11 +247,10 @@ class TestTheComponentSet:
             "ActiveDeckSetReceipt",
             "Card",
             "CardFace",
-            "CardSummary",
-            "DeckCardSummary",
+            "DeckCardFull",
             "DeckChangedEvent",
             "DeckChangedPayload",
-            "DeckDetail",
+            "DeckDetailFull",
             "DeckSummary",
             "ErrorResponse",
             "EventIngestReceipt",

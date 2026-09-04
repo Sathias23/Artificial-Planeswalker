@@ -49,7 +49,7 @@ import { coloursOf } from './colours'
  * sweep, each running `coloursOf` over ~99 rows at ~48 µs — **~4.8 ms of derivation across the
  * whole sweep**, which is why there is no `useMemo` (see `colours.ts`).
  *
- * **It starts nothing.** `hydrateCard` and `hydrateDeckCards` are not called here; `App.tsx` owns
+ * **It starts nothing.** `hydrateCard` is not called here; `App.tsx` owns
  * the sweep, and this panel reads what it has already put in the cache.
  *
  * ================= THE ACCESSIBLE SHAPE IS THE EXACT INVERSE OF c4-8's (Q9) ============

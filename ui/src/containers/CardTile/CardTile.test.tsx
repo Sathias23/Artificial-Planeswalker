@@ -756,6 +756,12 @@ describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
         colors: [] as string[],
         rarity: 'rare',
         set_code: 'znr',
+        set_name: 'Test Set',
+        collector_number: '1',
+        oracle_id: 'oracle-1',
+        color_identity: [],
+        legalities: {},
+        games: [],
       },
     })
     const pathway = () => row(PATHWAY.cardId, PATHWAY.name)

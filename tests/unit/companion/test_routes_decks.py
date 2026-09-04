@@ -28,6 +28,7 @@ from src.data.database import create_engine, create_session_factory, init_databa
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.repositories.deck import DeckRepository
+from src.data.schemas.deck import DeckSummary
 
 # --------------------------------------------------------------------------------------------
 # Paths under test. Literals, not built from the router — a test that imported the prefix would
@@ -213,7 +214,7 @@ class TestDeckList:
         assert [deck["name"] for deck in body] == ["Newest", "Middle", "Oldest"]
 
     async def test_the_list_carries_computed_counts_too(self, ready_db, lifespan_client):
-        """The list route projects through the same constructor, so its counts are real as well."""
+        """The list route's counts are real, even though no card row is loaded to produce them."""
 
         async def seeder(session):
             repo = DeckRepository(session)
@@ -229,6 +230,105 @@ class TestDeckList:
 
         assert body[0]["mainboard_count"] == 3
         assert body[0]["distinct_cards"] == 1
+
+    async def test_the_sql_counts_equal_the_python_counts_deck_for_deck(self, ready_db):
+        """THE EQUIVALENCE THAT MAKES THE OPTIMISATION SAFE, over three deliberately awkward decks.
+
+        The list route stopped summing an eager-loaded ``deck_cards`` collection in Python and
+        started asking the database for three aggregates. That is only correct if the two agree on
+        every shape the corpus contains, so this asserts the whole ``DeckSummary`` — not the counts
+        alone — against ``DeckSummary.from_deck`` over the same decks, in the same order.
+
+        The three decks are the awkward cases, not the average one: a deck with both boards AND a
+        commander AND a card held in both boards (``distinct_cards`` must count it once), a
+        sideboard-only deck (``mainboard_count`` must be 0 rather than absent), and an empty deck
+        (the outer join matches nothing and must coalesce to three zeroes rather than NULL).
+        """
+
+        async def seeder(session):
+            repo = DeckRepository(session)
+            for suffix in ("a", "b", "c"):
+                session.add(_card(f"card-{suffix}", f"Card {suffix.upper()}"))
+            await session.commit()
+
+            both = await repo.create_deck(name="Both boards", format="commander", tags=["x"])
+            await repo.add_card_to_deck(both.id, "card-a", quantity=4)
+            await repo.add_card_to_deck(both.id, "card-b", quantity=1, commander=True)
+            await repo.add_card_to_deck(both.id, "card-a", quantity=2, sideboard=True)
+
+            side = await repo.create_deck(name="Sideboard only", format="standard")
+            await repo.add_card_to_deck(side.id, "card-c", quantity=5, sideboard=True)
+
+            await repo.create_deck(name="Empty", format="modern")
+
+        await _seed(ready_db, seeder)
+
+        captured: dict[str, list] = {}
+
+        async def reader(session):
+            repo = DeckRepository(session)
+            captured["summaries"] = await repo.list_deck_summaries()
+            captured["decks"] = await repo.list_decks()
+
+        await _seed(ready_db, reader)
+
+        summaries = captured["summaries"]
+        expected = [DeckSummary.from_deck(deck) for deck in captured["decks"]]
+
+        # Non-vacuity: three decks, and the counts really do differ between them — an
+        # implementation that returned the same triple for every deck could not pass.
+        assert len(summaries) == 3
+        triples = {(s.mainboard_count, s.sideboard_count, s.distinct_cards) for s in summaries}
+        assert len(triples) == 3
+        assert summaries == expected
+
+    async def test_the_list_route_loads_no_card_rows(self, ready_db, lifespan_client, monkeypatch):
+        """The whole point of the change, asserted as an ABSENCE of SQL rather than as a timing.
+
+        A spy on the session's ``execute`` records every statement the request compiles. The list
+        route must never emit one that selects from ``deck_cards`` for the *rows* — the aggregates
+        join that table, so the assertion is about a ``SELECT`` of its columns, which is what the
+        eager load produced (``selectinload`` emits a second ``SELECT ... FROM deck_cards WHERE
+        deck_id IN (...)`` and a third for ``cards``).
+        """
+        import src.companion.app.routes.decks as decks_module
+
+        statements: list[str] = []
+        original = DeckRepository.list_deck_summaries
+
+        async def spy(self, *args, **kwargs):
+            execute = self.session.execute
+
+            async def recording(statement, *a, **kw):
+                statements.append(str(statement))
+                return await execute(statement, *a, **kw)
+
+            monkeypatch.setattr(self.session, "execute", recording)
+            return await original(self, *args, **kwargs)
+
+        monkeypatch.setattr(decks_module.DeckRepository, "list_deck_summaries", spy)
+
+        async def seeder(session):
+            repo = DeckRepository(session)
+            session.add(_card("card-a", "Card A"))
+            await session.commit()
+            deck = await repo.create_deck(name="Counted", format="standard")
+            await repo.add_card_to_deck(deck.id, "card-a", quantity=3)
+
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_LIST_PATH)
+
+        assert response.status_code == 200
+        assert response.json()[0]["distinct_cards"] == 1
+        # Non-vacuity: the spy really did see the route's statement.
+        assert len(statements) == 1
+        # ONE statement, and it selects no card row and no deck_cards row — only aggregates over
+        # them. `cards.` would appear if the second-level eager load were back.
+        assert "FROM decks" in statements[0]
+        assert "\nFROM cards" not in statements[0]
+        assert "deck_cards.quantity, deck_cards." not in statements[0]
 
 
 # --------------------------------------------------------------------------------------------
@@ -318,17 +418,37 @@ class TestDeckDetail:
         assert any(not entry["sideboard"] for entry in body["cards"])
         assert any(not entry["commander"] for entry in body["cards"])
 
-    async def test_each_entry_nests_a_card_summary(self, ready_db, seeded_deck, lifespan_client):
+    async def test_each_entry_nests_the_whole_card(self, ready_db, seeded_deck, lifespan_client):
         async with lifespan_client(build_app()) as client:
             body = (await client.get(_DETAIL_PATH.format(deck_id=seeded_deck))).json()
 
         card = body["cards"][0]["card"]
         assert card["name"].startswith("Card ")
         assert card["set_code"] == "TST"
-        # The bounded summary, not the full card: the heavy fields are absent by construction.
-        assert "legalities" not in card
-        assert "image_uris" not in card
-        assert "card_faces" not in card
+        # THE WHOLE CARD, not the bounded summary — this is what lets a browser render a deck
+        # from one request. The three fields below are exactly the ones the summary omitted, and
+        # exactly the ones a tile needed a per-card request for.
+        assert "legalities" in card
+        assert "image_uris" in card
+        assert "card_faces" in card
+        # …and the fields that only the full record carries at all.
+        assert card["oracle_id"]
+        assert card["collector_number"]
+        assert "set_name" in card
+
+    async def test_the_mcp_deck_shapes_are_untouched_by_the_wire_change(self):
+        """``load_deck``'s bounded shapes still exist and still nest a ``CardSummary``.
+
+        The wire change is an ADDITION: ``DeckDetailFull`` sits beside ``DeckDetail`` rather than
+        replacing it, because an LLM tool result pays for every token and a deck of 99 whole cards
+        is 5.6x the bytes of 99 summaries. A refactor that "simplified" the two into one would be
+        invisible to every companion test in this file.
+        """
+        from src.data.schemas.card import CardSummary
+        from src.data.schemas.deck import DeckCardSummary, DeckDetail
+
+        assert DeckDetail.model_fields["cards"].annotation == list[DeckCardSummary]
+        assert DeckCardSummary.model_fields["card"].annotation is CardSummary
 
     async def test_each_entry_nests_its_own_card(self, ready_db, seeded_deck, lifespan_client):
         """The nested card belongs to the entry that carries it — not merely *a* card.
@@ -711,7 +831,12 @@ class TestCommittedSchema:
         # parse gives an empty set, which would satisfy any "in" check by accident of ordering.
         assert names, "no component schemas parsed — the fixture is not reading a real document"
 
-        assert {"DeckSummary", "DeckDetail", "DeckCardSummary", "CardSummary"} <= names
+        assert {"DeckSummary", "DeckDetailFull", "DeckCardFull", "Card"} <= names
+        # The bounded shapes are NOT here, and their absence is the change rather than a gap:
+        # they still exist in `src/data/schemas` and still ride on the MCP `load_deck` payload,
+        # but nothing on this wire references them any more, and a model no route reaches never
+        # enters `components.schemas`.
+        assert not {"DeckDetail", "DeckCardSummary", "CardSummary"} & names
 
     def test_the_detail_route_declares_its_token_and_the_list_route_does_not(self, schema):
         """AC 6: ``deck_not_found`` is declared where it can happen, and only there."""
@@ -737,7 +862,7 @@ class TestCommittedSchema:
         assert "413" not in listing
 
     def test_the_success_bodies_are_unwrapped(self, schema):
-        """AC 1, AC 2: a bare array of ``DeckSummary``, and ``DeckDetail`` itself."""
+        """AC 1, AC 2: a bare array of ``DeckSummary``, and ``DeckDetailFull`` itself."""
         listing = schema["paths"][_LIST_PATH]["get"]["responses"]["200"]["content"][
             "application/json"
         ]["schema"]
@@ -747,4 +872,10 @@ class TestCommittedSchema:
         detail = schema["paths"][_DETAIL_PATH]["get"]["responses"]["200"]["content"][
             "application/json"
         ]["schema"]
-        assert detail["$ref"].endswith("/DeckDetail")
+        assert detail["$ref"].endswith("/DeckDetailFull")
+        # …and its rows carry the whole `Card`, which is the property the cold-open request diet
+        # rests on: a deck view renders from this one response and asks the card route for nothing.
+        row = schema["components"]["schemas"]["DeckDetailFull"]["properties"]["cards"]["items"]
+        assert row["$ref"].endswith("/DeckCardFull")
+        card = schema["components"]["schemas"]["DeckCardFull"]["properties"]["card"]
+        assert card["$ref"].endswith("/Card")

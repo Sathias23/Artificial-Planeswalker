@@ -186,9 +186,8 @@ const confidenceOf = (item: UntrustedItem): ConfidenceToken | null => {
  * type serve both and `frontFaceCost` take either.
  *
  * All four tiers are reachable here, and the one that looks impossible is the interesting one: a
- * suggested card that happens to be IN the open deck was seeded by `seedCardSummaries` before
- * this view opened, so a `summary` entry paints a name and pips at first frame with nothing in
- * flight.
+ * suggested card that happens to be IN the open deck was seeded `hydrated` by `seedDeckCards`
+ * before this view opened, so it paints in full at first frame with nothing in flight.
  */
 const renderableOf = (entry: CardEntry | undefined) => {
   if (entry === undefined) return null
@@ -410,10 +409,11 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
 
 export function SuggestionsView({ kind, items }: SuggestionsViewProps) {
   /* HYDRATION IS THIS VIEW'S OWN (AC 7, AD-12). Suggested ids come from an agent rather than
-     from a deck, so nothing has seeded them and the deck sweep will never reach them: this
-     effect is the only thing that will ever ask.
+     from a deck, so unless a card is in the open deck nothing has seeded it: this effect is the
+     only thing that will ever ask. The card route is cacheable (`private, max-age=3600`), so a
+     reopened view within the hour costs no round trip.
 
-     ONCE PER UNIQUE ID, in an effect, exactly as `hydrateDeckCards` does it — `hydrateCard`
+     ONCE PER UNIQUE ID, in an effect — `hydrateCard`
      dedupes in flight and never rejects, so `void` on each is the whole error story, and the
      `Set` collapses the duplicate ids an agent is free to send. Running from an effect rather
      than during render is also what puts the JSON reads AFTER the commit that sets every

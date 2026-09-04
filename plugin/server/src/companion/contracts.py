@@ -177,8 +177,9 @@ class ErrorResponse(BaseModel):
       either the printing carries no image data at all (79 cards in the shipped corpus), or the
       requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
       view renders normally and that one slot draws the **named Card placeholder** (the card's
-      name, mana cost and type line, which the client already holds from
-      ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.
+      name, mana cost and type line, which the client already holds — from the deck detail's
+      embedded card, or from ``GET /api/cards/{card_id}`` for an id outside the deck). Never a
+      grey rectangle, a 1×1 pixel or a generic card back.
     * ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN
       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole

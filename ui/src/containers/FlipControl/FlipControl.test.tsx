@@ -74,6 +74,12 @@ const summary = (id: string): CardSummary => ({
   colors: [],
   rarity: 'rare',
   set_code: 'znr',
+  set_name: 'Test Set',
+  collector_number: '1',
+  oracle_id: 'oracle-1',
+  color_identity: [],
+  legalities: {},
+  games: [],
 })
 
 const record = (id: string, over: Partial<Card> = {}): Card => ({

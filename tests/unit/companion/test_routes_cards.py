@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 
 from src.companion.app.main import build_app
+from src.companion.app.routes.cards import CARD_CACHE_CONTROL
 from src.data.database import create_engine, init_database
 from src.data.repositories.deck import DeckRepository
 from tests.unit.companion.conftest import (
@@ -131,6 +132,35 @@ class TestCardDetail:
             "image_uris",
             "games",
         }
+
+    async def test_a_found_card_is_cacheable_for_an_hour(self, image_shapes, lifespan_client):
+        """The header that takes a repeat card read off the wire entirely.
+
+        A card row only changes when the local database is re-imported, so an hour of browser
+        freshness costs nothing and removes a whole class of request. ``private`` because this app
+        binds to loopback for one operator and no shared cache should ever hold a card row.
+        """
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_CARD_PATH.format(card_id=SINGLE_FACE_ID))
+
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == CARD_CACHE_CONTROL
+        assert response.headers["cache-control"] == "private, max-age=3600"
+
+    async def test_a_missing_card_is_never_cached(self, ready_db, lifespan_client):
+        """The 404 does NOT carry the hour, and that asymmetry is the point.
+
+        A remembered miss would hide a card that arrives with the next import for an hour, which
+        is exactly the window an operator running an import is most likely to look. The error
+        handler's own ``no-store`` is what answers here — the success header is set after the
+        lookup, so a refusal never reaches the line that sets it.
+        """
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_CARD_PATH.format(card_id=ABSENT_ID))
+
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "no-store"
+        assert CARD_CACHE_CONTROL not in response.headers["cache-control"]
 
     async def test_no_price_field_is_served(self, image_shapes, lifespan_client):
         """AC 15: the epic's price AC is satisfied BY ABSENCE, and absence is asserted.
@@ -566,10 +596,12 @@ class TestIdentifierJoin:
         card_body = card_response.json()
         assert card_body["id"] == card_id
         assert card_body["name"] == "Joined Card"
-        # The nested summary and the full card agree — same row, two endpoints, one identifier.
-        assert deck_body["cards"][0]["card"]["name"] == card_body["name"]
-        # …and the full card carries what the summary deliberately omits (c3-1's CardSummary).
-        assert "image_uris" not in deck_body["cards"][0]["card"]
+        # The nested card and the card route agree — same row, two endpoints, one identifier.
+        # They now agree on EVERY field, which is the change: the deck detail embeds the whole
+        # record, so this route exists for ids a deck does not contain rather than for the ones
+        # it does.
+        assert deck_body["cards"][0]["card"] == card_body
+        assert deck_body["cards"][0]["card"]["image_uris"] == _TOP_LEVEL_IMAGES
         assert card_body["image_uris"] == _TOP_LEVEL_IMAGES
 
 

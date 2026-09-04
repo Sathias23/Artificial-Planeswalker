@@ -47,6 +47,12 @@ const summary = (name: string, typeLine: string, cmc: number): CardSummary => ({
   colors: [],
   rarity: 'rare',
   set_code: 'tst',
+  set_name: 'Test Set',
+  collector_number: '1',
+  oracle_id: 'oracle-1',
+  color_identity: [],
+  legalities: {},
+  games: [],
 })
 
 const row = (name: string, typeLine: string, options: RowOptions = {}): DeckCardSummary => ({
