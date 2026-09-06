@@ -173,8 +173,15 @@ export const createPoller = ({
   let timer: ReturnType<typeof setTimeout> | undefined
   let delay = POLL_BASE_MS
   let panel: StateKey = initialPanel
-  /** The last update handed to `onUpdate`, so an identical decision is not re-emitted. */
-  let emitted: PollUpdate = { panel: initialPanel, decks: [] }
+  /**
+   * The last update handed to `onUpdate`, so an identical decision is not re-emitted — within ONE
+   * poll. `null` means "this poll has emitted nothing yet", and `start()` resets it to that, so a
+   * poll's FIRST answer is always written even when it matches what the previous poll last said: a
+   * new poll is fresh evidence, and `deck.ts`'s transient-refusal probe (CAP-3) restarts the stopped
+   * poll precisely to be told, once, whether the backend is healthy NOW. A restart that stayed
+   * silent on an unchanged answer would make that probe unobservable.
+   */
+  let emitted: PollUpdate | null = null
 
   /**
    * The identity of the last outcome, so a CHANGE resets the backoff.
@@ -263,6 +270,7 @@ export const createPoller = ({
     // answer is identical, and re-emitting it would re-render the whole app every 2–30 s for
     // the entire length of a first build, for nothing.
     const unchanged =
+      emitted !== null &&
       emitted.panel === panel &&
       emitted.decks.length === decks.length &&
       emitted.decks.every((name, index) => name === decks[index])
@@ -306,6 +314,10 @@ export const createPoller = ({
       lastOutcome = null
       unavailableSince = null
       unavailableStreak = 0
+      // The dedupe identity too: a restarted poll's FIRST answer is written whatever the previous
+      // poll last emitted, because `restartPollIfStopped` is asked for a fresh verdict and a verdict
+      // nobody hears is not one (CAP-3). Within the new poll, an unchanged answer is still silent.
+      emitted = null
       void tick(generation)
     },
     stop: () => {

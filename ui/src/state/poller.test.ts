@@ -500,6 +500,55 @@ describe('stopping is real, not advisory', () => {
 
     poller.stop()
   })
+
+  it('writes a restarted poll’s FIRST answer even when it is unchanged — and still not twice (CAP-3)', async () => {
+    // A restart is asked for a fresh verdict (`deck.ts`'s transient-refusal probe restarts the
+    // stopped poll to learn whether the backend is healthy NOW), and a verdict nobody hears is
+    // not one. So the dedupe identity resets with the rest of the poll's state: the first answer
+    // after `start()` is written whatever the previous poll last said. Within ONE poll the
+    // heartbeat rule stands — an unchanged answer is still silent.
+    const { read } = always(NOT_INITIALIZED)
+    const { poller, updates } = drive(read)
+
+    poller.start()
+    await settle()
+    await vi.advanceTimersByTimeAsync(POLL_BASE_MS)
+    // Two identical answers, one write: the heartbeat rule, unchanged.
+    expect(updates).toHaveLength(1)
+
+    poller.stop()
+    poller.start()
+    await settle()
+    // The SAME answer from a NEW poll is written once more — the reset.
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toEqual({ panel: 'database-not-initialized', decks: [] })
+
+    // …and the new poll dedupes its own repeats exactly as the first did.
+    await vi.advanceTimersByTimeAsync(POLL_BASE_MS)
+    expect(updates).toHaveLength(2)
+
+    poller.stop()
+  })
+
+  it('writes a healthy answer with NO decks on restart too — the fresh-install shape', async () => {
+    // The initial panel IS `no-active-deck` with an empty list, so a dedupe seeded from it would
+    // swallow a restarted poll's healthy-empty verdict — the one shape the probe most needs to
+    // hear on a fresh install whose deck read blipped. `null` is the reset, not the initial panel.
+    const { read } = always({ kind: 'decks', decks: [] })
+    const { poller, updates } = drive(read)
+
+    poller.start()
+    await settle()
+    expect(updates).toHaveLength(1)
+
+    poller.stop()
+    poller.start()
+    await settle()
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toEqual({ panel: 'no-active-deck', decks: [] })
+
+    poller.stop()
+  })
 })
 
 describe('the stalled clock needs OBSERVATIONS, not just elapsed wall time', () => {

@@ -23,20 +23,28 @@
  * 1. **status** → written straight through to the system slice. `surfaceOf` reads it for the
  *    Disconnected panel; the connection pill reads the same field, through the narrow
  *    `useConnection()` selector `systemState.ts` grew for it. A transition to `'live'` also
- *    fires `identity.ts`'s instance-id refresh — see the wrapper at the call site for why
- *    `'live'` is the trigger and not `reconnected`.
+ *    fires TWO things — see the wrapper at the call site for why `'live'` is the trigger and not
+ *    `reconnected`:
  *
- * 2. **reconnected** — a socket opened after at least one failure — re-drives **everything the
- *    outage could have made stale**, because a socket coming back is the strongest evidence the
- *    app ever gets that it is looking at a different backend process than it was a moment ago:
+ *      - `identity.ts`'s instance-id refresh;
+ *      - `deck.ts`'s **`reconcileDeckBoot`** (CAP-2): one full deck boot that began AFTER the
+ *        socket was live, first connect included. The boot's HTTP snapshot and the socket's first
+ *        open are independent requests, so an `active_deck_changed` or `deck_changed` broadcast in
+ *        the gap between them reaches nobody; a boot after live is the one total reconciliation.
+ *        A settled boot re-drives at once; one still in flight paints first and re-drives once on
+ *        its settle, so a fast socket never delays first paint. If the backend restarted, the
+ *        active-deck slot died with it (`ActiveDeckSlot` is in-memory, FR-07), so the answer is
+ *        `{"deck_id": null}` and the app lands on the no-active-deck state — **no error, no stale
+ *        deck**, and `deck.ts` short-circuits a null id with no second request.
  *
- *      - the **poll**, unconditionally (`poller.ts:293-306`: a restart is a fresh poll by design,
- *        and a stalled clock inherited from a process that no longer exists is not evidence);
- *      - the **deck boot**, which re-reads `GET /api/active-deck` and then the deck. If the
- *        backend restarted, the active-deck slot died with it (`ActiveDeckSlot` is in-memory,
- *        FR-07), so the answer is `{"deck_id": null}` and the app lands on the no-active-deck
- *        state — **no error, no stale deck**, and `deck.ts:339` short-circuits a null id with no
- *        second request;
+ * 2. **reconnected** — a socket opened after at least one failure — re-drives **the rest of what
+ *    the outage could have made stale**, because a socket coming back is the strongest evidence
+ *    the app ever gets that it is looking at a different backend process than it was a moment ago
+ *    (the deck boot is signal 1's: the loop emits `'live'` first, so a reconnect still re-drives it):
+ *
+ *      - the **poll**, unconditionally (`poller.ts`'s `start()`: a restart is a fresh poll by
+ *        design, and a stalled clock inherited from a process that no longer exists is not
+ *        evidence);
  *      - the **card attempt counters**, so ids the outage burned through their three attempts are
  *        askable again. Nothing here re-requests them, and a deck's own cards need no
  *        re-request at all: the boot's fresh `DeckDetail` carries every card, so `seedDeckCards`
@@ -79,7 +87,7 @@
 import { useEffect } from 'react'
 
 import { openGroupsPush, openSuggestionsPush, openSwapsPush, openTierListPush } from './agentView'
-import { redriveDeckBoot, refetchOnDeckChanged } from './deck'
+import { reconcileDeckBoot, redriveDeckBoot, refetchOnDeckChanged } from './deck'
 import { resetCardAttempts } from './cards'
 import { refreshInstanceId } from './identity'
 import { createAgentSocket } from './socket'
@@ -106,22 +114,26 @@ export const useAgentConnection = (): void => {
   useEffect(() => {
     const socket = createAgentSocket({
       // The status writes straight through, and a transition to `'live'` ALSO refreshes the
-      // backend's confirmed identity. `'live'` rather than `onReconnected`, deliberately — the
-      // first connect needs the id too, and the socket's emit-on-change makes `'live'` fire
-      // exactly once per (re)connection, so this one trigger point covers reconnect visibility
-      // with no second wiring. `void`, because the refresh is total and nothing here awaits it:
-      // the tooltip reads the store whenever the answer lands.
+      // backend's confirmed identity AND reconciles the deck boot (CAP-2). `'live'` rather than
+      // `onReconnected`, deliberately — the first connect needs both (the id, and a boot that
+      // began after the socket could hear a broadcast), and the socket's emit-on-change makes
+      // `'live'` fire exactly once per (re)connection, so this one trigger point covers reconnect
+      // visibility with no second wiring. `void`, because the refresh is total and nothing here
+      // awaits it: the tooltip reads the store whenever the answer lands.
       onStatus: (status) => {
         applyConnection(status)
-        if (status === 'live') void refreshInstanceId()
+        if (status === 'live') {
+          void refreshInstanceId()
+          reconcileDeckBoot()
+        }
       },
       onReconnected: () => {
-        // The poll first, then the deck: the poll's answer is asynchronous either way, so the
-        // order buys no correctness — but it puts the whole-screen question ahead of the
-        // deck-shaped one, which is the order a human reads the screen in.
+        // The deck boot is NOT here: the loop emits `'live'` before this callback, so the
+        // `reconcileDeckBoot()` above has already re-driven it for a reconnect exactly as for a
+        // first connect. What remains is what only a reconnect makes stale: the poll's clocks, and
+        // the card attempt budgets the outage burned.
         restartPoll()
         resetCardAttempts()
-        redriveDeckBoot()
       },
       onSystemEvent: (event) => {
         // The two system kinds carry different MEANINGS — "the deck you are showing was

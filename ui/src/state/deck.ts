@@ -13,10 +13,11 @@
  *
  * AD-12: *"its state comes from exactly two inputs — REST responses and WebSocket messages."* The
  * WebSocket is a TRIGGER, never a writer: a `deck_changed` frame drives a refetch, and what is
- * written is still a REST response, through one writer (`tests/store-writes.test.ts`). No timer:
- * recovery is edge-triggered — the poll recovering into `no-active-deck`, a reconnect, or a
- * `deck_changed`/`active_deck_changed` frame. No render, and no cache reset (reconnect re-arms card
- * attempt budgets in `cards.ts` rather than discarding hydration the agent views share).
+ * written is still a REST response, through one writer. No timer: recovery is edge-triggered — the
+ * poll recovering into `no-active-deck`, the poll answering healthy to the ONE probe a transient
+ * deck refusal earns (CAP-3), the socket going live (CAP-2), or a `deck_changed`/
+ * `active_deck_changed` frame. No render, and no cache reset (reconnect re-arms card attempt
+ * budgets in `cards.ts` rather than discarding hydration the agent views share).
  */
 
 import { useEffect } from 'react'
@@ -30,11 +31,15 @@ import {
 } from '../api/client'
 import type { DeckDetail, ErrorReason } from '../api/schema'
 import type { StateKey } from '../components/StatePanel/copy'
-import { PANEL_FOR_REASON, type ClientOnlyState } from '../components/StatePanel/states'
+import {
+  PANEL_FOR_REASON,
+  RETRIES_QUIETLY,
+  type ClientOnlyState,
+} from '../components/StatePanel/states'
 import { boardsOfDeck, type DeckBoards } from './deckGroups'
 import { panelFor } from './panel'
 import { seedDeckCards } from './cards'
-import { subscribeSystemState, type SystemState } from './systemState'
+import { restartPollIfStopped, subscribeSystemState, type SystemState } from './systemState'
 
 /**
  * What the client knows about the active deck. A discriminated union: `deck | null` plus an
@@ -436,6 +441,40 @@ export const redriveDeckBoot = (): void => {
 }
 
 /**
+ * Whether the mounted boot owes one re-drive the moment its in-flight sequence settles (CAP-2).
+ *
+ * Set by {@link reconcileDeckBoot} when the socket goes live while the boot has not settled;
+ * consumed, once, by `useDeckState`'s `onUpdate`. A module flag rather than a boot method because
+ * it belongs to the composition (the SOCKET's timing against the BOOT's), not to the sequence.
+ */
+let redriveOnSettle = false
+
+/**
+ * Reconcile the glass with the moment the socket went LIVE (CAP-2) — first connect included.
+ *
+ * The boot's HTTP snapshot and the socket's first open are two independent requests, and an
+ * `active_deck_changed` or `deck_changed` broadcast in the gap between them reaches nobody: the
+ * frame is sent before the subscription exists. Subscribing first is not an option (a blocked
+ * WebSocket would then never load a deck), so instead every transition to `'live'` is followed by
+ * ONE full boot that began AFTER the socket was live — the only total reconciliation, because an id
+ * compare against `GET /api/active-deck` would miss a same-deck `deck_changed` edit in the gap.
+ *
+ * A SETTLED boot re-drives at once. A boot still in flight is left to finish and paint — a fast
+ * socket must never reset the cold-open boot and delay first paint — and is marked to re-drive
+ * exactly once when that sequence settles. A reconnect emits `'live'` first, so the reconnect's
+ * re-drive is this same call; `onReconnected` no longer carries one.
+ */
+export const reconcileDeckBoot = (): void => {
+  if (mounted === null) return
+  if (!mounted.settled()) {
+    redriveOnSettle = true
+    return
+  }
+  mounted.stop()
+  mounted.start()
+}
+
+/**
  * The decision table over one `deck_changed`. Exported so `deck.test.ts` can drive it with an
  * injected boot; production reaches it through {@link refetchOnDeckChanged}.
  *
@@ -509,14 +548,69 @@ export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice
  * exactly once" crosses this edge with a loaded deck). Level-triggering would loop forever against
  * an id that refuses forever. The listener reads `useDeckStore.getState()` rather than a render's
  * closure, because the decision must be made against the state of NOW.
+ *
+ * ================= THE SECOND EDGE: ONE POLL PROBE PER TRANSIENT REFUSAL (CAP-3) =========
+ *
+ * The poll STOPS on a healthy answer (`RETRIES_QUIETLY['no-active-deck']` is `false`), so a deck
+ * refusal that settles AFTER the poll is already healthy — the database begins updating between the
+ * two requests, or the deck read simply lands later — used to have no later edge and stranded the
+ * updating panel. Now a `'refused'` settle whose panel `RETRIES_QUIETLY` says retries (the transient
+ * kinds, read from the map and never from a token list) asks the poll for ONE fresh verdict through
+ * `restartPollIfStopped()` and arms a one-shot flag. The poll's next `no-active-deck` write then
+ * re-drives the boot whether or not it is a panel transition. The bound, stated: per healthy
+ * episode a transient refusal earns ONE probe, a probe's healthy write earns ONE re-drive, and the
+ * probe is re-armed only after the deck loads, clears to `'none'` or the poll leaves
+ * `no-active-deck` — so an id that refuses `database_unavailable` forever costs exactly one extra
+ * attempt, never a loop, and `internal_error` (a `false` in the map) probes nothing.
+ *
+ * A poll write is told apart from the connection and identity writes that share this store by
+ * the `panel`/`decks` fields moving: the poller emits a fresh `decks` array on every write and
+ * nothing else touches those two fields, so a socket status change while the flag is armed cannot
+ * spend the probe before the poll has answered.
  */
 export const useDeckState = (): DeckState => {
   useEffect(() => {
-    const boot = createDeckBoot({ onUpdate: applyDeckState })
+    /** Whether this healthy episode's one poll probe has been used (CAP-3). */
+    let probeSpent = false
+    /** Whether the probe's answer is still owed a re-drive (CAP-3). */
+    let probeArmed = false
+    redriveOnSettle = false
+
+    const boot = createDeckBoot({
+      onUpdate: (state) => {
+        applyDeckState(state)
+        // A loaded deck or an honest `'none'` ends the episode: the next transient refusal may
+        // probe again.
+        if (state.status === 'deck' || state.status === 'none') probeSpent = false
+        // The re-drive the socket's `'live'` deferred while this sequence was in flight (CAP-2):
+        // the paint above happened first, and the follow-up boot begins after the socket is live.
+        if (redriveOnSettle) {
+          redriveOnSettle = false
+          boot.stop()
+          boot.start()
+          return
+        }
+        if (state.status !== 'refused' || !RETRIES_QUIETLY[state.panel] || probeSpent) return
+        probeSpent = true
+        probeArmed = true
+        restartPollIfStopped()
+      },
+    })
     mounted = boot
     boot.start()
     const unsubscribe = subscribeSystemState((state, previous) => {
-      if (state.panel !== 'no-active-deck' || previous.panel === 'no-active-deck') return
+      if (state.panel !== 'no-active-deck') {
+        // The poll is on a refusal of its own: its eventual recovery is the edge below, so the
+        // probe is neither armed nor spent.
+        probeArmed = false
+        probeSpent = false
+        return
+      }
+      const pollWrote = state.panel !== previous.panel || state.decks !== previous.decks
+      if (!pollWrote) return
+      const edge = previous.panel !== 'no-active-deck'
+      if (!edge && !probeArmed) return
+      probeArmed = false
       const { deck } = useDeckStore.getState()
       if (deck.status === 'deck' || deck.status === 'booting') return
       boot.stop()
@@ -527,6 +621,7 @@ export const useDeckState = (): DeckState => {
       // Identity-checked: a StrictMode remount runs this cleanup BEFORE the next effect, so an
       // unconditional clear would silently un-register the live boot the day that order changed.
       if (mounted === boot) mounted = null
+      redriveOnSettle = false
       boot.stop()
     }
   }, [])
