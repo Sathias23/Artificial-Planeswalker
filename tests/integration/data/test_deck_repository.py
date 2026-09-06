@@ -6,13 +6,13 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import DatabaseError, IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
-from src.data.repositories.deck import DeckRepository
+from src.data.repositories.deck import DeckRepository, MergeStrategy
 from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry, DeckSummary
 
 # The wall clock is too coarse to separate two repository calls: datetime.now(UTC) advances in
@@ -60,9 +60,14 @@ async def in_memory_engine():
 
 
 @pytest.fixture
-async def session(in_memory_engine):
+async def session_factory(in_memory_engine) -> async_sessionmaker[AsyncSession]:
+    """The session factory over the test engine (a second session from it reads the same DB)."""
+    return create_session_factory(in_memory_engine)
+
+
+@pytest.fixture
+async def session(session_factory: async_sessionmaker[AsyncSession]):
     """Create a test session."""
-    session_factory = create_session_factory(in_memory_engine)
     async with session_factory() as session:
         yield session
 
@@ -1648,3 +1653,243 @@ async def test_merge_string_strategy(
 
     assert merged is not None
     assert merged.deck_cards[0].quantity == 5  # Combined correctly
+
+
+# ===== Post-commit re-read failures (Greptile r3 on PR #114) =====
+#
+# Every writer commits, snapshots its answer from memory, and only then re-reads. These rows
+# plant a DatabaseError in that re-read — after the commit has landed — and prove the method
+# answers with what it wrote instead of reporting a landed write as a failure.
+
+
+class _PostCommitFault:
+    """Arm on the n-th ``commit`` of the session, then fail one named read method exactly once.
+
+    The seam is the session itself: ``commit`` is wrapped to count, and the named method
+    (``refresh`` or ``execute``) raises ``DatabaseError`` the first time it is called once the
+    arming commit has happened, then delegates to the real method for every later call — so the
+    fresh-session and follow-up-write checks below run against a healthy session.
+    """
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        fail: str,
+        arm_on_commit: int = 1,
+    ) -> None:
+        self.commits = 0
+        self.fired = 0
+        real_commit = session.commit
+        real_read = getattr(session, fail)
+
+        async def counting_commit() -> None:
+            await real_commit()
+            self.commits += 1
+
+        async def failing_read(*args: object, **kwargs: object) -> object:
+            if self.commits >= arm_on_commit and self.fired == 0:
+                self.fired += 1
+                raise DatabaseError(fail, {}, Exception("disk I/O error"))
+            return await real_read(*args, **kwargs)
+
+        monkeypatch.setattr(session, "commit", counting_commit)
+        monkeypatch.setattr(session, fail, failing_read)
+
+
+async def _seed_deck(repo: DeckRepository, *cards: tuple[str, int]) -> str:
+    deck = await repo.create_deck(name="Seeded", format="standard")
+    for card_id, quantity in cards:
+        await repo.add_card_to_deck(deck_id=deck.id, card_id=card_id, quantity=quantity)
+    return deck.id
+
+
+def _rows(deck: Deck) -> dict[tuple[str, bool], int]:
+    return {(dc.card_id, dc.sideboard): dc.quantity for dc in deck.deck_cards}
+
+
+def _naive(value: datetime) -> datetime:
+    """Compare timestamps on one footing: a snapshot carries the aware value the writer assigned,
+    a re-read carries the naive value SQLite stored."""
+    return (
+        value.replace(tzinfo=None)
+        if value.tzinfo is None
+        else value.astimezone(UTC).replace(tzinfo=None)
+    )
+
+
+async def _act_create(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    created = await repo.create_deck(name="Fresh", format="standard")
+    assert created.name == "Fresh"
+    return created, created.id
+
+
+async def _act_update_deck(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    deck_id = await _seed_deck(repo)
+    updated = await repo.update_deck(deck_id=deck_id, name="Renamed", strategy="S")
+    assert updated is not None and updated.name == "Renamed" and updated.strategy == "S"
+    return updated, deck_id
+
+
+async def _act_add_card(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    deck_id = await _seed_deck(repo)
+    row = await repo.add_card_to_deck(deck_id=deck_id, card_id="card-bolt", quantity=4)
+    assert (row.card_id, row.quantity, row.sideboard, row.card.name) == (
+        "card-bolt",
+        4,
+        False,
+        "Lightning Bolt",
+    )
+    return row, deck_id
+
+
+async def _act_add_cards(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    deck_id = await _seed_deck(repo)
+    rows = await repo.add_cards_to_deck(
+        deck_id,
+        [
+            DeckCardEntry(card_id="card-bolt", quantity=4),
+            DeckCardEntry(card_id="card-counterspell", quantity=2, sideboard=True),
+        ],
+    )
+    assert [(r.card_id, r.quantity, r.sideboard, r.card.name) for r in rows] == [
+        ("card-bolt", 4, False, "Lightning Bolt"),
+        ("card-counterspell", 2, True, "Counterspell"),
+    ]
+    return rows, deck_id
+
+
+async def _act_remove(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    deck_id = await _seed_deck(repo, ("card-bolt", 4))
+    removed = await repo.remove_card_from_deck(deck_id=deck_id, card_id="card-bolt")
+    assert removed is True
+    return removed, deck_id
+
+
+async def _act_quantity(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    deck_id = await _seed_deck(repo, ("card-bolt", 4))
+    row = await repo.update_card_quantity(deck_id=deck_id, card_id="card-bolt", quantity=2)
+    assert row is not None and row.quantity == 2 and row.card.name == "Lightning Bolt"
+    return row, deck_id
+
+
+async def _act_color_identity(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    deck_id = await _seed_deck(repo, ("card-bolt", 4))
+    await _set_updated_at(session, deck_id, _OLD_TIMESTAMP)
+    repaired = await repo.update_deck_color_identity(deck_id)
+    assert repaired is not None and repaired.color_identity == ["R"]
+    assert _naive(repaired.updated_at) > _OLD_TIMESTAMP
+    return repaired, deck_id
+
+
+async def _act_merge(repo: DeckRepository, session: AsyncSession) -> tuple[object, str]:
+    target = await repo.create_deck(name="Target", format="standard")
+    await repo.add_card_to_deck(deck_id=target.id, card_id="card-bolt", quantity=2)
+    source = await repo.create_deck(name="Source", format="standard")
+    await repo.add_card_to_deck(deck_id=source.id, card_id="card-bolt", quantity=3)
+    await repo.add_card_to_deck(deck_id=source.id, card_id="card-counterspell", quantity=1)
+    merged = await repo.merge_decks(target.id, source.id, MergeStrategy.COMBINE)
+    assert merged is not None and merged.id == target.id
+    assert _rows(merged) == {("card-bolt", False): 5, ("card-counterspell", False): 1}
+    assert merged.color_identity == ["U", "R"]
+    return merged, target.id
+
+
+def _expect_create(deck: Deck | None) -> None:
+    assert deck is not None and deck.name == "Fresh"
+
+
+def _expect_update_deck(deck: Deck | None) -> None:
+    assert deck is not None and deck.name == "Renamed" and deck.strategy == "S"
+
+
+def _expect_bolt_4(deck: Deck | None) -> None:
+    assert deck is not None and _rows(deck) == {("card-bolt", False): 4}
+
+
+def _expect_two_rows(deck: Deck | None) -> None:
+    assert deck is not None
+    assert _rows(deck) == {("card-bolt", False): 4, ("card-counterspell", True): 2}
+
+
+def _expect_empty(deck: Deck | None) -> None:
+    assert deck is not None and _rows(deck) == {}
+
+
+def _expect_bolt_2(deck: Deck | None) -> None:
+    assert deck is not None and _rows(deck) == {("card-bolt", False): 2}
+
+
+def _expect_stamped(deck: Deck | None) -> None:
+    assert deck is not None and deck.color_identity == ["R"]
+    assert _naive(deck.updated_at) > _OLD_TIMESTAMP
+
+
+def _expect_merged(deck: Deck | None) -> None:
+    assert deck is not None
+    assert _rows(deck) == {("card-bolt", False): 5, ("card-counterspell", False): 1}
+    assert deck.color_identity == ["U", "R"]
+
+
+@pytest.mark.parametrize(
+    ("act", "fail", "arm_on_commit", "expect"),
+    [
+        pytest.param(_act_create, "refresh", 1, _expect_create, id="create_deck-refresh"),
+        pytest.param(_act_update_deck, "refresh", 2, _expect_update_deck, id="update_deck-refresh"),
+        pytest.param(_act_add_card, "refresh", 2, _expect_bolt_4, id="add_card_to_deck-refresh"),
+        pytest.param(_act_add_card, "execute", 2, _expect_bolt_4, id="add_card_to_deck-execute"),
+        pytest.param(
+            _act_add_cards, "refresh", 2, _expect_two_rows, id="add_cards_to_deck-refresh"
+        ),
+        pytest.param(
+            _act_add_cards, "execute", 2, _expect_two_rows, id="add_cards_to_deck-execute"
+        ),
+        pytest.param(_act_remove, "refresh", 3, _expect_empty, id="remove_card_from_deck-refresh"),
+        pytest.param(
+            _act_quantity, "refresh", 3, _expect_bolt_2, id="update_card_quantity-refresh"
+        ),
+        pytest.param(
+            _act_color_identity,
+            "refresh",
+            4,
+            _expect_stamped,
+            id="update_deck_color_identity-refresh",
+        ),
+        # ``_act_merge`` commits eight times (two decks, three seeded rows, the nested quantity
+        # update, the nested add, the merge's own final commit); the merge's own re-read is the
+        # select after the eighth.
+        pytest.param(_act_merge, "execute", 8, _expect_merged, id="merge_decks-execute"),
+    ],
+)
+async def test_a_failed_post_commit_reread_is_not_a_failed_write(
+    deck_repo: DeckRepository,
+    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    test_cards: list[CardModel],
+    monkeypatch: pytest.MonkeyPatch,
+    act,
+    fail: str,
+    arm_on_commit: int,
+    expect,
+) -> None:
+    """Every writer: the commit lands, then the re-read raises. No exception escapes, the return
+    value is the state written, a fresh session from the same factory reads that state back,
+    the session is out of any transaction, and the next write on it succeeds.
+
+    Each ``act`` seeds what it needs and then performs the one write under test; the fault is
+    installed before the act and armed by commit count, so ``arm_on_commit`` is the number of
+    commits the act makes (seeding included) before the re-read that must fail.
+    """
+    fault = _PostCommitFault(session, monkeypatch, fail=fail, arm_on_commit=arm_on_commit)
+
+    returned, deck_id = await act(deck_repo, session)
+
+    assert fault.fired == 1, "the planted post-commit failure really fired"
+    assert not session.in_transaction(), "the broken read transaction was closed"
+
+    async with session_factory() as fresh:
+        expect(await DeckRepository(fresh).get_deck_with_cards(deck_id))
+
+    follow_up = await deck_repo.create_deck(name="After", format="standard")
+    assert follow_up.name == "After"

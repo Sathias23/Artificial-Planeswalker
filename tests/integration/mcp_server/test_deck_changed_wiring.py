@@ -581,6 +581,45 @@ class TestANoWriteOutcomeEmitsNothing:
         assert deck.name == "Renamed"
 
     @pytest.mark.parametrize(
+        ("tool", "args", "expect_rows"),
+        [
+            ("set_card_quantity", {"card_id": "card-bolt", "quantity": 2}, [("card-bolt", 2)]),
+            ("set_card_quantity", {"card_id": "card-bolt", "quantity": 0}, []),
+            ("update_deck", {"changes": {"name": "Renamed"}}, [("card-bolt", 4)]),
+        ],
+    )
+    async def test_a_failed_repository_reread_after_the_commit_still_answers_ok_and_emits(
+        self, deck_db, notifier, monkeypatch, tool, args, expect_rows
+    ):
+        """The repository's own post-commit re-read (``_reload_after_commit``) raises once, after
+        the write has landed. The tool still answers ``ok`` with the written state, emits exactly
+        once, and a separate session reads the write back — the quantity, the removal and the
+        rename each through their own repository branch."""
+        calls: list[str] = []
+        real_reload = DeckRepository._reload_after_commit
+
+        async def reload_boom(self, *a, **kw):
+            if not calls:
+                calls.append("_reload_after_commit")
+                raise DatabaseError("refresh", {}, Exception("disk I/O error"))
+            return await real_reload(self, *a, **kw)
+
+        result, emitted, deck = await self._drive_after_patching(
+            deck_db, notifier, monkeypatch, tool, args, "_reload_after_commit", reload_boom
+        )
+
+        assert calls == ["_reload_after_commit"], "the planted re-read failure really fired"
+        assert result.isError is False
+        assert result.structuredContent["status"] == "ok"
+        assert len(emitted) == 1, "a committed write announces itself once, re-read or not"
+        assert [(e.card_id, e.quantity) for e in deck.deck_cards] == expect_rows
+        if tool == "update_deck":
+            assert result.structuredContent["deck"]["name"] == "Renamed"
+            assert deck.name == "Renamed"
+        else:
+            assert result.structuredContent["quantity"] == args["quantity"]
+
+    @pytest.mark.parametrize(
         ("args", "repo_method", "answer"),
         [
             ({"card_id": "card-bolt", "quantity": 2}, "update_card_quantity", None),
