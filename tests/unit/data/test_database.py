@@ -6,6 +6,7 @@ orphan ``deck_cards`` sweep that repairs a database written before enforcement e
 
 import logging
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -268,15 +269,24 @@ def _deck_schema(path: Path, *, import_in_progress: bool | None = None) -> None:
     """
     conn = sqlite3.connect(path)
     try:
-        conn.execute("CREATE TABLE decks (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
-        conn.execute("CREATE TABLE cards (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        conn.execute(
+            "CREATE TABLE decks (id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "color_identity TEXT, updated_at DATETIME)"
+        )
+        conn.execute(
+            "CREATE TABLE cards (id TEXT PRIMARY KEY, name TEXT NOT NULL, color_identity JSON)"
+        )
         conn.execute(
             "CREATE TABLE deck_cards (deck_id TEXT NOT NULL, card_id TEXT NOT NULL, "
             "quantity INTEGER NOT NULL, sideboard BOOLEAN NOT NULL, "
             "PRIMARY KEY (deck_id, card_id, sideboard))"
         )
-        conn.execute("INSERT INTO decks VALUES ('deck-live', 'Live')")
-        conn.execute("INSERT INTO cards VALUES ('card-live', 'Live Card')")
+        # The live deck's stored identity still counts the dead card's red: too broad.
+        conn.execute(
+            "INSERT INTO decks VALUES ('deck-live', 'Live', ?, ?)",
+            ('["U", "R"]', _STALE_UPDATED_AT),
+        )
+        conn.execute("INSERT INTO cards VALUES ('card-live', 'Live Card', ?)", ('["U"]',))
         conn.executemany(
             "INSERT INTO deck_cards VALUES (?, ?, 1, 0)",
             [
@@ -306,8 +316,21 @@ def _deck_card_pairs(path: Path) -> set[tuple[str, str]]:
         conn.close()
 
 
+def _deck_metadata(path: Path, deck_id: str) -> tuple[str | None, str]:
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            "SELECT color_identity, updated_at FROM decks WHERE id = ?", (deck_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    return row[0], row[1]
+
+
 _ALL_PAIRS = {("deck-live", "card-live"), ("deck-dead", "card-live"), ("deck-live", "card-dead")}
 _VALID_PAIRS = {("deck-live", "card-live")}
+_STALE_UPDATED_AT = "2020-01-01 12:00:00.000000"
 
 
 async def _read_foreign_keys_pragma(url: str, *, ensure_indexes: bool = True) -> int:
@@ -362,6 +385,32 @@ async def test_seeded_orphans_are_swept_by_the_first_mcp_connection(tmp_path: Pa
     await _connect_once(f"sqlite+aiosqlite:///{db.as_posix()}")
 
     assert _deck_card_pairs(db) == _VALID_PAIRS
+
+
+async def test_the_sweep_recomputes_metadata_for_a_deck_that_lost_a_row(tmp_path: Path) -> None:
+    """The surviving deck's identity narrows to its remaining cards and ``updated_at`` advances."""
+    db = tmp_path / "orphans.db"
+    _deck_schema(db)
+    assert _deck_metadata(db, "deck-live") == ('["U", "R"]', _STALE_UPDATED_AT)
+
+    await _connect_once(f"sqlite+aiosqlite:///{db.as_posix()}")
+
+    identity, updated_at = _deck_metadata(db, "deck-live")
+    assert identity == '["U"]'
+    assert updated_at > _STALE_UPDATED_AT
+    # The ORM reads the raw stamp back as a datetime (SQLAlchemy's SQLite storage format).
+    engine = create_engine(f"sqlite+aiosqlite:///{db.as_posix()}")
+    try:
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text("SELECT color_identity, updated_at FROM decks WHERE id = 'deck-live'")
+                )
+            ).one()
+    finally:
+        await engine.dispose()
+    assert row[0] == '["U"]'
+    assert datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S.%f").year >= 2026
 
 
 async def test_orphans_survive_a_companion_engine_connection(tmp_path: Path) -> None:
@@ -421,7 +470,7 @@ async def test_a_locked_database_defers_the_sweep_to_the_next_connect(
     _deck_schema(db)
     writer = sqlite3.connect(db)
     writer.execute("BEGIN IMMEDIATE")
-    writer.execute("INSERT INTO decks VALUES ('deck-held', 'Held')")
+    writer.execute("INSERT INTO decks VALUES ('deck-held', 'Held', NULL, NULL)")
     reader = sqlite3.connect(db, timeout=0)
     try:
         with caplog.at_level(logging.WARNING, logger="src.data.database"):

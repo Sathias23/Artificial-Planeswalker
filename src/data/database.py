@@ -1,8 +1,10 @@
 """Database engine and session management for async SQLAlchemy."""
 
+import json
 import logging
 import sqlite3
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import event, text
@@ -118,7 +120,46 @@ _ORPHAN_DECK_CARDS_PROBE_SQL = (
     f"SELECT 1 FROM deck_cards WHERE {_ORPHAN_DECK_CARDS_PREDICATE} LIMIT 1"
 )
 _ORPHAN_DECK_CARDS_DELETE_SQL = f"DELETE FROM deck_cards WHERE {_ORPHAN_DECK_CARDS_PREDICATE}"
+#: Decks that survive the sweep but lose a row to it (a dangling *card*): their stored metadata
+#: must be recomputed in the same transaction, or the deck reports an identity that is too broad.
+_AFFECTED_DECKS_SQL = (
+    "SELECT DISTINCT deck_id FROM deck_cards "
+    "WHERE EXISTS (SELECT 1 FROM decks d WHERE d.id = deck_cards.deck_id) "
+    "AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id = deck_cards.card_id)"
+)
+#: The remaining colour letters of one deck, from the surviving rows' card ``color_identity``
+#: (a JSON text array; ``json_each`` over NULL yields nothing).
+_DECK_COLOURS_SQL = (
+    "SELECT DISTINCT j.value FROM deck_cards dc "
+    "JOIN cards c ON c.id = dc.card_id, json_each(c.color_identity) AS j "
+    "WHERE dc.deck_id = ?"
+)
+_DECK_METADATA_UPDATE_SQL = "UPDATE decks SET color_identity = ?, updated_at = ? WHERE id = ?"
 _SWEEP_TABLES = frozenset({"decks", "cards", "deck_cards"})
+_WUBRG = ("W", "U", "B", "R", "G")
+#: SQLAlchemy's SQLite ``DateTime`` storage format (naive, microseconds); the sweep writes the
+#: column raw, so it must match what the ORM reads back.
+_SQLITE_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
+
+
+def _repair_deck_metadata(cursor: Any, deck_id: str) -> None:
+    """Rewrite one deck's ``color_identity`` and ``updated_at`` from its surviving rows.
+
+    The raw-cursor twin of ``DeckRepository._refresh_deck_metadata`` for the connect hook, which
+    has no session: WUBRG-ordered union of the remaining cards' ``color_identity`` (NULL when the
+    deck is now colourless, matching the ORM setter) and a fresh naive-UTC timestamp.
+
+    Args:
+        cursor: The hook's open cursor; the caller owns the transaction and the commit.
+        deck_id: The surviving deck that just lost an orphan row.
+    """
+    cursor.execute(_DECK_COLOURS_SQL, (deck_id,))
+    present = {row[0] for row in cursor.fetchall()}
+    ordered = [colour for colour in _WUBRG if colour in present]
+    stamp = datetime.now(UTC).replace(tzinfo=None).strftime(_SQLITE_DATETIME_FORMAT)
+    cursor.execute(
+        _DECK_METADATA_UPDATE_SQL, (json.dumps(ordered) if ordered else None, stamp, deck_id)
+    )
 
 
 def remove_orphan_deck_cards(dbapi_connection: Any, _connection_record: Any = None) -> None:
@@ -137,6 +178,11 @@ def remove_orphan_deck_cards(dbapi_connection: Any, _connection_record: Any = No
     first-run import still marked in progress (:mod:`src.data.import_state`) is skipped for the
     same reason; and a probe ``SELECT`` runs before the ``DELETE`` so a current database never
     issues one. When rows are deleted the raw connection commits them.
+
+    A deck that survives but loses a row (its card is the missing side) has its stored
+    ``color_identity`` and ``updated_at`` recomputed in the same transaction, so the repair leaves
+    the deck as honest as a repository write would. A deck that is itself missing has nothing to
+    recompute.
 
     Never fails the connection: a lock held by a competing writer or a corrupt file surfaces
     as ``sqlite3.DatabaseError``, which is rolled back and logged; the next new connection
@@ -166,10 +212,19 @@ def remove_orphan_deck_cards(dbapi_connection: Any, _connection_record: Any = No
         cursor.execute(_ORPHAN_DECK_CARDS_PROBE_SQL)
         if cursor.fetchone() is None:
             return
+        cursor.execute(_AFFECTED_DECKS_SQL)
+        affected = [row[0] for row in cursor.fetchall()]
         cursor.execute(_ORPHAN_DECK_CARDS_DELETE_SQL)
         deleted = cursor.rowcount
+        for deck_id in affected:
+            _repair_deck_metadata(cursor, deck_id)
         dbapi_connection.commit()
-        logger.info("Removed %d orphan deck_cards row(s) left by a pre-enforcement write", deleted)
+        logger.info(
+            "Removed %d orphan deck_cards row(s) left by a pre-enforcement write; "
+            "recomputed metadata for %d surviving deck(s)",
+            deleted,
+            len(affected),
+        )
     except sqlite3.DatabaseError as exc:
         try:
             dbapi_connection.rollback()
