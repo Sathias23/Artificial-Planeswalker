@@ -79,8 +79,10 @@ class DeckResult(BaseModel):
     """Structured result of ``create_deck`` / ``load_deck`` / ``update_deck``.
 
     Attributes:
-        status: ``ok`` (``deck`` populated), ``not_found`` (no such deck), or
-            ``invalid`` (a bad input, e.g. a blank name or an empty ``changes``).
+        status: ``ok`` (``deck`` populated — except an ``update_deck`` whose write
+            committed but whose reload failed, which answers ``ok`` with ``deck=None``),
+            ``not_found`` (no such deck), or ``invalid`` (a bad input, e.g. a blank name
+            or an empty ``changes``).
         deck: The deck as a ``DeckDetail`` (metadata + counts + lightweight
             ``cards``) when ``status == "ok"``, else ``None``.
         message: Human-facing summary.
@@ -449,7 +451,9 @@ async def update_deck(
     Returns:
         A ``DeckResult`` with ``status`` of ``ok``, ``not_found``, ``invalid`` (empty
         ``changes``, a blank/null ``name``, or a value over its cap), ``error``, or
-        ``database_not_initialized`` (run ``initialize_database`` first).
+        ``database_not_initialized`` (run ``initialize_database`` first). ``error`` means
+        nothing was written; if the write committed but the deck could not be reloaded for
+        the response, the status is still ``ok`` with ``deck=None`` and a message saying so.
     """
     deck_id = deck_id.strip()
     sent = changes.model_fields_set
@@ -486,14 +490,30 @@ async def update_deck(
             strategy=strategy if "strategy" in sent else _UNSET,
             tags=tags if "tags" in sent else _UNSET,
         )
-        deck = await repo.get_deck_with_cards(deck_id) if updated is not None else None
     except DatabaseError:
         logger.exception("update_deck failed for deck_id=%s", deck_id)
         return DeckResult(status="error", message="A database error occurred updating the deck.")
-    if deck is None:
+    if updated is None:
         return DeckResult(status="not_found", message=f"No deck found with id '{deck_id}'.")
 
     changed = ", ".join(f for f in ("name", "strategy", "tags") if f in sent)
+    # The write is committed above this line. A failure reloading the deck for the response is a
+    # reporting problem, not a failed mutation: the answer stays ``ok`` (so the wrapper still
+    # emits ``deck_changed``) with ``deck=None`` and a message pointing at ``load_deck``.
+    try:
+        deck = await repo.get_deck_with_cards(deck_id)
+    except DatabaseError:
+        logger.exception("update_deck committed but the reload failed for deck_id=%s", deck_id)
+        deck = None
+    if deck is None:
+        return DeckResult(
+            status="ok",
+            deck=None,
+            message=(
+                f"Updated deck '{updated.name}' ({changed}), but reloading it for this "
+                "response failed; call load_deck to see the result."
+            ),
+        )
     return DeckResult(
         status="ok",
         deck=DeckDetail.from_deck(deck),

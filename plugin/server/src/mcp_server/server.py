@@ -361,13 +361,16 @@ def build_server(
                 ``tags`` (up to 20 tags of 50 characters, ``null`` clears).
 
         Returns:
-            A result whose ``status`` is ``ok`` (``deck`` populated), ``not_found``,
+            A result whose ``status`` is ``ok`` (``deck`` populated, or ``None`` if the
+            committed change could not be reloaded — call ``load_deck``), ``not_found``,
             or ``invalid`` (empty ``changes``, blank ``name``, or a value over its cap).
         """
         async with session_factory() as session:
             result = await _update_deck_helper(session, deck_id=deck_id, changes=changes)
-        if result.status == "ok" and result.deck is not None:
-            await _emit_deck_changed(result.deck.id)
+        if result.status == "ok":
+            # ``ok`` means the write committed, even when the post-commit reload failed and
+            # ``deck`` is absent — so the emit keys on the caller's deck_id, not on the payload.
+            await _emit_deck_changed(deck_id.strip())
         return result
 
     @mcp.tool()

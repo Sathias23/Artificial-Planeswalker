@@ -544,6 +544,42 @@ class TestANoWriteOutcomeEmitsNothing:
         assert deck.name == "Sturdy"
         assert [(e.card_id, e.quantity) for e in deck.deck_cards] == [("card-bolt", 4)]
 
+    async def test_a_committed_update_deck_whose_reload_fails_still_answers_ok_and_emits(
+        self, deck_db, notifier, monkeypatch
+    ):
+        """The write landed, then reloading the deck for the response raised: that is a reporting
+        failure, not a failed mutation. The status stays ``ok`` (with ``deck`` absent and a message
+        pointing at ``load_deck``), ``deck_changed`` is emitted once, and the rename is on disk —
+        so a caller is never told to retry a write that already succeeded."""
+        calls: list[str] = []
+        real_reload = DeckRepository.get_deck_with_cards
+
+        async def reload_boom(self, *a, **kw):
+            # Fail only the tool's own post-commit reload; the observing read that follows in
+            # ``_drive_after_patching`` goes through the real method.
+            if not calls:
+                calls.append("get_deck_with_cards")
+                raise DatabaseError("get_deck_with_cards", {}, Exception("disk I/O error"))
+            return await real_reload(self, *a, **kw)
+
+        result, emitted, deck = await self._drive_after_patching(
+            deck_db,
+            notifier,
+            monkeypatch,
+            "update_deck",
+            {"changes": {"name": "Renamed"}},
+            "get_deck_with_cards",
+            reload_boom,
+        )
+
+        assert calls == ["get_deck_with_cards"]
+        assert result.isError is False
+        assert result.structuredContent["status"] == "ok"
+        assert result.structuredContent["deck"] is None
+        assert "load_deck" in result.structuredContent["message"]
+        assert len(emitted) == 1, "a committed write announces itself even if the reload failed"
+        assert deck.name == "Renamed"
+
     @pytest.mark.parametrize(
         ("args", "repo_method", "answer"),
         [
