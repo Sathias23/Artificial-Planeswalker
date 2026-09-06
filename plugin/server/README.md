@@ -22,7 +22,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 |------------|-------|
 | **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
-| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
+| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `update_deck` (rename, set or clear strategy/tags), `delete_deck`, `add_card_to_deck`, `set_card_quantity` (set a card's copies; `0` removes it), `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning; `companion_show_tier_list` — puts cards ranked into named S–D tiers on the same view, each tier a lettered chip with its cards beside it; `companion_show_groups` — puts titled card groups on the same view, each a heading with its rationale paragraph and its cards beneath it; `companion_status` — read-only: reports whether the companion is running, its URL, how many tabs are open, and the exact command that launches it. The others all report `app_not_running` when the companion isn't up, and the agent can then open it for you |
@@ -92,7 +92,7 @@ The launch command is the same everywhere — only the config file differs.
 <details>
 <summary><b>Claude Code</b> (plugin — tools + skills, two commands)</summary>
 
-Install the plugin from this repo's built-in marketplace to get all 25 tools **and** the five
+Install the plugin from this repo's built-in marketplace to get all 27 tools **and** the five
 skills in any project — no clone required:
 
 ```
@@ -130,7 +130,7 @@ codex plugin marketplace add Sathias23/Artificial-Planeswalker
 ```
 
 Open the `/plugins` browser inside Codex and install **artificial-planeswalker** — that gives
-you the 25 tools *and* the five skills. If Codex also auto-surfaces this repo's
+you the 27 tools *and* the five skills. If Codex also auto-surfaces this repo's
 *Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
 
@@ -187,7 +187,7 @@ No card data ships with the repo, so on first use ask the assistant to run the
 **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with a
 `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run
-`build_search_index` to index them). Desktop loads the 25 tools; the five skills are a Claude Code
+`build_search_index` to index them). Desktop loads the 27 tools; the five skills are a Claude Code
 plugin feature.
 </details>
 

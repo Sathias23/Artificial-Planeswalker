@@ -26,6 +26,7 @@ import asyncio
 import json
 import threading
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -43,12 +44,14 @@ from src.companion.contracts import (
 )
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
+from src.data.models.deck import DeckModel
 from src.logic.assessment import (
     COMBO_DATA_UNAVAILABLE,
     COMMANDER_UNIDENTIFIED,
     GAME_CHANGER_DATA_UNAVAILABLE,
     TIER_LABELS,
 )
+from src.mcp_server import server as server_module
 from src.mcp_server.server import build_server
 from src.mcp_server.tools import companion, initialize_database
 from src.mcp_server.tools.assess_deck_power import MULTIPLAYER_VARIANCE_CAVEAT
@@ -240,6 +243,464 @@ async def test_add_card_to_bogus_deck_is_graceful(
     sc = result.structuredContent
     assert sc is not None
     assert sc["status"] == "deck_not_found"
+
+
+# --- update_deck / set_card_quantity (quick-wins story 1: CAP-1, CAP-2) -----------------------
+
+_PINNED_UPDATED_AT = datetime(2020, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+
+async def _pin_updated_at(session_factory: async_sessionmaker[AsyncSession], deck_id: str) -> None:
+    """Backdate a deck's ``updated_at`` so "the write advanced it" is a strict inequality.
+
+    Two tool calls can land inside one clock tick, so comparing against the creation timestamp
+    would be a flaky proof; a known-old pin makes the advance unambiguous.
+    """
+    async with session_factory() as session:
+        model = await session.get(DeckModel, deck_id)
+        assert model is not None
+        model.updated_at = _PINNED_UPDATED_AT
+        await session.commit()
+
+
+def _updated_at(deck: dict) -> datetime:
+    """The deck's ``updated_at`` as an aware datetime (the wire carries RFC 3339 with an offset)."""
+    value = datetime.fromisoformat(deck["updated_at"])
+    assert value.tzinfo is not None
+    return value
+
+
+class _RecordingNotifier:
+    """Records every ``deck_changed`` emit the server makes (installed at server.py's seam)."""
+
+    def __init__(self) -> None:
+        self.deck_ids: list[str | None] = []
+
+    async def __call__(self, deck_id: str | None = None, *, timeout: object = None) -> PushOutcome:
+        self.deck_ids.append(deck_id)
+        return PushOutcome(outcome="displayed", clients=1)
+
+
+async def _load(client: ClientSession, deck_id: str) -> dict:
+    loaded = await client.call_tool("load_deck", {"deck_id": deck_id})
+    assert loaded.isError is False and loaded.structuredContent is not None
+    assert loaded.structuredContent["status"] == "ok"
+    return loaded.structuredContent["deck"]
+
+
+async def _create_metadata_deck(client: ClientSession) -> str:
+    created = await client.call_tool("create_deck", {"name": "Old", "strategy": "S", "tags": ["a"]})
+    assert created.structuredContent is not None
+    assert created.structuredContent["status"] == "ok"
+    return created.structuredContent["deck"]["id"]
+
+
+async def test_update_deck_rename_only_leaves_the_rest_alone(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """Rename only: name replaced, strategy/tags untouched, ``updated_at`` advanced."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _create_metadata_deck(client)
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+
+        result = await client.call_tool(
+            "update_deck", {"deck_id": deck_id, "changes": {"name": "New"}}
+        )
+        after = await _load(client, deck_id)
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert sc["deck"]["name"] == "New"
+    assert sc["deck"]["strategy"] == "S"
+    assert sc["deck"]["tags"] == ["a"]
+    assert after["name"] == "New" and after["strategy"] == "S" and after["tags"] == ["a"]
+    assert _updated_at(before) == _PINNED_UPDATED_AT
+    assert _updated_at(after) > _updated_at(before)
+
+
+async def test_update_deck_omitted_strategy_survives_a_tags_write(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """A field absent from ``changes`` is not the same as one sent as null: strategy stays."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _create_metadata_deck(client)
+        result = await client.call_tool(
+            "update_deck", {"deck_id": deck_id, "changes": {"tags": ["b", "c"]}}
+        )
+        after = await _load(client, deck_id)
+
+    assert result.structuredContent["status"] == "ok"
+    assert after["strategy"] == "S"
+    assert after["tags"] == ["b", "c"]
+    assert after["name"] == "Old"
+
+
+@pytest.mark.parametrize(
+    ("changes", "field", "expected"),
+    [
+        ({"strategy": None}, "strategy", None),
+        ({"strategy": ""}, "strategy", None),
+        ({"strategy": "   "}, "strategy", None),
+        ({"tags": None}, "tags", []),
+    ],
+)
+async def test_update_deck_null_clears_the_field(
+    seeded_card_db: async_sessionmaker[AsyncSession], changes: dict, field: str, expected
+):
+    """``strategy``/``tags`` sent as null are cleared — the omitted-vs-null rule across the wire —
+    and a blank ``strategy`` string clears the same way (the module's ``_blank_to_none`` rule)."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _create_metadata_deck(client)
+        result = await client.call_tool("update_deck", {"deck_id": deck_id, "changes": changes})
+        after = await _load(client, deck_id)
+
+    assert result.structuredContent["status"] == "ok"
+    assert result.structuredContent["deck"][field] == expected
+    assert after[field] == expected
+    assert after["name"] == "Old", "the other fields were left alone"
+
+
+async def test_update_deck_unknown_deck_is_not_found(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "update_deck", {"deck_id": "nope", "changes": {"name": "x"}}
+        )
+
+    assert result.isError is False
+    assert result.structuredContent["status"] == "not_found"
+    assert result.structuredContent["deck"] is None
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected_message"),
+    [
+        ({}, "Nothing to change: send at least one of name, strategy or tags in changes."),
+        ({"name": "   "}, "Deck name must not be empty."),
+        ({"name": None}, "Deck name must not be empty."),
+        ({"name": "x" * 101}, "name must be at most 100 characters (got 101)."),
+        ({"strategy": "s" * 2001}, "strategy must be at most 2000 characters (got 2001)."),
+        ({"tags": ["t"] * 21}, "tags must hold at most 20 entries (got 21)."),
+        ({"tags": ["t" * 51]}, "each tag must be at most 50 characters (got 51)."),
+    ],
+)
+async def test_update_deck_invalid_inputs_write_nothing(
+    seeded_card_db: async_sessionmaker[AsyncSession], changes: dict, expected_message: str
+):
+    """Empty changes, a blank/null name and every over-bound field: ``invalid`` naming the field,
+    and the deck (including ``updated_at``) is exactly as it was."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _create_metadata_deck(client)
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+        result = await client.call_tool("update_deck", {"deck_id": deck_id, "changes": changes})
+        after = await _load(client, deck_id)
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc["status"] == "invalid"
+    assert sc["message"] == expected_message
+    assert after == before, "an invalid update must not touch the deck"
+
+
+async def test_update_deck_rejects_an_unknown_key_in_changes(
+    seeded_card_db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+):
+    """A typo'd field (``strategey``) fails validation on the wire instead of being silently
+    dropped — alone or beside a valid field — and writes and emits nothing."""
+    notifier = _RecordingNotifier()
+    monkeypatch.setattr(server_module, "_notify_deck_changed", notifier)
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _create_metadata_deck(client)
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+        emits_before = list(notifier.deck_ids)
+
+        alone = await client.call_tool(
+            "update_deck", {"deck_id": deck_id, "changes": {"strategey": "x"}}
+        )
+        beside = await client.call_tool(
+            "update_deck", {"deck_id": deck_id, "changes": {"name": "New", "strategey": "x"}}
+        )
+        after = await _load(client, deck_id)
+
+    assert alone.isError is True
+    assert beside.isError is True
+    assert after == before, "a rejected update must not touch the deck"
+    assert after["name"] == "Old"
+    assert notifier.deck_ids == emits_before
+
+
+async def _deck_with_four_bolts(client: ClientSession) -> str:
+    created = await client.call_tool("create_deck", {"name": "Burn"})
+    deck_id = created.structuredContent["deck"]["id"]
+    added = await client.call_tool(
+        "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-lightning-bolt", "quantity": 4}
+    )
+    assert added.structuredContent["status"] == "ok"
+    return deck_id
+
+
+def _entries(deck: dict) -> dict[tuple[str, bool], int]:
+    return {(c["card_id"], c["sideboard"]): c["quantity"] for c in deck["cards"]}
+
+
+async def test_set_card_quantity_sets_the_stored_count(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """4 Bolt → ``quantity=3``: ``ok``, ``load_deck`` shows 3, ``updated_at`` advanced."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+
+        result = await client.call_tool(
+            "set_card_quantity",
+            {"deck_id": deck_id, "card_id": "card-lightning-bolt", "quantity": 3},
+        )
+        after = await _load(client, deck_id)
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc["status"] == "ok"
+    assert sc["card_id"] == "card-lightning-bolt"
+    assert sc["quantity"] == 3
+    assert _entries(before) == {("card-lightning-bolt", False): 4}
+    assert _entries(after) == {("card-lightning-bolt", False): 3}
+    assert after["mainboard_count"] == 3
+    assert _updated_at(before) == _PINNED_UPDATED_AT
+    assert _updated_at(after) > _updated_at(before)
+
+
+async def test_set_card_quantity_without_a_quantity_is_rejected(
+    seeded_card_db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+):
+    """``quantity`` has no default: a call that omits it fails argument validation on the wire,
+    so it can never silently trim a playset to one copy. Nothing is written or emitted."""
+    notifier = _RecordingNotifier()
+    monkeypatch.setattr(server_module, "_notify_deck_changed", notifier)
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+        emits_before = list(notifier.deck_ids)
+
+        result = await client.call_tool(
+            "set_card_quantity", {"deck_id": deck_id, "card_id": "card-lightning-bolt"}
+        )
+        after = await _load(client, deck_id)
+
+    assert result.isError is True, "an omitted quantity must be refused, never defaulted"
+    assert after == before
+    assert _entries(after) == {("card-lightning-bolt", False): 4}
+    assert notifier.deck_ids == emits_before
+
+
+async def test_set_card_quantity_targets_the_requested_board_only(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """With Bolt in both boards, ``sideboard=True`` touches the sideboard row alone, and the
+    ``unchanged`` check reads the sideboard's count, not the mainboard's."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        seeded = await client.call_tool(
+            "add_card_to_deck",
+            {"deck_id": deck_id, "card_id": "card-lightning-bolt", "sideboard": True},
+        )
+        assert seeded.structuredContent["status"] == "ok"
+
+        first = await client.call_tool(
+            "set_card_quantity",
+            {
+                "deck_id": deck_id,
+                "card_id": "card-lightning-bolt",
+                "quantity": 2,
+                "sideboard": True,
+            },
+        )
+        after_first = await _load(client, deck_id)
+        # 4 matches the *mainboard* count; the sideboard holds 2, so this is a real write.
+        second = await client.call_tool(
+            "set_card_quantity",
+            {
+                "deck_id": deck_id,
+                "card_id": "card-lightning-bolt",
+                "quantity": 4,
+                "sideboard": True,
+            },
+        )
+        after_second = await _load(client, deck_id)
+        third = await client.call_tool(
+            "set_card_quantity",
+            {
+                "deck_id": deck_id,
+                "card_id": "card-lightning-bolt",
+                "quantity": 4,
+                "sideboard": True,
+            },
+        )
+        after_third = await _load(client, deck_id)
+
+    assert first.structuredContent["status"] == "ok"
+    assert _entries(after_first) == {
+        ("card-lightning-bolt", False): 4,
+        ("card-lightning-bolt", True): 2,
+    }
+    assert second.structuredContent["status"] == "ok", "matching the other board is not unchanged"
+    assert _entries(after_second) == {
+        ("card-lightning-bolt", False): 4,
+        ("card-lightning-bolt", True): 4,
+    }
+    assert third.structuredContent["status"] == "unchanged"
+    assert after_third == after_second
+
+
+async def test_set_card_quantity_by_name_reaches_the_same_row(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        result = await client.call_tool(
+            "set_card_quantity", {"deck_id": deck_id, "name": "Lightning Bolt", "quantity": 2}
+        )
+        after = await _load(client, deck_id)
+
+    assert result.structuredContent["status"] == "ok"
+    assert _entries(after) == {("card-lightning-bolt", False): 2}
+
+
+async def test_set_card_quantity_same_count_is_unchanged_and_writes_nothing(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """Stored 4, asked for 4: ``unchanged``, and ``updated_at`` still carries the old pin."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+
+        result = await client.call_tool(
+            "set_card_quantity",
+            {"deck_id": deck_id, "card_id": "card-lightning-bolt", "quantity": 4},
+        )
+        after = await _load(client, deck_id)
+
+    sc = result.structuredContent
+    assert sc["status"] == "unchanged"
+    assert sc["quantity"] == 4
+    assert after == before
+
+
+async def test_set_card_quantity_zero_removes_and_refreshes_the_deck(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """``quantity=0``: the row is gone, and colour identity + ``updated_at`` reflect the removal."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-counterspell"}
+        )
+        await _pin_updated_at(seeded_card_db, deck_id)
+        before = await _load(client, deck_id)
+
+        result = await client.call_tool(
+            "set_card_quantity",
+            {"deck_id": deck_id, "card_id": "card-lightning-bolt", "quantity": 0},
+        )
+        after = await _load(client, deck_id)
+
+    sc = result.structuredContent
+    assert sc["status"] == "ok"
+    assert sc["quantity"] == 0
+    assert before["color_identity"] == ["U", "R"]
+    assert _entries(after) == {("card-counterspell", False): 1}
+    assert after["color_identity"] == ["U"], "the red left with the Bolts"
+    assert _updated_at(before) == _PINNED_UPDATED_AT
+    assert _updated_at(after) > _updated_at(before)
+
+
+@pytest.mark.parametrize("quantity", [0, 2])
+@pytest.mark.parametrize("sideboard", [True, False])
+async def test_set_card_quantity_never_adds_a_card_absent_from_the_board(
+    seeded_card_db: async_sessionmaker[AsyncSession], quantity: int, sideboard: bool
+):
+    """A known card not in the requested board is ``card_not_found`` for every quantity, 0
+    included, and the deck's rows are untouched — the tool never adds."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)  # mainboard only; nothing in the sideboard
+        # Counterspell is a real card in neither board; a mainboard Bolt is not a sideboard one.
+        card_id = "card-lightning-bolt" if sideboard else "card-counterspell"
+        before = await _load(client, deck_id)
+        result = await client.call_tool(
+            "set_card_quantity",
+            {"deck_id": deck_id, "card_id": card_id, "quantity": quantity, "sideboard": sideboard},
+        )
+        after = await _load(client, deck_id)
+
+    sc = result.structuredContent
+    assert sc["status"] == "card_not_found"
+    assert "add_card_to_deck" in sc["message"]
+    assert after == before
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ({"card_id": "nope", "quantity": 1}, "card_not_found"),
+        ({"name": "No Such Card", "quantity": 1}, "card_not_found"),
+        ({"name": "bolt", "quantity": 1}, "ambiguous"),
+        ({"card_id": "card-lightning-bolt", "quantity": -1}, "invalid"),
+        ({"card_id": "card-lightning-bolt", "quantity": 251}, "invalid"),
+        ({"card_id": "card-lightning-bolt", "name": "Lightning Bolt", "quantity": 1}, "invalid"),
+        ({"quantity": 1}, "invalid"),
+    ],
+)
+async def test_set_card_quantity_graceful_failures(
+    seeded_card_db: async_sessionmaker[AsyncSession], args: dict, expected: str
+):
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_id = await _deck_with_four_bolts(client)
+        before = await _load(client, deck_id)
+        result = await client.call_tool("set_card_quantity", {"deck_id": deck_id, **args})
+        after = await _load(client, deck_id)
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc["status"] == expected
+    if expected == "ambiguous":
+        assert {m["id"] for m in sc["matches"]} == {"card-lightning-bolt", "card-thunderbolt"}
+    assert after == before
+
+
+async def test_set_card_quantity_unknown_deck(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "set_card_quantity",
+            {"deck_id": "nope", "card_id": "card-lightning-bolt", "quantity": 1},
+        )
+
+    assert result.isError is False
+    assert result.structuredContent["status"] == "deck_not_found"
 
 
 async def test_import_decklist_through_client(
@@ -1755,8 +2216,10 @@ ROUND_TRIPPED = frozenset(
         "list_decks",
         "create_deck",
         "load_deck",
+        "update_deck",
         "delete_deck",
         "add_card_to_deck",
+        "set_card_quantity",
         "import_decklist",
         "remove_card_from_deck",
         "view_deck",

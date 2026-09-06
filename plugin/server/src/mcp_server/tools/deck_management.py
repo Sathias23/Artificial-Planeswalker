@@ -6,31 +6,40 @@ deck to lightweight summaries (``DeckSummary.from_deck`` / ``DeckDetail.from_dec
 D-1.5e) so neither ``list_decks`` nor ``load_deck`` dumps full ``Card`` payloads at
 the LLM client. Those constructors live on the schemas in ``src.data.schemas.deck``,
 so the companion's REST shell projects decks through the same code rather
-than its own copy of the count arithmetic. The six helpers back the ``list_decks`` /
-``create_deck`` / ``load_deck`` / ``delete_deck`` / ``add_card_to_deck`` /
-``remove_card_from_deck`` tools.
+than its own copy of the count arithmetic. The eight helpers back the ``list_decks`` /
+``create_deck`` / ``load_deck`` / ``update_deck`` / ``delete_deck`` / ``add_card_to_deck`` /
+``set_card_quantity`` / ``remove_card_from_deck`` tools.
 
 Stateless (FR3 / D5 / D-1.5d): the "active deck" is the client-supplied
 ``deck_id`` on every call — there is no server-side active-deck, format-filter,
 session, or delete-confirmation handshake (all of the legacy ``_session_manager``
-machinery is dropped). Pure CRUD (D-1.5b): ``add_card_to_deck`` only persists the
-association — Standard-legality, the 4-copy limit, and deck-size checks are
-deferred to ``validate_deck``. Foreign keys are enforced per connection by the
-engine's connect hook, so a dangling id is rejected by the database; add/remove
-still pre-validate that the deck and card exist so the caller gets the friendlier
-``deck_not_found`` / ``card_not_found`` answer instead of an integrity error.
+machinery is dropped). Pure CRUD (D-1.5b): ``add_card_to_deck`` and
+``set_card_quantity`` only persist the association — Standard-legality, the 4-copy
+limit, and deck-size checks are deferred to ``validate_deck``.
+
+``update_deck`` takes its edits as a nested :class:`DeckMetadataUpdate` rather than
+flat parameters on purpose: FastMCP validates top-level tool arguments into a model
+and dumps them one level deep, so a flat ``strategy: str | None = None`` cannot tell
+"omitted" from "sent as null". A nested model keeps its own ``model_fields_set``, which
+is what maps a field that is absent to the repository's ``_UNSET`` sentinel (leave
+alone) and a field that is present-as-null to ``None`` (clear).
+
+Foreign keys are enforced per connection by the engine's connect hook, so a dangling
+id is rejected by the database; the card tools still pre-validate that the deck and
+card exist so the caller gets the friendlier ``deck_not_found`` / ``card_not_found``
+answer instead of an integrity error.
 """
 
 import logging
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
-from src.data.repositories.deck import DeckRepository
+from src.data.repositories.deck import _UNSET, DeckRepository
 from src.data.schemas.card import Card, CardSummary
 from src.data.schemas.deck import DeckDetail, DeckSummary
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
@@ -67,11 +76,13 @@ class DeckListResult(BaseModel):
 
 
 class DeckResult(BaseModel):
-    """Structured result of ``create_deck`` / ``load_deck``.
+    """Structured result of ``create_deck`` / ``load_deck`` / ``update_deck``.
 
     Attributes:
-        status: ``ok`` (``deck`` populated), ``not_found`` (no such deck), or
-            ``invalid`` (a bad input, e.g. a blank name).
+        status: ``ok`` (``deck`` populated — except an ``update_deck`` whose write
+            committed but whose reload failed, which answers ``ok`` with ``deck=None``),
+            ``not_found`` (no such deck), or ``invalid`` (a bad input, e.g. a blank name
+            or an empty ``changes``).
         deck: The deck as a ``DeckDetail`` (metadata + counts + lightweight
             ``cards``) when ``status == "ok"``, else ``None``.
         message: Human-facing summary.
@@ -97,18 +108,24 @@ class DeckDeleteResult(BaseModel):
 
 
 class DeckCardResult(BaseModel):
-    """Structured result of ``add_card_to_deck`` / ``remove_card_from_deck``.
+    """Structured result of ``add_card_to_deck`` / ``set_card_quantity`` /
+    ``remove_card_from_deck``.
 
     Attributes:
         status: ``ok`` (change persisted); ``exists`` (already in that location —
-            adjust quantity instead, no upsert); ``not_in_deck`` (nothing to
-            remove); ``deck_not_found`` / ``card_not_found`` (pre-validation
-            failed, no row written); ``ambiguous`` (a partial name hit >1 card —
-            see ``matches``); ``invalid`` (bad input, e.g. both/neither of
-            ``card_id``/``name``, or ``quantity < 1``).
+            use ``set_card_quantity`` instead, no upsert); ``unchanged``
+            (``set_card_quantity`` asked for the quantity already stored — nothing
+            written); ``not_in_deck`` (nothing to remove); ``deck_not_found`` /
+            ``card_not_found`` (pre-validation failed, no row written — for
+            ``set_card_quantity`` this also covers a known card that is not in the
+            requested board); ``ambiguous`` (a partial name hit >1 card — see
+            ``matches``); ``invalid`` (bad input, e.g. both/neither of
+            ``card_id``/``name``, or a quantity outside its bounds).
         deck_id: The targeted deck id.
         card_id: The resolved card id when known (``ok`` / ``exists`` /
-            ``not_in_deck``), else ``None``.
+            ``unchanged`` / ``not_in_deck``), else ``None``.
+        quantity: The copies now stored for that card in that board after a
+            ``set_card_quantity`` call (``0`` once removed); ``None`` elsewhere.
         matches: Candidate cards when ``status == "ambiguous"``, else empty.
         message: Human-facing summary naming the problem on any failure path.
     """
@@ -116,6 +133,7 @@ class DeckCardResult(BaseModel):
     status: Literal[
         "ok",
         "exists",
+        "unchanged",
         "not_in_deck",
         "deck_not_found",
         "card_not_found",
@@ -126,8 +144,43 @@ class DeckCardResult(BaseModel):
     ]
     deck_id: str | None = None
     card_id: str | None = None
+    quantity: int | None = None
     matches: list[CardSummary] = []
     message: str
+
+
+class DeckMetadataUpdate(BaseModel):
+    """The edits ``update_deck`` applies, as one nested object.
+
+    Every field is optional and *absence* is meaningful: a field left out of the
+    object is not touched, a field sent as ``null`` is cleared (``strategy`` /
+    ``tags``; a blank ``strategy`` string clears it too), and a field sent with a
+    value replaces the stored one. ``name`` cannot be cleared: sending it as
+    ``null`` or blank is ``invalid``. The distinction survives the MCP wire
+    because this is a nested model, whose ``model_fields_set`` records which keys
+    the caller actually sent. Unknown keys are rejected (``extra="forbid"``) so a
+    typo'd field name fails validation instead of silently changing nothing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(
+        default=None,
+        description="New deck name (1 to 100 characters); omit to keep the current name.",
+    )
+    strategy: str | None = Field(
+        default=None,
+        description=(
+            "New strategy text (up to 2000 characters); null or blank clears it, omit to keep it."
+        ),
+    )
+    tags: list[str] | None = Field(
+        default=None,
+        description=(
+            "Replacement tag list (up to 20 tags of 50 characters); null clears it, "
+            "omit to keep it."
+        ),
+    )
 
 
 def _blank_to_none(value: str | None) -> str | None:
@@ -173,7 +226,7 @@ def card_exists_message(card_name: str, *, sideboard: bool) -> str:
     """The ``exists`` message shared by ``add_card_to_deck`` and ``import_decklist``."""
     return (
         f"'{card_name}' is already in the {_location(sideboard)} of this deck; "
-        "adjust the quantity instead."
+        "use set_card_quantity to change how many copies it has."
     )
 
 
@@ -262,13 +315,16 @@ async def list_decks(session: AsyncSession, *, format: str | None = None) -> Dec
     )
 
 
-def _create_deck_validation_error(
-    *, name: str, strategy: str | None, tags: list[str] | None
+def _metadata_bounds_error(
+    *, name: str | None, strategy: str | None, tags: list[str] | None
 ) -> str | None:
-    """Return a message naming the first ``create_deck`` argument outside its bounds, else None."""
-    if not name or not name.strip():
-        return "Deck name must not be empty."
-    if len(name.strip()) > MAX_DECK_NAME_CHARS:
+    """Return a message naming the first metadata value over its cap, else None.
+
+    Shared by ``create_deck`` and ``update_deck``; ``None`` for any argument means
+    "not being set" and is skipped. Blankness is the callers' concern (they differ on
+    whether a missing name is an error).
+    """
+    if name is not None and len(name.strip()) > MAX_DECK_NAME_CHARS:
         return f"name must be at most {MAX_DECK_NAME_CHARS} characters (got {len(name.strip())})."
     if strategy is not None and len(strategy) > MAX_STRATEGY_CHARS:
         return f"strategy must be at most {MAX_STRATEGY_CHARS} characters (got {len(strategy)})."
@@ -279,6 +335,15 @@ def _create_deck_validation_error(
             if len(tag) > MAX_TAG_CHARS:
                 return f"each tag must be at most {MAX_TAG_CHARS} characters (got {len(tag)})."
     return None
+
+
+def _create_deck_validation_error(
+    *, name: str, strategy: str | None, tags: list[str] | None
+) -> str | None:
+    """Return a message naming the first ``create_deck`` argument outside its bounds, else None."""
+    if not name or not name.strip():
+        return "Deck name must not be empty."
+    return _metadata_bounds_error(name=name, strategy=strategy, tags=tags)
 
 
 async def create_deck(
@@ -363,6 +428,96 @@ async def load_deck(session: AsyncSession, *, deck_id: str) -> DeckResult:
         status="ok",
         deck=DeckDetail.from_deck(deck),
         message=f"Loaded deck '{deck.name}' ({len(deck.deck_cards)} distinct card(s)).",
+    )
+
+
+async def update_deck(
+    session: AsyncSession, *, deck_id: str, changes: DeckMetadataUpdate
+) -> DeckResult:
+    """Change a deck's name, strategy and/or tags, and return the reloaded ``DeckDetail``.
+
+    Only the fields present in ``changes`` are touched (see
+    :class:`DeckMetadataUpdate` for the omitted-vs-null rule; a blank ``strategy``
+    clears like ``null``); an empty ``changes`` is ``invalid`` rather than a silent
+    no-op, so a write never happens for nothing.
+    Metadata only: cards, format and colour identity are never altered here.
+    Stateless: pass ``deck_id`` every call.
+
+    Args:
+        session: Async database session.
+        deck_id: The deck id to update.
+        changes: The edits to apply.
+
+    Returns:
+        A ``DeckResult`` with ``status`` of ``ok``, ``not_found``, ``invalid`` (empty
+        ``changes``, a blank/null ``name``, or a value over its cap), ``error``, or
+        ``database_not_initialized`` (run ``initialize_database`` first). ``error`` means
+        nothing was written; if the write committed but the deck could not be reloaded for
+        the response, the status is still ``ok`` with ``deck=None`` and a message saying so.
+    """
+    deck_id = deck_id.strip()
+    sent = changes.model_fields_set
+    if not sent:
+        return DeckResult(
+            status="invalid",
+            message="Nothing to change: send at least one of name, strategy or tags in changes.",
+        )
+
+    name: str | None = None
+    if "name" in sent:
+        name = _blank_to_none(changes.name)
+        if name is None:
+            return DeckResult(status="invalid", message="Deck name must not be empty.")
+    # A blank strategy is the module's "omitted" spelling (``_blank_to_none``); here the field
+    # was sent, so blank means the same as null: clear it.
+    strategy = _blank_to_none(changes.strategy) if "strategy" in sent else None
+    tags = changes.tags if "tags" in sent else None
+
+    invalid = _metadata_bounds_error(name=name, strategy=strategy, tags=tags)
+    if invalid is not None:
+        return DeckResult(status="invalid", message=invalid)
+
+    if not await is_database_initialized(session):
+        return DeckResult(
+            status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
+        )
+
+    repo = DeckRepository(session)
+    try:
+        updated = await repo.update_deck(
+            deck_id,
+            name=name,
+            strategy=strategy if "strategy" in sent else _UNSET,
+            tags=tags if "tags" in sent else _UNSET,
+        )
+    except DatabaseError:
+        logger.exception("update_deck failed for deck_id=%s", deck_id)
+        return DeckResult(status="error", message="A database error occurred updating the deck.")
+    if updated is None:
+        return DeckResult(status="not_found", message=f"No deck found with id '{deck_id}'.")
+
+    changed = ", ".join(f for f in ("name", "strategy", "tags") if f in sent)
+    # The write is committed above this line. A failure reloading the deck for the response is a
+    # reporting problem, not a failed mutation: the answer stays ``ok`` (so the wrapper still
+    # emits ``deck_changed``) with ``deck=None`` and a message pointing at ``load_deck``.
+    try:
+        deck = await repo.get_deck_with_cards(deck_id)
+    except DatabaseError:
+        logger.exception("update_deck committed but the reload failed for deck_id=%s", deck_id)
+        deck = None
+    if deck is None:
+        return DeckResult(
+            status="ok",
+            deck=None,
+            message=(
+                f"Updated deck '{updated.name}' ({changed}), but reloading it for this "
+                "response failed; call load_deck to see the result."
+            ),
+        )
+    return DeckResult(
+        status="ok",
+        deck=DeckDetail.from_deck(deck),
+        message=f"Updated deck '{deck.name}' ({changed}).",
     )
 
 
@@ -512,6 +667,154 @@ async def add_card_to_deck(
         deck_id=deck_id,
         card_id=card.id,
         message=card_added_message(card.name, quantity, sideboard=sideboard),
+    )
+
+
+def _not_in_board_message(card_name: str, location: str) -> str:
+    return (
+        f"'{card_name}' is not in the {location} of this deck, so there is no quantity to set; "
+        "use add_card_to_deck to add it."
+    )
+
+
+async def set_card_quantity(
+    session: AsyncSession,
+    *,
+    deck_id: str,
+    quantity: int,
+    card_id: str | None = None,
+    name: str | None = None,
+    sideboard: bool = False,
+) -> DeckCardResult:
+    """Set how many copies of a card a deck holds in one board, or remove it with ``0``.
+
+    Absolute, not additive: ``quantity`` replaces the stored count. The card must
+    already be in that board — this never adds a card (use ``add_card_to_deck``), so
+    a known card that is not in the requested board answers ``card_not_found``
+    for every quantity, ``0`` included. Asking for the count already stored is
+    ``unchanged`` and writes nothing. Pure persistence, like ``add_card_to_deck``:
+    no legality, copy-limit or deck-size check. Stateless: pass ``deck_id`` every
+    call.
+
+    Args:
+        session: Async database session.
+        deck_id: The target deck id.
+        quantity: The new number of copies (0 to ``MAX_CARD_QUANTITY``); ``0`` removes
+            the card from that board. Required — there is no default, so an omitted
+            quantity can never silently trim a playset.
+        card_id: The card id to adjust (mutually exclusive with ``name``).
+        name: A card name to resolve and adjust (mutually exclusive with ``card_id``).
+        sideboard: Adjust the sideboard entry instead of the mainboard one (default False).
+
+    Returns:
+        A ``DeckCardResult`` whose ``status`` reports the outcome; ``quantity`` carries
+        the stored count on ``ok`` / ``unchanged``.
+    """
+    deck_id = deck_id.strip()
+    card_id = _blank_to_none(card_id)
+    name = _blank_to_none(name)
+
+    selector_error = _selector_error(card_id, name)
+    if selector_error is not None:
+        return DeckCardResult(status="invalid", deck_id=deck_id, message=selector_error)
+    if quantity < 0 or quantity > MAX_CARD_QUANTITY:
+        return DeckCardResult(
+            status="invalid",
+            deck_id=deck_id,
+            message=f"quantity must be between 0 and {MAX_CARD_QUANTITY} (got {quantity}).",
+        )
+
+    if not await is_database_initialized(session):
+        return DeckCardResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
+
+    deck_repo = DeckRepository(session)
+    card_repo = CardRepository(session)
+
+    # The deck's current rows serve both as the deck-exists check and as the "is the card in
+    # that board, and at what count" read that keeps the unchanged / card_not_found answers
+    # free of any write.
+    deck = await deck_repo.get_deck_with_cards(deck_id)
+    if deck is None:
+        return DeckCardResult(
+            status="deck_not_found",
+            deck_id=deck_id,
+            message=f"No deck found with id '{deck_id}'.",
+        )
+
+    card, error_status, matches = await resolve_card(card_repo, card_id=card_id, name=name)
+    if error_status == "ambiguous":
+        assert name is not None  # only the name path can be ambiguous
+        return DeckCardResult(
+            status="ambiguous",
+            deck_id=deck_id,
+            matches=[CardSummary.model_validate(c) for c in matches],
+            message=ambiguous_message(name, len(matches)),
+        )
+    if card is None:
+        return DeckCardResult(
+            status="card_not_found",
+            deck_id=deck_id,
+            card_id=card_id,
+            message=card_not_found_message(card_id=card_id, name=name),
+        )
+
+    location = _location(sideboard)
+    entry = next(
+        (e for e in deck.deck_cards if e.card_id == card.id and e.sideboard == sideboard), None
+    )
+    if entry is None:
+        return DeckCardResult(
+            status="card_not_found",
+            deck_id=deck_id,
+            card_id=card.id,
+            message=_not_in_board_message(card.name, location),
+        )
+    if entry.quantity == quantity:
+        copies = "copy" if quantity == 1 else "copies"
+        return DeckCardResult(
+            status="unchanged",
+            deck_id=deck_id,
+            card_id=card.id,
+            quantity=quantity,
+            message=f"'{card.name}' already has {quantity} {copies} in the {location}.",
+        )
+
+    try:
+        if quantity == 0:
+            written = await deck_repo.remove_card_from_deck(deck_id, card.id, sideboard)
+        else:
+            updated = await deck_repo.update_card_quantity(deck_id, card.id, quantity, sideboard)
+            written = updated is not None
+    except DatabaseError:
+        logger.exception("set_card_quantity failed for deck_id=%s card_id=%s", deck_id, card.id)
+        return DeckCardResult(
+            status="error",
+            deck_id=deck_id,
+            message="A database error occurred setting the card quantity.",
+        )
+    if not written:
+        # The row went away between the read above and the write (another writer got there
+        # first): the same answer the pre-read gives, since nothing changed here either.
+        return DeckCardResult(
+            status="card_not_found",
+            deck_id=deck_id,
+            card_id=card.id,
+            message=_not_in_board_message(card.name, location),
+        )
+
+    if quantity == 0:
+        message = f"Removed '{card.name}' from the {location} (quantity set to 0)."
+    else:
+        copies = "copy" if quantity == 1 else "copies"
+        message = (
+            f"Set '{card.name}' to {quantity} {copies} in the {location} (was {entry.quantity})."
+        )
+    return DeckCardResult(
+        status="ok", deck_id=deck_id, card_id=card.id, quantity=quantity, message=message
     )
 
 

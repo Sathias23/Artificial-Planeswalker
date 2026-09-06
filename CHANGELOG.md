@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`update_deck` tool.** Renames a deck or sets/clears its strategy and tags
+  without touching its cards. The edits travel as one nested `changes` object
+  so a field left out is kept and `strategy`/`tags` sent as `null` are
+  cleared; `name` can be replaced but not cleared, and an empty `changes` is
+  `invalid` rather than a silent write. Answers `ok` with the reloaded deck,
+  `not_found` or `invalid`, and emits `deck_changed` to the companion on `ok`.
+- **`set_card_quantity` tool.** Sets the number of copies of a card already in
+  a deck's mainboard or sideboard; `0` removes it. Absolute rather than
+  additive, it never adds a card (a card not in that board is
+  `card_not_found`), answers `unchanged` when the stored count already
+  matches, and emits `deck_changed` on `ok`. The `exists` message from
+  `add_card_to_deck` now points at it.
+
+### Fixed
+
+- `DeckRepository.update_deck` now rolls back its session on a
+  `DatabaseError` before re-raising, as the other writers do.
+
 ## [0.5.1] - 2026-09-06
 
 ### Changed

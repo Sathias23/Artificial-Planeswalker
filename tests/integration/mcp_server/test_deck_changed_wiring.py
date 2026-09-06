@@ -2,21 +2,22 @@
 
 Two halves, one file.
 
-**The behavioural half** drives the five mutation tools — ``create_deck`` / ``delete_deck`` /
-``add_card_to_deck`` / ``import_decklist`` / ``remove_card_from_deck`` — through an in-process MCP
-client against a real file-backed database, with a recording stub monkeypatched at **server.py's
-own import seam** (``server._notify_deck_changed``). Patching there rather than on the leaf is the
-same reasoning ``test_companion_tool.py`` documents: the property under test is that *this* module
-reaches the notifier through the name it imported. What is proven:
+**The behavioural half** drives the seven mutation tools — ``create_deck`` / ``update_deck`` /
+``delete_deck`` / ``add_card_to_deck`` / ``set_card_quantity`` / ``import_decklist`` /
+``remove_card_from_deck`` — through an in-process MCP client against a real file-backed database,
+with a recording stub monkeypatched at **server.py's own import seam**
+(``server._notify_deck_changed``). Patching there rather than on the leaf is the same reasoning
+``test_companion_tool.py`` documents: the property under test is that *this* module reaches the
+notifier through the name it imported. What is proven:
 
 * every persisted write emits exactly once, carrying that deck's id — including a multi-line
   import, whose helper delegates per line and commits N times but must sound like one change;
 * the emit happens **after the commit is visible**: the stub opens its own session from the same
   factory at notify time and sees the created row present / the deleted row gone — the "the view
   can never show something the database doesn't have" guarantee, made mechanical;
-* every no-write outcome (``invalid`` / ``exists`` / ``not_in_deck`` / ``*_not_found`` /
-  ``ambiguous`` / ``error`` / ``database_not_initialized`` / an import landing zero lines) emits
-  nothing;
+* every no-write outcome (``invalid`` / ``exists`` / ``unchanged`` / ``not_in_deck`` /
+  ``*_not_found`` / ``ambiguous`` / ``error`` / ``database_not_initialized`` / an import landing
+  zero lines) emits nothing;
 * a failure ``PushOutcome`` leaves the tool's structured result byte-identical — the notification
   outcome never becomes a status, a field or a changed message;
 * with no companion anywhere (``PLANESWALKER_DATA_DIR`` repointed at an empty directory, the
@@ -74,6 +75,7 @@ from pathlib import Path
 
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.companion.client import PUSH_OUTCOMES, PushOutcome
@@ -282,6 +284,60 @@ class TestEachPersistedWriteEmitsExactlyOnce:
         assert removed.structuredContent["status"] == "ok"
         assert stub.deck_ids == [deck_id] * 3, "create, add, remove — one emit each"
 
+    async def test_update_deck_emits_the_deck_id_once_after_the_rename_is_visible(
+        self, deck_db, notifier
+    ):
+        """The after-commit proof for a metadata write: the observer's own session already reads
+        the new name at notify time."""
+
+        async def name_now(deck_id: str | None) -> str | None:
+            assert deck_id is not None
+            async with deck_db() as session:
+                deck = await DeckRepository(session).get_deck(deck_id)
+            return None if deck is None else deck.name
+
+        stub = notifier(observer=name_now)
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as client:
+            created = await client.call_tool("create_deck", {"name": "Burn"})
+            deck_id = created.structuredContent["deck"]["id"]
+            updated = await client.call_tool(
+                "update_deck", {"deck_id": deck_id, "changes": {"name": "Sligh"}}
+            )
+
+        assert updated.structuredContent["status"] == "ok"
+        assert stub.deck_ids == [deck_id, deck_id], "one for the create, one for the update"
+        assert stub.observations == ["Burn", "Sligh"], "the rename was visible at notify time"
+
+    @pytest.mark.parametrize("quantity", [2, 0])
+    async def test_set_card_quantity_emits_the_deck_id_once(self, deck_db, notifier, quantity):
+        """Both write branches — a real quantity and the ``0`` that routes to removal — emit once,
+        after the new count is visible."""
+
+        async def bolt_quantity(deck_id: str | None) -> int:
+            assert deck_id is not None
+            async with deck_db() as session:
+                deck = await DeckRepository(session).get_deck_with_cards(deck_id)
+            assert deck is not None
+            return sum(e.quantity for e in deck.deck_cards if e.card_id == "card-bolt")
+
+        stub = notifier(observer=bolt_quantity)
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as client:
+            created = await client.call_tool("create_deck", {"name": "Burn"})
+            deck_id = created.structuredContent["deck"]["id"]
+            await client.call_tool(
+                "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-bolt", "quantity": 4}
+            )
+            result = await client.call_tool(
+                "set_card_quantity",
+                {"deck_id": deck_id, "card_id": "card-bolt", "quantity": quantity},
+            )
+
+        assert result.structuredContent["status"] == "ok"
+        assert stub.deck_ids == [deck_id] * 3, "create, add, set — one emit each"
+        assert stub.observations[-1] == quantity, "the new count was visible at notify time"
+
     async def test_a_multi_line_import_emits_exactly_once(self, deck_db, notifier):
         """The helper delegates per line and commits N times; the glass hears one change.
 
@@ -320,10 +376,16 @@ class TestANoWriteOutcomeEmitsNothing:
         async with create_connected_server_and_client_session(server) as client:
             created = await client.call_tool("create_deck", {"name": "Quiet"})
             deck_id = created.structuredContent["deck"]["id"]
+            await client.call_tool(
+                "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-thunderbolt"}
+            )
             baseline = len(stub.deck_ids)
 
             cases = [
                 ("create_deck", {"name": "   "}, "invalid"),
+                ("update_deck", {"deck_id": "no-such-deck", "changes": {"name": "x"}}, "not_found"),
+                ("update_deck", {"deck_id": deck_id, "changes": {}}, "invalid"),
+                ("update_deck", {"deck_id": deck_id, "changes": {"name": " "}}, "invalid"),
                 ("delete_deck", {"deck_id": "no-such-deck"}, "not_found"),
                 (
                     "add_card_to_deck",
@@ -341,6 +403,39 @@ class TestANoWriteOutcomeEmitsNothing:
                     "remove_card_from_deck",
                     {"deck_id": deck_id, "card_id": "card-bolt"},
                     "not_in_deck",
+                ),
+                (
+                    "set_card_quantity",
+                    {"deck_id": "no-such-deck", "card_id": "card-thunderbolt", "quantity": 1},
+                    "deck_not_found",
+                ),
+                (
+                    # Stored 1, asked for 1: the near-miss that must read as no write.
+                    "set_card_quantity",
+                    {"deck_id": deck_id, "card_id": "card-thunderbolt", "quantity": 1},
+                    "unchanged",
+                ),
+                (
+                    # A known card that is not in the board — quantity 0 included — is never a
+                    # removal, so it is never an emit.
+                    "set_card_quantity",
+                    {"deck_id": deck_id, "card_id": "card-bolt", "quantity": 0},
+                    "card_not_found",
+                ),
+                (
+                    "set_card_quantity",
+                    {"deck_id": deck_id, "name": "No Such Card", "quantity": 2},
+                    "card_not_found",
+                ),
+                (
+                    "set_card_quantity",
+                    {"deck_id": deck_id, "name": "bolt", "quantity": 2},
+                    "ambiguous",
+                ),
+                (
+                    "set_card_quantity",
+                    {"deck_id": deck_id, "card_id": "card-thunderbolt", "quantity": -1},
+                    "invalid",
                 ),
                 ("import_decklist", {"deck_id": deck_id, "arena_export": "   "}, "invalid"),
                 (
@@ -381,19 +476,27 @@ class TestANoWriteOutcomeEmitsNothing:
         assert emits_after_first == 2, "the non-vacuity twin: the first add really did emit"
         assert len(stub.deck_ids) == 2, "the exists answer added nothing and announced nothing"
 
-    async def test_an_uninitialized_database_is_silent(self, uninitialized_db, notifier):
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [
+            ("create_deck", {"name": "Too Early"}),
+            ("update_deck", {"deck_id": "any", "changes": {"name": "Too Early"}}),
+            ("set_card_quantity", {"deck_id": "any", "card_id": "card-bolt", "quantity": 2}),
+        ],
+    )
+    async def test_an_uninitialized_database_is_silent(
+        self, uninitialized_db, notifier, tool, args
+    ):
         stub = notifier()
         server = build_server(session_factory=uninitialized_db)
         async with create_connected_server_and_client_session(server) as client:
-            result = await client.call_tool("create_deck", {"name": "Too Early"})
+            result = await client.call_tool(tool, args)
 
         assert result.structuredContent["status"] == "database_not_initialized"
         assert stub.deck_ids == []
 
     async def test_a_database_error_mid_write_is_silent(self, deck_db, notifier, monkeypatch):
         """``status="error"`` means nothing persisted — the rolled-back mutation emits nothing."""
-        from sqlalchemy.exc import DatabaseError
-
         stub = notifier()
         server = build_server(session_factory=deck_db)
         async with create_connected_server_and_client_session(server) as client:
@@ -408,6 +511,166 @@ class TestANoWriteOutcomeEmitsNothing:
 
         assert result.structuredContent["status"] == "error"
         assert stub.deck_ids == [deck_id], "only the create emitted; the failed delete was silent"
+
+    @pytest.mark.parametrize(
+        ("tool", "args", "repo_method"),
+        [
+            ("update_deck", {"changes": {"name": "Renamed"}}, "update_deck"),
+            ("set_card_quantity", {"card_id": "card-bolt", "quantity": 2}, "update_card_quantity"),
+            ("set_card_quantity", {"card_id": "card-bolt", "quantity": 0}, "remove_card_from_deck"),
+        ],
+    )
+    async def test_a_database_error_in_the_new_tools_is_silent_and_leaves_the_deck_alone(
+        self, deck_db, notifier, monkeypatch, tool, args, repo_method
+    ):
+        """Each write branch of the two quick-wins tools: a ``DatabaseError`` from the repository
+        method it delegates to is ``status="error"``, nothing is emitted, and the deck reads back
+        through a separate session exactly as it was. The patched method counts its calls, so a
+        misspelt ``repo_method`` cannot pass by never being reached."""
+        calls: list[str] = []
+
+        async def boom(self, *a, **kw):
+            calls.append(repo_method)
+            raise DatabaseError(repo_method, {}, Exception("disk I/O error"))
+
+        result, emitted, deck = await self._drive_after_patching(
+            deck_db, notifier, monkeypatch, tool, args, repo_method, boom
+        )
+
+        assert calls == [repo_method], "the planted failure was really reached"
+        assert result.isError is False
+        assert result.structuredContent["status"] == "error"
+        assert emitted == [], "the failed write was silent"
+        assert deck.name == "Sturdy"
+        assert [(e.card_id, e.quantity) for e in deck.deck_cards] == [("card-bolt", 4)]
+
+    async def test_a_committed_update_deck_whose_reload_fails_still_answers_ok_and_emits(
+        self, deck_db, notifier, monkeypatch
+    ):
+        """The write landed, then reloading the deck for the response raised: that is a reporting
+        failure, not a failed mutation. The status stays ``ok`` (with ``deck`` absent and a message
+        pointing at ``load_deck``), ``deck_changed`` is emitted once, and the rename is on disk —
+        so a caller is never told to retry a write that already succeeded."""
+        calls: list[str] = []
+        real_reload = DeckRepository.get_deck_with_cards
+
+        async def reload_boom(self, *a, **kw):
+            # Fail only the tool's own post-commit reload; the observing read that follows in
+            # ``_drive_after_patching`` goes through the real method.
+            if not calls:
+                calls.append("get_deck_with_cards")
+                raise DatabaseError("get_deck_with_cards", {}, Exception("disk I/O error"))
+            return await real_reload(self, *a, **kw)
+
+        result, emitted, deck = await self._drive_after_patching(
+            deck_db,
+            notifier,
+            monkeypatch,
+            "update_deck",
+            {"changes": {"name": "Renamed"}},
+            "get_deck_with_cards",
+            reload_boom,
+        )
+
+        assert calls == ["get_deck_with_cards"]
+        assert result.isError is False
+        assert result.structuredContent["status"] == "ok"
+        assert result.structuredContent["deck"] is None
+        assert "load_deck" in result.structuredContent["message"]
+        assert len(emitted) == 1, "a committed write announces itself even if the reload failed"
+        assert deck.name == "Renamed"
+
+    @pytest.mark.parametrize(
+        ("tool", "args", "expect_rows"),
+        [
+            ("set_card_quantity", {"card_id": "card-bolt", "quantity": 2}, [("card-bolt", 2)]),
+            ("set_card_quantity", {"card_id": "card-bolt", "quantity": 0}, []),
+            ("update_deck", {"changes": {"name": "Renamed"}}, [("card-bolt", 4)]),
+        ],
+    )
+    async def test_a_failed_repository_reread_after_the_commit_still_answers_ok_and_emits(
+        self, deck_db, notifier, monkeypatch, tool, args, expect_rows
+    ):
+        """The repository's own post-commit re-read (``_reload_after_commit``) raises once, after
+        the write has landed. The tool still answers ``ok`` with the written state, emits exactly
+        once, and a separate session reads the write back — the quantity, the removal and the
+        rename each through their own repository branch."""
+        calls: list[str] = []
+        real_reload = DeckRepository._reload_after_commit
+
+        async def reload_boom(self, *a, **kw):
+            if not calls:
+                calls.append("_reload_after_commit")
+                raise DatabaseError("refresh", {}, Exception("disk I/O error"))
+            return await real_reload(self, *a, **kw)
+
+        result, emitted, deck = await self._drive_after_patching(
+            deck_db, notifier, monkeypatch, tool, args, "_reload_after_commit", reload_boom
+        )
+
+        assert calls == ["_reload_after_commit"], "the planted re-read failure really fired"
+        assert result.isError is False
+        assert result.structuredContent["status"] == "ok"
+        assert len(emitted) == 1, "a committed write announces itself once, re-read or not"
+        assert [(e.card_id, e.quantity) for e in deck.deck_cards] == expect_rows
+        if tool == "update_deck":
+            assert result.structuredContent["deck"]["name"] == "Renamed"
+            assert deck.name == "Renamed"
+        else:
+            assert result.structuredContent["quantity"] == args["quantity"]
+
+    @pytest.mark.parametrize(
+        ("args", "repo_method", "answer"),
+        [
+            ({"card_id": "card-bolt", "quantity": 2}, "update_card_quantity", None),
+            ({"card_id": "card-bolt", "quantity": 0}, "remove_card_from_deck", False),
+        ],
+    )
+    async def test_a_row_that_vanishes_after_the_pre_read_is_card_not_found_and_silent(
+        self, deck_db, notifier, monkeypatch, args, repo_method, answer
+    ):
+        """The race the helper guards: the pre-read saw the row, the write found nothing (the
+        repository answers ``None`` / ``False``). That is ``card_not_found``, not ``ok``, so it
+        emits nothing — and the deck is untouched."""
+        calls: list[str] = []
+
+        async def vanished(self, *a, **kw):
+            calls.append(repo_method)
+            return answer
+
+        result, emitted, deck = await self._drive_after_patching(
+            deck_db, notifier, monkeypatch, "set_card_quantity", args, repo_method, vanished
+        )
+
+        assert calls == [repo_method]
+        assert result.isError is False
+        assert result.structuredContent["status"] == "card_not_found"
+        assert emitted == [], "a write that landed nothing announces nothing"
+        assert [(e.card_id, e.quantity) for e in deck.deck_cards] == [("card-bolt", 4)]
+
+    @staticmethod
+    async def _drive_after_patching(
+        deck_db, notifier, monkeypatch, tool, args, repo_method, replacement
+    ):
+        """Seed a deck with 4 Bolt, patch ``DeckRepository.<repo_method>`` with *replacement*,
+        call *tool*, and return ``(result, emits after the patch, the deck re-read separately)``."""
+        stub = notifier()
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as client:
+            created = await client.call_tool("create_deck", {"name": "Sturdy"})
+            deck_id = created.structuredContent["deck"]["id"]
+            await client.call_tool(
+                "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-bolt", "quantity": 4}
+            )
+            emits_before = len(stub.deck_ids)
+
+            monkeypatch.setattr(DeckRepository, repo_method, replacement)
+            result = await client.call_tool(tool, {"deck_id": deck_id, **args})
+
+        async with deck_db() as observing:
+            deck = await DeckRepository(observing).get_deck_with_cards(deck_id)
+        assert deck is not None
+        return result, stub.deck_ids[emits_before:], deck
 
 
 class TestANotifyOutcomeNeverTouchesTheResult:

@@ -95,6 +95,7 @@ from src.mcp_server.tools.deck_management import (
     DeckCardResult,
     DeckDeleteResult,
     DeckListResult,
+    DeckMetadataUpdate,
     DeckResult,
 )
 from src.mcp_server.tools.deck_management import add_card_to_deck as _add_card_to_deck_helper
@@ -105,6 +106,8 @@ from src.mcp_server.tools.deck_management import load_deck as _load_deck_helper
 from src.mcp_server.tools.deck_management import (
     remove_card_from_deck as _remove_card_from_deck_helper,
 )
+from src.mcp_server.tools.deck_management import set_card_quantity as _set_card_quantity_helper
+from src.mcp_server.tools.deck_management import update_deck as _update_deck_helper
 from src.mcp_server.tools.find_similar import SimilarCardsResult
 from src.mcp_server.tools.find_similar import find_similar_cards as _find_similar_helper
 from src.mcp_server.tools.initialize_database import InitializeDatabaseResult
@@ -340,6 +343,37 @@ def build_server(
             return await _load_deck_helper(session, deck_id=deck_id)
 
     @mcp.tool()
+    async def update_deck(deck_id: str, changes: DeckMetadataUpdate) -> DeckResult:
+        """Rename a deck or set/clear its strategy and tags. Cards are never touched.
+
+        Send only the fields you want to change inside ``changes``: a field you
+        leave out keeps its current value, and ``strategy`` or ``tags`` sent as
+        ``null`` is cleared (a blank ``strategy`` string clears it too). ``name``
+        can be replaced but not cleared (``null`` or blank is ``invalid``), an
+        empty ``changes`` is ``invalid`` rather than a no-op, and an unknown key
+        in ``changes`` is rejected. Returns the reloaded deck. Stateless: pass ``deck_id`` every
+        call. Get the ``deck_id`` from ``create_deck`` or ``list_decks``.
+
+        Args:
+            deck_id: The deck id to update.
+            changes: The edits to apply — any of ``name`` (1 to 100 characters),
+                ``strategy`` (up to 2000 characters, ``null`` or blank clears) and
+                ``tags`` (up to 20 tags of 50 characters, ``null`` clears).
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``deck`` populated, or ``None`` if the
+            committed change could not be reloaded — call ``load_deck``), ``not_found``,
+            or ``invalid`` (empty ``changes``, blank ``name``, or a value over its cap).
+        """
+        async with session_factory() as session:
+            result = await _update_deck_helper(session, deck_id=deck_id, changes=changes)
+        if result.status == "ok":
+            # ``ok`` means the write committed, even when the post-commit reload failed and
+            # ``deck`` is absent — so the emit keys on the caller's deck_id, not on the payload.
+            await _emit_deck_changed(deck_id.strip())
+        return result
+
+    @mcp.tool()
     async def delete_deck(deck_id: str) -> DeckDeleteResult:
         """Delete a deck by id.
 
@@ -398,6 +432,54 @@ def build_server(
                 quantity=quantity,
                 sideboard=sideboard,
                 commander=commander,
+            )
+        if result.status == "ok":
+            await _emit_deck_changed(result.deck_id)
+        return result
+
+    @mcp.tool()
+    async def set_card_quantity(
+        deck_id: str,
+        quantity: int,
+        card_id: str | None = None,
+        name: str | None = None,
+        sideboard: bool = False,
+    ) -> DeckCardResult:
+        """Set the number of copies of a card already in a deck; ``0`` removes it.
+
+        Absolute, not additive: ``quantity`` replaces the stored count for that
+        card in that board. The card must already be in the board — this never
+        adds a card (use ``add_card_to_deck``), so a card that is not there
+        returns ``status="card_not_found"`` for any quantity, ``0`` included.
+        Asking for the count already stored returns ``status="unchanged"`` and
+        writes nothing. Pure persistence — no legality, copy-limit or deck-size
+        checking (use ``validate_deck``). Identify the card by ``card_id`` OR
+        ``name`` (exactly one); a ``name`` matching multiple cards returns
+        ``status="ambiguous"`` with candidate ``matches``. Stateless: pass
+        ``deck_id`` every call.
+
+        Args:
+            deck_id: The target deck id.
+            quantity: Required. The new number of copies (0 to 250); ``0`` removes
+                the card from that board.
+            card_id: The card id to adjust (provide this OR ``name``, not both).
+            name: A card name to resolve and adjust (provide this OR ``card_id``).
+            sideboard: Adjust the sideboard entry instead of the mainboard one
+                (default False).
+
+        Returns:
+            A result whose ``status`` reports the outcome (``ok``/``unchanged``/
+            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``); on
+            ``ok`` and ``unchanged`` its ``quantity`` is the stored count.
+        """
+        async with session_factory() as session:
+            result = await _set_card_quantity_helper(
+                session,
+                deck_id=deck_id,
+                card_id=card_id,
+                name=name,
+                quantity=quantity,
+                sideboard=sideboard,
             )
         if result.status == "ok":
             await _emit_deck_changed(result.deck_id)

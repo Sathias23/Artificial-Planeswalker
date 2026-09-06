@@ -1,7 +1,7 @@
 """Deck repository for database operations on deck data."""
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
@@ -16,6 +16,7 @@ from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.base import BaseRepository
+from src.data.schemas.card import Card
 from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry, DeckSummary
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,9 @@ class DeckRepository(BaseRepository):
         """Create a new deck.
 
         Transaction management: Explicitly rolls back on any database error
-        to prevent session state contamination.
+        to prevent session state contamination. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
 
         Args:
             name: Deck name
@@ -94,8 +97,6 @@ class DeckRepository(BaseRepository):
                 deck_model.tags_list = tags
             self.session.add(deck_model)
             await self.session.commit()
-            await self.session.refresh(deck_model)
-            return Deck.model_validate(deck_model)
 
         except IntegrityError as e:
             await self.session.rollback()
@@ -120,6 +121,14 @@ class DeckRepository(BaseRepository):
                 str(e),
             )
             raise
+
+        # Committed. Snapshot first, re-read second (see ``_reload_committed``).
+        written = Deck.model_validate(deck_model)
+        if await self._reload_committed(
+            "create_deck", written.id, lambda: self._reload_after_commit(deck_model)
+        ):
+            return Deck.model_validate(deck_model)
+        return written
 
     async def get_deck(self, deck_id: str) -> Deck | None:
         """Get a deck by ID without loading cards.
@@ -157,8 +166,16 @@ class DeckRepository(BaseRepository):
             strategy: New deck strategy (optional, pass None to clear, omit to leave unchanged)
             tags: New tags list (optional, pass None to clear, omit to leave unchanged)
 
+        Transaction management: Explicitly rolls back on any database error
+        to prevent session state contamination. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
+
         Returns:
             Updated Deck schema if found, None otherwise
+
+        Raises:
+            DatabaseError: For database-level errors
 
         Example:
             # Update name only
@@ -176,36 +193,53 @@ class DeckRepository(BaseRepository):
             # Update tags
             deck = await repo.update_deck(deck_id="deck-123", tags=["aggro", "burn"])
         """
-        stmt = select(DeckModel).where(DeckModel.id == deck_id)
-        result = await self.session.execute(stmt)
-        deck_model = result.scalar_one_or_none()
+        try:
+            stmt = select(DeckModel).where(DeckModel.id == deck_id)
+            result = await self.session.execute(stmt)
+            deck_model = result.scalar_one_or_none()
 
-        if deck_model is None:
-            return None
+            if deck_model is None:
+                return None
 
-        # Track if any updates were made
-        updated = False
+            # Track if any updates were made
+            updated = False
 
-        if name is not None:
-            deck_model.name = name
-            updated = True
+            if name is not None:
+                deck_model.name = name
+                updated = True
 
-        # Use sentinel value to distinguish "not provided" from "clear with None"
-        if strategy is not _UNSET:
-            deck_model.strategy = strategy  # type: ignore[assignment]
-            updated = True
+            # Use sentinel value to distinguish "not provided" from "clear with None"
+            if strategy is not _UNSET:
+                deck_model.strategy = strategy  # type: ignore[assignment]
+                updated = True
 
-        if tags is not _UNSET:
-            deck_model.tags_list = tags  # type: ignore[assignment]
-            updated = True
+            if tags is not _UNSET:
+                deck_model.tags_list = tags  # type: ignore[assignment]
+                updated = True
 
-        # Always update timestamp if any field changed
-        if updated:
-            deck_model.updated_at = datetime.now(UTC)
+            # Always update timestamp if any field changed
+            if updated:
+                deck_model.updated_at = datetime.now(UTC)
 
-        await self.session.commit()
-        await self.session.refresh(deck_model)
-        return Deck.model_validate(deck_model)
+            await self.session.commit()
+
+        except DatabaseError as e:
+            await self.session.rollback()
+            logger.error(
+                "DatabaseError in update_deck: deck_id=%s, in_transaction=%s - %s",
+                deck_id,
+                self.session.in_transaction(),
+                str(e),
+            )
+            raise
+
+        # Committed. Snapshot first, re-read second (see ``_reload_committed``).
+        written = Deck.model_validate(deck_model)
+        if await self._reload_committed(
+            "update_deck", deck_id, lambda: self._reload_after_commit(deck_model)
+        ):
+            return Deck.model_validate(deck_model)
+        return written
 
     async def delete_deck(self, deck_id: str) -> bool:
         """Delete a deck and all associated cards (cascade).
@@ -368,7 +402,9 @@ class DeckRepository(BaseRepository):
         """Add a card to a deck (mainboard or sideboard).
 
         Transaction management: Explicitly rolls back on any database error
-        to prevent session state contamination.
+        to prevent session state contamination. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
 
         Args:
             deck_id: Deck UUID
@@ -414,23 +450,10 @@ class DeckRepository(BaseRepository):
             # id raises IntegrityError here, before any deck row is touched).
             await self.session.flush()
             deck_model = await self._refresh_deck_metadata(deck_id)
+            # The card is read before the commit so the answer can be built without any I/O
+            # afterwards (the association's ``card`` relation is ``noload``).
+            card_model = await self.session.get(CardModel, card_id)
             await self.session.commit()
-            await self._reload_after_commit(deck_model)
-
-            # Reload with card relationship
-            stmt = (
-                select(DeckCardModel)
-                .where(
-                    DeckCardModel.deck_id == deck_id,
-                    DeckCardModel.card_id == card_id,
-                    DeckCardModel.sideboard == sideboard,
-                )
-                .options(selectinload(DeckCardModel.card))
-            )
-            result = await self.session.execute(stmt)
-            deck_card_model = result.scalar_one()
-
-            return DeckCard.model_validate(deck_card_model)
 
         except IntegrityError as e:
             await self.session.rollback()
@@ -454,6 +477,36 @@ class DeckRepository(BaseRepository):
             )
             raise
 
+        # Committed. Snapshot first, re-read second (see ``_reload_committed``).
+        assert card_model is not None  # the flush enforced the foreign key
+        written = DeckCard(
+            deck_id=deck_id,
+            card_id=card_id,
+            quantity=quantity,
+            sideboard=sideboard,
+            commander=commander,
+            card=Card.model_validate(card_model),
+        )
+        reloaded: list[DeckCardModel] = []
+
+        async def reload() -> None:
+            await self._reload_after_commit(deck_model)
+            stmt = (
+                select(DeckCardModel)
+                .where(
+                    DeckCardModel.deck_id == deck_id,
+                    DeckCardModel.card_id == card_id,
+                    DeckCardModel.sideboard == sideboard,
+                )
+                .options(selectinload(DeckCardModel.card))
+            )
+            result = await self.session.execute(stmt)
+            reloaded.append(result.scalar_one())
+
+        if await self._reload_committed("add_card_to_deck", deck_id, reload):
+            return DeckCard.model_validate(reloaded[0])
+        return written
+
     async def add_cards_to_deck(
         self, deck_id: str, entries: Sequence[DeckCardEntry]
     ) -> list[DeckCard]:
@@ -461,7 +514,10 @@ class DeckRepository(BaseRepository):
 
         The bulk sibling of :meth:`add_card_to_deck` for ``import_decklist``. Every entry is
         staged, committed together, and the new rows are reloaded (with their cards) in one
-        query. On any database error the session is rolled back and **nothing** is added.
+        query. On any database error before or at the commit the session is rolled back and
+        **nothing** is added. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
 
         Args:
             deck_id: Deck UUID
@@ -495,23 +551,16 @@ class DeckRepository(BaseRepository):
             )
             await self.session.flush()
             deck_model = await self._refresh_deck_metadata(deck_id)
+            # The cards are read before the commit so the answer can be built without any I/O
+            # afterwards (the association's ``card`` relation is ``noload``).
+            card_ids = {entry.card_id for entry in entries}
+            cards_by_id = {
+                card.id: Card.model_validate(card)
+                for card in (
+                    await self.session.execute(select(CardModel).where(CardModel.id.in_(card_ids)))
+                ).scalars()
+            }
             await self.session.commit()
-            await self._reload_after_commit(deck_model)
-
-            stmt = (
-                select(DeckCardModel)
-                .where(
-                    DeckCardModel.deck_id == deck_id,
-                    DeckCardModel.card_id.in_({entry.card_id for entry in entries}),
-                )
-                .options(selectinload(DeckCardModel.card))
-            )
-            result = await self.session.execute(stmt)
-            by_key = {(row.card_id, row.sideboard): row for row in result.scalars()}
-            return [
-                DeckCard.model_validate(by_key[(entry.card_id, entry.sideboard)])
-                for entry in entries
-            ]
 
         except IntegrityError as e:
             await self.session.rollback()
@@ -535,13 +584,50 @@ class DeckRepository(BaseRepository):
             )
             raise
 
+        # Committed. Snapshot first, re-read second (see ``_reload_committed``).
+        written = [
+            DeckCard(
+                deck_id=deck_id,
+                card_id=entry.card_id,
+                quantity=entry.quantity,
+                sideboard=entry.sideboard,
+                commander=entry.commander,
+                card=cards_by_id[entry.card_id],  # the flush enforced every foreign key
+            )
+            for entry in entries
+        ]
+        reloaded: list[DeckCard] = []
+
+        async def reload() -> None:
+            await self._reload_after_commit(deck_model)
+            stmt = (
+                select(DeckCardModel)
+                .where(
+                    DeckCardModel.deck_id == deck_id,
+                    DeckCardModel.card_id.in_(card_ids),
+                )
+                .options(selectinload(DeckCardModel.card))
+            )
+            result = await self.session.execute(stmt)
+            by_key = {(row.card_id, row.sideboard): row for row in result.scalars()}
+            reloaded.extend(
+                DeckCard.model_validate(by_key[(entry.card_id, entry.sideboard)])
+                for entry in entries
+            )
+
+        if await self._reload_committed("add_cards_to_deck", deck_id, reload):
+            return reloaded
+        return written
+
     async def remove_card_from_deck(
         self, deck_id: str, card_id: str, sideboard: bool = False
     ) -> bool:
         """Remove a card from a deck.
 
         Transaction management: Explicitly rolls back on any database error
-        to prevent session state contamination.
+        to prevent session state contamination. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
 
         Args:
             deck_id: Deck UUID
@@ -574,8 +660,6 @@ class DeckRepository(BaseRepository):
                 return False
             deck_model = await self._refresh_deck_metadata(deck_id)
             await self.session.commit()
-            await self._reload_after_commit(deck_model)
-            return True
 
         except DatabaseError as e:
             await self.session.rollback()
@@ -589,13 +673,21 @@ class DeckRepository(BaseRepository):
             )
             raise
 
+        # Committed: the row is gone whatever the re-read says (see ``_reload_committed``).
+        await self._reload_committed(
+            "remove_card_from_deck", deck_id, lambda: self._reload_after_commit(deck_model)
+        )
+        return True
+
     async def update_card_quantity(
         self, deck_id: str, card_id: str, quantity: int, sideboard: bool = False
     ) -> DeckCard | None:
         """Update the quantity of a card in a deck.
 
         Transaction management: Explicitly rolls back on any database error
-        to prevent session state contamination.
+        to prevent session state contamination. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
 
         Args:
             deck_id: Deck UUID
@@ -651,9 +743,6 @@ class DeckRepository(BaseRepository):
             await self.session.flush()
             deck_model = await self._refresh_deck_metadata(deck_id)
             await self.session.commit()
-            await self._reload_after_commit(deck_model)
-            await self.session.refresh(deck_card_model)
-            return DeckCard.model_validate(deck_card_model)
 
         except DatabaseError as e:
             await self.session.rollback()
@@ -667,6 +756,18 @@ class DeckRepository(BaseRepository):
                 str(e),
             )
             raise
+
+        # Committed. Snapshot first (the pre-commit select eager-loaded ``card``), re-read second
+        # (see ``_reload_committed``).
+        written = DeckCard.model_validate(deck_card_model)
+
+        async def reload() -> None:
+            await self._reload_after_commit(deck_model)
+            await self.session.refresh(deck_card_model)
+
+        if await self._reload_committed("update_card_quantity", deck_id, reload):
+            return DeckCard.model_validate(deck_card_model)
+        return written
 
     async def _refresh_deck_metadata(self, deck_id: str) -> DeckModel | None:
         """Recompute a deck's colour identity and bump ``updated_at`` inside the open transaction.
@@ -721,12 +822,52 @@ class DeckRepository(BaseRepository):
         if deck_model is not None:
             await self.session.refresh(deck_model)
 
+    async def _reload_committed(
+        self, label: str, deck_id: str, reload: Callable[[], Awaitable[None]]
+    ) -> bool:
+        """Run a writer's post-commit re-read; a failure there is never a failed write.
+
+        The discipline every writer follows: the ``try``/rollback/re-raise block ends at the
+        commit; then the answer is **snapshotted from the in-memory instances first** (with
+        ``expire_on_commit=False`` they hold exactly the values written, so the snapshot needs
+        no I/O); and only then is the database re-read, through here. A ``DatabaseError`` from
+        *reload* cannot undo a landed commit, so re-raising it would report a successful write
+        as a failure and invite a retry of a change that already happened. Instead the broken
+        read transaction is rolled back, a warning is logged, and ``False`` tells the caller to
+        answer with its snapshot. That rollback expires every instance in the session, which is
+        why the snapshot must come first: after a ``False`` return no caller may touch an ORM
+        attribute (under asyncio that would be implicit lazy I/O).
+
+        Args:
+            label: The writer's name, for the log line.
+            deck_id: The deck the write touched, for the log line.
+            reload: The re-read to attempt (a refresh, a select, or both).
+
+        Returns:
+            ``True`` when the re-read succeeded and the caller may answer from the refreshed
+            instances; ``False`` when it failed and the snapshot is the answer.
+        """
+        try:
+            await reload()
+        except DatabaseError as e:
+            await self.session.rollback()
+            logger.warning(
+                "%s committed but the post-commit re-read failed: deck_id=%s - %s",
+                label,
+                deck_id,
+                str(e),
+            )
+            return False
+        return True
+
     async def update_deck_color_identity(self, deck_id: str) -> Deck | None:
         """Recompute and commit a deck's colour identity (and ``updated_at``) from its cards.
 
         A committing wrapper over the refresh every card mutation already runs; useful for
         repairing a deck written before the repository maintained its metadata. Colour identity
         is the WUBRG-ordered union of the cards' ``color_identity`` (mainboard and sideboard).
+        A ``DatabaseError`` raised while re-reading after the commit is not a failed write; the
+        method answers with the state it wrote (see :meth:`_reload_committed`).
 
         Args:
             deck_id: Deck UUID
@@ -744,8 +885,6 @@ class DeckRepository(BaseRepository):
                 return None
 
             await self.session.commit()
-            await self.session.refresh(deck_model)
-            return Deck.model_validate(deck_model)
 
         except (IntegrityError, DatabaseError) as e:
             await self.session.rollback()
@@ -756,6 +895,14 @@ class DeckRepository(BaseRepository):
                 str(e),
             )
             raise
+
+        # Committed. Snapshot first, re-read second (see ``_reload_committed``).
+        written = Deck.model_validate(deck_model)
+        if await self._reload_committed(
+            "update_deck_color_identity", deck_id, lambda: self._reload_after_commit(deck_model)
+        ):
+            return Deck.model_validate(deck_model)
+        return written
 
     async def get_deck_with_cards(self, deck_id: str) -> Deck | None:
         """Get a deck with all cards loaded (eager loading).
@@ -800,7 +947,9 @@ class DeckRepository(BaseRepository):
         locations. The source deck remains unchanged (non-destructive merge).
 
         Transaction management: Explicitly rolls back on any database error
-        to prevent session state contamination.
+        to prevent session state contamination. A ``DatabaseError`` raised while
+        re-reading after the commit is not a failed write; the method answers with the
+        state it wrote (see :meth:`_reload_committed`).
 
         Args:
             target_deck_id: UUID of deck to merge cards into (modified)
@@ -853,6 +1002,11 @@ class DeckRepository(BaseRepository):
             target_card_map: dict[tuple[str, bool], int] = {
                 (dc.card_id, dc.sideboard): dc.quantity for dc in target_deck.deck_cards
             }
+            # The rows as written, keyed the same way: every per-row call below returns the row
+            # it persisted, so the answer can be assembled without re-reading anything.
+            written_rows: dict[tuple[str, bool], DeckCard] = {
+                (dc.card_id, dc.sideboard): dc for dc in target_deck.deck_cards
+            }
 
             # Process each card from source deck
             for source_card in source_deck.deck_cards:
@@ -876,16 +1030,18 @@ class DeckRepository(BaseRepository):
 
                     # Update quantity if it changed
                     if new_quantity != target_quantity:
-                        await self.update_card_quantity(
+                        updated_row = await self.update_card_quantity(
                             deck_id=target_deck_id,
                             card_id=source_card.card_id,
                             quantity=new_quantity,
                             sideboard=source_card.sideboard,
                         )
+                        if updated_row is not None:
+                            written_rows[card_key] = updated_row
                         cards_merged += 1
                 else:
                     # Card doesn't exist in target - add it
-                    await self.add_card_to_deck(
+                    written_rows[card_key] = await self.add_card_to_deck(
                         deck_id=target_deck_id,
                         card_id=source_card.card_id,
                         quantity=source_card.quantity,
@@ -896,27 +1052,8 @@ class DeckRepository(BaseRepository):
 
             # Every add/quantity call above already refreshed the target's metadata; this final
             # pass covers an empty source (no per-row call ran) so a merge always stamps the deck.
-            await self._refresh_deck_metadata(target_deck_id)
+            deck_model = await self._refresh_deck_metadata(target_deck_id)
             await self.session.commit()
-
-            # Expire all objects to ensure fresh data on next query
-            self.session.expire_all()
-
-            # Reload deck with all cards for return value
-            updated_deck = await self.get_deck_with_cards(target_deck_id)
-
-            # Log successful merge
-            logger.info(
-                "Merged decks: target_id=%s, source_id=%s, strategy=%s, "
-                "cards_added=%d, cards_merged=%d",
-                target_deck_id,
-                source_deck_id,
-                strategy.value,
-                cards_added,
-                cards_merged,
-            )
-
-            return updated_deck
 
         except IntegrityError as e:
             await self.session.rollback()
@@ -941,3 +1078,41 @@ class DeckRepository(BaseRepository):
                 str(e),
             )
             raise
+
+        # Committed. Snapshot first — from the metadata row as stamped and the rows each call
+        # above persisted — before ``expire_all`` drops every loaded value (see
+        # ``_reload_committed``).
+        assert deck_model is not None  # the target was found above
+        written = Deck(
+            id=deck_model.id,
+            name=deck_model.name,
+            format=deck_model.format,
+            strategy=deck_model.strategy,
+            color_identity=deck_model.color_identity_list,
+            tags=deck_model.tags_list,
+            created_at=deck_model.created_at,
+            updated_at=deck_model.updated_at,
+            deck_cards=list(written_rows.values()),
+        )
+        reloaded: list[Deck | None] = []
+
+        async def reload() -> None:
+            # Expire all objects to ensure fresh data on the re-read
+            self.session.expire_all()
+            reloaded.append(await self.get_deck_with_cards(target_deck_id))
+
+        fresh = await self._reload_committed("merge_decks", target_deck_id, reload)
+
+        # Log successful merge
+        logger.info(
+            "Merged decks: target_id=%s, source_id=%s, strategy=%s, "
+            "cards_added=%d, cards_merged=%d",
+            target_deck_id,
+            source_deck_id,
+            strategy.value,
+            cards_added,
+            cards_merged,
+        )
+        if fresh and reloaded[0] is not None:
+            return reloaded[0]
+        return written
