@@ -1,0 +1,64 @@
+- id: "1"
+  title: Deck metadata and card-quantity tools
+  description: >-
+    CAP-1 and CAP-2: expose the repository's update_deck and update_card_quantity
+    through two new stateless MCP tools, emitting deck_changed on success. Quantity 0
+    routes to removal; _UNSET versus None is preserved on the metadata tool.
+  invoke_dev_with: >-
+    Follow the add_card_to_deck / remove_card_from_deck pattern in
+    src/mcp_server/tools/deck_management.py (card_id-or-name selector, result status
+    vocabulary, message helpers). Update all five skills under .claude/skills/ that
+    enumerate deck-management tools, then rebuild plugin/. Tests go through the tool
+    entry points, not the repository.
+- id: "2"
+  title: Clone deck tool
+  description: >-
+    CAP-3: one MCP tool copies a deck (cards with quantity, board and commander flag;
+    format, strategy, tags, colour identity) into a new deck in a single transaction,
+    default name "<source> (copy)". The compare_deck_power description points at it.
+  invoke_dev_with: >-
+    Add a repository clone method beside merge_decks in src/data/repositories/deck.py
+    with the same commit/rollback discipline; no partial deck may survive a failure.
+    Ripple: skills, plugin/, the compare_deck_power docstring in
+    src/mcp_server/tools/compare_deck_power.py.
+- id: "3"
+  title: Decklist export (MCP and companion)
+  description: >-
+    CAP-4: an MCP export tool and a read-only companion GET emit Arena text
+    (Commander / Deck / Sideboard sections, "<qty> <name> (<SET>) <collector>") or
+    plain "<qty> <name>" text; the UI gets a copy control. Arena export must
+    round-trip through import_decklist.
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Put the formatter in src/logic (framework-free) so MCP and companion share it.
+    The companion route reads only (AD-2); run npm run gen:api after adding it, and
+    npm run format:check before the first push. Prove round-trip with a test that
+    exports then imports into a fresh deck. Download link is optional; copy is required.
+- id: "4"
+  title: Visible legality coverage
+  description: >-
+    CAP-6: validate_deck and format_check report which known rules were not checked
+    for the deck's format (commander size, colour identity, eligibility; restricted;
+    copy exceptions); the companion format panel renders the list; the format-legality
+    skill states the same coverage. No verdict changes.
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    Per-format unchecked-rule table lives in src/logic/deck_validator.py with a test
+    pinning an entry for every FormatType member. Extend the result models, not the
+    rules. Contract change: npm run gen:api, plugin/ rebuild, and
+    .claude/skills/format-legality/SKILL.md.
+- id: "5"
+  title: Recommendation provenance in the companion
+  description: >-
+    CAP-5: companion_show_* payloads accept an optional deck_id; the companion labels
+    each view and history entry with that deck's name, marks a push stale when its
+    deck's updated_at is newer than the push or the displayed deck differs, and words
+    the confidence indicator as the agent's confidence.
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Contracts in src/companion/contracts.py; UI state in ui/src/state/agentView.ts
+    (HISTORY_CAP retention and revisit semantics must not change). Pushes without
+    deck_id render exactly as today. Run the full UI gate including format:check and
+    test:gates; npm run gen:api for the contract change; skills and plugin/ ripple.
