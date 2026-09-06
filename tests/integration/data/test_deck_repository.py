@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
@@ -284,6 +284,31 @@ async def test_update_deck_name_and_strategy(deck_repo: DeckRepository) -> None:
     assert updated_deck is not None
     assert updated_deck.name == "New Name"
     assert updated_deck.strategy == "New strategy"
+
+
+async def test_update_deck_rolls_back_on_database_error(
+    deck_repo: DeckRepository, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``DatabaseError`` inside ``update_deck`` is re-raised after a rollback, so the session is
+    clean and the failed rename never lands (the writer convention the other methods follow)."""
+    deck = await deck_repo.create_deck(name="Keep Me", format="standard")
+    real_commit = session.commit
+
+    async def failing_commit() -> None:
+        monkeypatch.setattr(session, "commit", real_commit)  # fail exactly once
+        raise DatabaseError("update", {}, Exception("disk I/O error"))
+
+    monkeypatch.setattr(session, "commit", failing_commit)
+    with pytest.raises(DatabaseError):
+        await deck_repo.update_deck(deck_id=deck.id, name="Lost Rename")
+
+    assert not session.in_transaction(), "the failed write was rolled back"
+    reloaded = await deck_repo.get_deck(deck.id)
+    assert reloaded is not None and reloaded.name == "Keep Me"
+
+    # The session is usable again: the next write goes through.
+    updated = await deck_repo.update_deck(deck_id=deck.id, name="Second Try")
+    assert updated is not None and updated.name == "Second Try"
 
 
 async def test_delete_deck(deck_repo: DeckRepository) -> None:

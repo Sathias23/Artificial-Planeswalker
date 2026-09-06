@@ -125,19 +125,30 @@ then, with consent, touch the deck (Step 5, below).
 ### Step 5 — Apply (only on explicit confirmation)
 
 Applying a swap mutates the deck and **requires explicit user confirmation first**:
-`mcp__artificial-planeswalker__remove_card_from_deck` and
-`mcp__artificial-planeswalker__add_card_to_deck` (both take `deck_id`, and `card_id` **or** `name`).
-**Never apply swaps unprompted.** Prefer `card_id` over `name` for both the cut and the add to avoid
-`ambiguous`.
+`mcp__artificial-planeswalker__remove_card_from_deck`,
+`mcp__artificial-planeswalker__add_card_to_deck` and
+`mcp__artificial-planeswalker__set_card_quantity` (all take `deck_id`, and `card_id` **or** `name`).
+Use `set_card_quantity` when the change is a count on a card already in the deck (trim 4 → 2, bump
+2 → 3, or `quantity: 0` to cut it); it is **absolute, not additive**, and it never adds a card.
+**Never apply swaps unprompted.** Prefer `card_id` over `name` for every write to avoid `ambiguous`.
 
 **Check the `status` of every write — a swap is not done until the tool says so:**
 - `ok` → applied.
 - `exists` (add): the card was **already present and quantities are NOT merged**, so the add did
-  nothing — say so; do not report the swap as landed.
-- `not_in_deck` (remove): the cut target **wasn't in that board**, so nothing was removed — re-check
-  the card/board before claiming a cut.
+  nothing — call `set_card_quantity` with the total you want instead; do not report the swap as
+  landed until that says `ok`.
+- `unchanged` (set quantity): the deck already held that count — nothing was written; fine to
+  report as "already there".
+- `not_in_deck` (remove) / `card_not_found` from `set_card_quantity` on a card you expected in the
+  deck: the target **wasn't in that board**, so nothing changed — re-check the card/board before
+  claiming a cut. `set_card_quantity` never adds; use `add_card_to_deck` for a card not yet there.
 - `ambiguous` → disambiguate or re-call with `card_id`; `card_not_found` → fix the name; `error` →
   report it honestly and treat the swap as **not applied** (never pretend it succeeded).
+
+Renaming a deck or setting its strategy/tags goes through `mcp__artificial-planeswalker__update_deck`
+(`deck_id`, `changes`): put only the fields to change inside `changes` — a field left out is kept,
+`strategy`/`tags` sent as `null` are cleared, and `name` can be replaced but not cleared. Cards are
+never touched by it.
 
 After a confirmed, successful apply, **re-run Step 1 only if the deck is saved** (the analysis tools
 need a `deck_id`); for an unsaved/pasted list there's nothing to re-query — re-reason from the updated
@@ -155,6 +166,7 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `create_deck` | `name`, `format?`, `strategy?`, `tags?` | `ok` (`deck` + new `id`) · `invalid` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `invalid` · `error` |
+| `update_deck` | `deck_id`, `changes` (`{name?, strategy?, tags?}` — omitted = keep, `null` = clear for `strategy`/`tags`, blank `strategy` also clears; unknown keys are rejected) | `ok` (reloaded `deck`) · `not_found` · `invalid` (empty `changes`, blank/`null` `name`, over-cap value) · `error` |
 | `delete_deck` | `deck_id` | `ok` (deleted) · `not_found` · `error` |
 | `analyze_mana_curve` | `deck_id` | `ok` (`distribution`, `total_lands/total_spells`, `average_cmc`, `land_ratio`, `issues`, `recommendations`) · `empty` · `deck_not_found` · `error` |
 | `detect_synergies` | `deck_id` | `ok` (`synergies[]`, `synergy_count`, `deck_cohesion`) · `empty` · `deck_not_found` · `error` |
@@ -164,6 +176,7 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 | `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
 | `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, not `ok` |
 | `add_card_to_deck` | `deck_id`, `card_id?` \| `name?`, `quantity=1`, `sideboard=False` | `ok` · `exists` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` · `error` |
+| `set_card_quantity` | `deck_id`, `quantity` (**required**; 0–250; **absolute**, `0` removes), `card_id?` \| `name?`, `sideboard=False` | `ok` (`quantity` stored) · `unchanged` · `deck_not_found` · `card_not_found` (also: card not in that board — it never adds) · `ambiguous` · `invalid` · `error` |
 | `remove_card_from_deck` | `deck_id`, `card_id?` \| `name?`, `sideboard=False` | `ok` · `not_in_deck` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` · `error` |
 
 Notes that bite if ignored:
@@ -176,8 +189,9 @@ Notes that bite if ignored:
 - **Valid `games` values are exactly `paper` / `arena` / `mtgo`.** Any other platform string (e.g.
   `"mtga"`, `"online"`) returns `invalid` from every tool that accepts `games`.
 - `analyze_mana_curve` / `detect_synergies` read the **mainboard only** (sideboard excluded).
-- `add_card_to_deck` does **no** legality or 4-copy checking — that's `validate_deck`'s job; re-validate
-  after applying swaps. Adding a card already present returns `exists` and **does not merge quantities**.
+- `add_card_to_deck` / `set_card_quantity` do **no** legality or 4-copy checking — that's
+  `validate_deck`'s job; re-validate after applying swaps. Adding a card already present returns
+  `exists` and **does not merge quantities** — `set_card_quantity` sets the total you want.
 
 ## ⭐ Candidate-generator pattern (your core value-add)
 
@@ -213,8 +227,8 @@ value:
     Instead `lookup_card_by_name` the seed, then approximate it with a `search_cards` filter on its
     type line / colors / mana value, and tell the user it's a degraded substitute.
 - **`ambiguous`** (`find_similar_cards`, `lookup_card_by_name`, `add_card_to_deck`,
-  `remove_card_from_deck`): present the `matches` and ask the user to pick — or re-call with a specific
-  `card_id`. Don't guess.
+  `set_card_quantity`, `remove_card_from_deck`): present the `matches` and ask the user to pick — or
+  re-call with a specific `card_id`. Don't guess.
 - **`empty`** (`semantic_search_cards`, `search_cards`, `find_similar_cards`): no results — relax the
   filters (widen colors/CMC, drop a constraint) and retry, or tell the user plainly. **Never invent
   cards** to fill a gap.
@@ -239,7 +253,8 @@ value:
 
 - **Never auto-add or auto-remove cards.** Curve, synergy, and legality analysis is **observational
   only**. Proposing swaps is advisory. Mutating the deck (`add_card_to_deck` /
-  `remove_card_from_deck`) requires **explicit user confirmation first**, every time.
+  `set_card_quantity` / `remove_card_from_deck` / `update_deck`) requires **explicit user
+  confirmation first**, every time.
 - **Persisting a pasted decklist is an explicit action.** Analyze a pasted list in-conversation
   freely; `create_deck` + `add_card_to_deck` to save it needs the user's consent.
 - **Deleting a deck is destructive and irreversible** — `delete_deck` only on explicit request, with

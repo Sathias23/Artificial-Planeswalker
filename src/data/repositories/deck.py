@@ -157,8 +157,14 @@ class DeckRepository(BaseRepository):
             strategy: New deck strategy (optional, pass None to clear, omit to leave unchanged)
             tags: New tags list (optional, pass None to clear, omit to leave unchanged)
 
+        Transaction management: Explicitly rolls back on any database error
+        to prevent session state contamination.
+
         Returns:
             Updated Deck schema if found, None otherwise
+
+        Raises:
+            DatabaseError: For database-level errors
 
         Example:
             # Update name only
@@ -176,36 +182,47 @@ class DeckRepository(BaseRepository):
             # Update tags
             deck = await repo.update_deck(deck_id="deck-123", tags=["aggro", "burn"])
         """
-        stmt = select(DeckModel).where(DeckModel.id == deck_id)
-        result = await self.session.execute(stmt)
-        deck_model = result.scalar_one_or_none()
+        try:
+            stmt = select(DeckModel).where(DeckModel.id == deck_id)
+            result = await self.session.execute(stmt)
+            deck_model = result.scalar_one_or_none()
 
-        if deck_model is None:
-            return None
+            if deck_model is None:
+                return None
 
-        # Track if any updates were made
-        updated = False
+            # Track if any updates were made
+            updated = False
 
-        if name is not None:
-            deck_model.name = name
-            updated = True
+            if name is not None:
+                deck_model.name = name
+                updated = True
 
-        # Use sentinel value to distinguish "not provided" from "clear with None"
-        if strategy is not _UNSET:
-            deck_model.strategy = strategy  # type: ignore[assignment]
-            updated = True
+            # Use sentinel value to distinguish "not provided" from "clear with None"
+            if strategy is not _UNSET:
+                deck_model.strategy = strategy  # type: ignore[assignment]
+                updated = True
 
-        if tags is not _UNSET:
-            deck_model.tags_list = tags  # type: ignore[assignment]
-            updated = True
+            if tags is not _UNSET:
+                deck_model.tags_list = tags  # type: ignore[assignment]
+                updated = True
 
-        # Always update timestamp if any field changed
-        if updated:
-            deck_model.updated_at = datetime.now(UTC)
+            # Always update timestamp if any field changed
+            if updated:
+                deck_model.updated_at = datetime.now(UTC)
 
-        await self.session.commit()
-        await self.session.refresh(deck_model)
-        return Deck.model_validate(deck_model)
+            await self.session.commit()
+            await self.session.refresh(deck_model)
+            return Deck.model_validate(deck_model)
+
+        except DatabaseError as e:
+            await self.session.rollback()
+            logger.error(
+                "DatabaseError in update_deck: deck_id=%s, in_transaction=%s - %s",
+                deck_id,
+                self.session.in_transaction(),
+                str(e),
+            )
+            raise
 
     async def delete_deck(self, deck_id: str) -> bool:
         """Delete a deck and all associated cards (cascade).
