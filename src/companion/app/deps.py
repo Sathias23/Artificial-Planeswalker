@@ -174,8 +174,10 @@ class Database:
             logger.info("Card database not found at %s; serving database_not_initialized", path)
             raise CompanionError("database_not_initialized")
         # ensure_indexes=False: the companion is a read-only shell of cards.db (AD-2), so the
-        # data layer's connect-time index migration — DDL — must not run from this engine; the MCP
-        # server's engine performs it. The one exception to "the shared create_engine recipe".
+        # data layer's connect-time repairs — the NOCASE index migration (DDL) and the orphan
+        # deck_cards sweep (a DELETE) — must not run from this engine; the MCP server's engine
+        # performs them. Foreign-key enforcement (a per-connection pragma, no write) still
+        # applies. The one exception to "the shared create_engine recipe".
         engine = create_engine(url, ensure_indexes=False)
         # Factory first, engine published second: if the factory construction ever raised, a
         # half-initialized holder would re-enter _create and orphan this engine's pool.

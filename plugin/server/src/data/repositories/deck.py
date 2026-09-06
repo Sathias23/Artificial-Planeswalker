@@ -12,6 +12,7 @@ from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.base import BaseRepository
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 # Sentinel value to distinguish "not provided" from "clear with None"
 _UNSET = object()
+
+#: Canonical colour order for every stored identity (AGENTS.md: colour codes are WUBRG-ordered).
+_WUBRG_ORDER = ("W", "U", "B", "R", "G")
 
 
 class MergeStrategy(str, Enum):
@@ -406,7 +410,12 @@ class DeckRepository(BaseRepository):
                 commander=commander,
             )
             self.session.add(deck_card_model)
+            # Flush first so the metadata refresh sees the new row (and a dangling deck or card
+            # id raises IntegrityError here, before any deck row is touched).
+            await self.session.flush()
+            deck_model = await self._refresh_deck_metadata(deck_id)
             await self.session.commit()
+            await self._reload_after_commit(deck_model)
 
             # Reload with card relationship
             stmt = (
@@ -484,7 +493,10 @@ class DeckRepository(BaseRepository):
                 )
                 for entry in entries
             )
+            await self.session.flush()
+            deck_model = await self._refresh_deck_metadata(deck_id)
             await self.session.commit()
+            await self._reload_after_commit(deck_model)
 
             stmt = (
                 select(DeckCardModel)
@@ -556,8 +568,14 @@ class DeckRepository(BaseRepository):
                 DeckCardModel.sideboard == sideboard,
             )
             result: CursorResult[Any] = await self.session.execute(stmt)  # type: ignore[assignment]
+            if result.rowcount == 0:
+                # Nothing left the deck, so its identity and timestamp stay untouched.
+                await self.session.rollback()
+                return False
+            deck_model = await self._refresh_deck_metadata(deck_id)
             await self.session.commit()
-            return result.rowcount > 0
+            await self._reload_after_commit(deck_model)
+            return True
 
         except DatabaseError as e:
             await self.session.rollback()
@@ -586,7 +604,9 @@ class DeckRepository(BaseRepository):
             sideboard: True for sideboard, False for mainboard
 
         Returns:
-            Updated DeckCard schema if found, None otherwise
+            Updated DeckCard schema if found, None otherwise. A quantity equal to the stored
+            one is a no-op: the row is returned as is and the deck's ``updated_at`` and
+            ``color_identity`` are not touched.
 
         Raises:
             ValueError: If quantity < 1 (rejected before any write)
@@ -620,8 +640,18 @@ class DeckRepository(BaseRepository):
             if deck_card_model is None:
                 return None
 
+            if deck_card_model.quantity == quantity:
+                # Nothing changes, so the deck's identity and timestamp stay untouched (the same
+                # no-op rule as a remove that matched no row).
+                unchanged = DeckCard.model_validate(deck_card_model)
+                await self.session.rollback()  # closes the read transaction; expires the row
+                return unchanged
+
             deck_card_model.quantity = quantity
+            await self.session.flush()
+            deck_model = await self._refresh_deck_metadata(deck_id)
             await self.session.commit()
+            await self._reload_after_commit(deck_model)
             await self.session.refresh(deck_card_model)
             return DeckCard.model_validate(deck_card_model)
 
@@ -638,11 +668,65 @@ class DeckRepository(BaseRepository):
             )
             raise
 
-    async def update_deck_color_identity(self, deck_id: str) -> Deck | None:
-        """Compute and update deck color identity from all cards in the deck.
+    async def _refresh_deck_metadata(self, deck_id: str) -> DeckModel | None:
+        """Recompute a deck's colour identity and bump ``updated_at`` inside the open transaction.
 
-        Color identity is determined by combining the color identities of all
-        cards in the deck (mainboard and sideboard). Colors are sorted in WUBRG order.
+        The one place every card mutation (add, bulk add, remove, quantity update, merge; import
+        goes through bulk add) keeps the deck row honest. Identity is the WUBRG-ordered union of
+        ``card.color_identity`` over mainboard and sideboard rows — *identity*, not ``colors``, so
+        a colourless-cost card with a blue identity makes the deck blue (search filters keep using
+        ``colors``). Does **not** commit: callers flush their own rows first so the query sees
+        them, then commit once, keeping one transaction per repository write.
+
+        The colours come from a JOIN over ``deck_cards`` rather than the deck's ``deck_cards``
+        collection: an eager load onto a deck already in the identity map leaves an
+        already-populated collection as it was, so a stale (empty) collection would silently
+        compute an empty identity. The query always reads what the flush wrote.
+
+        Args:
+            deck_id: Deck UUID
+
+        Returns:
+            The mutated ``DeckModel`` (still pending), or ``None`` if the deck does not exist.
+        """
+        deck_model = await self.session.get(DeckModel, deck_id)
+        if deck_model is None:
+            return None
+
+        stmt = (
+            select(CardModel.color_identity)
+            .join(DeckCardModel, DeckCardModel.card_id == CardModel.id)
+            .where(DeckCardModel.deck_id == deck_id)
+        )
+        color_set: set[str] = set()
+        for (card_identity,) in await self.session.execute(stmt):
+            color_set.update(card_identity or [])
+
+        deck_model.color_identity_list = [c for c in _WUBRG_ORDER if c in color_set]
+        deck_model.updated_at = datetime.now(UTC)
+        return deck_model
+
+    async def _reload_after_commit(self, deck_model: DeckModel | None) -> None:
+        """Re-read a just-committed deck row so the identity map matches the database.
+
+        ``expire_on_commit=False`` leaves the aware ``updated_at`` assigned by
+        :meth:`_refresh_deck_metadata` in memory while the ``DateTime`` column stores it naive;
+        a later read in the same session would otherwise hand back the aware value. An explicit
+        refresh (never ``expire``, whose lazy reload would be implicit I/O under asyncio) keeps
+        the two consistent.
+
+        Args:
+            deck_model: The deck returned by :meth:`_refresh_deck_metadata`; ``None`` is a no-op.
+        """
+        if deck_model is not None:
+            await self.session.refresh(deck_model)
+
+    async def update_deck_color_identity(self, deck_id: str) -> Deck | None:
+        """Recompute and commit a deck's colour identity (and ``updated_at``) from its cards.
+
+        A committing wrapper over the refresh every card mutation already runs; useful for
+        repairing a deck written before the repository maintained its metadata. Colour identity
+        is the WUBRG-ordered union of the cards' ``color_identity`` (mainboard and sideboard).
 
         Args:
             deck_id: Deck UUID
@@ -651,38 +735,27 @@ class DeckRepository(BaseRepository):
             Updated Deck schema with computed color_identity, None if not found
 
         Example:
-            # After adding cards to deck, update color identity
             deck = await repo.update_deck_color_identity(deck_id="deck-123")
             # deck.color_identity == ["W", "R"] for a Boros deck
         """
-        # Load deck with cards
-        stmt = (
-            select(DeckModel)
-            .where(DeckModel.id == deck_id)
-            .options(selectinload(DeckModel.deck_cards).selectinload(DeckCardModel.card))
-        )
-        result = await self.session.execute(stmt)
-        deck_model = result.scalar_one_or_none()
+        try:
+            deck_model = await self._refresh_deck_metadata(deck_id)
+            if deck_model is None:
+                return None
 
-        if deck_model is None:
-            return None
+            await self.session.commit()
+            await self.session.refresh(deck_model)
+            return Deck.model_validate(deck_model)
 
-        # Collect all unique colors from deck cards
-        color_set: set[str] = set()
-        for deck_card in deck_model.deck_cards:
-            card_colors = deck_card.card.colors or []
-            color_set.update(card_colors)
-
-        # Sort colors in WUBRG order
-        wubrg_order = ["W", "U", "B", "R", "G"]
-        sorted_colors = [c for c in wubrg_order if c in color_set]
-
-        # Update deck color identity
-        deck_model.color_identity_list = sorted_colors if sorted_colors else None
-
-        await self.session.commit()
-        await self.session.refresh(deck_model)
-        return Deck.model_validate(deck_model)
+        except (IntegrityError, DatabaseError) as e:
+            await self.session.rollback()
+            logger.error(
+                "DatabaseError in update_deck_color_identity: deck_id=%s, in_transaction=%s - %s",
+                deck_id,
+                self.session.in_transaction(),
+                str(e),
+            )
+            raise
 
     async def get_deck_with_cards(self, deck_id: str) -> Deck | None:
         """Get a deck with all cards loaded (eager loading).
@@ -821,16 +894,10 @@ class DeckRepository(BaseRepository):
                     )
                     cards_added += 1
 
-            # Update target deck color identity
-            await self.update_deck_color_identity(target_deck_id)
-
-            # Update timestamp
-            stmt = select(DeckModel).where(DeckModel.id == target_deck_id)
-            result = await self.session.execute(stmt)
-            deck_model = result.scalar_one_or_none()
-            if deck_model:
-                deck_model.updated_at = datetime.now(UTC)
-                await self.session.commit()
+            # Every add/quantity call above already refreshed the target's metadata; this final
+            # pass covers an empty source (no per-row call ran) so a merge always stamps the deck.
+            await self._refresh_deck_metadata(target_deck_id)
+            await self.session.commit()
 
             # Expire all objects to ensure fresh data on next query
             self.session.expire_all()

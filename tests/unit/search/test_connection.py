@@ -33,6 +33,16 @@ def test_wal_enabled_on_file_db(tmp_path) -> None:
     factory.close()
 
 
+def test_foreign_keys_enforced_on_factory_connection(tmp_path) -> None:
+    """CAP-1: every connection the project opens enforces foreign keys, this one included."""
+    factory = ConnectionFactory(db_path=str(tmp_path / "cards.db"))
+    conn = factory.get_connection()
+
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+    factory.close()
+
+
 def test_relational_round_trip(tmp_path) -> None:
     """AC5(c): a relational CREATE/INSERT/SELECT round-trips through a factory connection."""
     factory = ConnectionFactory(db_path=str(tmp_path / "cards.db"))

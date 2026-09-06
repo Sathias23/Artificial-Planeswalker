@@ -6,7 +6,7 @@
 
 > **Why a plugin (and not an `.mcpb` bundle):** an MCPB bundle ships only the MCP *tools*
 > to Claude Desktop — carrying Claude **Skills** is not part of the MCPB manifest spec. A
-> **Claude Code plugin** bundles the MCP server *and* its four companion MTG skills as a
+> **Claude Code plugin** bundles the MCP server *and* its five shipped skills as a
 > single installable unit, so a user gets both the raw tools and the expert coaching layer
 > in one install. The project originally shipped both; the `.mcpb` was retired in favour of
 > the plugin as the sole packaged distribution (Claude Desktop users connect via a manual
@@ -24,9 +24,11 @@
 | `mana-curve-analysis` skill | `.claude/skills/mana-curve-analysis/SKILL.md` | Deep dive: curve / land count |
 | `synergy-discovery` skill | `.claude/skills/synergy-discovery/SKILL.md` | Deep dive: interactions / combos |
 | `format-legality` skill | `.claude/skills/format-legality/SKILL.md` | Deep dive: legality / banlist / sideboard |
+| `companion` skill | `.claude/skills/companion/SKILL.md` | Opens the companion app (status check, background launch, confirm the tab) |
 
 The `bmad-*` skills are **dev tooling for this repo** and do *not* ship in the
-end-user plugin — only the four MTG domain skills above.
+end-user plugin — only the five shipped skills above (the `SKILLS` list in
+`scripts/build_plugin.py`).
 
 The companion bundle needs no row in the build script: it rides along inside the
 verbatim `src/` copy. That is convenient and it is also exactly how a UI-less plugin
@@ -59,7 +61,9 @@ plugin/
 │   │   └── SKILL.md
 │   ├── synergy-discovery/
 │   │   └── SKILL.md
-│   └── format-legality/
+│   ├── format-legality/
+│   │   └── SKILL.md
+│   └── companion/
 │       └── SKILL.md
 └── server/                      # the bundled Python MCP server
     ├── pyproject.toml
@@ -190,7 +194,7 @@ Deterministically and idempotently, it:
 
 1. **Copies the server** — `src/` (caches stripped) + `pyproject.toml` + `uv.lock` +
    `README.md` + `LICENSE` + `NOTICE` into `plugin/server/`.
-2. **Copies the four MTG skills** into `plugin/skills/`.
+2. **Copies the five shipped skills** into `plugin/skills/`.
 3. **Generates the manifests for both clients** — `.claude-plugin/plugin.json` and
    `.codex-plugin/plugin.json` are derived from `pyproject.toml`'s `[project]` table
    (the single metadata source, so they never drift); `.mcp.json` is written with the
@@ -209,7 +213,7 @@ skills, or the pyproject metadata change. CI rebuilds it and fails on drift.
 /plugin install artificial-planeswalker@artificial-planeswalker
 ```
 
-After install, the user gets all 21 MCP tools **and** the four skills
+After install, the user gets all 21 MCP tools **and** the five skills
 (`magic-deckbuilding` and friends) auto-loaded — the coaching layer a bare MCP server
 config can't provide.
 

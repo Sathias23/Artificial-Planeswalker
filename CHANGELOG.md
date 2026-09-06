@@ -84,6 +84,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pre-commit hook rejects commits that carry the maintainer's local machine
   path.
 
+### Fixed
+
+- **Foreign keys are enforced on every database connection.** The engine's
+  connect hook turns on SQLite's `PRAGMA foreign_keys` for the MCP server and
+  the companion alike, so deleting a deck now removes its card associations and
+  an association naming a missing deck or card is rejected. The MCP engine also
+  sweeps association rows orphaned by earlier deletes the first time it connects
+  to an existing database — no migration to run.
+- **Deck colour identity and modification time are kept current.** `color_identity`
+  (derived from the cards' colour identity, so a colourless-cost card with a blue
+  identity makes the deck blue) and `updated_at` are recomputed on every card
+  mutation: add, bulk add, remove, quantity change, `import_decklist` and merge.
+- **Incremental index builds refresh search filters in place.** A card whose
+  colours or mana value changed but whose text did not used to keep stale filter
+  metadata in `card_vec` forever; the build now rewrites the flags without
+  re-embedding, and `build_search_index` reports the count as `cards_refreshed`.
+
 ## [0.5.0] - 2026-08-25
 
 ### Added

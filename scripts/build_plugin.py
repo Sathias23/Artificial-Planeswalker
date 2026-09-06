@@ -5,7 +5,7 @@ One build emits both clients' manifests from one metadata source: the tree carri
 Claude Code manifests (``.claude-plugin/plugin.json`` + ``.mcp.json``) *and* the OpenAI
 Codex manifests (``.codex-plugin/plugin.json`` + ``codex-mcp.json``), while ``skills/`` and
 ``server/`` are shared unchanged by both clients. A plugin ships the MCP server *and* its
-four companion MTG skills as one installable unit (an ``.mcpb`` bundle cannot carry Skills,
+five shipped skills as one installable unit (an ``.mcpb`` bundle cannot carry Skills,
 which is why the project distributes a plugin instead). See ``docs/plugin-structure.md``
 for the design rationale and the resulting layout.
 
@@ -14,7 +14,7 @@ Single source of truth:
 * Server code: this repo's ``src/`` + ``pyproject.toml`` + ``uv.lock`` (copied verbatim).
 * Plugin/author metadata: ``pyproject.toml`` ``[project]`` (name, version, description,
   authors, license, keywords, urls).
-* Skills: the four MTG skills under ``.claude/skills/`` (the ``bmad-*`` skills are repo
+* Skills: the five shipped skills under ``.claude/skills/`` (the ``bmad-*`` skills are repo
   dev-tooling and are intentionally excluded).
 
 The script is deterministic and idempotent: it rebuilds ``plugin/``'s generated contents
@@ -224,7 +224,7 @@ def build(out_dir: Path) -> int:
         shutil.copy2(src_file, server_dir / name)
     logger.info("Copied server -> %s", server_dir)
 
-    # 3. The four MTG skills.
+    # 3. The five shipped skills.
     skills_dir = out_dir / "skills"
     for skill in SKILLS:
         src = REPO_ROOT / ".claude" / "skills" / skill

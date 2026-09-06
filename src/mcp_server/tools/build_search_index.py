@@ -4,8 +4,9 @@ The companion to ``initialize_database``: once the card data is imported, this b
 ``card_vec`` embedding index that powers ``semantic_search_cards`` / ``find_similar_cards``. It is a
 separate, explicit step because it is heavier — it downloads a small (~80 MB) embedding model on
 first run and embeds every card. Like the relational tools it guards an un-imported database
-gracefully (``database_not_initialized``); the build itself is idempotent/incremental (unchanged
-cards are skipped via a content hash), so re-running is cheap.
+gracefully (``database_not_initialized``); the build itself is idempotent/incremental (a card
+whose composite text hash is unchanged is not re-embedded, and if only its colour flags or mana
+value drifted the filter metadata is rewritten in place), so re-running is cheap.
 """
 
 import logging
@@ -35,13 +36,16 @@ class BuildSearchIndexResult(BaseModel):
         status: ``ok`` (index built/updated), ``database_not_initialized`` (no cards yet — run
             ``initialize_database`` first), or ``error`` (the build failed; ``message`` explains).
         cards_indexed: Cards embedded on this run (new + changed); ``0`` if everything was current.
-        cards_skipped: Cards left unchanged (already current in the index).
+        cards_skipped: Cards not re-embedded (their text was unchanged).
+        cards_refreshed: Cards whose text was unchanged but whose colour flags / mana value were
+            rewritten in place (no re-embedding); a subset of ``cards_skipped``.
         message: Human-facing summary.
     """
 
     status: Literal["ok", "database_not_initialized", "error"]
     cards_indexed: int = 0
     cards_skipped: int = 0
+    cards_refreshed: int = 0
     message: str
 
 
@@ -95,12 +99,18 @@ def build_search_index(
         )
 
     embedded = stats.embedded_new + stats.embedded_changed
+    refreshed_note = (
+        f" ({stats.refreshed:,} had only their colour/mana-value filters refreshed)"
+        if stats.refreshed
+        else ""
+    )
     return BuildSearchIndexResult(
         status="ok",
         cards_indexed=embedded,
         cards_skipped=stats.skipped,
+        cards_refreshed=stats.refreshed,
         message=(
             f"Semantic search index built: {embedded:,} cards embedded, "
-            f"{stats.skipped:,} already current. Semantic search is ready."
+            f"{stats.skipped:,} already current{refreshed_note}. Semantic search is ready."
         ),
     )

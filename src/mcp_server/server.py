@@ -1102,9 +1102,10 @@ def build_server(
         Run this after ``initialize_database`` to enable ``semantic_search_cards`` and
         ``find_similar_cards``: it downloads a small embedding model (~80 MB) on first run and
         indexes every card (~5 minutes). Until it has run, those two tools return
-        ``index_unavailable``. Idempotent and incremental — re-running only re-embeds cards that
-        changed, so it is cheap to repeat. If the card data hasn't been imported yet it returns
-        ``database_not_initialized`` (run ``initialize_database`` first).
+        ``index_unavailable``. Idempotent and incremental — re-running only re-embeds cards whose
+        text changed (a card whose colours or mana value alone changed has its search filters
+        refreshed without re-embedding), so it is cheap to repeat. If the card data hasn't been
+        imported yet it returns ``database_not_initialized`` (run ``initialize_database`` first).
 
         Args:
             rebuild: Drop and fully rebuild the index from scratch (use after the embedding model
@@ -1112,7 +1113,8 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (index built — see ``cards_indexed`` /
-            ``cards_skipped``), ``database_not_initialized`` (import the cards first), or ``error``.
+            ``cards_skipped`` / ``cards_refreshed``), ``database_not_initialized`` (import the
+            cards first), or ``error``.
         """
         # Off the loop: the whole build (connection, embedder resolution, embedding) runs in a
         # worker thread so other tool calls are answered while it works.

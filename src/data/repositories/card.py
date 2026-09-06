@@ -127,8 +127,9 @@ class CardRepository(BaseRepository):
         """Get a card by its primary-key id.
 
         Read-only point lookup used to confirm a card exists before associating it
-        with a deck (deck tools pre-validate the card id because foreign-key
-        enforcement is off on the async engine). No format/games filtering.
+        with a deck (deck tools pre-validate the card id to answer ``card_not_found``
+        rather than surface the database's foreign-key rejection). No format/games
+        filtering.
 
         Args:
             card_id: Card primary-key id (Scryfall UUID).

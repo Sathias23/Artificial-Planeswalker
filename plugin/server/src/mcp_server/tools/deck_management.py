@@ -15,9 +15,10 @@ Stateless (FR3 / D5 / D-1.5d): the "active deck" is the client-supplied
 session, or delete-confirmation handshake (all of the legacy ``_session_manager``
 machinery is dropped). Pure CRUD (D-1.5b): ``add_card_to_deck`` only persists the
 association — Standard-legality, the 4-copy limit, and deck-size checks are
-deferred to ``validate_deck``. Because foreign-key enforcement is OFF
-on the async engine, add/remove pre-validate that the deck and card exist before
-touching ``deck_cards``.
+deferred to ``validate_deck``. Foreign keys are enforced per connection by the
+engine's connect hook, so a dangling id is rejected by the database; add/remove
+still pre-validate that the deck and card exist so the caller gets the friendlier
+``deck_not_found`` / ``card_not_found`` answer instead of an integrity error.
 """
 
 import logging
@@ -462,7 +463,8 @@ async def add_card_to_deck(
     deck_repo = DeckRepository(session)
     card_repo = CardRepository(session)
 
-    # Pre-validate the deck (FK enforcement is OFF — a bogus id would orphan a row).
+    # Pre-validate the deck for the friendlier answer; the database would reject a bogus id
+    # with an IntegrityError anyway (foreign keys are enforced on every connection).
     deck = await deck_repo.get_deck(deck_id)
     if deck is None:
         return DeckCardResult(

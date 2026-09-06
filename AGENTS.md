@@ -23,7 +23,7 @@ A local, stateless MCP server that gives an LLM Magic: The Gathering deckbuildin
 - Data layer `src/data/` (models, repositories, importers, schemas); search `src/search/` (sqlite-vec index and fastembed embedder); analysis `src/logic/` (validator, curve, synergy, assessment); `src/viewer/` is the frozen one-shot HTML deck render.
 - Companion UI source `ui/`; the built bundle is committed at `src/companion/app/static/`. Deep docs: `docs/companion.md`, `docs/plugin-structure.md`.
 - The five shipped skills under `.claude/skills/` (magic-deckbuilding, mana-curve-analysis, synergy-discovery, format-legality, companion) enumerate MCP tool names and parameters and nothing gates them; adding, renaming or extending a tool means editing them too, since a past closed-set extension missed them.
-- Schema changes: no Alembic; add a hand-written migration script in `scripts/` (named migrate_*.py) alongside the model change.
+- Schema changes: no Alembic; add a hand-written migration script in `scripts/` (named migrate_*.py) alongside the model change. Data repairs to an existing database that need no DDL ride the engine's connect hook in `src/data/database.py` instead, as the NOCASE indexes and the orphan `deck_cards` sweep do.
 - `_bmad/`, `.worktrees/` and the bmad-* skills under `.claude/skills/` are untracked dev tooling kept on disk; process artifacts live on the orphan `process` branch.
 
 ## Running and verifying
@@ -41,6 +41,7 @@ A local, stateless MCP server that gives an LLM Magic: The Gathering deckbuildin
 - Update methods take the `_UNSET` sentinel for "argument omitted"; `None` means clear to NULL.
 - Read and write the JSON-in-Text columns (`tags`, `color_identity`) through the paired `*_list` properties (`color_identity_list`), never by assigning a raw string to the base column.
 - Relationships default to `lazy="noload"` (lazy access reads empty, it does not query) and the session factory sets `expire_on_commit=False`; eager-load with `selectinload`.
+- Foreign keys are enforced per connection by the engine's connect hook (`PRAGMA foreign_keys = ON`), so a fixture inserting `deck_cards` seeds the deck and the card first; the repository maintains deck `color_identity` (from card `color_identity`) and `updated_at` on every card mutation, so tools never recompute them.
 - Colour codes are always WUBRG-ordered; timestamps are aware UTC (`now(UTC)` from `datetime`), never naive.
 - MCP tools are stateless: `format`, `games` and the active `deck_id` are caller-supplied parameters; add no per-session server state.
 - Sync sqlite-vec work (semantic search, index build) runs from an `async def` tool inside `await asyncio.to_thread(...)`, acquiring its own SQLite connection inside the worker; every KNN query carries `k` / `LIMIT` (over-fetch, then JOIN-filter; `_MAX_LIMIT` is 50).

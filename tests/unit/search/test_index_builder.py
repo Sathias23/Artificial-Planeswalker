@@ -27,6 +27,7 @@ from src.search import (
     strip_reminder_text,
 )
 from src.search.embedder import reset_embedder
+from src.search.query import hybrid_search
 from src.search.schema import (
     CARD_EMBEDDING_META_TABLE,
     CARD_ID_COL,
@@ -40,13 +41,19 @@ from tests.fixtures.embedder import FakeEmbedder
 
 
 def _make_factory(tmp_path) -> ConnectionFactory:
-    """Build a ConnectionFactory on a tmp DB and create a minimal ``cards`` read-table on it."""
+    """Build a ConnectionFactory on a tmp DB and create a minimal ``cards`` read-table on it.
+
+    Carries the builder's read columns plus the three ``hybrid_search`` JOINs for its
+    ``CardHit`` (``oracle_id``, ``rarity``, ``set_code``), so the same table serves both the
+    build and a real filtered search over the result.
+    """
     factory = ConnectionFactory(db_path=str(tmp_path / "cards.db"))
     conn = factory.get_connection()
     conn.execute(
         "CREATE TABLE cards ("
         "id TEXT PRIMARY KEY, name TEXT NOT NULL, type_line TEXT, mana_cost TEXT, "
-        "oracle_text TEXT, keywords TEXT, colors TEXT, cmc REAL)"
+        "oracle_text TEXT, keywords TEXT, colors TEXT, cmc REAL, "
+        "oracle_id TEXT NOT NULL, rarity TEXT, set_code TEXT)"
     )
     conn.commit()
     return factory
@@ -64,10 +71,14 @@ def _seed_card(
     colors: list[str] | None = None,
     cmc: float = 1.0,
 ) -> None:
-    """Insert one synthetic card. ``keywords``/``colors`` stored as JSON text (``None`` → NULL)."""
+    """Insert one synthetic card. ``keywords``/``colors`` stored as JSON text (``None`` → NULL).
+
+    ``oracle_id`` is the card id itself (one printing per oracle), so ``hybrid_search``'s
+    oracle de-dup keeps every seeded card.
+    """
     conn.execute(
-        "INSERT INTO cards (id, name, type_line, mana_cost, oracle_text, keywords, colors, cmc) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO cards (id, name, type_line, mana_cost, oracle_text, keywords, colors, cmc, "
+        "oracle_id, rarity, set_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             card_id,
             name,
@@ -77,6 +88,9 @@ def _seed_card(
             json.dumps(keywords) if keywords is not None else None,
             json.dumps(colors) if colors is not None else None,
             cmc,
+            f"oracle-{card_id}",
+            "common",
+            "TST",
         ),
     )
     conn.commit()
@@ -294,6 +308,133 @@ def test_changed_card_reembeds_without_duplicate(tmp_path) -> None:
     rows = _knn(conn, fake.encode_batch([new_text])[0], k=1)
     assert rows[0][0] == "id-a"
     assert rows[0][1] == pytest.approx(0.0, abs=1e-6)
+
+    factory.close()
+
+
+def _statements(conn: sqlite3.Connection) -> list[str]:
+    """Record every statement SQLite executes on ``conn`` from now on (trace callback)."""
+    seen: list[str] = []
+    conn.set_trace_callback(seen.append)
+    return seen
+
+
+def _updates(statements: list[str]) -> list[str]:
+    return [s for s in statements if s.lstrip().upper().startswith("UPDATE CARD_VEC")]
+
+
+def test_colours_only_change_refreshes_metadata_without_reembedding(tmp_path) -> None:
+    """CAP-5: ``colors`` moved, text did not — the filter flags are rewritten, the embedder idle."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "id-a", name="Card A", oracle_text="Burn.", colors=["R"], cmc=1.0)
+    _seed_card(conn, "id-b", name="Card B", oracle_text="Stable.", colors=["U"], cmc=2.0)
+    build_card_embeddings(conn, fake)
+    embedded_after_first = fake.total_embedded
+    assert _metadata_row(conn, "id-a") == (1, 0, 0, 0, 1, 0)
+
+    conn.execute("UPDATE cards SET colors = ? WHERE id = ?", (json.dumps(["G"]), "id-a"))
+    conn.commit()
+    stats = build_card_embeddings(conn, fake)
+
+    assert stats.processed == 2
+    assert stats.embedded_new == 0
+    assert stats.embedded_changed == 0
+    assert stats.skipped == 2  # refreshed cards are a counted subset of skipped
+    assert stats.refreshed == 1
+    assert fake.total_embedded == embedded_after_first  # encode_batch never called
+    assert _vec_count(conn) == 2
+    assert _metadata_row(conn, "id-a") == (1, 0, 0, 0, 0, 1)
+
+    # The KNN pre-filter (the same vec0 WHERE hybrid_search issues) sees the new colour only.
+    text_a = compose_card_text("Card A", "Creature — Test", "{1}", "Burn.", [])
+    query = fake.encode_batch([text_a])[0]
+    assert {row[0] for row in _knn(conn, query, k=2, where="AND color_g = 1")} == {"id-a"}
+    assert "id-a" not in {row[0] for row in _knn(conn, query, k=2, where="AND color_r = 1")}
+
+    # And through the real filtered entry point.
+    green = hybrid_search(conn, query, limit=2, colors=["G"])
+    assert [hit.card_id for hit in green] == ["id-a"]
+    red = hybrid_search(conn, query, limit=2, colors=["R"])
+    assert "id-a" not in {hit.card_id for hit in red}
+
+    factory.close()
+
+
+def test_mana_value_only_change_refreshes_metadata_without_reembedding(tmp_path) -> None:
+    """CAP-5: ``cmc`` 1 -> 3 with unchanged text updates ``mana_value`` in place."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "id-a", name="Card A", oracle_text="Burn.", colors=["R"], cmc=1.0)
+    build_card_embeddings(conn, fake)
+    embedded_after_first = fake.total_embedded
+
+    conn.execute("UPDATE cards SET cmc = ? WHERE id = ?", (3.0, "id-a"))
+    conn.commit()
+    stats = build_card_embeddings(conn, fake)
+
+    assert stats.refreshed == 1
+    assert stats.skipped == 1
+    assert stats.embedded_new == stats.embedded_changed == 0
+    assert fake.total_embedded == embedded_after_first
+    assert _metadata_row(conn, "id-a")[0] == 3
+
+    text_a = compose_card_text("Card A", "Creature — Test", "{1}", "Burn.", [])
+    query = fake.encode_batch([text_a])[0]
+    assert {row[0] for row in _knn(conn, query, k=1, where="AND mana_value >= 3")} == {"id-a"}
+    assert _knn(conn, query, k=1, where="AND mana_value <= 1") == []
+
+    # And through the real filtered entry point.
+    assert [hit.card_id for hit in hybrid_search(conn, query, limit=1, mana_value_min=3)] == [
+        "id-a"
+    ]
+    assert hybrid_search(conn, query, limit=1, mana_value_max=1) == []
+
+    factory.close()
+
+
+def test_unchanged_rerun_refreshes_nothing_and_issues_no_update(tmp_path) -> None:
+    """A rerun with no edits reports ``refreshed == 0`` and never writes to ``card_vec``."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "id-a", name="Card A", colors=["R"], cmc=1.0)
+    _seed_card(conn, "id-b", name="Card B", colors=[], cmc=0.0)
+    build_card_embeddings(conn, fake)
+
+    statements = _statements(conn)
+    stats = build_card_embeddings(conn, fake)
+    conn.set_trace_callback(None)
+
+    assert stats.refreshed == 0
+    assert stats.skipped == 2
+    assert _updates(statements) == []
+    assert "refreshed" in stats.summary()
+
+    factory.close()
+
+
+def test_text_and_metadata_change_together_is_a_reembed_not_a_refresh(tmp_path) -> None:
+    """A card whose text *and* colours changed is re-embedded once; the new row carries the
+    new metadata and it is not double-counted as refreshed."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "id-a", name="Card A", oracle_text="Old.", colors=["R"], cmc=1.0)
+    build_card_embeddings(conn, fake)
+
+    conn.execute(
+        "UPDATE cards SET oracle_text = ?, colors = ? WHERE id = ?",
+        ("New.", json.dumps(["W"]), "id-a"),
+    )
+    conn.commit()
+    stats = build_card_embeddings(conn, fake)
+
+    assert stats.embedded_changed == 1
+    assert stats.refreshed == 0
+    assert _metadata_row(conn, "id-a") == (1, 1, 0, 0, 0, 0)
 
     factory.close()
 

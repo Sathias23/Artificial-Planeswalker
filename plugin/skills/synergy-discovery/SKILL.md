@@ -254,8 +254,8 @@ The tools return structured statuses, not raw exceptions — handle each:
 ## Hard rules (do not break these)
 
 - **Never auto-add or auto-remove cards.** Synergy discovery is **observational / advisory only** — it
-  surfaces and explains candidates; it does **not** touch any deck. (project-context anti-pattern: "Don't
-  auto-add cards … without explicit user intent.")
+  surfaces and explains candidates; it does **not** touch any deck. (AGENTS.md policy: analysis tools are
+  observational and never mutate a deck as a side effect; deck changes need explicit user intent.)
 - **`detect_synergies` needs a saved deck.** If the user wants a deck-grounded run from a *pasted* list or
   strategy, persisting it (`create_deck` + per-line `add_card_to_deck`) is an **explicit action requiring
   consent** — offer it, don't assume it. You can do full strategy/seed discovery **without** persisting

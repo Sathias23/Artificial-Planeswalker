@@ -3,7 +3,7 @@ id: SPEC-deck-power-assessment
 companions:
   - ../../planning-artifacts/architecture/architecture-Artificial-Planeswalker-2026-07-11/ARCHITECTURE-SPINE.md
   - ../../../docs/deck-assess.md
-  - ../../project-context.md
+  - ../../../AGENTS.md
 sources:
   - ../../planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-11/prd.md
   - ../../planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-11/addendum.md

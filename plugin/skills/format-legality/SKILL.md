@@ -423,8 +423,8 @@ The tools return structured statuses, not raw exceptions — handle each:
 
 - **Never auto-add or auto-remove cards.** Legality analysis is **observational / advisory only** — it
   diagnoses and suggests fixes; it does **not** touch any deck. Proposing a cut/swap is advice; *applying* it
-  needs explicit user confirmation. (project-context anti-pattern: "Don't auto-add cards … without explicit
-  user intent"; analysis is observational only.)
+  needs explicit user confirmation. (AGENTS.md policy: analysis tools are observational and never mutate a
+  deck as a side effect; deck changes need explicit user intent through the deck-management tools.)
 - **`validate_deck` needs a saved deck.** To validate a *pasted* list, persisting it (`create_deck` +
   per-line `add_card_to_deck`) is an **explicit action requiring consent** — offer it, don't assume it. If
   you do persist, handle per-line write failures (`ambiguous` / `card_not_found` / `invalid`) and **never

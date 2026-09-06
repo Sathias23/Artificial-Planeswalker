@@ -540,3 +540,27 @@ async def test_import_decklist_guards_uninitialized_database(tmp_path: Path) -> 
 
     assert result.status == "database_not_initialized"
     assert result.results == []
+
+
+async def test_import_decklist_updates_deck_identity_and_timestamp(seeded_card_db) -> None:
+    """CAP-4 at the tool boundary: an import leaves the deck's colour identity equal to the
+    WUBRG union of the imported cards' colour identities and its ``updated_at`` at or after
+    ``created_at`` (bulk add refreshes the deck row inside the import's single commit)."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = """Deck
+4 Lightning Bolt (M11) 149
+2 Counterspell (DMR) 50
+"""
+
+    async with seeded_card_db() as session:
+        before = await load_deck(session, deck_id=deck_id)
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert before.deck is not None
+    assert before.deck.color_identity == []
+    assert loaded.deck is not None
+    assert loaded.deck.color_identity == ["U", "R"]  # WUBRG order, not import order
+    assert loaded.deck.updated_at >= loaded.deck.created_at
+    assert loaded.deck.updated_at >= before.deck.updated_at

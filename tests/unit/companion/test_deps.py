@@ -624,7 +624,7 @@ class TestTransientFailureIsDatabaseUnavailable:
         assert _BOUND_SECRET not in message, (
             "the log leaked the statement's bound parameters — log exc.orig, never str(exc)"
         )
-        # Lazy %-style args (project-context.md), not a pre-formatted f-string.
+        # Lazy %-style args (AGENTS.md), not a pre-formatted f-string.
         assert record.args, "the log line must pass its values as lazy % args"
 
     async def test_a_deterministic_argument_error_is_internal_error_not_unavailable(

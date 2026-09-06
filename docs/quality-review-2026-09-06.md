@@ -64,7 +64,7 @@ Incremental change detection hashes embedding text and skips a card when that ha
 
 ### 6. P3 — Refresh the agent-facing project context
 
-**Location:** [_bmad-output/project-context.md](../_bmad-output/project-context.md), line 20 onward.
+**Location:** the agent-facing context block, now [AGENTS.md](../AGENTS.md) (at review time it was the since-deleted `_bmad-output` context file, line 20 onward).
 
 The project context still describes the codebase as a legacy Chainlit/PydanticAI monolith awaiting migration. It includes obsolete architecture, dependency, and launch instructions despite the implemented MCP server and companion application.
 

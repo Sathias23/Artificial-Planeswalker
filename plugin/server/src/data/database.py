@@ -1,8 +1,10 @@
 """Database engine and session management for async SQLAlchemy."""
 
+import json
 import logging
 import sqlite3
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import event, text
@@ -83,15 +85,167 @@ def ensure_nocase_indexes(dbapi_connection: Any, _connection_record: Any = None)
         cursor.close()
 
 
+def enable_foreign_keys(dbapi_connection: Any, _connection_record: Any = None) -> None:
+    """Turn on SQLite foreign-key enforcement for one new connection.
+
+    SQLite leaves ``PRAGMA foreign_keys`` off by default and the setting is per connection, so
+    every engine (the MCP writer and the companion's read-only shell alike) registers this on
+    ``connect``. It must run *before* any transaction opens — the pragma is a no-op inside one —
+    which is why it lives on the pool's ``connect`` hook rather than a session ``begin`` event.
+    With it on, ``deck_cards.deck_id`` cascades on deck deletion and an association naming a
+    missing deck or card is rejected with ``IntegrityError``.
+
+    Never fails the connection: a ``sqlite3.DatabaseError`` (a corrupt or non-SQLite file) is
+    logged and the connection still opens so :func:`is_database_initialized` can report the
+    state gracefully.
+
+    Args:
+        dbapi_connection: The raw (aiosqlite-adapted or plain ``sqlite3``) DBAPI connection.
+        _connection_record: SQLAlchemy's pool record, unused.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys = ON")
+    except sqlite3.DatabaseError as exc:
+        logger.warning("Could not enable SQLite foreign-key enforcement (%s)", exc)
+    finally:
+        cursor.close()
+
+
+_ORPHAN_DECK_CARDS_PREDICATE = (
+    "NOT EXISTS (SELECT 1 FROM decks d WHERE d.id = deck_cards.deck_id) "
+    "OR NOT EXISTS (SELECT 1 FROM cards c WHERE c.id = deck_cards.card_id)"
+)
+_ORPHAN_DECK_CARDS_PROBE_SQL = (
+    f"SELECT 1 FROM deck_cards WHERE {_ORPHAN_DECK_CARDS_PREDICATE} LIMIT 1"
+)
+_ORPHAN_DECK_CARDS_DELETE_SQL = f"DELETE FROM deck_cards WHERE {_ORPHAN_DECK_CARDS_PREDICATE}"
+#: Decks that survive the sweep but lose a row to it (a dangling *card*): their stored metadata
+#: must be recomputed in the same transaction, or the deck reports an identity that is too broad.
+_AFFECTED_DECKS_SQL = (
+    "SELECT DISTINCT deck_id FROM deck_cards "
+    "WHERE EXISTS (SELECT 1 FROM decks d WHERE d.id = deck_cards.deck_id) "
+    "AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id = deck_cards.card_id)"
+)
+#: The remaining colour letters of one deck, from the surviving rows' card ``color_identity``
+#: (a JSON text array; ``json_each`` over NULL yields nothing).
+_DECK_COLOURS_SQL = (
+    "SELECT DISTINCT j.value FROM deck_cards dc "
+    "JOIN cards c ON c.id = dc.card_id, json_each(c.color_identity) AS j "
+    "WHERE dc.deck_id = ?"
+)
+_DECK_METADATA_UPDATE_SQL = "UPDATE decks SET color_identity = ?, updated_at = ? WHERE id = ?"
+_SWEEP_TABLES = frozenset({"decks", "cards", "deck_cards"})
+_WUBRG = ("W", "U", "B", "R", "G")
+#: SQLAlchemy's SQLite ``DateTime`` storage format (naive, microseconds); the sweep writes the
+#: column raw, so it must match what the ORM reads back.
+_SQLITE_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
+
+
+def _repair_deck_metadata(cursor: Any, deck_id: str) -> None:
+    """Rewrite one deck's ``color_identity`` and ``updated_at`` from its surviving rows.
+
+    The raw-cursor twin of ``DeckRepository._refresh_deck_metadata`` for the connect hook, which
+    has no session: WUBRG-ordered union of the remaining cards' ``color_identity`` (NULL when the
+    deck is now colourless, matching the ORM setter) and a fresh naive-UTC timestamp.
+
+    Args:
+        cursor: The hook's open cursor; the caller owns the transaction and the commit.
+        deck_id: The surviving deck that just lost an orphan row.
+    """
+    cursor.execute(_DECK_COLOURS_SQL, (deck_id,))
+    present = {row[0] for row in cursor.fetchall()}
+    ordered = [colour for colour in _WUBRG if colour in present]
+    stamp = datetime.now(UTC).replace(tzinfo=None).strftime(_SQLITE_DATETIME_FORMAT)
+    cursor.execute(
+        _DECK_METADATA_UPDATE_SQL, (json.dumps(ordered) if ordered else None, stamp, deck_id)
+    )
+
+
+def remove_orphan_deck_cards(dbapi_connection: Any, _connection_record: Any = None) -> None:
+    """Delete ``deck_cards`` rows whose deck or card no longer exists (connect-time repair).
+
+    Databases written before :func:`enable_foreign_keys` existed can hold associations
+    stranded by a deck deletion or a stale-printing removal. Like
+    :func:`ensure_nocase_indexes`, this rides the MCP engine's ``connect`` hook because the
+    server never runs ``init_database`` at startup; the companion engine (AD-2, read-only)
+    never registers it. It runs on every new pooled connection; a clean database pays three
+    reads (the catalog check, the ``cards`` emptiness probe, the orphan probe) and no write.
+
+    Guards, in order: all three tables must exist (a fresh database has none); ``cards`` must
+    hold at least one row, because an empty card table makes every association look orphaned
+    (a never-imported database, or a legacy killed import that predates the marker); a
+    first-run import still marked in progress (:mod:`src.data.import_state`) is skipped for the
+    same reason; and a probe ``SELECT`` runs before the ``DELETE`` so a current database never
+    issues one. When rows are deleted the raw connection commits them.
+
+    A deck that survives but loses a row (its card is the missing side) has its stored
+    ``color_identity`` and ``updated_at`` recomputed in the same transaction, so the repair leaves
+    the deck as honest as a repository write would. A deck that is itself missing has nothing to
+    recompute.
+
+    Never fails the connection: a lock held by a competing writer or a corrupt file surfaces
+    as ``sqlite3.DatabaseError``, which is rolled back and logged; the next new connection
+    retries.
+
+    Args:
+        dbapi_connection: The raw (aiosqlite-adapted or plain ``sqlite3``) DBAPI connection.
+        _connection_record: SQLAlchemy's pool record, unused.
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name IN ('decks', 'cards', 'deck_cards', 'import_state')"
+        )
+        tables = {row[0] for row in cursor.fetchall()}
+        if not _SWEEP_TABLES <= tables:
+            return
+        cursor.execute("SELECT 1 FROM cards LIMIT 1")
+        if cursor.fetchone() is None:
+            return
+        if "import_state" in tables:
+            cursor.execute("SELECT in_progress FROM import_state WHERE id = 1")
+            row = cursor.fetchone()
+            if row is not None and row[0]:
+                return
+        cursor.execute(_ORPHAN_DECK_CARDS_PROBE_SQL)
+        if cursor.fetchone() is None:
+            return
+        cursor.execute(_AFFECTED_DECKS_SQL)
+        affected = [row[0] for row in cursor.fetchall()]
+        cursor.execute(_ORPHAN_DECK_CARDS_DELETE_SQL)
+        deleted = cursor.rowcount
+        for deck_id in affected:
+            _repair_deck_metadata(cursor, deck_id)
+        dbapi_connection.commit()
+        logger.info(
+            "Removed %d orphan deck_cards row(s) left by a pre-enforcement write; "
+            "recomputed metadata for %d surviving deck(s)",
+            deleted,
+            len(affected),
+        )
+    except sqlite3.DatabaseError as exc:
+        try:
+            dbapi_connection.rollback()
+        except sqlite3.DatabaseError:
+            pass
+        logger.warning("Could not sweep orphan deck_cards rows (%s); will retry", exc)
+    finally:
+        cursor.close()
+
+
 def create_engine(database_url: str | None = None, *, ensure_indexes: bool = True) -> AsyncEngine:
     """Create an async SQLAlchemy engine.
 
     Args:
         database_url: Database connection string. If None, resolves the shared central-data-dir
             URL via ``src.paths.database_url()`` (an explicit ``CARDS_DATABASE_URL`` still wins).
-        ensure_indexes: Register the connect hook that adds the ``cards`` NOCASE indexes to an
-            existing database (the no-script migration path). The companion app passes ``False``:
-            it is a read-only shell of ``cards.db`` (AD-2) and must never issue DDL.
+        ensure_indexes: Register the connect hooks that repair an existing database (the
+            no-script migration path): the ``cards`` NOCASE indexes and the orphan
+            ``deck_cards`` sweep. The companion app passes ``False``: it is a read-only shell of
+            ``cards.db`` (AD-2) and must never issue DDL or a ``DELETE``. Foreign-key enforcement
+            (:func:`enable_foreign_keys`) is registered on every SQLite engine regardless.
 
     Returns:
         Configured AsyncEngine instance for aiosqlite.
@@ -106,8 +260,13 @@ def create_engine(database_url: str | None = None, *, ensure_indexes: bool = Tru
         # sqlite3.connect(timeout=...), which sets SQLite's busy timeout.)
         connect_args={"timeout": 5},
     )
-    if ensure_indexes and engine.dialect.name == "sqlite":
-        event.listen(engine.sync_engine, "connect", ensure_nocase_indexes)
+    if engine.dialect.name == "sqlite":
+        # The pragma is per connection and must precede any transaction, so it is the first
+        # connect hook on every engine flavour.
+        event.listen(engine.sync_engine, "connect", enable_foreign_keys)
+        if ensure_indexes:
+            event.listen(engine.sync_engine, "connect", ensure_nocase_indexes)
+            event.listen(engine.sync_engine, "connect", remove_orphan_deck_cards)
 
     # Instrument SQLAlchemy with Logfire if observability is enabled
     # This is safe to call even if Logfire is not configured (it will be a no-op)
