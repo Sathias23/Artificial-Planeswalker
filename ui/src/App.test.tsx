@@ -3256,6 +3256,91 @@ describe('the page reconnects on its own', () => {
     // …and the poll restarted with it, as before: one fresh `/api/decks` from the reopen.
     expect(paths.filter((path) => path === '/api/decks')).toHaveLength(1)
   })
+
+  it('queues the poll’s healthy verdict behind the reconnect boot instead of superseding it', async () => {
+    // The Greptile P1 on PR #113: from a settled `'refused'`, a reopen runs the `'live'` re-drive
+    // FIRST and `restartPoll()` second, and a restarted poll always writes its first answer — so
+    // when the poll had left `no-active-deck` during the outage, its healthy write is an EDGE that
+    // lands while boot #1 is mid-flight with the store still `'refused'`. Restarting there would
+    // discard boot #1's response; if boot #2 then hit a blip, the panel would stay. The edge
+    // queues behind the in-flight boot instead: #1 paints, ONE follow-up boot runs on its settle.
+    let healed = false
+    const deckReleases: ((response: Response) => void)[] = []
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        if (!healed) return Promise.resolve(refusal('database_unavailable', 503))
+        // Healed: every deck read is withheld and released by hand, so the ORDER of settle and
+        // verdict is the test's to arrange.
+        return new Promise<Response>((resolve) => {
+          deckReleases.push(resolve)
+        })
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(
+        healed ? decks('Atraxa Counter Cabinet v2 (owned)') : refusal('database_unavailable', 503),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const activeDeckReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/active-deck').length
+
+    render(<App />)
+    await settle()
+    await connect()
+    // Both routes refusing: the deck's own panel is up and the poll has LEFT `no-active-deck`.
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+    expect(useSystemStore.getState().panel).toBe('database-updating')
+    // The mount's boot plus the first connect's reconciliation (CAP-2), both refused.
+    expect(activeDeckReads()).toBe(2)
+
+    // The socket drops and the loop schedules its reopen. The backend heals in the instant
+    // BEFORE the reopen lands — after the poll's own retry has already asked and been refused, so
+    // the healthy verdict can only arrive through the reconnect's `restartPoll()`, which is the
+    // ordering under test (the poll's own retry recovering first is the ordinary FR-22 edge).
+    await drop()
+    await advance(SOCKET_BASE_MS)
+    expect(useSystemStore.getState().panel).toBe('database-updating')
+    healed = true
+    const marker = activeDeckReads()
+    await connect()
+    await settle()
+
+    // The poll's healthy answer has landed (an EDGE: updating → no-active-deck)…
+    expect(useSystemStore.getState().panel).toBe('no-active-deck')
+    // …and yet exactly ONE new boot is in flight: one active-deck read, one pending deck read.
+    // The edge queued behind it rather than superseding it.
+    expect(activeDeckReads() - marker).toBe(1)
+    expect(deckReleases).toHaveLength(1)
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+
+    // Boot #1's response is PAINTED, not discarded.
+    await act(async () => {
+      deckReleases[0](deckDetail())
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    // …and exactly one follow-up boot began on its settle — sequential, not superseding.
+    expect(activeDeckReads() - marker).toBe(2)
+    expect(deckReleases).toHaveLength(2)
+
+    await act(async () => {
+      deckReleases[1](deckDetail({ name: 'Atraxa, after the verdict' }))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, after the verdict' }),
+    ).toBeVisible()
+
+    // Two boots total for the reopen, and ten idle minutes add nothing.
+    await advance(10 * 60_000)
+    expect(activeDeckReads() - marker).toBe(2)
+    expect(deckReleases).toHaveLength(2)
+  })
 })
 
 /**

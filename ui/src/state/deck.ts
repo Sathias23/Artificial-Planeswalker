@@ -585,6 +585,11 @@ export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice
  * the `panel`/`decks` fields moving: the poller emits a fresh `decks` array on every write and
  * nothing else touches those two fields, so a socket status change while the flag is armed cannot
  * spend the probe before the poll has answered.
+ *
+ * Neither edge ever supersedes a boot that is already in flight: a healthy write landing mid-boot
+ * (a reconnect's `restartPoll()` answering while the `'live'` re-drive is still reading) queues
+ * ONE follow-up boot behind it through the same {@link redriveOnSettle} flag CAP-2 uses, so the
+ * in-flight response is painted, never discarded.
  */
 export const useDeckState = (): DeckState => {
   useEffect(() => {
@@ -642,6 +647,18 @@ export const useDeckState = (): DeckState => {
       probeArmed = false
       const { deck } = useDeckStore.getState()
       if (deck.status === 'deck' || deck.status === 'booting') return
+      // THE EDGE NEVER SUPERSEDES A BOOT IN FLIGHT; IT QUEUES BEHIND IT. On a reconnect the
+      // socket's `'live'` re-drives the boot FIRST and `restartPoll()` follows, and a restarted
+      // poll always writes its first answer — so this healthy write routinely lands while that
+      // boot is mid-flight with the store still reading `'refused'`/`'none'`. A restart here
+      // would discard boot #1's response, and if boot #2 then hit a blip the panel would stay.
+      // Deferred instead, exactly as CAP-2 defers: boot #1 paints, and exactly one follow-up boot
+      // (which began after the healthy verdict) runs on its settle. `probeArmed` stays cleared:
+      // the follow-up IS the post-verdict read, and if it refuses, its settle probes again.
+      if (!boot.settled()) {
+        redriveOnSettle = true
+        return
+      }
       restartBoot(boot)
     })
     return () => {
