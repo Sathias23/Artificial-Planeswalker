@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-06
+
 ### Changed
 
 - **Companion cold-open request diet.** Opening the companion on a 99-card deck
@@ -480,7 +482,8 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
-[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.3.0
