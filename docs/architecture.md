@@ -127,7 +127,7 @@ Each tool call is self-contained, which is what makes multiple concurrent client
 - **Storage:** a `sqlite-vec` virtual table (`card_vec`) in the *same* SQLite file as the relational data, keyed by `card_id`. Relational rows and vectors are JOIN-able.
 - **Embeddings:** `bge-small-en-v1.5` (384-dim) via **`fastembed`** (ONNX runtime — no PyTorch). Loaded locally; ~millisecond query embedding on CPU.
 - **Embedded text per card:** composite of `name + type_line + mana_cost + oracle_text + keywords`.
-- **Index build:** `scripts/build_card_embeddings.py` — one-time batch over ~60k cards, **idempotent**, and **incremental** on future Scryfall imports (embeds only new/changed cards, detected by a content hash).
+- **Index build:** `scripts/build_card_embeddings.py` — one-time batch over ~60k cards, **idempotent**, and **incremental** on future Scryfall imports (embeds only new/changed cards, detected by a content hash; a hash-unchanged card whose colours or mana value drifted gets its filter metadata refreshed in place without re-embedding).
 - **Hybrid query path:** `semantic_search_cards` embeds the query → top-K nearest vectors → optional JOIN against relational predicates (format-legal, colors, MV range). Example served by one call: *"semantically like Glorybringer, Standard-legal red 4-drops."* `find_similar_cards` uses the same path seeded by a card's stored vector.
 
 ---

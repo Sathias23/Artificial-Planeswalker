@@ -201,9 +201,10 @@ async def reconcile_oracle_identities(
     printing shifts between snapshots each refresh inserts a new row while the old one
     persists. Per oracle id in *aggregates* this keeps only the aggregate's
     ``canonical_id`` row: ``deck_cards`` references are repointed to the canonical row
-    **before** the stale rows are deleted (FK enforcement is OFF — a delete would
-    silently dangle), merging quantities when the deck already holds the canonical
-    printing under the same ``(deck_id, card_id, sideboard)`` key. Surviving rows whose
+    **before** the stale rows are deleted (foreign keys are enforced, so deleting a
+    still-referenced printing would be rejected), merging quantities when the deck
+    already holds the canonical printing under the same ``(deck_id, card_id, sideboard)``
+    key. Surviving rows whose
     ``games`` differs from the cross-printing union are batch-updated (the pre-existing
     games propagation). Identities whose canonical row is absent (rejected this run) and
     rows whose oracle id has no aggregate are left untouched. Idempotent: a clean

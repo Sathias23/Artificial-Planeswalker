@@ -18,7 +18,7 @@ repos:
           - pydantic>=2.12.0
           - sqlalchemy>=2.0.44
           - numpy>=2.0.0
-          - mcp>=1.27.0
+          - mcp>=1.27.0,<2  # the hook env must track the locked 1.x line; mcp 2 moved FastMCP and renamed ToolAnnotations fields
           - platformdirs>=4.0.0
           - uvicorn>=0.51.0
           # httpx ships py.typed, so without it here every httpx call in src/companion/client.py

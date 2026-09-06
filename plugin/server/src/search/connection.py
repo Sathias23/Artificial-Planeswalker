@@ -122,9 +122,11 @@ class ConnectionFactory:
 
         Order (verified on CPython 3.12 / SQLite 3.50 / Windows): connect → enable extension
         loading → ``sqlite_vec.load`` → disable extension loading (hardening: only sqlite-vec
-        needs it) → enable WAL → set ``busy_timeout``. Extension loading is per-connection (not
-        persisted to the file), so every connection must repeat it; WAL is per-file but reporting
-        it per-connection is idempotent; ``busy_timeout`` is a per-connection setting.
+        needs it) → enable WAL → set ``busy_timeout`` → enable ``foreign_keys``. Extension loading
+        is per-connection (not persisted to the file), so every connection must repeat it; WAL is
+        per-file but reporting it per-connection is idempotent; ``busy_timeout`` and
+        ``foreign_keys`` are per-connection settings (the latter so every connection the project
+        opens enforces the same referential integrity as the async engine's connect hook).
 
         Returns:
             A fully configured ``sqlite3.Connection``.
@@ -139,6 +141,9 @@ class ConnectionFactory:
             # locked": under WAL a reader never blocks, but a second writer (bulk import / index
             # build) can, and the index build runs on this sync connection.
             conn.execute("PRAGMA busy_timeout=5000")
+            # Same referential integrity as src.data.database.enable_foreign_keys: the pragma is
+            # per connection, and this connection never opens inside a transaction here.
+            conn.execute("PRAGMA foreign_keys=ON")
             logger.debug(
                 "Created sqlite3 connection (db_path=%s, journal_mode=%s)",
                 self._db_path,

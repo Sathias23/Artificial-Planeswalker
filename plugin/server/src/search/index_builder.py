@@ -34,6 +34,15 @@ _VEC_INSERT_SQL = (
 )
 #: ``vec0`` rejects ``INSERT OR REPLACE`` (verified) — a changed card is DELETE-then-INSERTed.
 _VEC_DELETE_SQL = f"DELETE FROM {CARD_VEC_TABLE} WHERE {CARD_ID_COL} = ?"
+#: ``vec0`` *does* accept ``UPDATE`` on its metadata columns (sqlite-vec 0.1.9, verified by probe),
+#: so a card whose text is unchanged but whose ``colors``/``cmc`` moved is refreshed in place —
+#: no embedder call, no vector re-serialisation.
+_VEC_UPDATE_META_SQL = (
+    f"UPDATE {CARD_VEC_TABLE} SET {', '.join(f'{col} = ?' for col in METADATA_COLS)} "
+    f"WHERE {CARD_ID_COL} = ?"
+)
+#: Stored filter metadata per row, loaded once so a hash-unchanged card can be compared in O(1).
+_READ_VEC_META_SQL = f"SELECT {CARD_ID_COL}, {', '.join(METADATA_COLS)} FROM {CARD_VEC_TABLE}"
 #: The companion hash table is *relational*, so a real UPSERT works (it does not on ``card_vec``).
 _META_UPSERT_SQL = (
     f"INSERT INTO {CARD_EMBEDDING_META_TABLE} ({CARD_ID_COL}, {CONTENT_HASH_COL}) VALUES (?, ?) "
@@ -66,7 +75,9 @@ class BuildStatistics:
     Distinguishes the three classification outcomes the incremental builder produces —
     ``embedded_new`` (no stored hash), ``embedded_changed`` (stored hash differed), and
     ``skipped`` (hash unchanged) — plus ``pruned`` (orphan vectors removed when ``prune=True``).
-    ``processed`` is every card read from ``cards`` (= new + changed + skipped).
+    ``processed`` is every card read from ``cards`` (= new + changed + skipped). ``refreshed``
+    counts the subset of ``skipped`` whose filter metadata (``mana_value`` / colour flags) was
+    rewritten in place because ``colors`` or ``cmc`` changed while the text did not.
 
     Example:
         >>> stats = BuildStatistics()
@@ -81,6 +92,7 @@ class BuildStatistics:
         self.embedded_new = 0
         self.embedded_changed = 0
         self.skipped = 0
+        self.refreshed = 0
         self.pruned = 0
         self.start_time = time.time()
 
@@ -105,13 +117,14 @@ class BuildStatistics:
         """Return a one-line human-readable summary of the build.
 
         Returns:
-            A formatted string with processed / new / changed / skipped / pruned counts plus
-            elapsed time and throughput.
+            A formatted string with processed / new / changed / skipped / refreshed / pruned
+            counts plus elapsed time and throughput.
         """
         return (
             f"Build complete: {self.processed:,} processed, "
             f"{self.embedded_new:,} new, {self.embedded_changed:,} changed, "
-            f"{self.skipped:,} skipped, {self.pruned:,} pruned, "
+            f"{self.skipped:,} skipped ({self.refreshed:,} metadata refreshed), "
+            f"{self.pruned:,} pruned, "
             f"{self.elapsed_time():.1f}s ({self.cards_per_second():.1f} cards/sec)"
         )
 
@@ -245,12 +258,16 @@ def build_card_embeddings(
     ``cards`` in chunks of ``batch_size``, composing :func:`compose_card_text` per card, hashing
     it (:func:`content_hash`), and classifying each card against the stored hashes as **new**,
     **changed**, or **unchanged**. Only new + changed cards are embedded (so a re-run re-embeds
-    nothing if nothing changed). Each chunk's writes happen in **one transaction** committed
-    per chunk: changed cards are DELETE-then-INSERTed (``vec0`` rejects ``INSERT OR REPLACE``),
-    new cards are plain INSERTs, and every embedded card's hash is UPSERTed into
-    ``card_embedding_meta`` — atomically, so a card is hash-recorded iff its current vector is
-    written. An interruption between chunks leaves completed chunks durable and the index
-    converges with no duplicates or orphan hashes on the next run.
+    nothing if nothing changed). An unchanged card's stored filter metadata (``mana_value`` and
+    the colour flags) is still compared against the current ``cmc``/``colors``, and rewritten
+    in place when it drifted — the text hash cannot see those columns, and without this a
+    colour or mana-value correction would leave the KNN pre-filter stale forever. Each chunk's
+    writes happen in **one transaction** committed per chunk: changed cards are
+    DELETE-then-INSERTed (``vec0`` rejects ``INSERT OR REPLACE``), new cards are plain INSERTs,
+    metadata-only refreshes are in-place ``UPDATE`` statements, and every embedded card's hash
+    is UPSERTed into ``card_embedding_meta`` — atomically, so a card is hash-recorded iff its
+    current vector is written. An interruption between chunks leaves completed chunks durable
+    and the index converges with no duplicates or orphan hashes on the next run.
 
     Both collaborators are **injected** so unit tests can pass a ``tmp_path`` DB connection and a
     fake embedder (no model load / no network); the CLI is the composition root that wires the
@@ -271,8 +288,8 @@ def build_card_embeddings(
             whose ``card_id`` is no longer in ``cards`` (e.g. cards dropped by a later import).
 
     Returns:
-        A :class:`BuildStatistics` with processed / new / changed / skipped / pruned counts and
-        timing.
+        A :class:`BuildStatistics` with processed / new / changed / skipped / refreshed / pruned
+        counts and timing.
 
     Raises:
         sqlite3.OperationalError: If ``conn`` lacks the sqlite-vec extension, or on a write error
@@ -297,6 +314,13 @@ def build_card_embeddings(
         ).fetchall()
     )
 
+    # The stored filter metadata, keyed the same way, so a hash-unchanged card's colours and
+    # mana value can be checked without touching the embedder.
+    stored_meta: dict[str, tuple[int, ...]] = {
+        row[0]: tuple(int(value) for value in row[1:])
+        for row in conn.execute(_READ_VEC_META_SQL).fetchall()
+    }
+
     stats = BuildStatistics()
     read_cursor = conn.cursor()  # dedicated read cursor; writes go on conn directly
     if limit is not None:
@@ -308,13 +332,14 @@ def build_card_embeddings(
         rows = read_cursor.fetchmany(batch_size)
         if not rows:
             break
-        _process_chunk(conn, embedder, rows, stored_hashes, stats)
+        _process_chunk(conn, embedder, rows, stored_hashes, stored_meta, stats)
         logger.info(
-            "Processed %d cards (new=%d changed=%d skipped=%d) - %.1f cards/sec",
+            "Processed %d cards (new=%d changed=%d skipped=%d refreshed=%d) - %.1f cards/sec",
             stats.processed,
             stats.embedded_new,
             stats.embedded_changed,
             stats.skipped,
+            stats.refreshed,
             stats.cards_per_second(),
         )
 
@@ -364,9 +389,14 @@ def _process_chunk(
     embedder: Embedder,
     rows: list[tuple[str, str, str, str, str, str | None, str | None, float]],
     stored_hashes: dict[str, str],
+    stored_meta: dict[str, tuple[int, ...]],
     stats: BuildStatistics,
 ) -> None:
     """Classify one chunk, embed the new/changed subset, and write it in a single transaction.
+
+    A hash-unchanged card is never embedded, but its current ``(mana_value, *colour flags)`` is
+    compared with the stored ``card_vec`` row and an in-place ``UPDATE`` is staged on mismatch,
+    inside the same per-chunk transaction as the inserts.
 
     Args:
         conn: The shared sync connection (reads + writes).
@@ -374,10 +404,14 @@ def _process_chunk(
         rows: One chunk of ``cards`` rows
             (``id, name, type_line, mana_cost, oracle_text, keywords, colors, cmc``).
         stored_hashes: ``{card_id: content_hash}`` loaded once at the start of the build.
-        stats: Mutated in place with this chunk's processed / new / changed / skipped counts.
+        stored_meta: ``{card_id: (mana_value, color_w, …, color_g)}`` from ``card_vec``, loaded
+            once at the start of the build.
+        stats: Mutated in place with this chunk's processed / new / changed / skipped /
+            refreshed counts.
     """
     texts: list[str] = []
     pending: list[_PendingCard] = []
+    refresh_params: list[tuple[object, ...]] = []
     new_count = 0
     changed_count = 0
     skipped_count = 0
@@ -387,10 +421,14 @@ def _process_chunk(
         colors = _coerce_json_list(colors_raw)
         text = compose_card_text(name, type_line, mana_cost, oracle_text, keywords)
         chash = content_hash(text)
+        metadata = (int(cmc), *_color_flags(colors))
 
         prior = stored_hashes.get(card_id)
         if prior == chash:
             skipped_count += 1
+            stored = stored_meta.get(card_id)
+            if stored is not None and stored != metadata:
+                refresh_params.append((*metadata, card_id))
             continue
 
         changed = prior is not None  # had a different hash → changed; else brand new
@@ -399,48 +437,52 @@ def _process_chunk(
         else:
             new_count += 1
         texts.append(text)
-        pending.append(_PendingCard(card_id, int(cmc), _color_flags(colors), chash, changed))
+        pending.append(_PendingCard(card_id, metadata[0], metadata[1:], chash, changed))
 
     stats.processed += len(rows)
     stats.embedded_new += new_count
     stats.embedded_changed += changed_count
     stats.skipped += skipped_count
 
-    if not pending:
+    if not pending and not refresh_params:
         return
-
-    # Bounded by batch_size (default 1000 → ~1.5 MB float32); the bound lives at the builder,
-    # without modifying Embedder.
-    vectors = embedder.encode_batch(texts)
 
     delete_params: list[tuple[str]] = [(p.card_id,) for p in pending if p.changed]
     insert_params: list[tuple[object, ...]] = []
     meta_params: list[tuple[str, str]] = []
-    for pending_card, vector in zip(pending, vectors, strict=True):
-        if vector.shape != (EMBEDDING_DIM,):
-            raise ValueError(
-                f"embedder returned a {vector.shape} vector for card {pending_card.card_id!r}; "
-                f"expected ({EMBEDDING_DIM},)"
+    if pending:
+        # Bounded by batch_size (default 1000 → ~1.5 MB float32); the bound lives at the
+        # builder, without modifying Embedder. Never called for a metadata-only refresh.
+        vectors = embedder.encode_batch(texts)
+        for pending_card, vector in zip(pending, vectors, strict=True):
+            if vector.shape != (EMBEDDING_DIM,):
+                raise ValueError(
+                    f"embedder returned a {vector.shape} vector for card "
+                    f"{pending_card.card_id!r}; expected ({EMBEDDING_DIM},)"
+                )
+            insert_params.append(
+                (
+                    pending_card.card_id,
+                    sqlite_vec.serialize_float32(vector),
+                    pending_card.mana_value,
+                    *pending_card.color_flags,
+                )
             )
-        insert_params.append(
-            (
-                pending_card.card_id,
-                sqlite_vec.serialize_float32(vector),
-                pending_card.mana_value,
-                *pending_card.color_flags,
-            )
-        )
-        meta_params.append((pending_card.card_id, pending_card.content_hash))
+            meta_params.append((pending_card.card_id, pending_card.content_hash))
 
     try:
         if delete_params:
             conn.executemany(_VEC_DELETE_SQL, delete_params)
-        conn.executemany(_VEC_INSERT_SQL, insert_params)
-        conn.executemany(_META_UPSERT_SQL, meta_params)
+        if insert_params:
+            conn.executemany(_VEC_INSERT_SQL, insert_params)
+            conn.executemany(_META_UPSERT_SQL, meta_params)
+        if refresh_params:
+            conn.executemany(_VEC_UPDATE_META_SQL, refresh_params)
         conn.commit()
     except Exception:
         conn.rollback()  # roll the in-flight chunk back; completed chunks stay durable
         raise
+    stats.refreshed += len(refresh_params)
 
 
 def _prune_orphans(conn: sqlite3.Connection, stats: BuildStatistics) -> None:

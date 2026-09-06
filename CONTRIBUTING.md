@@ -49,7 +49,7 @@ in the meantime:
 | Artifact | Regenerate with | Change it by editing |
 |----------|-----------------|----------------------|
 | `src/companion/app/static/` — the companion's built SPA bundle | `cd ui && npm run build` | `ui/` |
-| `plugin/` — the assembled plugin tree, including its mirror of that bundle | `uv run python -m scripts.build_plugin` | `src/`, the four MTG skills, `pyproject.toml`, `uv.lock`, `README.md`, `LICENSE`, `NOTICE`, or `scripts/build_plugin.py` itself |
+| `plugin/` — the assembled plugin tree, including its mirror of that bundle | `uv run python -m scripts.build_plugin` | `src/`, the five shipped skills, `pyproject.toml`, `uv.lock`, `README.md`, `LICENSE`, `NOTICE`, or `scripts/build_plugin.py` itself |
 | `ui/src/api/types.d.ts` + `ui/src/api/openapi.json` — the TypeScript types generated from the backend's own schema | `cd ui && npm run gen:api` (needs uv; `npm run gen:types` alone regenerates the types half) | the FastAPI routes and Pydantic models in `src/companion/` |
 
 The bundle is committed because the project also ships as a *cloned* plugin tree:

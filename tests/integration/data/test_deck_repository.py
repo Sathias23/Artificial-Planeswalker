@@ -4,12 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
+from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry, DeckSummary
 
@@ -126,11 +128,34 @@ async def test_cards(session: AsyncSession):
             color_identity=["G"],
             legalities={"standard": "legal"},
         ),
+        # Identity-only colour: no colour in the cost, blue identity from the rules text.
+        CardModel(
+            id="card-island",
+            name="Island",
+            printed_name=None,
+            oracle_id="oracle-island",
+            mana_cost="",
+            cmc=0.0,
+            type_line="Basic Land — Island",
+            oracle_text="{T}: Add {U}",
+            rarity="common",
+            set_code="LEA",
+            set_name="Alpha",
+            collector_number="291",
+            colors=[],
+            color_identity=["U"],
+            legalities={"standard": "legal"},
+        ),
     ]
     for card in cards:
         session.add(card)
     await session.commit()
     return cards
+
+
+async def _deck_card_rows(session: AsyncSession, deck_id: str) -> int:
+    stmt = select(func.count()).select_from(DeckCardModel).where(DeckCardModel.deck_id == deck_id)
+    return int((await session.execute(stmt)).scalar_one())
 
 
 # ===== Deck CRUD Tests =====
@@ -786,19 +811,277 @@ async def test_get_deck_with_cards_nonexistent(deck_repo: DeckRepository) -> Non
 
 
 async def test_delete_deck_cascades_to_cards(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
 ) -> None:
-    """Test deleting a deck also deletes its card associations."""
+    """Deleting a deck removes every association row, mainboard and sideboard alike.
+
+    The bulk ``DELETE`` bypasses the ORM cascade, so this rests on the database's
+    ``ON DELETE CASCADE`` — which only fires with foreign keys enforced on the connection.
+    """
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(
         deck_id=deck.id, card_id="card-bolt", quantity=4, sideboard=False
     )
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-counterspell", quantity=2, sideboard=True
+    )
+    assert await _deck_card_rows(session, deck.id) == 2
 
-    await deck_repo.delete_deck(deck_id=deck.id)
+    assert await deck_repo.delete_deck(deck_id=deck.id) is True
 
-    # Deck should be gone
-    retrieved_deck = await deck_repo.get_deck_with_cards(deck_id=deck.id)
-    assert retrieved_deck is None
+    assert await deck_repo.get_deck_with_cards(deck_id=deck.id) is None
+    assert await _deck_card_rows(session, deck.id) == 0
+
+
+# ===== Foreign-key enforcement (CAP-1) =====
+
+
+async def test_adding_a_card_to_a_missing_deck_is_rejected(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    """A dangling deck id raises ``IntegrityError`` and leaves the session usable."""
+    with pytest.raises(IntegrityError):
+        await deck_repo.add_card_to_deck(deck_id="no-such-deck", card_id="card-bolt", quantity=1)
+
+    assert await _deck_card_rows(session, "no-such-deck") == 0
+    deck = await deck_repo.create_deck(name="After", format="standard")
+    added = await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=1)
+    assert added.card_id == "card-bolt"
+
+
+async def test_adding_a_missing_card_to_a_deck_is_rejected(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    """Both foreign keys are enforced: a card absent from ``cards`` is rejected like a deck."""
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+
+    with pytest.raises(IntegrityError):
+        await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="no-such-card", quantity=1)
+
+    assert await _deck_card_rows(session, deck.id) == 0
+    added = await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=1)
+    assert added.card_id == "card-bolt"
+
+
+async def test_bulk_add_with_a_missing_card_adds_nothing(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+
+    with pytest.raises(IntegrityError):
+        await deck_repo.add_cards_to_deck(
+            deck.id,
+            [
+                DeckCardEntry(card_id="card-bolt", quantity=4),
+                DeckCardEntry(card_id="no-such-card", quantity=1),
+            ],
+        )
+
+    assert await _deck_card_rows(session, deck.id) == 0
+    untouched = await deck_repo.get_deck(deck.id)
+    assert untouched is not None
+    assert untouched.color_identity == []
+    assert untouched.updated_at == _OLD_TIMESTAMP
+
+
+# ===== Deck metadata upkeep (CAP-4) =====
+
+
+async def _pinned_deck(
+    deck_repo: DeckRepository, session: AsyncSession, name: str = "Pinned"
+) -> Deck:
+    deck = await deck_repo.create_deck(name=name, format="standard")
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+    return deck
+
+
+async def _metadata(deck_repo: DeckRepository, deck_id: str) -> tuple[list[str], datetime]:
+    deck = await deck_repo.get_deck(deck_id)
+    assert deck is not None
+    return deck.color_identity, deck.updated_at
+
+
+async def test_add_card_updates_identity_and_timestamp(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await _pinned_deck(deck_repo, session)
+
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == ["R"]
+    assert updated_at > _OLD_TIMESTAMP
+
+
+async def test_identity_derives_from_color_identity_not_colors(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    """A card with ``colors=[]`` and ``color_identity=["U"]`` makes the deck blue."""
+    deck = await _pinned_deck(deck_repo, session)
+
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-island", quantity=10)
+
+    identity, _ = await _metadata(deck_repo, deck.id)
+    assert identity == ["U"]
+
+
+async def test_sideboard_cards_count_toward_identity(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await _pinned_deck(deck_repo, session)
+
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-forest", quantity=2, sideboard=True
+    )
+
+    identity, _ = await _metadata(deck_repo, deck.id)
+    assert identity == ["R", "G"]
+
+
+async def test_bulk_add_updates_identity_and_timestamp(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await _pinned_deck(deck_repo, session)
+
+    await deck_repo.add_cards_to_deck(
+        deck.id,
+        [
+            DeckCardEntry(card_id="card-bolt", quantity=4),
+            DeckCardEntry(card_id="card-counterspell", quantity=4),
+        ],
+    )
+
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == ["U", "R"]  # WUBRG order, not insertion order
+    assert updated_at > _OLD_TIMESTAMP
+
+
+async def test_removing_the_last_card_clears_identity_and_advances_timestamp(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+
+    assert await deck_repo.remove_card_from_deck(deck_id=deck.id, card_id="card-bolt") is True
+
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == []
+    assert updated_at > _OLD_TIMESTAMP
+
+
+async def test_removing_one_of_two_colours_narrows_identity(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-counterspell", quantity=4)
+
+    await deck_repo.remove_card_from_deck(deck_id=deck.id, card_id="card-counterspell")
+
+    identity, _ = await _metadata(deck_repo, deck.id)
+    assert identity == ["R"]
+
+
+async def test_removing_a_missing_row_leaves_metadata_alone(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+
+    assert (
+        await deck_repo.remove_card_from_deck(deck_id=deck.id, card_id="card-counterspell") is False
+    )
+
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == ["R"]
+    assert updated_at == _OLD_TIMESTAMP
+
+
+async def test_quantity_update_advances_timestamp_and_keeps_identity(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+
+    updated = await deck_repo.update_card_quantity(deck_id=deck.id, card_id="card-bolt", quantity=2)
+
+    assert updated is not None
+    assert updated.quantity == 2
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == ["R"]
+    assert updated_at > _OLD_TIMESTAMP
+
+
+async def test_quantity_update_to_the_same_value_is_a_no_op(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    """Re-stating the stored quantity returns the row and leaves the deck untouched."""
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+
+    result = await deck_repo.update_card_quantity(deck_id=deck.id, card_id="card-bolt", quantity=4)
+
+    assert result is not None
+    assert result.quantity == 4
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == ["R"]
+    assert updated_at == _OLD_TIMESTAMP
+
+
+async def test_quantity_update_of_a_missing_row_leaves_metadata_alone(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
+
+    result = await deck_repo.update_card_quantity(
+        deck_id=deck.id, card_id="card-counterspell", quantity=2
+    )
+
+    assert result is None
+    identity, updated_at = await _metadata(deck_repo, deck.id)
+    assert identity == ["R"]
+    assert updated_at == _OLD_TIMESTAMP
+
+
+async def test_update_deck_color_identity_repairs_a_stale_row(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    """The public wrapper recomputes from ``color_identity`` and commits on its own."""
+    deck = await deck_repo.create_deck(name="Test Deck", format="standard")
+    await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-island", quantity=10)
+    # Simulate a row written before the repository maintained identity.
+    model = await session.get(DeckModel, deck.id)
+    assert model is not None
+    model.color_identity_list = None
+    model.updated_at = _OLD_TIMESTAMP
+    await session.commit()
+
+    repaired = await deck_repo.update_deck_color_identity(deck.id)
+
+    assert repaired is not None
+    assert repaired.color_identity == ["U"]
+    assert repaired.updated_at > _OLD_TIMESTAMP
+    assert await deck_repo.update_deck_color_identity("no-such-deck") is None
+
+
+async def test_merge_with_empty_source_still_stamps_the_target(
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+) -> None:
+    target = await _pinned_deck(deck_repo, session, name="Target")
+    source = await deck_repo.create_deck(name="Empty Source", format="standard")
+
+    merged = await deck_repo.merge_decks(target.id, source.id)
+
+    assert merged is not None
+    assert merged.updated_at > _OLD_TIMESTAMP
 
 
 # ===== Transaction Rollback Tests (Bug #2a1c1f29) =====

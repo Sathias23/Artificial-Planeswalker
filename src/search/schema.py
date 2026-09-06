@@ -26,8 +26,8 @@ METADATA_COLS = (MANA_VALUE_COL, *COLOR_COLS)
 # connection as ``card_vec`` — keeping the whole index pipeline on one connection/script. The
 # index builder (2.3) stores ``sha256(compose_card_text(...))`` per ``card_id`` here so a re-run
 # re-embeds only cards whose composite text changed. It is deliberately NOT on ``Base.metadata``
-# / ``init_database`` (that is the async relational engine's domain — see project-context.md's
-# sync-vs-async boundary).
+# / ``init_database`` (that is the async relational engine's domain — see the sync-vs-async
+# convention in ``AGENTS.md``).
 CARD_EMBEDDING_META_TABLE = "card_embedding_meta"
 #: The content-hash table reuses :data:`CARD_ID_COL` for its primary key (1:1 with ``card_vec``).
 CONTENT_HASH_COL = "content_hash"
