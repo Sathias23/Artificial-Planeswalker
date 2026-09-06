@@ -138,8 +138,9 @@ export interface PollerOptions {
 export interface Poller {
   /**
    * Polls IMMEDIATELY, then on the backoff. Idempotent while running. A restart after `stop()`
-   * begins a NEW poll: the backoff, the outcome identity and the stalled clock all reset,
-   * because wall time that passed while nobody was polling is not evidence about the backend.
+   * begins a NEW poll: the backoff, the outcome identity, the stalled clock AND the emit dedupe
+   * identity all reset, because wall time that passed while nobody was polling is not evidence
+   * about the backend — and a new poll's first answer is a verdict its caller asked to hear.
    */
   start: () => void
   /** Cancels the pending timer and drops any answer still in flight. Idempotent. */
@@ -173,8 +174,15 @@ export const createPoller = ({
   let timer: ReturnType<typeof setTimeout> | undefined
   let delay = POLL_BASE_MS
   let panel: StateKey = initialPanel
-  /** The last update handed to `onUpdate`, so an identical decision is not re-emitted. */
-  let emitted: PollUpdate = { panel: initialPanel, decks: [] }
+  /**
+   * The last update handed to `onUpdate`, so an identical decision is not re-emitted — within ONE
+   * poll. `null` means "this poll has emitted nothing yet", and `start()` resets it to that, so a
+   * poll's FIRST answer is always written even when it matches what the previous poll last said: a
+   * new poll is fresh evidence, and `deck.ts`'s transient-refusal probe (CAP-3) restarts the stopped
+   * poll precisely to be told, once, whether the backend is healthy NOW. A restart that stayed
+   * silent on an unchanged answer would make that probe unobservable.
+   */
+  let emitted: PollUpdate | null = null
 
   /**
    * The identity of the last outcome, so a CHANGE resets the backoff.
@@ -262,13 +270,22 @@ export const createPoller = ({
     // Emitted once per CHANGE, not once per poll: `lastOutcome` already knows an identical
     // answer is identical, and re-emitting it would re-render the whole app every 2–30 s for
     // the entire length of a first build, for nothing.
+    //
+    // IDENTITY IS LOAD-BEARING: every emit hands over a FRESH `decks` array — copied below, so
+    // the guarantee is this file's and not the reader's (an injected reader may hand back one
+    // constant). `deck.ts`'s system-state listener tells a poll write apart from the socket's
+    // `connection` writes on the same store by `decks` (or `panel`) having changed identity, so a
+    // reused array here would make a poll's unchanged healthy answer invisible to the CAP-3
+    // probe. Priced side effect of the `start()` reset: every `restartPoll()` on reconnect now
+    // costs one store write — one whole-tree render — even when the answer is unchanged.
     const unchanged =
+      emitted !== null &&
       emitted.panel === panel &&
       emitted.decks.length === decks.length &&
       emitted.decks.every((name, index) => name === decks[index])
     if (unchanged) return
 
-    emitted = { panel, decks }
+    emitted = { panel, decks: [...decks] }
     onUpdate(emitted)
   }
 
@@ -306,6 +323,10 @@ export const createPoller = ({
       lastOutcome = null
       unavailableSince = null
       unavailableStreak = 0
+      // The dedupe identity too: a restarted poll's FIRST answer is written whatever the previous
+      // poll last emitted, because `restartPollIfStopped` is asked for a fresh verdict and a verdict
+      // nobody hears is not one (CAP-3). Within the new poll, an unchanged answer is still silent.
+      emitted = null
       void tick(generation)
     },
     stop: () => {

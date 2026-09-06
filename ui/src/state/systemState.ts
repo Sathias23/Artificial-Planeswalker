@@ -248,8 +248,9 @@ export const useSystemState = (): SystemState => {
 }
 
 /**
- * Restart the poll from scratch — a NEW poll, with the backoff, the outcome identity and the
- * stalled clock all reset (`poller.ts:293-306` spells out what `start()` after `stop()` means).
+ * Restart the poll from scratch — a NEW poll, with the backoff, the outcome identity, the
+ * stalled clock and the emit dedupe all reset (`poller.ts`'s `start()` spells out what a start
+ * after `stop()` means; the dedupe reset is why a restart's first answer is always written).
  *
  * **Called on reconnect success.** A socket coming back means the backend process is
  * answering again, and after a restart that is a genuinely fresh backend: whatever the poll
@@ -285,8 +286,11 @@ export const restartPoll = (): void => {
  * becoming a second polling mechanism racing the first.
  *
  * **Not called on reconnect success** — that path takes {@link restartPoll} unconditionally, see
- * above. This one answers the other trigger: a `deck_changed` / `active_deck_changed` frame,
- * which is the backend telling us it is alive and that something moved.
+ * above. This one answers the other two triggers: a `deck_changed` / `active_deck_changed` frame,
+ * which is the backend telling us it is alive and that something moved; and `deck.ts`'s CAP-3
+ * probe — a deck read refused with a transient token AFTER this poll had already stopped healthy,
+ * asking for one fresh verdict (the restart's first answer is always written, so the probe is
+ * observable; `deck.ts` bounds it to one per healthy episode).
  */
 export const restartPollIfStopped = (): void => {
   if (mounted === null) return

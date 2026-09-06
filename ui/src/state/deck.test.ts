@@ -778,6 +778,42 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins', () =
     harness.detailCalls[0].resolve({ kind: 'deck', deck: detail() })
     await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
   })
+
+  it('lets a NEWER re-drive supersede a probe-style re-drive in flight — the older response never settles (CAP-3)', async () => {
+    // The CAP-3 probe re-drives the boot with a plain `stop()`/`start()`, exactly as a poll edge
+    // or an `active_deck_changed` frame does. Two of them can overlap: the probe's boot is
+    // mid-flight when a frame re-drives again. The generation guard is what keeps the older
+    // response — which may describe a deck the agent has already left — out of the store.
+    const harness = buildBoot()
+    harness.boot.start()
+    // The mount's boot settles a refusal, the row the probe fires on.
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(1))
+    harness.detailCalls[0].resolve({ kind: 'error', reason: 'database_unavailable' })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('refused'))
+
+    // The probe's re-drive: in flight, unanswered.
+    harness.boot.stop()
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+
+    // A frame re-drives again before the probe's read answers.
+    harness.boot.stop()
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(3))
+
+    // The OLDER response lands first and must write nothing.
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Superseded' }) })
+    await flush()
+    expect(useDeckStore.getState().deck.status).toBe('refused')
+    expect(harness.settles.some((s) => s.status === 'deck')).toBe(false)
+
+    // The newest settles the slice.
+    harness.detailCalls[2].resolve({ kind: 'deck', deck: detail({ name: 'Current' }) })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
+    const after = useDeckStore.getState().deck
+    expect(after.status === 'deck' && after.detail.name).toBe('Current')
+    expect(harness.readActive).toHaveBeenCalledTimes(3)
+  })
 })
 
 /**

@@ -1421,10 +1421,11 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
 
   it('heals a transient boot blip the same way, when a poll transition follows', async () => {
     // The unreachable→'none' half of the finding: the glass said "No deck on the glass." about
-    // a deck whose read was merely unlucky. Covered by the same edge — with the declared
-    // residue: a blip with the poll ALREADY settled healthy has no later edge, and waits for
-    // reload or the socket's reconnect. A hand-rolled stub rather than `answering`, because the shape
-    // under test is a route that REJECTS once and then heals, which the fixture cannot say.
+    // a deck whose read was merely unlucky. Covered by the same edge. (An `unreachable` settles
+    // `'none'`, not a retrying panel, so the CAP-3 probe below does not apply to it; its later
+    // edges are the socket going live and the frames.) A hand-rolled stub rather than
+    // `answering`, because the shape under test is a route that REJECTS once and then heals,
+    // which the fixture cannot say.
     let deckRead: () => Promise<Response> = () => Promise.reject(new TypeError('Failed to fetch'))
     let pollAnswer = refusal('database_not_initialized', 503)
     vi.stubGlobal(
@@ -1459,6 +1460,314 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
     expect(
       screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
     ).toBeVisible()
+  })
+
+  /**
+   * CAP-3 — the ordering the edge above cannot see.
+   *
+   * The poll STOPS on a healthy answer, so a deck refusal that settles AFTER it (the database
+   * starts updating between the two requests, or the deck read simply lands later) used to have
+   * no later edge: the updating panel stayed until a reload, a socket frame or a reconnect. Now a
+   * transient refusal — one whose panel `RETRIES_QUIETLY` says retries — asks the stopped poll for
+   * ONE fresh verdict, and the poll's healthy write re-drives the boot once. The fixtures below
+   * are hand-rolled stubs rather than `answering()`, because the shape under test is a DECK route
+   * that refuses a set number of times beside a POLL route that is healthy throughout — two
+   * scripts on two routes, which the shared fixture cannot say.
+   */
+  const scripted = (deckAnswers: (() => Promise<Response>)[], pollAnswer: () => Response) => {
+    let deckIndex = 0
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      // The prefix-routing branch first, as the two fixtures above insist.
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        const answer = deckAnswers[Math.min(deckIndex, deckAnswers.length - 1)]
+        deckIndex += 1
+        return answer()
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(pollAnswer())
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock as unknown as ReturnType<typeof answering>
+  }
+
+  it('recovers a database_unavailable deck refusal that lands AFTER the poll settled healthy (CAP-3)', async () => {
+    // Poll first: `GET /api/decks` answers 200 at once and the poll stops on `no-active-deck`;
+    // the deck read then refuses `database_unavailable` — a write burst began between the two
+    // requests — and the backend is healthy by the time anyone asks again.
+    const fetchMock = scripted(
+      [
+        () => Promise.resolve(refusal('database_unavailable', 503)),
+        () => Promise.resolve(deckDetail()),
+      ],
+      () => decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+
+    render(<App />)
+    await settle()
+
+    // No reload, no user action, and NO socket frame: the socket this mount opened was never
+    // even upgraded, so nothing but the probe could have re-driven the boot.
+    expect(sockets).toHaveLength(1)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
+
+    // The cost, exactly: the mount's boot, one poll probe, and the probe's one re-drive.
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+    // …and a healthy, idle tab adds nothing afterwards.
+    await advance(10 * 60_000)
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+  })
+
+  it('still recovers the deck-first ordering through the existing edge, with no extra request', async () => {
+    // Deck first: the deck refuses `database_unavailable` while the poll is refusing the same
+    // token, so the poll is still working and the probe has nothing to restart — the poll's own
+    // 503 → 200 transition is the edge, exactly as before. The probe must not ADD a request here.
+    let pollHealthy = false
+    const fetchMock = scripted(
+      [
+        () => Promise.resolve(refusal('database_unavailable', 503)),
+        () => Promise.resolve(deckDetail()),
+      ],
+      () =>
+        pollHealthy
+          ? decks('Atraxa Counter Cabinet v2 (owned)')
+          : refusal('database_unavailable', 503),
+    )
+
+    render(<App />)
+    await settle()
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+    const pollsWhileRefusing = callsTo(fetchMock, '/api/decks')
+
+    pollHealthy = true
+    await advance(2_000)
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    // Two boots — the mount's and the edge's — and the poll's own schedule, plus nothing: the
+    // probe found a poll that was still retrying and left it alone.
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(pollsWhileRefusing + 1)
+  })
+
+  it('reads a FOREVER-refusing database_unavailable deck exactly twice in ten minutes — one probe, no loop', async () => {
+    // The loop bound, stated as a count. Per healthy episode a transient refusal earns ONE poll
+    // probe and the probe's healthy write earns ONE re-drive; the second refusal in the same
+    // episode is left to the existing edges. So a deck that never stops refusing costs one extra
+    // read, not one every backoff step.
+    const fetchMock = scripted([() => Promise.resolve(refusal('database_unavailable', 503))], () =>
+      decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+
+    render(<App />)
+    await settle()
+    await advance(10 * 60_000)
+
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(2)
+    // The poll: its first answer, and the one probe. Bounded — not a second polling mechanism.
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+    // The honest panel stays: the deck's own refusal outranks the poll's healthy opinion.
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+  })
+
+  it('never probes for an internal_error deck refusal — the map says that panel does not retry', async () => {
+    // `RETRIES_QUIETLY['internal-error']` is the load-bearing `false`: re-issuing the request
+    // re-hits the bug. The probe reads the same map the poll does, so the bug panel earns no
+    // poll restart and no second deck read — the SAME cost as before this change, over ten
+    // minutes, with the poll healthy the whole time.
+    const fetchMock = scripted([() => Promise.resolve(refusal('internal_error', 500))], () =>
+      decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+
+    render(<App />)
+    await settle()
+    await advance(10 * 60_000)
+
+    expect(deckDetailCalls(fetchMock)).toBe(1)
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(1)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(1)
+    expect(screen.getByRole('region', { name: 'The companion hit a bug.' })).toBeVisible()
+  })
+
+  it('does not spend the probe on a socket status write — only the poll’s answer consumes it', async () => {
+    // The system store is written by the socket loop too (`connection`), and every write reaches
+    // the same listener. A status change landing while the probe is armed must not be mistaken
+    // for the poll's verdict: here the poll's answer is WITHHELD, the socket goes live in the
+    // meantime, and the re-drive must wait for the poll rather than fire on the status write.
+    let releasePoll: ((response: Response) => void) | null = null
+    let pollAnswers = 0
+    // Two refusals, then the deck: the second refusal is what the CAP-2 live re-drive reads, so
+    // the heading below can only come from the read the poll's answer earns.
+    const fetchMock = scripted(
+      [
+        () => Promise.resolve(refusal('database_unavailable', 503)),
+        () => Promise.resolve(refusal('database_unavailable', 503)),
+        () => Promise.resolve(deckDetail()),
+      ],
+      () => decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+    // Wrap the stub: the poll's SECOND answer (the probe) is held until the test releases it.
+    const inner = fetchMock.getMockImplementation()
+    if (inner === undefined) throw new Error('scripted() installed no implementation')
+    fetchMock.mockImplementation((input?: unknown) => {
+      if (String(input) === '/api/decks') {
+        pollAnswers += 1
+        if (pollAnswers === 2) {
+          return new Promise<Response>((resolve) => {
+            releasePoll = resolve
+          })
+        }
+      }
+      return inner(input)
+    })
+
+    render(<App />)
+    await settle()
+    // The probe is in flight and unanswered; the panel is honest about the refusal.
+    expect(pollAnswers).toBe(2)
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+    expect(deckDetailCalls(fetchMock)).toBe(1)
+
+    // The socket goes live: a `connection` write on the SAME store. CAP-2 re-drives the boot from
+    // `'live'` (one read — which refuses again, so the panel stays and the probe, already spent
+    // for this episode, is not spent twice), but the ARMED flag must survive the status write:
+    // exactly two deck reads so far, and no third until the poll actually answers.
+    await connect()
+    const afterLive = deckDetailCalls(fetchMock)
+    expect(afterLive).toBe(2)
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+
+    // The poll's verdict lands: THIS is what earns the re-drive that loads the deck.
+    if (releasePoll === null) throw new Error('the probe never asked the poll')
+    ;(releasePoll as (response: Response) => void)(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await settle()
+
+    expect(deckDetailCalls(fetchMock)).toBe(3)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+  })
+
+  it('reads transient-ness from RETRIES_QUIETLY — database_not_initialized probes too, once', async () => {
+    // The probe indexes the map rather than naming a token: BOTH retrying kinds earn it. Same
+    // ordering as the `database_unavailable` row above, same counts.
+    const fetchMock = scripted(
+      [
+        () => Promise.resolve(refusal('database_not_initialized', 503)),
+        () => Promise.resolve(deckDetail()),
+      ],
+      () => decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+
+    render(<App />)
+    await settle()
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Card database not set up yet.' })).toBeNull()
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+    await advance(10 * 60_000)
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+  })
+
+  it('re-arms the probe once the deck LOADS — a later transient refusal probes again', async () => {
+    // "One probe per healthy episode", with the episode ended by a loaded deck. Without the
+    // re-arm the second refusal below would strand: the poll is stopped healthy again and nothing
+    // else asks it. Deck script: refuse, heal, refuse, heal.
+    const fetchMock = scripted(
+      [
+        () => Promise.resolve(refusal('database_unavailable', 503)),
+        () => Promise.resolve(deckDetail()),
+        () => Promise.resolve(refusal('database_unavailable', 503)),
+        () => Promise.resolve(deckDetail({ name: 'Atraxa, second recovery' })),
+      ],
+      () => decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+
+    render(<App />)
+    await settle()
+    // The first episode: the mount's boot (503), the probe, the probe's re-drive (200).
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+
+    // The live re-drive (CAP-2) reads the third entry — the second refusal — and probes AGAIN,
+    // because the deck had loaded in between. Its re-drive reads the fourth entry.
+    await connect()
+    expect(deckDetailCalls(fetchMock)).toBe(4)
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, second recovery' })).toBeVisible()
+    const pollsSoFar = callsTo(fetchMock, '/api/decks')
+    expect(pollsSoFar).toBe(3)
+
+    // The script now repeats its last entry (200): a frame re-drive that lands on a healthy read
+    // probes nothing, so the bound is one probe per REFUSAL episode, not one per re-drive.
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(deckDetailCalls(fetchMock)).toBe(5)
+    // The frame's own `restartPollIfStopped` is one poll; no probe was earned on a 200.
+    expect(callsTo(fetchMock, '/api/decks')).toBe(pollsSoFar + 1)
+  })
+
+  it('re-arms the probe when the poll leaves and re-enters healthy — the other reset', async () => {
+    // The mirror: the probe was spent against a deck that kept refusing; then the poll itself
+    // refuses (the episode ends) and recovers. A refusal in the NEW healthy episode must be able
+    // to probe again, or the second recovery would strand exactly as the first used to.
+    let pollHealthy = true
+    const fetchMock = scripted(
+      [
+        () => Promise.resolve(refusal('database_unavailable', 503)), // the mount's boot
+        () => Promise.resolve(refusal('database_unavailable', 503)), // the first probe's re-drive
+        () => Promise.resolve(refusal('database_unavailable', 503)), // the frame's re-drive
+        () => Promise.resolve(refusal('database_unavailable', 503)), // the poll edge's re-drive
+        () => Promise.resolve(deckDetail({ name: 'Atraxa, after the second probe' })),
+      ],
+      () =>
+        pollHealthy
+          ? decks('Atraxa Counter Cabinet v2 (owned)')
+          : refusal('database_unavailable', 503),
+    )
+
+    render(<App />)
+    await settle()
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+    // The first episode's probe is spent (two reads, two polls): an idle tab adds nothing.
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
+    await advance(60_000)
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+
+    // The poll leaves healthy: a frame restarts the stopped poll, which now refuses.
+    pollHealthy = false
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+    const pollsWhileRefusing = callsTo(fetchMock, '/api/decks')
+
+    // …and recovers: the edge re-drives the boot, whose read still refuses — but the poll is
+    // healthy and STOPPED again, and this is a new episode, so the refusal earns a probe.
+    pollHealthy = true
+    await advance(2_000)
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, after the second probe' }),
+    ).toBeVisible()
+    // The edge's poll answer, plus exactly one probe — and every scripted deck read consumed once.
+    expect(callsTo(fetchMock, '/api/decks')).toBe(pollsWhileRefusing + 2)
+    expect(deckDetailCalls(fetchMock)).toBe(5)
   })
 })
 
@@ -2775,6 +3084,262 @@ describe('the page reconnects on its own', () => {
     expect(useCardStore.getState().cards['burned-id']).toEqual(
       expect.objectContaining({ status: 'unknown', retryable: true }),
     )
+  })
+
+  // ==================== CAP-2 — THE GAP BETWEEN THE SNAPSHOT AND THE FIRST OPEN ==========
+  it('shows the deck the agent switched to BETWEEN the boot snapshot and the first socket open', async () => {
+    // The boot's HTTP snapshot and the socket's first open are independent requests. An
+    // `active_deck_changed` broadcast in the window between them is sent before the subscription
+    // exists and reaches nobody; before this change the glass kept deck A while the pill said
+    // live. The first `'live'` now re-drives one full boot that began after the socket could hear.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)', 'Deck B'))
+
+    render(<App />)
+    await settle()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    const marker = fetchMock.mock.calls.length
+
+    // The agent switches decks while the upgrade is still in flight — no frame can arrive yet.
+    booting(activeDeck('deck-b'), deckDetail({ id: 'deck-b', name: 'Deck B' }))
+    await connect()
+
+    // Deck B, with no user action and no socket frame: the socket has opened and said nothing.
+    expect(screen.getByRole('heading', { level: 1, name: 'Deck B' })).toBeVisible()
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeNull()
+    // ONE full boot after the open — two requests, the server refereeing which deck is active.
+    const paths = fetchMock.mock.calls.slice(marker).map(([input]) => String(input))
+    expect(paths.filter((path) => path === '/api/active-deck')).toHaveLength(1)
+    expect(paths.filter((path) => path === '/api/deck/deck-b')).toHaveLength(1)
+    expect(paths.filter((path) => path === `/api/deck/${ATRAXA_DECK_ID}`)).toHaveLength(0)
+    // …and the format check re-asks once, for the NEW deck: a settled detail is its trigger, and
+    // the reconciliation boot settled one (`formatCheck.ts` prices this re-ask).
+    expect(paths.filter((path) => path.endsWith('/format-check'))).toEqual([
+      '/api/deck/deck-b/format-check',
+    ])
+  })
+
+  it('lets an in-flight boot paint first when the socket opens fast, then re-drives exactly once', async () => {
+    // A fast socket must never reset the cold-open boot: the paint comes from the read that
+    // was already in flight, and ONE follow-up boot lands after it. Every deck read is withheld
+    // and released by hand so the order of events is the test's, not the microtask queue's.
+    const detailReleases: ((response: Response) => void)[] = []
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        return new Promise<Response>((resolve) => {
+          detailReleases.push(resolve)
+        })
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(decks('Atraxa Counter Cabinet v2 (owned)'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const activeDeckReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/active-deck').length
+
+    render(<App />)
+    await settle()
+    // The boot is mid-flight: the active-deck read answered, the deck read is pending.
+    expect(activeDeckReads()).toBe(1)
+    expect(detailReleases).toHaveLength(1)
+
+    // The socket opens NOW. Nothing is reset: still one active-deck read, still one deck read.
+    await connect()
+    expect(activeDeckReads()).toBe(1)
+    expect(detailReleases).toHaveLength(1)
+    expect(screen.queryByRole('heading', { level: 1, name: /Atraxa/ })).toBeNull()
+
+    // The in-flight read resolves: it PAINTS, and the deferred follow-up boot begins.
+    await act(async () => {
+      detailReleases[0](deckDetail())
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(activeDeckReads()).toBe(2)
+    expect(detailReleases).toHaveLength(2)
+
+    // The follow-up settles on the deck as it is AFTER the open, and nothing follows it.
+    await act(async () => {
+      detailReleases[1](deckDetail({ name: 'Atraxa, as of the open' }))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, as of the open' })).toBeVisible()
+    await advance(10 * 60_000)
+    expect(activeDeckReads()).toBe(2)
+    expect(detailReleases).toHaveLength(2)
+  })
+
+  it('does not stack the deferred live re-drive on top of a frame that re-drove first', async () => {
+    // The socket opens mid-boot (the re-drive is deferred to the settle), then an
+    // `active_deck_changed` frame re-drives the boot BEFORE the in-flight read resolves. The
+    // frame's sequence already began after the socket was live, so it IS the reconciliation:
+    // exactly one follow-up boot in total, not the frame's plus a redundant third on its settle.
+    const detailReleases: ((response: Response) => void)[] = []
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        return new Promise<Response>((resolve) => {
+          detailReleases.push(resolve)
+        })
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(decks('Atraxa Counter Cabinet v2 (owned)'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const activeDeckReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/active-deck').length
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(activeDeckReads()).toBe(1)
+    expect(detailReleases).toHaveLength(1)
+
+    // The frame lands first: a full re-drive, superseding the read still in flight.
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(activeDeckReads()).toBe(2)
+    expect(detailReleases).toHaveLength(2)
+
+    // The superseded read answers: dropped, no paint. The frame's read answers: it paints, and
+    // NO further boot follows — the deferred re-drive was forgotten when the frame re-drove.
+    await act(async () => {
+      detailReleases[0](deckDetail({ name: 'Superseded' }))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.queryByRole('heading', { level: 1, name: /Atraxa|Superseded/ })).toBeNull()
+    await act(async () => {
+      detailReleases[1](deckDetail())
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    await advance(10 * 60_000)
+    expect(activeDeckReads()).toBe(2)
+    expect(detailReleases).toHaveLength(2)
+  })
+
+  it('re-drives the deck exactly ONCE per reconnect — the live transition, not a second wiring', async () => {
+    // The reconnect contract is unchanged in effect (poll restart, attempt budgets, deck
+    // re-drive) — and moving the re-drive under `'live'` must not make a reopen cost two boots.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: /Atraxa/ })).toBeVisible()
+
+    await drop()
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail({ name: 'Atraxa, after the restart' }))
+    await advance(SOCKET_BASE_MS)
+    const marker = fetchMock.mock.calls.length
+    await connect()
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, after the restart' }),
+    ).toBeVisible()
+    const paths = fetchMock.mock.calls.slice(marker).map(([input]) => String(input))
+    expect(paths.filter((path) => path === '/api/active-deck')).toHaveLength(1)
+    expect(paths.filter((path) => path === `/api/deck/${ATRAXA_DECK_ID}`)).toHaveLength(1)
+    // …and the poll restarted with it, as before: one fresh `/api/decks` from the reopen.
+    expect(paths.filter((path) => path === '/api/decks')).toHaveLength(1)
+  })
+
+  it('queues the poll’s healthy verdict behind the reconnect boot instead of superseding it', async () => {
+    // The Greptile P1 on PR #113: from a settled `'refused'`, a reopen runs the `'live'` re-drive
+    // FIRST and `restartPoll()` second, and a restarted poll always writes its first answer — so
+    // when the poll had left `no-active-deck` during the outage, its healthy write is an EDGE that
+    // lands while boot #1 is mid-flight with the store still `'refused'`. Restarting there would
+    // discard boot #1's response; if boot #2 then hit a blip, the panel would stay. The edge
+    // queues behind the in-flight boot instead: #1 paints, ONE follow-up boot runs on its settle.
+    let healed = false
+    const deckReleases: ((response: Response) => void)[] = []
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        if (!healed) return Promise.resolve(refusal('database_unavailable', 503))
+        // Healed: every deck read is withheld and released by hand, so the ORDER of settle and
+        // verdict is the test's to arrange.
+        return new Promise<Response>((resolve) => {
+          deckReleases.push(resolve)
+        })
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(
+        healed ? decks('Atraxa Counter Cabinet v2 (owned)') : refusal('database_unavailable', 503),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const activeDeckReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/active-deck').length
+
+    render(<App />)
+    await settle()
+    await connect()
+    // Both routes refusing: the deck's own panel is up and the poll has LEFT `no-active-deck`.
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+    expect(useSystemStore.getState().panel).toBe('database-updating')
+    // The mount's boot plus the first connect's reconciliation (CAP-2), both refused.
+    expect(activeDeckReads()).toBe(2)
+
+    // The socket drops and the loop schedules its reopen. The backend heals in the instant
+    // BEFORE the reopen lands — after the poll's own retry has already asked and been refused, so
+    // the healthy verdict can only arrive through the reconnect's `restartPoll()`, which is the
+    // ordering under test (the poll's own retry recovering first is the ordinary FR-22 edge).
+    await drop()
+    await advance(SOCKET_BASE_MS)
+    expect(useSystemStore.getState().panel).toBe('database-updating')
+    healed = true
+    const marker = activeDeckReads()
+    await connect()
+    await settle()
+
+    // The poll's healthy answer has landed (an EDGE: updating → no-active-deck)…
+    expect(useSystemStore.getState().panel).toBe('no-active-deck')
+    // …and yet exactly ONE new boot is in flight: one active-deck read, one pending deck read.
+    // The edge queued behind it rather than superseding it.
+    expect(activeDeckReads() - marker).toBe(1)
+    expect(deckReleases).toHaveLength(1)
+    expect(screen.getByRole('region', { name: 'Card database is updating.' })).toBeVisible()
+
+    // Boot #1's response is PAINTED, not discarded.
+    await act(async () => {
+      deckReleases[0](deckDetail())
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    // …and exactly one follow-up boot began on its settle — sequential, not superseding.
+    expect(activeDeckReads() - marker).toBe(2)
+    expect(deckReleases).toHaveLength(2)
+
+    await act(async () => {
+      deckReleases[1](deckDetail({ name: 'Atraxa, after the verdict' }))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, after the verdict' }),
+    ).toBeVisible()
+
+    // Two boots total for the reopen, and ten idle minutes add nothing.
+    await advance(10 * 60_000)
+    expect(activeDeckReads() - marker).toBe(2)
+    expect(deckReleases).toHaveLength(2)
   })
 })
 

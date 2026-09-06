@@ -502,6 +502,82 @@ describe('stopping is real, not advisory', () => {
   })
 })
 
+/**
+ * A restart is a FRESH poll — including what it is willing to say again. `deck.ts`'s CAP-3 probe
+ * restarts a stopped poll to hear one verdict; the tests here pin that the verdict is written,
+ * that the within-poll heartbeat rule is untouched, and the array identity the listener reads.
+ */
+describe('a restart is a fresh poll, and its first answer is always written', () => {
+  it('writes a restarted poll’s FIRST answer even when it is unchanged — and still not twice (CAP-3)', async () => {
+    // A restart is asked for a fresh verdict (`deck.ts`'s transient-refusal probe restarts the
+    // stopped poll to learn whether the backend is healthy NOW), and a verdict nobody hears is
+    // not one. So the dedupe identity resets with the rest of the poll's state: the first answer
+    // after `start()` is written whatever the previous poll last said. Within ONE poll the
+    // heartbeat rule stands — an unchanged answer is still silent.
+    const { read } = always(NOT_INITIALIZED)
+    const { poller, updates } = drive(read)
+
+    poller.start()
+    await settle()
+    await vi.advanceTimersByTimeAsync(POLL_BASE_MS)
+    // Two identical answers, one write: the heartbeat rule, unchanged.
+    expect(updates).toHaveLength(1)
+
+    poller.stop()
+    poller.start()
+    await settle()
+    // The SAME answer from a NEW poll is written once more — the reset.
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toEqual({ panel: 'database-not-initialized', decks: [] })
+
+    // …and the new poll dedupes its own repeats exactly as the first did.
+    await vi.advanceTimersByTimeAsync(POLL_BASE_MS)
+    expect(updates).toHaveLength(2)
+
+    poller.stop()
+  })
+
+  it('writes a healthy answer with NO decks on restart too — the fresh-install shape', async () => {
+    // The initial panel IS `no-active-deck` with an empty list, so a dedupe seeded from it would
+    // swallow a restarted poll's healthy-empty verdict — the one shape the probe most needs to
+    // hear on a fresh install whose deck read blipped. `null` is the reset, not the initial panel.
+    const { read } = always({ kind: 'decks', decks: [] })
+    const { poller, updates } = drive(read)
+
+    poller.start()
+    await settle()
+    expect(updates).toHaveLength(1)
+
+    poller.stop()
+    poller.start()
+    await settle()
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toEqual({ panel: 'no-active-deck', decks: [] })
+
+    poller.stop()
+  })
+
+  it('hands over a FRESH decks array on every write — identity deck.ts reads as "the poll wrote"', async () => {
+    // `deck.ts`'s system-state listener distinguishes a poll write from the socket's `connection`
+    // writes on the same store by `decks` (or `panel`) changing identity. So an unchanged
+    // healthy answer across a restart must arrive as a NEW array, not the previous update's.
+    const { read } = always(READY)
+    const { poller, updates } = drive(read)
+
+    poller.start()
+    await settle()
+    poller.stop()
+    poller.start()
+    await settle()
+
+    expect(updates).toHaveLength(2)
+    expect(updates[1].decks).toEqual(updates[0].decks)
+    expect(updates[1].decks).not.toBe(updates[0].decks)
+
+    poller.stop()
+  })
+})
+
 describe('the stalled clock needs OBSERVATIONS, not just elapsed wall time', () => {
   it('does not escalate off two refusals bracketing a suspend, then does off real ones', async () => {
     // Wall time advances through a laptop sleep or a throttled background tab; the schedule
