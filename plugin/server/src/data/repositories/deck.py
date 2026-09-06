@@ -211,8 +211,6 @@ class DeckRepository(BaseRepository):
                 deck_model.updated_at = datetime.now(UTC)
 
             await self.session.commit()
-            await self.session.refresh(deck_model)
-            return Deck.model_validate(deck_model)
 
         except DatabaseError as e:
             await self.session.rollback()
@@ -223,6 +221,19 @@ class DeckRepository(BaseRepository):
                 str(e),
             )
             raise
+
+        # The write is committed above. A failed refresh is a read problem, not a failed write:
+        # a rollback here cannot undo the commit, so raising would report a landed change as an
+        # error. Close the broken read transaction and answer from the in-memory row, which
+        # ``expire_on_commit=False`` leaves holding exactly the values just written.
+        try:
+            await self.session.refresh(deck_model)
+        except DatabaseError as e:
+            await self.session.rollback()
+            logger.warning(
+                "update_deck committed but the refresh failed: deck_id=%s - %s", deck_id, str(e)
+            )
+        return Deck.model_validate(deck_model)
 
     async def delete_deck(self, deck_id: str) -> bool:
         """Delete a deck and all associated cards (cascade).

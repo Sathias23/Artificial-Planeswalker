@@ -311,6 +311,29 @@ async def test_update_deck_rolls_back_on_database_error(
     assert updated is not None and updated.name == "Second Try"
 
 
+async def test_update_deck_refresh_failure_after_commit_still_returns_the_written_deck(
+    deck_repo: DeckRepository, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``DatabaseError`` from the post-commit ``refresh`` is a read failure, not a failed write:
+    the rename is already on disk, so the method answers with the written deck instead of raising
+    (a rollback could not undo the commit, and an error would invite a retry of a landed change).
+    The session is left clean and usable."""
+    deck = await deck_repo.create_deck(name="Keep Me", format="standard")
+    real_refresh = session.refresh
+
+    async def failing_refresh(*args: object, **kwargs: object) -> None:
+        monkeypatch.setattr(session, "refresh", real_refresh)  # fail exactly once
+        raise DatabaseError("refresh", {}, Exception("disk I/O error"))
+
+    monkeypatch.setattr(session, "refresh", failing_refresh)
+    updated = await deck_repo.update_deck(deck_id=deck.id, name="Landed Rename")
+
+    assert updated is not None and updated.name == "Landed Rename"
+    assert not session.in_transaction(), "the broken read transaction was closed"
+    reloaded = await deck_repo.get_deck(deck.id)
+    assert reloaded is not None and reloaded.name == "Landed Rename"
+
+
 async def test_delete_deck(deck_repo: DeckRepository) -> None:
     """Test deleting a deck."""
     deck = await deck_repo.create_deck(name="Delete Me", format="standard")
