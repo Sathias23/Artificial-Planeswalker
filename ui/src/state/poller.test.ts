@@ -500,7 +500,14 @@ describe('stopping is real, not advisory', () => {
 
     poller.stop()
   })
+})
 
+/**
+ * A restart is a FRESH poll — including what it is willing to say again. `deck.ts`'s CAP-3 probe
+ * restarts a stopped poll to hear one verdict; the tests here pin that the verdict is written,
+ * that the within-poll heartbeat rule is untouched, and the array identity the listener reads.
+ */
+describe('a restart is a fresh poll, and its first answer is always written', () => {
   it('writes a restarted poll’s FIRST answer even when it is unchanged — and still not twice (CAP-3)', async () => {
     // A restart is asked for a fresh verdict (`deck.ts`'s transient-refusal probe restarts the
     // stopped poll to learn whether the backend is healthy NOW), and a verdict nobody hears is
@@ -546,6 +553,26 @@ describe('stopping is real, not advisory', () => {
     await settle()
     expect(updates).toHaveLength(2)
     expect(updates[1]).toEqual({ panel: 'no-active-deck', decks: [] })
+
+    poller.stop()
+  })
+
+  it('hands over a FRESH decks array on every write — identity deck.ts reads as "the poll wrote"', async () => {
+    // `deck.ts`'s system-state listener distinguishes a poll write from the socket's `connection`
+    // writes on the same store by `decks` (or `panel`) changing identity. So an unchanged
+    // healthy answer across a restart must arrive as a NEW array, not the previous update's.
+    const { read } = always(READY)
+    const { poller, updates } = drive(read)
+
+    poller.start()
+    await settle()
+    poller.stop()
+    poller.start()
+    await settle()
+
+    expect(updates).toHaveLength(2)
+    expect(updates[1].decks).toEqual(updates[0].decks)
+    expect(updates[1].decks).not.toBe(updates[0].decks)
 
     poller.stop()
   })

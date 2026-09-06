@@ -1313,8 +1313,14 @@ path in a loop, and nothing loops here. One `GET /api/active-deck` and at most o
 transitions INTO `no-active-deck` while the deck state is `refused` or `none`, the boot re-runs
 once, so a deck refusal settled during a DB build does not outlive the build (FR-22). The bound
 is structural — edges are backend-state transitions, not a loop the client can wind, and a
-loaded deck is never re-driven. The boot is re-driven from three triggers, never a second
-poller: the poll-recovery edge above, a WebSocket reconnect success, and any `deck_changed` /
+loaded deck is never re-driven. The boot is re-driven from four triggers, never a second
+poller: the poll-recovery edge above; the WebSocket going **live** (first connect included, not
+only a reconnect — one full boot that began after the socket could hear a broadcast, so a deck
+switch in the gap between the HTTP snapshot and the first open is reconciled; an in-flight boot
+paints first and re-drives once on its settle); the poll answering healthy to the ONE probe a
+transient deck refusal earns (a `'refused'` settle whose panel `RETRIES_QUIETLY` says retries,
+landing after the poll had already stopped healthy, restarts the poll once and its healthy write
+re-drives the boot once — bounded per healthy episode, never a loop); and any `deck_changed` /
 `active_deck_changed` frame. A loaded deck is still never re-driven by the POLL edge.
 
 **The stalled threshold:** `STALLED_AFTER_MS = 60_000` in `src/state/poller.ts` — 60

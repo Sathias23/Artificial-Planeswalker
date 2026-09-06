@@ -100,6 +100,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colours or mana value changed but whose text did not used to keep stale filter
   metadata in `card_vec` forever; the build now rewrites the flags without
   re-embedding, and `build_search_index` reports the count as `cards_refreshed`.
+- **The companion reconciles the deck view when its socket goes live.** The
+  first HTTP snapshot and the first WebSocket open are independent requests, so
+  an active-deck switch (or a deck edit) broadcast between them used to reach
+  nobody and the glass kept the old deck while the pill said live. Every
+  transition to live — first connect included — now runs one full deck boot
+  that began after the socket could hear; a boot still in flight paints first
+  and re-drives once when it settles. Priced cost: a connected cold open performs
+  one extra active-deck, deck and format-check read after first paint.
+- **A deck refused while the deck-list poll is already healthy recovers on its
+  own.** The poll stops on a healthy answer, so a `database_unavailable` (or
+  `database_not_initialized`) deck refusal that landed after it had no later
+  edge and stranded the updating panel. The refusal now restarts the stopped
+  poll once, and the poll's healthy answer re-drives the deck once — one probe
+  per healthy episode, so an id that refuses forever costs one extra read, never
+  a loop; `internal_error` never probes.
 
 ## [0.5.0] - 2026-08-25
 

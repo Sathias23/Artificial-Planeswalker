@@ -34,7 +34,8 @@
  * render, a poll transition or a socket status change issue nothing, while a re-boot or a
  * refetch of the same deck honestly re-asks a route whose answer may have changed. (Side
  * effect, priced: reconnect and duplicate-`active_deck_changed` re-drives re-ask the ~5 ms
- * route once each.)
+ * route once each, and so does the first-connect reconciliation boot — once per connected cold
+ * open, after first paint.)
  *
  * **There is no refetch IN THIS MODULE, and no timer.** The refetch trigger is the deck
  * slice's, the debounce is the deck slice's supersede-and-restart coalescing (one settle per

@@ -138,8 +138,9 @@ export interface PollerOptions {
 export interface Poller {
   /**
    * Polls IMMEDIATELY, then on the backoff. Idempotent while running. A restart after `stop()`
-   * begins a NEW poll: the backoff, the outcome identity and the stalled clock all reset,
-   * because wall time that passed while nobody was polling is not evidence about the backend.
+   * begins a NEW poll: the backoff, the outcome identity, the stalled clock AND the emit dedupe
+   * identity all reset, because wall time that passed while nobody was polling is not evidence
+   * about the backend — and a new poll's first answer is a verdict its caller asked to hear.
    */
   start: () => void
   /** Cancels the pending timer and drops any answer still in flight. Idempotent. */
@@ -269,6 +270,14 @@ export const createPoller = ({
     // Emitted once per CHANGE, not once per poll: `lastOutcome` already knows an identical
     // answer is identical, and re-emitting it would re-render the whole app every 2–30 s for
     // the entire length of a first build, for nothing.
+    //
+    // IDENTITY IS LOAD-BEARING: every emit hands over a FRESH `decks` array — copied below, so
+    // the guarantee is this file's and not the reader's (an injected reader may hand back one
+    // constant). `deck.ts`'s system-state listener tells a poll write apart from the socket's
+    // `connection` writes on the same store by `decks` (or `panel`) having changed identity, so a
+    // reused array here would make a poll's unchanged healthy answer invisible to the CAP-3
+    // probe. Priced side effect of the `start()` reset: every `restartPoll()` on reconnect now
+    // costs one store write — one whole-tree render — even when the answer is unchanged.
     const unchanged =
       emitted !== null &&
       emitted.panel === panel &&
@@ -276,7 +285,7 @@ export const createPoller = ({
       emitted.decks.every((name, index) => name === decks[index])
     if (unchanged) return
 
-    emitted = { panel, decks }
+    emitted = { panel, decks: [...decks] }
     onUpdate(emitted)
   }
 

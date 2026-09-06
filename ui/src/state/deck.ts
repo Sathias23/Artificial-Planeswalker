@@ -39,7 +39,12 @@ import {
 import { boardsOfDeck, type DeckBoards } from './deckGroups'
 import { panelFor } from './panel'
 import { seedDeckCards } from './cards'
-import { restartPollIfStopped, subscribeSystemState, type SystemState } from './systemState'
+import {
+  INITIAL_SYSTEM_STATE,
+  restartPollIfStopped,
+  subscribeSystemState,
+  type SystemState,
+} from './systemState'
 
 /**
  * What the client knows about the active deck. A discriminated union: `deck | null` plus an
@@ -434,20 +439,33 @@ export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
  */
 let mounted: DeckBoot | null = null
 
-export const redriveDeckBoot = (): void => {
-  if (mounted === null) return
-  mounted.stop()
-  mounted.start()
-}
-
 /**
  * Whether the mounted boot owes one re-drive the moment its in-flight sequence settles (CAP-2).
  *
  * Set by {@link reconcileDeckBoot} when the socket goes live while the boot has not settled;
- * consumed, once, by `useDeckState`'s `onUpdate`. A module flag rather than a boot method because
- * it belongs to the composition (the SOCKET's timing against the BOOT's), not to the sequence.
+ * consumed, once, by `useDeckState`'s `onUpdate`; CLEARED by {@link restartBoot}, because any
+ * other re-drive that lands first (a frame, a poll edge, the probe) starts a sequence that already
+ * began after the socket was live, and letting it consume the flag would boot a redundant third
+ * time. A module flag rather than a boot method because it belongs to the composition (the
+ * SOCKET's timing against the BOOT's), not to the sequence.
  */
 let redriveOnSettle = false
+
+/**
+ * THE one way a boot is re-driven: stop, start — and forget any deferred re-drive first, since the
+ * sequence starting now is itself "a boot that began after the socket was live". Every re-drive
+ * path in this module goes through here so the CAP-2 flag cannot double-fire.
+ */
+const restartBoot = (boot: DeckBoot): void => {
+  redriveOnSettle = false
+  boot.stop()
+  boot.start()
+}
+
+export const redriveDeckBoot = (): void => {
+  if (mounted === null) return
+  restartBoot(mounted)
+}
 
 /**
  * Reconcile the glass with the moment the socket went LIVE (CAP-2) — first connect included.
@@ -470,8 +488,7 @@ export const reconcileDeckBoot = (): void => {
     redriveOnSettle = true
     return
   }
-  mounted.stop()
-  mounted.start()
+  restartBoot(mounted)
 }
 
 /**
@@ -495,8 +512,7 @@ export const reconcileDeckBoot = (): void => {
 export const driveDeckChanged = (boot: DeckBoot, deckId: string | null): void => {
   const { deck } = useDeckStore.getState()
   if (deck.status !== 'deck' || !boot.settled()) {
-    boot.stop()
-    boot.start()
+    restartBoot(boot)
     return
   }
   if (deckId !== null && deckId !== deck.detail.id) return
@@ -561,7 +577,9 @@ export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice
  * episode a transient refusal earns ONE probe, a probe's healthy write earns ONE re-drive, and the
  * probe is re-armed only after the deck loads, clears to `'none'` or the poll leaves
  * `no-active-deck` — so an id that refuses `database_unavailable` forever costs exactly one extra
- * attempt, never a loop, and `internal_error` (a `false` in the map) probes nothing.
+ * attempt, never a loop, and `internal_error` (a `false` in the map) probes nothing. A refusal
+ * that settles while the poll is still RETRYING spends nothing: the poll's own recovery edge is
+ * the re-drive then, and the probe stays available for the healthy episode that edge begins.
  *
  * A poll write is told apart from the connection and identity writes that share this store by
  * the `panel`/`decks` fields moving: the poller emits a fresh `decks` array on every write and
@@ -574,6 +592,12 @@ export const useDeckState = (): DeckState => {
     let probeSpent = false
     /** Whether the probe's answer is still owed a re-drive (CAP-3). */
     let probeArmed = false
+    /**
+     * The panel the poll last wrote — the same value `restartPollIfStopped` gates on, tracked
+     * here (from the writes the listener below sees) rather than read, because this module may
+     * not name the store. The initial panel is the poll's own starting value.
+     */
+    let pollPanel: StateKey = INITIAL_SYSTEM_STATE.panel
     redriveOnSettle = false
 
     const boot = createDeckBoot({
@@ -585,12 +609,13 @@ export const useDeckState = (): DeckState => {
         // The re-drive the socket's `'live'` deferred while this sequence was in flight (CAP-2):
         // the paint above happened first, and the follow-up boot begins after the socket is live.
         if (redriveOnSettle) {
-          redriveOnSettle = false
-          boot.stop()
-          boot.start()
+          restartBoot(boot)
           return
         }
         if (state.status !== 'refused' || !RETRIES_QUIETLY[state.panel] || probeSpent) return
+        // A poll that is still retrying needs no probe and must not be charged one: its recovery
+        // edge re-drives the boot, and the probe belongs to the healthy episode that edge begins.
+        if (RETRIES_QUIETLY[pollPanel]) return
         probeSpent = true
         probeArmed = true
         restartPollIfStopped()
@@ -599,6 +624,7 @@ export const useDeckState = (): DeckState => {
     mounted = boot
     boot.start()
     const unsubscribe = subscribeSystemState((state, previous) => {
+      pollPanel = state.panel
       if (state.panel !== 'no-active-deck') {
         // The poll is on a refusal of its own: its eventual recovery is the edge below, so the
         // probe is neither armed nor spent.
@@ -606,6 +632,9 @@ export const useDeckState = (): DeckState => {
         probeSpent = false
         return
       }
+      // A POLL write, not a connection or identity write on the same store: `poller.ts`'s
+      // `apply()` hands over a fresh `decks` array on every emit (its comment names this identity
+      // as load-bearing), and nothing else touches `panel` or `decks`.
       const pollWrote = state.panel !== previous.panel || state.decks !== previous.decks
       if (!pollWrote) return
       const edge = previous.panel !== 'no-active-deck'
@@ -613,8 +642,7 @@ export const useDeckState = (): DeckState => {
       probeArmed = false
       const { deck } = useDeckStore.getState()
       if (deck.status === 'deck' || deck.status === 'booting') return
-      boot.stop()
-      boot.start()
+      restartBoot(boot)
     })
     return () => {
       unsubscribe()
