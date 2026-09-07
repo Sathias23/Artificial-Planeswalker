@@ -150,6 +150,14 @@ Renaming a deck or setting its strategy/tags goes through `mcp__artificial-plane
 `strategy`/`tags` sent as `null` are cleared, and `name` can be replaced but not cleared. Cards are
 never touched by it.
 
+When the user wants a copy for experiments or before/after comparison, call
+`mcp__artificial-planeswalker__clone_deck` with `deck_id` and optional `name`. It creates
+an independent deck containing the same metadata and all card rows, including sideboard and
+commander flags. The default name is exactly `<source name> (copy)`; an explicit name must be
+nonblank and at most 100 characters. After `ok`, use the returned `deck.id` for edits to the copy
+and compare it with the original through `compare_deck_power`. Cloning is a write and requires
+user intent to create a copy; do not create one as an analysis side effect.
+
 After a confirmed, successful apply, **re-run Step 1 only if the deck is saved** (the analysis tools
 need a `deck_id`); for an unsaved/pasted list there's nothing to re-query — re-reason from the updated
 list yourself. Re-validate after any swap (`add_card_to_deck` does no legality check).
@@ -165,6 +173,7 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 |------|-----------|-----------------------------------|
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `create_deck` | `name`, `format?`, `strategy?`, `tags?` | `ok` (`deck` + new `id`) · `invalid` · `error` |
+| `clone_deck` | `deck_id`, `name?` (default: source name + ` (copy)`) | `ok` (independent `deck` + cards and new `id`) · `not_found` · `invalid` · `database_not_initialized` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `invalid` · `error` |
 | `update_deck` | `deck_id`, `changes` (`{name?, strategy?, tags?}` — omitted = keep, `null` = clear for `strategy`/`tags`, blank `strategy` also clears; unknown keys are rejected) | `ok` (reloaded `deck`) · `not_found` · `invalid` (empty `changes`, blank/`null` `name`, over-cap value) · `error` |
 | `delete_deck` | `deck_id` | `ok` (deleted) · `not_found` · `error` |
@@ -253,7 +262,7 @@ value:
 
 - **Never auto-add or auto-remove cards.** Curve, synergy, and legality analysis is **observational
   only**. Proposing swaps is advisory. Mutating the deck (`add_card_to_deck` /
-  `set_card_quantity` / `remove_card_from_deck` / `update_deck`) requires **explicit user
+  `set_card_quantity` / `remove_card_from_deck` / `update_deck` / `clone_deck`) requires **explicit user
   confirmation first**, every time.
 - **Persisting a pasted decklist is an explicit action.** Analyze a pasted list in-conversation
   freely; `create_deck` + `add_card_to_deck` to save it needs the user's consent.

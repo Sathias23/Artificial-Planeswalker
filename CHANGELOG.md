@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`clone_deck` tool.** Copies a saved deck's metadata and every card row, including
+  quantity, board and commander flag, into an independent deck in one transaction.
+  Accepts an optional name, defaulting to `<source name> (copy)`, and emits
+  `deck_changed` for the new deck. Power-comparison guidance now recommends cloning
+  before editing to preserve a baseline.
 - **`update_deck` tool.** Renames a deck or sets/clears its strategy and tags
   without touching its cards. The edits travel as one nested `changes` object
   so a field left out is kept and `strategy`/`tags` sent as `null` are

@@ -69,12 +69,14 @@ remains true, and is what AD-10 is about, is that **no test outside
 """
 
 import json
+import sqlite3
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
 
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
+from sqlalchemy import event, select
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -82,7 +84,9 @@ from src.companion.client import PUSH_OUTCOMES, PushOutcome
 from src.companion.discovery import COMPANION_FILENAME, read_discovery
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
+from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.deck import DeckRepository
+from src.data.schemas.deck import DeckDetail
 from src.mcp_server import server as server_module
 from src.mcp_server.server import build_server
 
@@ -201,6 +205,176 @@ def notifier(monkeypatch: pytest.MonkeyPatch):
         return stub
 
     return install
+
+
+@pytest.mark.parametrize("name", [None, "Named copy"])
+async def test_clone_empty_and_long_default(deck_db, notifier, name):
+    stub = notifier()
+    server = build_server(session_factory=deck_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "a" * 100})
+        source_id = created.structuredContent["deck"]["id"]
+        stub.deck_ids.clear()
+        result = await client.call_tool("clone_deck", {"deck_id": source_id, "name": name})
+        clone = result.structuredContent["deck"]
+        assert result.structuredContent["status"] == "ok"
+        assert clone["name"] == (name or "a" * 100 + " (copy)")
+        assert clone["cards"] == []
+        assert clone["tags"] == clone["color_identity"] == []
+        assert clone["strategy"] is None
+        assert stub.deck_ids == [clone["id"]]
+
+
+@pytest.mark.parametrize(
+    "name,status", [(" ", "invalid"), ("x" * 101, "invalid"), (None, "not_found")]
+)
+async def test_clone_invalid_or_missing_is_silent(deck_db, notifier, name, status):
+    stub = notifier()
+    async with create_connected_server_and_client_session(
+        build_server(session_factory=deck_db)
+    ) as client:
+        result = await client.call_tool("clone_deck", {"deck_id": "missing", "name": name})
+    assert result.structuredContent["status"] == status
+    assert stub.deck_ids == []
+    async with deck_db() as session:
+        assert await DeckRepository(session).list_decks() == []
+
+
+async def test_clone_uninitialized_is_silent(uninitialized_db, notifier):
+    stub = notifier()
+    async with create_connected_server_and_client_session(
+        build_server(session_factory=uninitialized_db)
+    ) as client:
+        result = await client.call_tool("clone_deck", {"deck_id": "missing"})
+    assert result.structuredContent["status"] == "database_not_initialized"
+    assert stub.deck_ids == []
+
+
+@pytest.mark.parametrize("postcommit", [False, True])
+async def test_clone_database_fault_preserves_atomic_outcome(
+    deck_db, notifier, monkeypatch, caplog, postcommit
+):
+    stub = notifier()
+    async with deck_db() as session:
+        repo = DeckRepository(session)
+        source = await repo.create_deck("Source", "commander", strategy="Burn", tags=["burn"])
+        await repo.add_card_to_deck(source.id, "card-bolt", 3, commander=True)
+        await repo.add_card_to_deck(source.id, "card-bolt", 2, sideboard=True)
+        before = await repo.get_deck_with_cards(source.id)
+
+    original_commit = AsyncSession.commit
+    staged = []
+    staged_rows = []
+
+    async def fail_commit(session):
+        # Flush all staged cards, then fail before commit: rollback must remove real rows.
+        await session.flush()
+        staged.extend(await DeckRepository(session).list_decks())
+        staged_rows.extend((await session.scalars(select(DeckCardModel))).all())
+        raise DatabaseError("clone failure", {}, Exception("injected"))
+
+    async def fail_refresh(self, model):
+        raise DatabaseError("refresh failure", {}, Exception("injected"))
+
+    if postcommit:
+        monkeypatch.setattr(DeckRepository, "_reload_after_commit", fail_refresh)
+    else:
+        monkeypatch.setattr(AsyncSession, "commit", fail_commit)
+    async with create_connected_server_and_client_session(
+        build_server(session_factory=deck_db)
+    ) as client:
+        result = await client.call_tool("clone_deck", {"deck_id": source.id})
+    monkeypatch.setattr(AsyncSession, "commit", original_commit)
+    assert not result.isError
+    assert result.structuredContent["status"] == ("ok" if postcommit else "error")
+    async with deck_db() as session:
+        repo = DeckRepository(session)
+        assert await repo.get_deck_with_cards(source.id) == before
+        decks = await repo.list_decks()
+        assert len(decks) == (2 if postcommit else 1)
+        if postcommit:
+            clone = result.structuredContent["deck"]
+            assert clone["mainboard_count"] == 3
+            assert clone["sideboard_count"] == 2
+            assert len(clone["cards"]) == 2
+            assert stub.deck_ids == [clone["id"]]
+            persisted = await repo.get_deck_with_cards(clone["id"])
+            assert DeckDetail.from_deck(persisted).model_dump(mode="json") == clone
+            expected = DeckDetail.from_deck(before).model_dump(mode="json")
+            for field in ("format", "strategy", "tags", "color_identity", "cards"):
+                assert clone[field] == expected[field]
+        else:
+            assert len(staged) == 2
+            assert len(staged_rows) == 4
+            assert stub.deck_ids == []
+    assert any(record.args and "clone_deck" in record.getMessage() for record in caplog.records)
+
+
+async def test_clone_readiness_database_error_is_structured_and_silent(
+    deck_db, notifier, monkeypatch
+):
+    stub = notifier()
+
+    async def fail_execute(self, *args, **kwargs):
+        raise DatabaseError("readiness failure", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(AsyncSession, "execute", fail_execute)
+    async with create_connected_server_and_client_session(
+        build_server(session_factory=deck_db)
+    ) as client:
+        result = await client.call_tool("clone_deck", {"deck_id": "source"})
+    assert not result.isError
+    assert result.structuredContent["status"] == "error"
+    assert stub.deck_ids == []
+
+
+async def test_clone_source_snapshot_survives_concurrent_edit(deck_db, notifier):
+    """A second connection commits after the source SELECT starts, before eager reads finish."""
+    notifier()
+    async with deck_db() as session:
+        repo = DeckRepository(session)
+        source = await repo.create_deck("Before", "commander", strategy="Before strategy")
+        await repo.add_card_to_deck(source.id, "card-bolt", 3, commander=True)
+        before = DeckDetail.from_deck(await repo.get_deck_with_cards(source.id)).model_dump(
+            mode="json"
+        )
+
+    engine = deck_db.kw["bind"]
+    edits = []
+
+    def edit_after_source_select(connection, cursor, statement, parameters, context, executemany):
+        if edits or "FROM decks" not in statement or source.id not in parameters:
+            return
+        edits.append(True)
+        # The actual SQLite reader has started. WAL lets this independent writer
+        # commit while that statement retains its original snapshot.
+        with sqlite3.connect(engine.url.database) as writer:
+            writer.execute(
+                "UPDATE decks SET strategy = ? WHERE id = ?", ("After strategy", source.id)
+            )
+            writer.execute("UPDATE deck_cards SET quantity = 7 WHERE deck_id = ?", (source.id,))
+
+    event.listen(engine.sync_engine, "after_cursor_execute", edit_after_source_select)
+    try:
+        async with create_connected_server_and_client_session(
+            build_server(session_factory=deck_db)
+        ) as client:
+            result = await client.call_tool("clone_deck", {"deck_id": source.id})
+    finally:
+        event.remove(engine.sync_engine, "after_cursor_execute", edit_after_source_select)
+    assert edits == [True]
+    assert not result.isError
+    assert result.structuredContent["status"] == "ok"
+    clone = result.structuredContent["deck"]
+    assert clone["strategy"] == before["strategy"]
+    assert clone["cards"] == before["cards"]
+    async with deck_db() as session:
+        repo = DeckRepository(session)
+        after = await repo.get_deck_with_cards(source.id)
+        assert after.strategy == "After strategy"
+        assert after.deck_cards[0].quantity == 7
+        persisted = await repo.get_deck_with_cards(clone["id"])
+        assert DeckDetail.from_deck(persisted).model_dump(mode="json") == clone
 
 
 class TestEachPersistedWriteEmitsExactlyOnce:

@@ -269,6 +269,7 @@ async def test_server_registers_expected_tools() -> None:
         "search_cards",
         "list_decks",
         "create_deck",
+        "clone_deck",
         "load_deck",
         "update_deck",
         "delete_deck",

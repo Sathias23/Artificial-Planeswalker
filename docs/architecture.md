@@ -106,7 +106,7 @@ Built with **FastMCP**, importing core repositories/validators directly. Tools p
 - `find_similar_cards` *(new)* — semantic similarity seeded by an existing card's vector.
 
 **Decks**
-- `list_decks`, `create_deck`, `load_deck`, `update_deck`, `delete_deck`, `add_card_to_deck`, `set_card_quantity`, `remove_card_from_deck`.
+- `list_decks`, `create_deck`, `clone_deck`, `load_deck`, `update_deck`, `delete_deck`, `add_card_to_deck`, `set_card_quantity`, `remove_card_from_deck`. Cloning copies metadata and all card rows in one transaction, leaving the source untouched.
 
 **Analysis**
 - `analyze_mana_curve`, `detect_synergies`, `validate_deck`.

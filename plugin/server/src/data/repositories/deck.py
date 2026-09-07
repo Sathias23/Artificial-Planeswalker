@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, distinct, func, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
@@ -128,6 +128,72 @@ class DeckRepository(BaseRepository):
             "create_deck", written.id, lambda: self._reload_after_commit(deck_model)
         ):
             return Deck.model_validate(deck_model)
+        return written
+
+    async def clone_deck(self, deck_id: str, name: str | None = None) -> Deck | None:
+        """Copy metadata and every association in one transaction, preserving the source.
+
+        A committed snapshot includes all cards even if the postcommit refresh fails.
+
+        Args:
+            deck_id: Source deck id.
+            name: Copy name, or None for the source name plus " (copy)".
+
+        Returns:
+            The independent copy with all card rows, or None if the source is missing.
+
+        Raises:
+            DatabaseError: A precommit database failure, after rollback.
+        """
+        try:
+            # One statement snapshots metadata, associations and cards together, even
+            # with SQLite's legacy transaction mode (SELECT does not begin a transaction).
+            result = await self.session.execute(
+                select(DeckModel)
+                .where(DeckModel.id == deck_id)
+                .options(joinedload(DeckModel.deck_cards).joinedload(DeckCardModel.card))
+                .execution_options(populate_existing=True)
+            )
+            source_model = result.unique().scalar_one_or_none()
+            if source_model is None:
+                return None
+            source = Deck.model_validate(source_model)
+            model = DeckModel(
+                name=name if name is not None else f"{source.name} (copy)",
+                format=source.format,  # type: ignore[arg-type]
+                strategy=source.strategy,
+            )
+            model.tags_list = source.tags
+            model.color_identity_list = source.color_identity
+            self.session.add(model)
+            await self.session.flush()
+            self.session.add_all(
+                DeckCardModel(
+                    deck_id=model.id,
+                    card_id=row.card_id,
+                    quantity=row.quantity,
+                    sideboard=row.sideboard,
+                    commander=row.commander,
+                )
+                for row in source.deck_cards
+            )
+            await self.session.commit()
+        except DatabaseError as e:
+            await self.session.rollback()
+            logger.error("DatabaseError in clone_deck: deck_id=%s - %s", deck_id, str(e))
+            raise
+
+        written = Deck.model_validate(model).model_copy(
+            update={
+                "deck_cards": [
+                    row.model_copy(update={"deck_id": model.id}, deep=True)
+                    for row in source.deck_cards
+                ]
+            }
+        )
+        await self._reload_committed(
+            "clone_deck", written.id, lambda: self._reload_after_commit(model)
+        )
         return written
 
     async def get_deck(self, deck_id: str) -> Deck | None:

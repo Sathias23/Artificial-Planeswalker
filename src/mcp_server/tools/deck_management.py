@@ -6,9 +6,9 @@ deck to lightweight summaries (``DeckSummary.from_deck`` / ``DeckDetail.from_dec
 D-1.5e) so neither ``list_decks`` nor ``load_deck`` dumps full ``Card`` payloads at
 the LLM client. Those constructors live on the schemas in ``src.data.schemas.deck``,
 so the companion's REST shell projects decks through the same code rather
-than its own copy of the count arithmetic. The eight helpers back the ``list_decks`` /
-``create_deck`` / ``load_deck`` / ``update_deck`` / ``delete_deck`` / ``add_card_to_deck`` /
-``set_card_quantity`` / ``remove_card_from_deck`` tools.
+than its own copy of the count arithmetic. The nine helpers back the ``list_decks`` /
+``create_deck`` / ``clone_deck`` / ``load_deck`` / ``update_deck`` / ``delete_deck`` /
+``add_card_to_deck`` / ``set_card_quantity`` / ``remove_card_from_deck`` tools.
 
 Stateless (FR3 / D5 / D-1.5d): the "active deck" is the client-supplied
 ``deck_id`` on every call — there is no server-side active-deck, format-filter,
@@ -518,6 +518,32 @@ async def update_deck(
         status="ok",
         deck=DeckDetail.from_deck(deck),
         message=f"Updated deck '{deck.name}' ({changed}).",
+    )
+
+
+async def clone_deck(session: AsyncSession, *, deck_id: str, name: str | None = None) -> DeckResult:
+    """Create an independent copy; only explicitly supplied names use input bounds."""
+    deck_id = deck_id.strip()
+    if name is not None:
+        name = _blank_to_none(name)
+        if name is None:
+            return DeckResult(status="invalid", message="Deck name must not be empty.")
+        invalid = _metadata_bounds_error(name=name, strategy=None, tags=None)
+        if invalid is not None:
+            return DeckResult(status="invalid", message=invalid)
+    try:
+        if not await is_database_initialized(session):
+            return DeckResult(
+                status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
+            )
+        deck = await DeckRepository(session).clone_deck(deck_id, name)
+    except DatabaseError:
+        logger.exception("clone_deck failed for deck_id=%s", deck_id)
+        return DeckResult(status="error", message="A database error occurred cloning the deck.")
+    if deck is None:
+        return DeckResult(status="not_found", message=f"No deck found with id '{deck_id}'.")
+    return DeckResult(
+        status="ok", deck=DeckDetail.from_deck(deck), message=f"Cloned deck as '{deck.name}'."
     )
 
 

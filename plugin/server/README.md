@@ -22,7 +22,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 |------------|-------|
 | **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
-| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `update_deck` (rename, set or clear strategy/tags), `delete_deck`, `add_card_to_deck`, `set_card_quantity` (set a card's copies; `0` removes it), `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
+| **Deck management** | `create_deck`, `clone_deck` (independent copy of cards and metadata), `list_decks`, `load_deck`, `update_deck` (rename, set or clear strategy/tags), `delete_deck`, `add_card_to_deck`, `set_card_quantity` (set a card's copies; `0` removes it), `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning; `companion_show_tier_list` — puts cards ranked into named S–D tiers on the same view, each tier a lettered chip with its cards beside it; `companion_show_groups` — puts titled card groups on the same view, each a heading with its rationale paragraph and its cards beneath it; `companion_status` — read-only: reports whether the companion is running, its URL, how many tabs are open, and the exact command that launches it. The others all report `app_not_running` when the companion isn't up, and the agent can then open it for you |
@@ -42,7 +42,10 @@ combo potential), a descriptive tier label, and — for Commander — a
 floor plus cEDH candidacy. Every score comes with evidence: Game Changer names, detected
 combos (in the deck, or one piece away), structural gaps, and a confidence block that names
 any degraded inputs instead of silently guessing. **`compare_deck_power`** diffs two
-assessments server-side — "did my edit make the deck stronger, and what changed?" Output is
+assessments server-side — "did my edit make the deck stronger, and what changed?" Use
+`clone_deck(deck_id, name?)` before editing to preserve a comparison baseline. It copies all
+cards (including sideboard and commander flags) and metadata in one transaction; the default
+name is `<source name> (copy)`. Output is
 deterministic (identical inputs serialize byte-identically), so results can be diffed and
 tracked over time. Supported formats: Commander and Standard. Combo detection reads the
 local [Commander Spellbook snapshot](#combo-snapshot-deck-power-assessment); without it,

@@ -18,7 +18,7 @@
 
 | Piece | Source | Role in the plugin |
 |-------|--------|--------------------|
-| MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 27 tools (`lookup_card_by_name`, `analyze_mana_curve`, …) |
+| MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 28 tools (`lookup_card_by_name`, `clone_deck`, `analyze_mana_curve`, …) |
 | Companion SPA bundle | `src/companion/app/static/` | The browser UI, shipped pre-built — the plugin install arrives complete, not UI-less |
 | `magic-deckbuilding` skill | `.claude/skills/magic-deckbuilding/SKILL.md` | Orchestrator: full "improve my deck" loop |
 | `mana-curve-analysis` skill | `.claude/skills/mana-curve-analysis/SKILL.md` | Deep dive: curve / land count |
