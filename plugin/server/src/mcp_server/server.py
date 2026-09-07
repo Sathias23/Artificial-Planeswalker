@@ -99,6 +99,7 @@ from src.mcp_server.tools.deck_management import (
     DeckResult,
 )
 from src.mcp_server.tools.deck_management import add_card_to_deck as _add_card_to_deck_helper
+from src.mcp_server.tools.deck_management import clone_deck as _clone_deck_helper
 from src.mcp_server.tools.deck_management import create_deck as _create_deck_helper
 from src.mcp_server.tools.deck_management import delete_deck as _delete_deck_helper
 from src.mcp_server.tools.deck_management import list_decks as _list_decks_helper
@@ -321,6 +322,21 @@ def build_server(
             result = await _create_deck_helper(
                 session, name=name, format=format, strategy=strategy, tags=tags
             )
+        if result.status == "ok" and result.deck is not None:
+            await _emit_deck_changed(result.deck.id)
+        return result
+
+    @mcp.tool()
+    async def clone_deck(deck_id: str, name: str | None = None) -> DeckResult:
+        """Copy a saved deck, preserving metadata, cards, boards and commander flags.
+
+        Returns an independent deck with a new id and fresh timestamps. The source
+        stays untouched. Use before experimenting or comparing deck versions.
+        Stateless: pass the source deck_id every call. Omit name for exactly
+        '<source name> (copy)'; explicit names must be nonblank and at most 100 characters.
+        """
+        async with session_factory() as session:
+            result = await _clone_deck_helper(session, deck_id=deck_id, name=name)
         if result.status == "ok" and result.deck is not None:
             await _emit_deck_changed(result.deck.id)
         return result
@@ -983,9 +999,7 @@ def build_server(
         sides' ``data_vintage`` and ``confidence`` blocks verbatim.
         Deterministic: identical inputs serialize byte-identically; comparing
         a deck with itself (legal) yields all-zero deltas and empty lists. To
-        compare two versions of ONE deck, snapshot it first — export via
-        ``view_deck``/``load_deck``, then ``create_deck`` +
-        ``import_decklist`` (or re-add the rows) to freeze the "before" copy,
+        compare two versions of ONE deck, use ``clone_deck`` to freeze the "before" copy,
         edit the original, and compare the two ids. If the two decks resolve
         to different formats the result is ``format_mismatch`` — pass
         ``format`` explicitly to force both sides. A side that fails to

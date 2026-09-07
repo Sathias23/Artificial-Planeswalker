@@ -158,6 +158,78 @@ async def test_search_cards_invalid_is_graceful(
     assert "X" in sc["message"]
 
 
+async def test_clone_deck_round_trip(seeded_card_db: async_sessionmaker[AsyncSession]):
+    """Copy both boards and commander flags, then prove independent persisted edits."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool(
+            "create_deck",
+            {"name": "Baseline", "format": "commander", "strategy": "Burn", "tags": ["red"]},
+        )
+        source_id = created.structuredContent["deck"]["id"]
+        await client.call_tool(
+            "add_card_to_deck",
+            {"deck_id": source_id, "name": "Thunderbolt", "quantity": 4},
+        )
+        for sideboard, quantity in [(False, 3), (True, 2)]:
+            await client.call_tool(
+                "add_card_to_deck",
+                {
+                    "deck_id": source_id,
+                    "name": "Lightning Bolt",
+                    "quantity": quantity,
+                    "sideboard": sideboard,
+                    "commander": not sideboard,
+                },
+            )
+        old = datetime(2000, 1, 1, tzinfo=UTC)
+        async with seeded_card_db() as session:
+            source = await session.get(DeckModel, source_id)
+            source.created_at = source.updated_at = old
+            await session.commit()
+        before = (await client.call_tool("load_deck", {"deck_id": source_id})).structuredContent[
+            "deck"
+        ]
+        result = await client.call_tool("clone_deck", {"deck_id": source_id})
+        assert not result.isError
+        assert result.structuredContent["status"] == "ok"
+        clone = result.structuredContent["deck"]
+        assert clone["id"] != source_id
+        assert clone["created_at"] != before["created_at"]
+        for field in ("created_at", "updated_at"):
+            assert datetime.fromisoformat(before[field]) == old
+            assert datetime.fromisoformat(clone[field]) > old
+        assert clone["name"] == "Baseline (copy)"
+        for field in (
+            "format",
+            "strategy",
+            "tags",
+            "color_identity",
+            "cards",
+            "mainboard_count",
+            "sideboard_count",
+            "distinct_cards",
+        ):
+            assert clone[field] == before[field]
+        persisted = (
+            await client.call_tool("load_deck", {"deck_id": clone["id"]})
+        ).structuredContent["deck"]
+        assert persisted == clone
+        await client.call_tool(
+            "set_card_quantity", {"deck_id": clone["id"], "name": "Lightning Bolt", "quantity": 1}
+        )
+        assert (await client.call_tool("load_deck", {"deck_id": source_id})).structuredContent[
+            "deck"
+        ] == before
+        edited = (await client.call_tool("load_deck", {"deck_id": clone["id"]})).structuredContent[
+            "deck"
+        ]
+        assert edited["mainboard_count"] == 5
+        tools = await client.list_tools()
+        comparison = next(t for t in tools.tools if t.name == "compare_deck_power")
+        assert "clone_deck" in comparison.description
+
+
 async def test_deck_lifecycle_through_client(
     seeded_card_db: async_sessionmaker[AsyncSession],
 ):
@@ -2215,6 +2287,7 @@ ROUND_TRIPPED = frozenset(
         "search_cards",
         "list_decks",
         "create_deck",
+        "clone_deck",
         "load_deck",
         "update_deck",
         "delete_deck",

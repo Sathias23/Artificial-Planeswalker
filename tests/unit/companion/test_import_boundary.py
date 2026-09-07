@@ -74,6 +74,7 @@ _SCRIPTS_DIR = REPO_ROOT / "scripts"
 _REPO_WRITE_METHODS = frozenset(
     {
         "create_deck",
+        "clone_deck",
         "update_deck",
         "delete_deck",
         "add_card_to_deck",
