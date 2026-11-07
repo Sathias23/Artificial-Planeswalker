@@ -16,6 +16,10 @@ temp/
 /_bmad/
 /.worktrees/
 .claude/skills/bmad-*/
+# BMad v7 install: the `bmad` skill, the bmod-* module records and the skills CLI lock file.
+.claude/skills/bmad/
+.claude/skills/bmod-*/
+/skills-lock.json
 # BMAD installer dump for Codex-style agents — dev tooling, not shipped. Scoped to skills/ only:
 # .agents/plugins/ (the Codex marketplace file) IS committed, so never blanket-ignore .agents/.
 .agents/skills/
