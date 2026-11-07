@@ -1,13 +1,13 @@
 ---
 type: migration
 title: Artificial-Planeswalker v6 to v7 planning migration
-status: draft
+status: done
 created: 2026-11-07
 ---
 
 # v6 to v7 planning migration
 
-Migration `method` 1 (`from` 6, `to` 7). The rules are in `.claude/skills/bmod-method/migration-1.toml`. Nothing below has been moved yet.
+Migration `method` 1 (`from` 6, `to` 7). The rules are in `.claude/skills/bmod-method/migration-1.toml`. Approved by Brad 2026-11-07 and carried out on `chore/bmad-v7-migration`.
 
 ## Detect signals matched
 
@@ -119,8 +119,56 @@ Mentions of the bare name `ARCHITECTURE-SPINE.md:211`/`:461` in `src/` docstring
 
 ## Commits
 
-On `chore/bmad-v7-migration`: one commit per step 7 to 14 (`git mv` throughout, so history follows), then one commit for the outside references. The backup is never staged. No push until Brad says so.
+On `chore/bmad-v7-migration`, `git mv` throughout so history follows; the backup is never staged; nothing pushed.
+
+| Commit | Step |
+|---|---|
+| `34c3cb7` | State before the migration: the untracked deck-workflow-reliability breakdown and spec, and this plan |
+| `d820810` | 7 Documents (plus the `.pre-commit-config.yaml` excludes, see Deviations) |
+| `912c27f` | 8–9 Ticket tree and the two spec folders |
+| `42422c9` | 13 Path rewrites |
+| `58c4a29` | 14 Configuration and cleanup: `backlog/.gitkeep`, the two tests and `AGENTS.md` |
+
+Steps 6, 10, 11 and 12 had nothing to do: no workspace change; `migrate_v6.py --fold-specs` reported no pre-release spec folders; no loose implementation files; nothing left in place.
+
+## Deviations from the approved plan
+
+- The `.pre-commit-config.yaml` excludes moved into the step 7 commit rather than the final one: the `no-local-machine-paths` hook fails on the moved files until its excludes follow them, and the hook is never bypassed.
+- Research reports moved into folders named after their stems (for example `quality-audit-2026-09-03/`) as the rules say, not `research-<stem>/` as the target tree sketched; the prefixed form also pushed one path past the Windows length limit.
+- `epic-trustworthy-assessment/` has no `tickets/` folder yet; it gets one when Sofia plans its stories.
+- In `AGENTS.md` the "active specs" pointer became a pointer to the ticket tree and `archive-v6/`.
+
+## Dead in v6, not broken by the migration
+
+These live references already pointed at nothing before the migration and are unchanged:
+
+- `_bmad-output/project-context.md` (deleted before the migration) in the 2026-07-11 and 2026-07-25 architecture spines and the 2026-07-25 memlog.
+- `_bmad-output/implementation-artifacts/…` (moved to the `process` branch before the migration) in `sprint-change-proposal-2026-08-16.md` and `spike-mtga-collector-go-no-go-2026-07-20.md`.
+- Thirteen `](src/…)` and `](scripts/…)` links in `technical-mtg-arena-deck-import-export-research-2026-06-27.md`, written relative to the repo root but resolved from the report's folder.
+- The `_ds/planeswalker-companion-design-system-…/` asset paths in `imports/claude-design/Planeswalker Companion.dc.html`.
+
+## For Brad to update (not edited)
+
+- `src/companion/client.py:432`, `src/mcp_server/server.py:140` (and their `plugin/` copies), `tests/integration/companion/test_live_backend.py:6`: cite `ARCHITECTURE-SPINE.md:211` / `:461`, now `architecture-Artificial-Planeswalker-2026-07-25.md` at the same lines. Changing the `src/` docstrings needs a `plugin/` rebuild.
+- `CHANGELOG.md:108`, `docs/release-readiness-review.md`, `docs/quality-review-2026-09-06.md`: historical mentions of old paths; left as written.
 
 ## Checklist results
 
-Pending.
+| # | Item | Result |
+|---|---|---|
+| 1 | Every source file accounted for | Pass. `git diff -M 34c3cb7 HEAD`: all 94 files under `planning-artifacts/` and `specs/` are renames, none deleted; nothing is left in place. |
+| 2 | Folders keep v6 names and every file; main file or router; `initiative-*/`, `backlog/`, `archive/` exist | Pass. The UX folder has a router; `backlog/` has a `.gitkeep`. |
+| 3 | Dated versions all present | Pass. Both PRDs and both architectures are live under their own names. |
+| 4 | `tickets.py status` exits 0; story counts match the archived sources | Pass, with a recorded exception. Exit 0, 10 tickets (2 done, 8 planned). Live counts match their sources: quick-wins 5 = `stories.yaml` 5, reliable-deck-workflows 5 = Stories 1.1–1.5. Brad chose to archive shipped Epics 1–17 instead of rebuilding them, and their tracking stays on `process`. |
+| 5 | One entry per story, one plan per build record, no epic story files; `find` returns each plan | Pass. `find 1.1` and `find 1.2` return the two plans. |
+| 6 | Plans have a build type and mapped status; baselines kept | Pass. Both are `type: feature`, `status: done`, with the story files' own `baseline_revision` (`26bccfd`, `598b2fc`). No retrospectives were in scope. |
+| 7 | `covers` ids resolve; every requirement has an entry | Pass. Every epic and entry `covers` id is a Requirements line one level up; every initiative R has an epic. Every R in the two refined epics has an entry; epic-trustworthy-assessment has no entries yet, by design. |
+| 8 | No pre-release `spec-<slug>/spec-<slug>.md` remains; no stray `CAP-` ids | Pass for the folds: there were none. `CAP-` ids remain in the two v6 build records (now plans), the reliability `acceptance.md` companion and `sprint-change-proposal-2026-07-12.md`. They are historical evidence, traceable through each epic's `(parent R<n>, CAP-<m>)` lines. The reliability `acceptance.md` CAP-1..3 are the reliability spec's own. |
+| 9 | Every live path resolves | Pass. 80 live paths and links resolve; the ones listed under "Dead in v6" were already dead before the migration. |
+| 10 | Active initiative set; `output_folder` resolves | Pass. `resolve_config.py`: `core.active_initiative = initiative-artificial-planeswalker`, `core.output_folder = {project-root}/_bmad-output`. |
+| 11 | Moved module config keys name new locations | Pass. None pointed inside the planning folder after setup's v6 cleanup. |
+| 12 | Store under git as answered; no double tracking | Pass. Single repo, no workspace. |
+| 13 | Backup holds every source file and is never committed | Pass. The backup holds 94 files under `_bmad-output/`; `git log --all` shows no commit touching it. |
+| 14 | Plan records questions, answers, backup, files, results | Pass. This file. |
+
+Gates after step 14: `ruff check`, `ruff format --check`, `pytest -m "not integration"` (3280 passed), `npm test` (1786 passed), pre-commit hooks all green.
