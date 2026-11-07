@@ -1,0 +1,72 @@
+# epic-quick-wins: one entry per story of the v6 spec-quick-wins stories.yaml, in its order.
+# Entries 1 and 2 have plans beside this file; 3 to 5 are not started.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Deck metadata and card-quantity tools"
+description = "Two stateless MCP tools expose the repository's update_deck and update_card_quantity, emitting deck_changed on success; quantity 0 routes to removal and _UNSET versus None is preserved on the metadata tool."
+verify = "A rename changes only the name, null clears strategy, quantity N reloads as N and 0 removes the row, each emitting deck_changed, through the tool entry points."
+covers = ["R1", "R2"]
+after = []
+hitl = false
+risk = "low"
+v6_key = "1"
+notes = ["invoke_dev_with: Follow the add_card_to_deck / remove_card_from_deck pattern in src/mcp_server/tools/deck_management.py (card_id-or-name selector, result status vocabulary, message helpers). Update all five skills under .claude/skills/ that enumerate deck-management tools, then rebuild plugin/. Tests go through the tool entry points, not the repository."]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Clone deck tool"
+description = "One MCP tool copies a deck (cards with quantity, board and commander flag; format, strategy, tags, colour identity) into a new deck in a single transaction, default name \"<source> (copy)\", and the compare_deck_power description points at it."
+verify = "A clone's rows equal the source's row for row with a new id, the source is untouched, and an injected mid-copy failure leaves no partial deck."
+covers = ["R3"]
+after = []
+hitl = false
+risk = "low"
+v6_key = "2"
+notes = ["invoke_dev_with: Add a repository clone method beside merge_decks in src/data/repositories/deck.py with the same commit/rollback discipline; no partial deck may survive a failure. Ripple: skills, plugin/, the compare_deck_power docstring in src/mcp_server/tools/compare_deck_power.py."]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Decklist export (MCP and companion)"
+description = "An MCP export tool and a read-only companion GET emit Arena text (Commander / Deck / Sideboard sections, \"<qty> <name> (<SET>) <collector>\") or plain \"<qty> <name>\" text, and the UI has a copy control; Arena export round-trips through import_decklist."
+verify = "Exporting a deck to Arena text and importing it into a fresh deck yields identical rows; plain text has no set or collector suffix; an empty deck exports headers only; the companion GET serves the same text."
+covers = ["R4"]
+after = []
+hitl = false
+risk = "medium"
+v6_key = "3"
+plan_checkpoint = true
+done_checkpoint = true
+notes = ["invoke_dev_with: Put the formatter in src/logic (framework-free) so MCP and companion share it. The companion route reads only (AD-2); run npm run gen:api after adding it, and npm run format:check before the first push. Prove round-trip with a test that exports then imports into a fresh deck. Download link is optional; copy is required.", "Overlaps epic-reliable-deck-workflows entry 5 (verified Arena export) and conflicts with its Companion-section rule; settle with Sofia before building."]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Visible legality coverage"
+description = "validate_deck and format_check report which known rules were not checked for the deck's format (commander size, colour identity, eligibility; restricted; copy exceptions); the companion format panel renders the list; the format-legality skill states the same coverage. No verdict changes."
+verify = "A commander report lists commander size, colour identity and eligibility as unchecked, a vintage report lists restricted cards, a standard report lists nothing beyond rotation, and a test pins an entry for every FormatType member."
+covers = ["R6"]
+after = []
+hitl = false
+risk = "medium"
+v6_key = "4"
+plan_checkpoint = true
+notes = ["invoke_dev_with: Per-format unchecked-rule table lives in src/logic/deck_validator.py with a test pinning an entry for every FormatType member. Extend the result models, not the rules. Contract change: npm run gen:api, plugin/ rebuild, and .claude/skills/format-legality/SKILL.md."]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Recommendation provenance in the companion"
+description = "companion_show_* payloads accept an optional deck_id; the companion labels each view and history entry with that deck's name, marks a push stale when its deck's updated_at is newer than the push or the displayed deck differs, and words the confidence indicator as the agent's confidence."
+verify = "A push for deck A viewed while B is active shows A's name, a push older than its deck's updated_at is marked stale, a push without deck_id renders as today, and history keeps labels after a deck switch."
+covers = ["R5"]
+after = []
+hitl = false
+risk = "medium"
+v6_key = "5"
+plan_checkpoint = true
+done_checkpoint = true
+notes = ["invoke_dev_with: Contracts in src/companion/contracts.py; UI state in ui/src/state/agentView.ts (HISTORY_CAP retention and revisit semantics must not change). Pushes without deck_id render exactly as today. Run the full UI gate including format:check and test:gates; npm run gen:api for the contract change; skills and plugin/ ripple."]

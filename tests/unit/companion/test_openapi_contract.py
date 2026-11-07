@@ -435,8 +435,7 @@ class TestDescriptionsAreSummaries:
         artefact_path = (
             Path(__file__).resolve().parents[3]
             / "_bmad-output"
-            / "planning-artifacts"
-            / "ux-designs"
+            / "initiative-artificial-planeswalker"
             / "ux-Artificial-Planeswalker-2026-07-22"
             / "EXPERIENCE.md"
         )

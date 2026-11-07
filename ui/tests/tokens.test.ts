@@ -40,7 +40,7 @@ import { describe, expect, it } from 'vitest'
  */
 const DESIGN_MD = fileURLToPath(
   new URL(
-    '../../_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md',
+    '../../_bmad-output/initiative-artificial-planeswalker/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md',
     import.meta.url,
   ),
 )
