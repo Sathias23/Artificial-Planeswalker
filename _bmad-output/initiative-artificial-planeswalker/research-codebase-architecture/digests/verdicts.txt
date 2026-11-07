@@ -1,0 +1,28 @@
+ref=[1] status=verified kind=code — re-anchored src/data/repositories/deck.py:344-372 (list_decks) @ ee0263d; src/mcp_server/tools/deck_management.py:273-315 (list_decks) @ ee0263d
+ref=[2] status=verified kind=code — src/companion/app/routes/decks.py:32-54 (read_decks) @ ee0263d; src/data/repositories/deck.py:374-433 (list_deck_summaries) @ ee0263d
+ref=[3] status=verified kind=code — re-anchored src/mcp_server/tools/find_similar.py:206-301 (_resolve_seed) @ ee0263d; src/data/repositories/card.py:154-211 (find_by_name_exact) @ ee0263d
+ref=[4] status=verified kind=code — src/data/database.py:238-284 (create_engine) @ ee0263d; src/companion/app/deps.py:157-193 (_create) @ ee0263d
+ref=[5] status=verified kind=code — src/mcp_server/server.py:1163-1192 (initialize_database) @ ee0263d; the module docstring at server.py:18-19 says initialize_database offloads the same way, which the code contradicts
+ref=[6] status=verified kind=code — src/data/importers/scryfall_api.py:70-172 (download_bulk_data) @ ee0263d
+ref=[7] status=verified kind=code — src/search/query.py:254-399 (hybrid_search) @ ee0263d; neither caller passes over_fetch_k
+ref=[8] status=verified kind=code — src/companion/app/deps.py:240-283 (get_session) @ ee0263d; src/companion/app/routes/cards.py:244-441 (read_card_image) @ ee0263d
+ref=[9] status=verified kind=code — src/companion/app/images.py:468-603 (DiskCache) @ ee0263d
+ref=[10] status=verified kind=code — ui/src/api/client.ts:373-412 (request) @ ee0263d
+ref=[11] status=verified kind=code — ui/src/state/connection.ts:113-192 (useAgentConnection) @ ee0263d; ui/src/state/deck.ts:485-492 (reconcileDeckBoot) @ ee0263d; second deck read only when active-deck answer is non-null
+ref=[12] status=verified kind=code — ui/src/state/systemState.ts:230-248 (useSystemState) @ ee0263d; sole caller App.tsx:57
+ref=[13] status=verified kind=code — ui/src/state/cards.ts:194-208 (seedDeckCards) @ ee0263d
+ref=[14] status=verified kind=code — viewer test is also a case-insensitive substring, so it counts a Lander subtype as land
+ref=[15] status=verified kind=code — src/logic/mana_curve.py:82-88 (analyze_mana_curve) @ ee0263d; exact means truncated by int()
+ref=[16] status=verified kind=code — re-anchored src/logic/assessment/mana_base.py:341-388 (compute_pip_signals) @ ee0263d; ui/src/containers/ColourDistribution/colours.ts:218-256 (coloursOf) @ ee0263d
+ref=[17] status=verified kind=code — src/logic/deck_validator.py:41-65 (is_basic_land) @ ee0263d; src/logic/deck_validator.py:404-407 (validate_deck) @ ee0263d
+ref=[18] status=verified kind=code — src/logic/deck_validator.py:92-160 (validate_card_addition) @ ee0263d; callers only in tests
+ref=[19] status=verified kind=code — src/data/models/deck_card.py:43-46 (DeckCardModel) @ ee0263d; only lazy= in src/data/models is models/deck.py:64
+ref=[20] status=verified kind=code — src/data/repositories/deck.py:435-458 (find_deck_by_name) @ ee0263d; docstring :439,:445 contradicts
+ref=[21] status=verified kind=code — src/data/repositories/deck.py:1078-1122 (merge_decks) @ ee0263d; unchanged quantity makes no call (:1098)
+ref=[22] status=verified kind=code — src/mcp_server/tools/initialize_database.py:198-203 @ ee0263d; src/mcp_server/server.py:1194-1219 (build_search_index) @ ee0263d
+ref=[23] status=disputed kind=code — holds for the four push result models (companion.py:253, :396, :485, :639); SetActiveDeckResult (:112) adds three tokens; CompanionStatusResult (:765) has its own set
+ref=[24] status=verified kind=code — ui/src/state/cards.ts:65-84 (CARD_READ_IS_RETRYABLE) @ ee0263d
+ref=[25] status=verified kind=code — src/mcp_server/server.py:573-601 (view_deck) @ ee0263d
+ref=[26] status=verified kind=code — src/mcp_server/tools/card_lookup.py:67-84 (lookup_card) @ ee0263d
+ref=[27] status=verified kind=code — src/mcp_server/__main__.py:243 (_run_companion) @ ee0263d; tests/unit/companion/test_import_boundary.py:138-142 (_APP_IMPORT_EXEMPT) @ ee0263d
+ref=[28] status=verified kind=code — src/data/importers/scryfall_api.py:8 @ ee0263d; src/data/importers/spellbook_api.py:23 @ ee0263d

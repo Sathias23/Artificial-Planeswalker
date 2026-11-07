@@ -12,6 +12,7 @@ context:
   - _bmad-output/initiative-artificial-planeswalker/architecture-Artificial-Planeswalker-2026-07-25/architecture-Artificial-Planeswalker-2026-07-25.md
   - docs/quality-review-2026-09-06.md
   - _bmad-output/initiative-artificial-planeswalker/quality-audit-2026-09-03/quality-audit-2026-09-03.md
+  - _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md
 ---
 
 # Full codebase review: code quality, optimisation and architecture
@@ -44,9 +45,9 @@ Out of scope: style the linters already enforce (ruff, Prettier, mypy), the gene
 
 Do this first: it frames every group review and catches what no single group can see.
 
-- [ ] Run `bmad-deep-recon` in "research the codebase" mode with this question: *"How far has the code drifted from `docs/architecture.md` and the AD-n decisions in the 2026-07-25 architecture spine? Where are the layer boundaries, the AD-2/AD-3 rules and the stateless-tool rule bent or worked around; where do the MCP tools, the companion backend and the UI duplicate logic that should live once; and what are the main performance risks (database access patterns, event-loop blocking, sqlite-vec usage, UI request patterns)?"*
-- [ ] Its report lands in `research-codebase-architecture/` in the initiative. Approve any ADRs it proposes only when they record a real decision.
-- [ ] Add the report path to this file's `context:` list so every group review reads it.
+- [x] Run `bmad-deep-recon` in "research the codebase" mode with this question: *"How far has the code drifted from `docs/architecture.md` and the AD-n decisions in the 2026-07-25 architecture spine? Where are the layer boundaries, the AD-2/AD-3 rules and the stateless-tool rule bent or worked around; where do the MCP tools, the companion backend and the UI duplicate logic that should live once; and what are the main performance risks (database access patterns, event-loop blocking, sqlite-vec usage, UI request patterns)?"*
+- [x] Its report lands in `research-codebase-architecture/` in the initiative. Approve any ADRs it proposes only when they record a real decision. (2026-11-07: report at `research-codebase-architecture/research-codebase-architecture.md`, findings F1-F10; no ADR proposed.)
+- [x] Add the report path to this file's `context:` list so every group review reads it.
 
 ### 2. Group reviews (`bmad-code-review`)
 
