@@ -37,7 +37,7 @@ repos:
         name: no local machine paths
         language: pygrep
         entry: 'C:[\\/]+Users[\\/]+brads|c-{2}Users-brads'
-        exclude: ^(docs/release-readiness-review\.md|_bmad-output/planning-artifacts/research/quality-audit-2026-09-03\.md|_bmad-output/specs/spec-quality-audit-p1/stories/1-metadata-bounds-clutter-process-move\.md)$
+        exclude: ^(docs/release-readiness-review\.md|_bmad-output/initiative-artificial-planeswalker/quality-audit-2026-09-03/quality-audit-2026-09-03\.md|_bmad-output/initiative-artificial-planeswalker/archive-v6/spec-quality-audit-p1/stories/1-metadata-bounds-clutter-process-move\.md)$
 
   # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source
   # input changes, rebuild it; pre-commit then fails if plugin/ was modified, prompting a re-add.

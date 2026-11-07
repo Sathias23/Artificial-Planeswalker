@@ -12,6 +12,9 @@ user_name: 'Brad'
 date: '2026-06-20'
 web_research_enabled: true
 source_verification: true
+type: research
+title: 'Technical research: sqlite-vec + fastembed RAG stack on Windows'
+created: '2026-06-20'
 ---
 
 # Research Report: technical

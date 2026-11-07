@@ -10,6 +10,9 @@ user_name: 'Brad'
 date: '2026-06-27'
 web_research_enabled: true
 source_verification: true
+type: research
+title: 'Technical research: MTG Arena deck import/export (round-trip)'
+created: '2026-06-27'
 ---
 
 # Research Report: technical

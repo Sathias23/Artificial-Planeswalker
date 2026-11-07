@@ -3,6 +3,7 @@ title: Deck Power-Level Assessment — Artificial Planeswalker
 status: final
 created: 2026-07-11
 updated: 2026-07-11
+type: prd
 ---
 
 # Deck Power-Level Assessment — PRD

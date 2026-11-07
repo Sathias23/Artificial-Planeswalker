@@ -3,6 +3,7 @@ title: Companion App — Artificial Planeswalker
 status: final
 created: 2026-07-22
 updated: 2026-08-18
+type: prd
 ---
 
 # Companion App — PRD

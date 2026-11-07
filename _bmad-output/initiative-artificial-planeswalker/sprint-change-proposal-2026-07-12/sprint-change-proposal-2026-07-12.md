@@ -5,6 +5,8 @@ status: approved
 trigger: 'Adversarial design review of the deck-power-assessment planning set (2026-07-12)'
 scope_classification: moderate
 mode: incremental (all 8 proposals individually approved by Brad)
+type: sprint-change-proposal
+created: '2026-07-12'
 ---
 
 # Sprint Change Proposal — Deck Power Assessment (2026-07-12)

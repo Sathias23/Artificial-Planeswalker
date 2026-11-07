@@ -1,3 +1,8 @@
+---
+type: research
+title: 'Step-0 Spike: MTGA Collection Collector on the Live 2026 Client — **GO**'
+created: '2026-07-20'
+---
 # Step-0 Spike: MTGA Collection Collector on the Live 2026 Client — **GO**
 
 **Date:** 2026-07-20 · **Verdict:** **GO on feasibility** — confirmed 2026-07-20 by Brad's

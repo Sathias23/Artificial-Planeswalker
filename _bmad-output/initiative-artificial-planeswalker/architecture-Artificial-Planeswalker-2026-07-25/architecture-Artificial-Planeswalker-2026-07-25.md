@@ -16,6 +16,7 @@ sources:
   - '_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/EXPERIENCE.md'
   - '_bmad-output/project-context.md (brownfield conventions)'
 companions: []
+title: 'Architecture Spine — companion-app'
 ---
 
 # Architecture Spine — companion-app

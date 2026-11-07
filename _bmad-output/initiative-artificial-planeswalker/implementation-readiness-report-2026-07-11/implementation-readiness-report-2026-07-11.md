@@ -14,6 +14,9 @@ documentsExcluded:
   - _bmad-output/planning-artifacts/prd.md (SUPERSEDED — Letta/PydanticAI)
   - _bmad-output/planning-artifacts/architecture.md (SUPERSEDED — Letta-first)
   - _bmad-output/planning-artifacts/epics.md (different scope — Phase-1 MCP pivot)
+type: implementation-readiness
+title: 'Implementation Readiness Assessment Report'
+created: '2026-07-11'
 ---
 
 # Implementation Readiness Assessment Report

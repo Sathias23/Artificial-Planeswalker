@@ -1,3 +1,8 @@
+---
+type: research
+title: 'Quality audit — 2026-09-03'
+created: '2026-09-03'
+---
 # Quality audit — 2026-09-03
 
 Master at `9a0cb4e`, v0.5.0 tagged. Six read-only reviews (Python quality, security, performance, Python tests, UI code and tests, repo hygiene), each verified against code; SQL timings via EXPLAIN QUERY PLAN on the real `cards.db` (38,626 cards, 52 decks); import time via `python -X importtime`. No P0 findings.

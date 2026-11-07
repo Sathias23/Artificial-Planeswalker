@@ -10,6 +10,9 @@ user_name: 'Brad'
 date: '2026-06-28'
 web_research_enabled: true
 source_verification: true
+type: research
+title: 'Technical research: MTG Arena collection ingestion for the MCP server (existing tooling + reverse-engineering owned-card counts from MTGA local files)'
+created: '2026-06-28'
 ---
 
 # Research Report: technical

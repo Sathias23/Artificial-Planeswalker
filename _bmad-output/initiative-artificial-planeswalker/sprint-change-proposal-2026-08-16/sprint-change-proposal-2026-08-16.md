@@ -1,3 +1,8 @@
+---
+type: sprint-change-proposal
+title: 'Sprint Change Proposal — Companion Epic Renumbering (c1–c10 → 8–17)'
+created: '2026-08-16'
+---
 # Sprint Change Proposal — Companion Epic Renumbering (c1–c10 → 8–17)
 
 **Date:** 2026-08-16

@@ -14,6 +14,7 @@ sources:
   - 'PRD: Deck Power-Level Assessment (2026-07-11)'
   - '_bmad-output/project-context.md (brownfield conventions)'
 companions: []
+title: 'Architecture Spine — deck-power-assessment'
 ---
 
 # Architecture Spine — deck-power-assessment
