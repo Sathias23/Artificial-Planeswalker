@@ -3,7 +3,7 @@
 
 ## Artificial-Planeswalker
 
-A local, stateless MCP server that gives an LLM Magic: The Gathering deckbuilding tools over a Scryfall card database, plus a read-only companion web app (FastAPI backend, React/Vite UI) that shows the active deck in a browser. Python 3.12+ run through `uv`, SQLAlchemy async over SQLite, `sqlite-vec` + `fastembed` for semantic search. Design of record is the MCP pivot design in `docs/architecture.md` (its "today" paragraph describes the pre-pivot state; the code is the pivot's result); the companion's `AD-n` decisions are in `_bmad-output/planning-artifacts/architecture/architecture-Artificial-Planeswalker-2026-07-25/ARCHITECTURE-SPINE.md`; active specs in `_bmad-output/specs/`; contributor workflow, gate table and generated-artifact table in `CONTRIBUTING.md`.
+A local, stateless MCP server that gives an LLM Magic: The Gathering deckbuilding tools over a Scryfall card database, plus a read-only companion web app (FastAPI backend, React/Vite UI) that shows the active deck in a browser. Python 3.12+ run through `uv`, SQLAlchemy async over SQLite, `sqlite-vec` + `fastembed` for semantic search. Design of record is the MCP pivot design in `docs/architecture.md` (its "today" paragraph describes the pre-pivot state; the code is the pivot's result); the companion's `AD-n` decisions are in `_bmad-output/initiative-artificial-planeswalker/architecture-Artificial-Planeswalker-2026-07-25/architecture-Artificial-Planeswalker-2026-07-25.md` (cited in code as `ARCHITECTURE-SPINE.md`, its v6 name); open work is the ticket tree under `_bmad-output/initiative-artificial-planeswalker/tickets/`, with shipped plans in its `archive-v6/`; contributor workflow, gate table and generated-artifact table in `CONTRIBUTING.md`.
 
 ## Policy
 
