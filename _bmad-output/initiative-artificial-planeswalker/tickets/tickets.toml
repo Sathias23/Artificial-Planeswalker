@@ -1,0 +1,22 @@
+# The initiative's agreed epics, in build order. Shipped Epics 1–17 are archived in ../archive-v6/.
+
+[[epic]]
+id = 1
+slug = "epic-quick-wins"
+title = "Quick wins"
+description = "An operator edits, re-counts, clones, exports and judges a deck through tools that already have their repository pieces, and every companion push names its deck."
+covers = ["R1", "R2", "R3", "R4", "R5", "R6"]
+
+[[epic]]
+id = 2
+slug = "epic-reliable-deck-workflows"
+title = "Reliable deck workflows"
+description = "A whole deck resolves in one bounded request, imports with explicit partial results and exports to Arena without manual name repairs or silent substitutions."
+covers = ["R7", "R8", "R9", "R10", "R11", "R12", "R13", "R17", "R18", "R19", "R20", "R21", "R22"]
+
+[[epic]]
+id = 3
+slug = "epic-trustworthy-assessment"
+title = "Trustworthy assessment"
+description = "Brawl scoring reads as unsupported and functioning combos are distinguished from missing-card suggestions, with supported assessments unchanged."
+covers = ["R14", "R15", "R16", "R20", "R21"]

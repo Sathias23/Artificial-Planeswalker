@@ -1,4 +1,5 @@
 ---
+ticket: 2
 title: 'Clone deck tool'
 type: 'feature'
 created: '2026-09-07'

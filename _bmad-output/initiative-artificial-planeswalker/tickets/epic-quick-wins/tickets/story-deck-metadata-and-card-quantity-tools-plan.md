@@ -1,4 +1,5 @@
 ---
+ticket: 1
 title: 'Deck metadata and card-quantity tools'
 type: 'feature'
 created: '2026-09-06'

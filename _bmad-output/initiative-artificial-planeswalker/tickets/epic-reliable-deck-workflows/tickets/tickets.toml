@@ -1,0 +1,91 @@
+# epic-reliable-deck-workflows: one entry per v6 draft story (Stories 1.1 to 1.5 of epics-deck-workflow-reliability.md),
+# in the order written. None is started; each keeps its full original criteria in its description.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Resolve playable card names consistently"
+description = """Front-face and full card names resolve to the same playable identity across lookup and import, so art cards and ambiguous names never cause accidental card selection.
+
+Original acceptance criteria:
+- Given a front-face name with one playable identity and a similarly named art card, when card lookup or the existing qualified-list importer runs, then both resolve the same playable identity, and ordinary playable-card resolution excludes the art card.
+- Given multiple valid playable matches or no valid match, when resolution runs, then it returns explicit ambiguity with candidates or a not-found result, and it never silently chooses a candidate.
+- Given format/platform filters and full split or double-faced names, when the lookup entry point resolves them, then existing filters remain effective and full identities are preserved, and observational calls do not change the deck."""
+verify = "Lookup and import resolve a front-face name to the same playable identity, never the art card, and ambiguity or no match is reported explicitly, through the tool entry points."
+covers = ["R4", "R11", "R12"]
+after = []
+hitl = false
+risk = "medium"
+v6_key = "1-1-resolve-playable-card-names-consistently"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Honor supplied printing identifiers"
+description = """Supplied set and collector numbers participate in resolution, so qualified imports identify the intended playable card.
+
+Original acceptance criteria:
+- Given the current canonical-card database does not retain every printing, when printing-qualified resolution is designed, then its verified printing-data source and strict-rejection or explicit-fallback policy are documented before implementation, and only storage needed by this story is introduced, with any required migration preserving existing card/deck references.
+- Given a valid name, set and collector combination including The Emperor of Palamecia with FIN 219, when a qualified import resolves the line, then the identifiers participate in selecting the playable identity, and the reusable resolver exposes the same outcome to card lookup consumers.
+- Given mismatched, unknown or unavailable printing identifiers, when resolution runs, then it follows the recorded policy and reports rejection or fallback explicitly, and it never silently substitutes an identity or treats aggregated Arena availability as printing proof."""
+verify = "The Emperor of Palamecia with FIN 219 resolves through the qualified import, and a mismatched qualifier is rejected or reported as a fallback per the recorded policy."
+covers = ["R4", "R12", "R13"]
+after = [1]
+hitl = false
+risk = "high"
+v6_key = "1-2-honor-supplied-printing-identifiers"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Resolve a whole deck with bounded bulk lookup"
+description = """One bulk request completes predictably and reports every input, so a deck resolves and failures retry without direct database workarounds.
+
+Original acceptance criteria:
+- Given individual, 3-, 15-, approximately 90-, and representative 100-card workloads, when baseline and bulk execution are measured, then orchestration delays are distinguished from server/database processing, and batch size, concurrency, response limits and item/batch deadline ownership are documented from measurements without claiming an unproven stall cause.
+- Given mixed valid, missing, ambiguous, duplicate and printing-qualified inputs, when the bulk MCP entry point runs with format/platform filters, then it returns one ordered result preserving each input's index and text, plus batch completeness, and shared resolution rules apply without writing to a deck.
+- Given a request exceeds the documented input limit, when it is submitted, then it returns an actionable limit outcome without silently truncating inputs, and accepted requests retain explicit per-input outcomes within the response bound.
+- Given an injected stall while items are queued or running, when the owning deadline expires, then completed results remain available and all unfinished inputs have explicit outcomes, and outstanding work is cancelled and resources released so a subsequent request succeeds without accumulating abandoned workers."""
+verify = "A mixed 100-card request returns one ordered result per input with batch completeness, an oversized request gets a limit outcome, and an injected stall ends with explicit unfinished outcomes and a successful next request."
+covers = ["R1", "R2", "R3", "R4", "R8", "R9", "R10", "R11", "R12"]
+after = [2]
+hitl = false
+risk = "high"
+v6_key = "1-3-resolve-a-whole-deck-with-bounded-bulk-lookup"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Import common Arena deck lists with clear partial results"
+description = """Name-only and printing-qualified lists import, and rejected lines are easy to correct.
+
+Original acceptance criteria:
+- Given a list with name-only and qualified card lines in supported sections, when it is imported into an existing saved deck, then the shared resolver determines identities and the import preserves quantities and supported section placement, and additive behavior remains intact.
+- Given valid lines mixed with malformed, ambiguous or unresolved lines, when the import completes, then every rejected line has an attributable diagnostic and imported totals are accurate, and partial success is explicit rather than represented as complete success.
+- Given a repeated import or duplicate lines, when it is retried, then the outcome follows documented additive/duplicate semantics, and actual saved quantities and returned totals agree."""
+verify = "A mixed list imports its valid lines with accurate totals, every rejected line carries a diagnostic, partial success is reported as partial, and a retry follows the documented additive semantics."
+covers = ["R5", "R7", "R11", "R12"]
+after = [2]
+hitl = false
+risk = "medium"
+v6_key = "1-4-import-common-arena-deck-lists-with-clear-partial-results"
+notes = ["Independent of entry 3."]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Export verified Arena-compatible decks"
+description = """A saved deck exports in a form Arena imports without card-name or printing-identifier repairs.
+
+Original acceptance criteria:
+- Given a deck whose cards have verified Arena-compatible representations, when it is exported, then names and printing identifiers where used are verified for Arena, and playable identities, quantities and supported Commander/Deck/Sideboard/Companion placement are preserved without mutating the saved deck.
+- Given a stored canonical printing that is not Arena-compatible, when export selects a replacement printing, then it uses only a verified Arena printing of the same playable identity, and aggregated platform availability alone is insufficient evidence.
+- Given a card has no verified exportable representation, when export runs, then the card is explicitly reported as unexportable, and it is neither silently omitted nor represented as part of a complete valid export.
+- Given split-card and double-faced-card fixtures, including the full identity associated with Commit and The Emperor of Palamecia, when exports are round-tripped and tested for actual Arena acceptance, then identities, quantities and sections survive without manual name repairs, and evidence includes Arena acceptance rather than only this project's parser agreeing with its own exporter."""
+verify = "Split and double-faced fixtures round-trip and are accepted by Arena itself, an unverified printing is replaced only by a verified one of the same identity, and an unexportable card is reported, not dropped."
+covers = ["R6", "R7", "R11", "R12", "R13"]
+after = [2, 4]
+hitl = true
+risk = "high"
+v6_key = "1-5-export-verified-arena-compatible-decks"
+notes = ["Arena acceptance needs a person to import the export into the Arena client.", "Overlaps epic-quick-wins entry 3 (decklist export) and conflicts with its no-Companion-section rule; settle with Sofia before building."]
