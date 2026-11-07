@@ -60,7 +60,7 @@ The conflicts are confined to the tracking/planning layer plus comment-level res
 **Reference census** (pattern `c{8,9,10}-N` / `epic-c{8,9,10}` / "Epic C8" etc.): 405 hits in
 87 files, splitting into:
 - **Living planning/tracking artifacts** (must change): `sprint-status.yaml`,
-  `epics-companion-app.md`, `deferred-work.md` (57 hits), the fresh
+  `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-companion-app.md`, `deferred-work.md` (57 hits), the fresh
   `epic-c7-retro-2026-08-16.md`.
 - **Historical record** (stays, per ruling): the ~60 `cN-M-*.md` story files, retro files
   c1–c6, prose in sprint-status header narrative — these name real merged PRs, branches, and
@@ -96,13 +96,13 @@ references; historical prose and filenames stay with a mapping legend.
 - **Legend** (new comment block under the header):
   `# EPIC RENUMBERING 2026-08-16: companion epics c1..c10 renamed 8..17 (c1=8, c2=9, c3=10,`
   `# c4=11, c5=12, c6=13, c7=14, c8=15, c9=16, c10=17). Historical prose, story/retro filenames,`
-  `# PR titles and branch names keep the cN-M ids. See sprint-change-proposal-2026-08-16.md.`
+  `# PR titles and branch names keep the cN-M ids. See _bmad-output/initiative-artificial-planeswalker/sprint-change-proposal-2026-08-16/sprint-change-proposal-2026-08-16.md.`
 - Historical `cN-M` mentions inside header narrative and per-key comments: **unchanged**.
 
 **Rationale:** makes every companion story visible to `STORY_RE`, `detect-epic` auto-detection
 land on 14 (highest done), and all 66 legacy ledger items addressable by integer epic + action.
 
-### 4.2 `epics-companion-app.md` (full internal renumber, +7)
+### 4.2 `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-companion-app.md` (full internal renumber, +7)
 
 All internal epic/story numbering shifts by +7 — inside this file "Epic N" always means a
 companion epic, so the shift is total, not selective:
@@ -160,7 +160,7 @@ stories will only ever exist under integer ids.
 ### 4.6 Verification gate (after all edits)
 
 1. `uv run python .claude/skills/bmad-retrospective/scripts/sprint_status.py detect-epic --file _bmad-output/implementation-artifacts/sprint-status.yaml` → must report `epic: 14`, empty `pending_stories`, `retro_key: epic-14-retrospective`, `retro_status: done`.
-2. Grep gate: `\bc(8|9|10)-\d` returns zero hits in `sprint-status.yaml`, `epics-companion-app.md`, `deferred-work.md`.
+2. Grep gate: `\bc(8|9|10)-\d` returns zero hits in `sprint-status.yaml`, `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-companion-app.md`, `deferred-work.md`.
 3. Story-key census: 76 integer story keys `8-*`…`17-*` present; zero `c`-prefixed keys remain.
 4. YAML parses (ruamel round-trip via any script `--file` load).
 

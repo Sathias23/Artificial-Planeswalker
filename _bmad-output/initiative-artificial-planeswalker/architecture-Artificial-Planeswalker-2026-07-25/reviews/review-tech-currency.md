@@ -1,6 +1,6 @@
 # Reviewer lens — technology currency & reality check
 
-**Target:** `ARCHITECTURE-SPINE.md` (companion-app, 2026-07-25)
+**Target:** `../architecture-Artificial-Planeswalker-2026-07-25.md` (companion-app, 2026-07-25)
 **Verdict:** FAIL on one binding; everything else verified.
 
 Lens: *"Verify every committed decision was web-researched or reality-checked rather than

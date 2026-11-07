@@ -10,10 +10,10 @@ created: '2026-07-25'
 updated: '2026-08-18'  # story 15.3: the ~12 MB footprint and AD-6's kind count
 binds: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23, NFR-01, NFR-02, NFR-03, NFR-04, NFR-05, NFR-06, NFR-07, NFR-08, NFR-09]
 sources:
-  - '_bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md'
-  - '_bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/addendum.md'
-  - '_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md'
-  - '_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/EXPERIENCE.md'
+  - '_bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/prd-Artificial-Planeswalker-2026-07-22.md'
+  - '_bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/addendum.md'
+  - '_bmad-output/initiative-artificial-planeswalker/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md'
+  - '_bmad-output/initiative-artificial-planeswalker/ux-Artificial-Planeswalker-2026-07-22/EXPERIENCE.md'
   - '_bmad-output/project-context.md (brownfield conventions)'
 companions: []
 title: 'Architecture Spine — companion-app'

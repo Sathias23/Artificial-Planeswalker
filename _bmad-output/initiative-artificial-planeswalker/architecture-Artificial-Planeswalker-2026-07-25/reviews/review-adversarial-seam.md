@@ -1,6 +1,6 @@
 # Reviewer lens — adversarial seam
 
-**Target:** `ARCHITECTURE-SPINE.md` (companion-app, 2026-07-25)
+**Target:** `../architecture-Artificial-Planeswalker-2026-07-25.md` (companion-app, 2026-07-25)
 **Verdict:** FAIL — five holes where two compliant units still build incompatibly. All closed.
 
 Lens: *"Construct two units one level down that each obey every AD to the letter yet still build

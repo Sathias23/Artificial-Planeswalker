@@ -1,6 +1,6 @@
 # Claude Design handoff prompts — Artificial Planeswalker Companion
 
-Assembled 2026-07-22 from the UX run at `_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/`. Two prompts, run in sequence:
+Assembled 2026-07-22 from the UX run at `_bmad-output/initiative-artificial-planeswalker/ux-Artificial-Planeswalker-2026-07-22/`. Two prompts, run in sequence:
 
 1. **Prompt 1 — Design system (theming).** Explores 5 candidate themes. Pick a winner.
 2. **Prompt 2 — UI (hero screen).** Paste the winning design system into the marked slot; it renders the actual screen.

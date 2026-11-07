@@ -8,7 +8,7 @@ created: '2026-07-20'
 **Date:** 2026-07-20 · **Verdict:** **GO on feasibility** — confirmed 2026-07-20 by Brad's
 in-client count check (Yuna, Hope of Spira ×3, Get Lost ×3, Omnath, Locus of the Roil ×1 all
 match the export). See "The reframed question" for the supplier-viability half.
-**Question under test** (from [technical-mtga-collection-ingestion-research-2026-06-28.md](technical-mtga-collection-ingestion-research-2026-06-28.md)):
+**Question under test** (from [technical-mtga-collection-ingestion-research-2026-06-28.md](../technical-mtga-collection-ingestion-research-2026-06-28/technical-mtga-collection-ingestion-research-2026-06-28.md)):
 *Can a collector produce a usable owned-count snapshot from the live 2026 MTGA client?* — plus the
 2026-06-28 addendum's reframe: *is there a MAINTAINED collector with a CONSUMABLE export?*
 

@@ -1,6 +1,6 @@
 # Reviewer lens — good-spine rubric walker
 
-**Target:** `ARCHITECTURE-SPINE.md` (companion-app, 2026-07-25)
+**Target:** `../architecture-Artificial-Planeswalker-2026-07-25.md` (companion-app, 2026-07-25)
 **Verdict:** PASS with two gaps, both closed.
 
 ## Rubric

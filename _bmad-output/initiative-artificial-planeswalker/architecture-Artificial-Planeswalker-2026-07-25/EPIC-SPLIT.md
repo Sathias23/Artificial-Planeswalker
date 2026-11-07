@@ -2,7 +2,7 @@
 title: Companion App — Work Split View
 status: final
 created: 2026-07-25
-companion-to: ARCHITECTURE-SPINE.md
+companion-to: architecture-Artificial-Planeswalker-2026-07-25.md
 ---
 
 # Companion App — how the work splits

@@ -1,6 +1,6 @@
 # Adversarial Seam Review — ARCHITECTURE-SPINE (deck-power-assessment)
 
-- **Spine:** `ARCHITECTURE-SPINE.md` (deck-power-assessment, 2026-07-11, status: final)
+- **Spine:** `../architecture-Artificial-Planeswalker-2026-07-11.md` (deck-power-assessment, 2026-07-11, status: final)
 - **Sources cross-read:** `docs/deck-assess.md` (research paper §7.3 schema), `prds/.../prd.md` (FR/NFR)
 - **Method:** For each seam I construct two implementation units one level down — two feature-groups, or two developers implementing two FRs — that each obey **every AD to the letter** yet produce **incompatible artifacts**. Each such pair is a hole to close with a new/tightened AD.
 - **Verdict:** The functional-core/impure-shell split (AD-1, AD-2, AD-9) is sound and well-fenced. The determinism *intent* (AD-8) is strong but the *shared data shapes it depends on are under-pinned*. The combo record, the `reasons[]`/`structural_gaps` vocabularies, the dimension key-set, the 1–10 projection, and the cache-key algorithm are all specified in prose in one AD and re-specified differently (or left open) in another. Multiple pairs build to green tests and still diff-clash. **9 findings: 2 critical, 4 high, 3 medium.**

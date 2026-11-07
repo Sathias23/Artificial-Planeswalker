@@ -249,7 +249,7 @@ graph TD
 
 - The per-deck cache key existed only to serve the live-API response cache. With the bulk
   snapshot (AD-5) there is no per-deck cache and nothing to key; the matcher (AD-9) consumes
-  the deck directly. Withdrawn by `sprint-change-proposal-2026-07-12.md`; the ID is retired,
+  the deck directly. Withdrawn by `_bmad-output/initiative-artificial-planeswalker/sprint-change-proposal-2026-07-12/sprint-change-proposal-2026-07-12.md`; the ID is retired,
   not reused. (The general prohibition on builtin `hash()` for any persisted key remains good
   guidance project-wide.)
 

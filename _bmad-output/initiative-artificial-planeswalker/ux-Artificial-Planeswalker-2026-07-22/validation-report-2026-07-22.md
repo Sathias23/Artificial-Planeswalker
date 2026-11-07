@@ -7,8 +7,8 @@
 > Retained for history only.
 # Validation Report — Artificial-Planeswalker
 
-- **DESIGN.md:** `_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md`
-- **EXPERIENCE.md:** `_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/EXPERIENCE.md`
+- **DESIGN.md:** `_bmad-output/initiative-artificial-planeswalker/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md`
+- **EXPERIENCE.md:** `_bmad-output/initiative-artificial-planeswalker/ux-Artificial-Planeswalker-2026-07-22/EXPERIENCE.md`
 - **Run at:** 2026-07-22 (Reviewer Gate at Finalize; lenses: rubric walker + accessibility)
 
 ## Overall verdict

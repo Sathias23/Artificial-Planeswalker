@@ -5,15 +5,15 @@ findings: { critical: 0, major: 0, minor: 3 }
 assessmentDate: '2026-07-11'
 feature: 'Deck Power-Level Assessment'
 documentsUnderReview:
-  - _bmad-output/specs/spec-deck-power-assessment/SPEC.md
-  - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-11/prd.md
-  - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-11/addendum.md
-  - _bmad-output/planning-artifacts/architecture/architecture-Artificial-Planeswalker-2026-07-11/ARCHITECTURE-SPINE.md
-  - _bmad-output/planning-artifacts/epics-deck-power-assessment.md
+  - _bmad-output/initiative-artificial-planeswalker/archive-v6/spec-deck-power-assessment/SPEC.md
+  - _bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-11/prd-Artificial-Planeswalker-2026-07-11.md
+  - _bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-11/addendum.md
+  - _bmad-output/initiative-artificial-planeswalker/architecture-Artificial-Planeswalker-2026-07-11/architecture-Artificial-Planeswalker-2026-07-11.md
+  - _bmad-output/initiative-artificial-planeswalker/archive-v6/epics-deck-power-assessment.md
 documentsExcluded:
-  - _bmad-output/planning-artifacts/prd.md (SUPERSEDED — Letta/PydanticAI)
-  - _bmad-output/planning-artifacts/architecture.md (SUPERSEDED — Letta-first)
-  - _bmad-output/planning-artifacts/epics.md (different scope — Phase-1 MCP pivot)
+  - _bmad-output/archive/prd.md (SUPERSEDED — Letta/PydanticAI)
+  - _bmad-output/archive/architecture.md (SUPERSEDED — Letta-first)
+  - _bmad-output/initiative-artificial-planeswalker/archive-v6/epics.md (different scope — Phase-1 MCP pivot)
 type: implementation-readiness
 title: 'Implementation Readiness Assessment Report'
 created: '2026-07-11'
@@ -30,13 +30,13 @@ created: '2026-07-11'
 
 | Type | File |
 | --- | --- |
-| SPEC (canonical contract) | `specs/spec-deck-power-assessment/SPEC.md` |
+| SPEC (canonical contract) | `_bmad-output/initiative-artificial-planeswalker/archive-v6/spec-deck-power-assessment/SPEC.md` |
 | PRD | `prds/prd-…-2026-07-11/prd.md` (+ `addendum.md`) |
-| Architecture | `architecture/…-2026-07-11/ARCHITECTURE-SPINE.md` (AD-1…AD-12) |
-| Epics & Stories | `epics-deck-power-assessment.md` (4 epics / 18 stories) |
+| Architecture | `_bmad-output/initiative-artificial-planeswalker/architecture-Artificial-Planeswalker-2026-07-11/architecture-Artificial-Planeswalker-2026-07-11.md` (AD-1…AD-12) |
+| Epics & Stories | `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-deck-power-assessment.md` (4 epics / 18 stories) |
 | UX | N/A — headless MCP feature, no UI |
 
-**Excluded (superseded / different scope):** `prd.md`, `architecture.md`, `epics.md` (Jul-10
+**Excluded (superseded / different scope):** `_bmad-output/archive/prd.md`, `_bmad-output/archive/architecture.md`, `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics.md` (Jul-10
 MCP-pivot generation).
 
 ## PRD Analysis
@@ -244,7 +244,7 @@ quality bar with zero critical or major violations.
 ### Recommended Next Steps
 
 1. **Proceed to `[SP] bmad-sprint-planning`** (fresh context window) to sequence the 18 stories.
-   Feed it the scoped epics file `epics-deck-power-assessment.md` — **not** the default `epics.md`.
+   Feed it the scoped epics file `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-deck-power-assessment.md` — **not** the default `epics.md`.
 2. **Encode the one ordering constraint** in the sprint plan: Story **2.6 (`ComboRecord`) before
    3.2/3.3** — the combo cache/client consume the record shape the core defines.
 3. **Front-load Story 2.1 (calibration benchmark composition)** — it is the scorer's acceptance gate

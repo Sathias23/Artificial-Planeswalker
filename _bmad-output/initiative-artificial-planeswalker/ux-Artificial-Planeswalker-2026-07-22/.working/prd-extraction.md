@@ -1,6 +1,6 @@
 # UX-EXTRACTION DIGEST — Artificial Planeswalker Companion App
 
-Source: `_bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/` (prd.md + addendum.md), extracted 2026-07-22 by subagent.
+Source: `_bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/` (prd.md + addendum.md), extracted 2026-07-22 by subagent.
 
 ## 1. PRODUCT IN ONE PARAGRAPH
 

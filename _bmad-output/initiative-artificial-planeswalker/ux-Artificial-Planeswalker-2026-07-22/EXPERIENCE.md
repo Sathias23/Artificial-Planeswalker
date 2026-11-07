@@ -4,15 +4,15 @@ status: approved
 updated: 2026-08-22
 composition-reference: imports/claude-design/Planeswalker Companion.dc.html
 sources:
-  - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md
-  - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/addendum.md
+  - _bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/prd-Artificial-Planeswalker-2026-07-22.md
+  - _bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/addendum.md
   - DESIGN.md (peer — visual identity, Voltglass)
   - imports/claude-design/ (design as-built, 2026-07-25)
 ---
 
 # Artificial-Planeswalker Companion — Experience Spine
 
-> **Revised 2026-07-25** to match the design developed directly in Claude Design. The screen architecture changed materially from the previous draft: the agent drawer became full-window agent views, the modal Detail view became a persistent detail panel, and the grid/list view toggle disappeared because both views are now on screen simultaneously. Rulings that this revision had to commit are listed together at the foot under **Rulings introduced by the redesign**, and **all four were confirmed by Brad on 2026-07-25** — so this spine is settled rather than provisional. The authoritative record of that confirmation is the *UX rulings — CONFIRMED 2026-07-25* block in `epics-companion-app.md`. *(Stamped 2026-08-18 by story 15.3, which reconciled the planning artefacts with what was built; this line previously read "they need Brad's confirmation".)*
+> **Revised 2026-07-25** to match the design developed directly in Claude Design. The screen architecture changed materially from the previous draft: the agent drawer became full-window agent views, the modal Detail view became a persistent detail panel, and the grid/list view toggle disappeared because both views are now on screen simultaneously. Rulings that this revision had to commit are listed together at the foot under **Rulings introduced by the redesign**, and **all four were confirmed by Brad on 2026-07-25** — so this spine is settled rather than provisional. The authoritative record of that confirmation is the *UX rulings — CONFIRMED 2026-07-25* block in `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-companion-app.md`. *(Stamped 2026-08-18 by story 15.3, which reconciled the planning artefacts with what was built; this line previously read "they need Brad's confirmation".)*
 
 ## Foundation
 
@@ -217,7 +217,7 @@ Failure path: he opens the browser before running the backend → nothing at `lo
 
 ## Rulings introduced by the redesign
 
-Four decisions this revision had to commit because the as-built design left them open. **All four were confirmed by Brad on 2026-07-25 and are settled inputs to story writing, not open questions** — the authoritative record is the *UX rulings — CONFIRMED 2026-07-25* block in `epics-companion-app.md`, whose substance is folded into each ruling below. *Corrected 2026-08-18 (story 15.3): this paragraph used to assert "Each is tagged in place", which was never true — only ruling 1 carries an in-place `[RULING 2026-07-25]` tag, on the Agent view behaviour row. The missing tags are deliberately not added: those rows are parsed byte-for-byte by the frontend copy guards, and the accurate statement costs nothing.*
+Four decisions this revision had to commit because the as-built design left them open. **All four were confirmed by Brad on 2026-07-25 and are settled inputs to story writing, not open questions** — the authoritative record is the *UX rulings — CONFIRMED 2026-07-25* block in `_bmad-output/initiative-artificial-planeswalker/archive-v6/epics-companion-app.md`, whose substance is folded into each ruling below. *Corrected 2026-08-18 (story 15.3): this paragraph used to assert "Each is tagged in place", which was never true — only ruling 1 carries an in-place `[RULING 2026-07-25]` tag, on the Agent view behaviour row. The missing tags are deliberately not added: those rows are parsed byte-for-byte by the frontend copy guards, and the accurate statement costs nothing.*
 
 1. **`[RULING 2026-07-25]` A push opens its agent view automatically.** The as-built design has no other push affordance — no drawer, no notification — so without this the PRD's SC-1 (250 ms push-to-render) is unobservable and UJ-1's climax has no surface. The nav pills therefore become the *re-open/switch* path rather than the primary one, and carry an unread marker. **CONFIRMED 2026-07-25, accepted as specified**, so SC-1 stands as written — 250 ms push-to-**render**, not time-to-notification. *(The alternative on offer had it rejected — a push only lights its pill, with SC-1 restated as time-to-pill — was therefore not taken.)*
 2. **`[RULING 2026-07-25]` Inspection is hover-transient plus click-to-pin.** The mock is hover-only, which the accessibility floor bans (hover-only disclosure) and which gives keyboard users no route to the detail panel. Pinning also makes the panel survive closing an agent view, which is what makes step 6 of Flow 1 work. **CONFIRMED 2026-07-25, accepted as specified, with full focus parity.**

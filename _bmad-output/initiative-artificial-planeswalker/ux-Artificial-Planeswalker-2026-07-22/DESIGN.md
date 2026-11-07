@@ -5,8 +5,8 @@ status: approved
 updated: 2026-08-22
 theme: voltglass
 sources:
-  - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md
-  - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/addendum.md
+  - _bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/prd-Artificial-Planeswalker-2026-07-22.md
+  - _bmad-output/initiative-artificial-planeswalker/prd-Artificial-Planeswalker-2026-07-22/addendum.md
   - EXPERIENCE.md (peer — behavior contract)
   - imports/claude-design/ (design as-built, 2026-07-25)
 composition-reference: imports/claude-design/Planeswalker Companion.dc.html

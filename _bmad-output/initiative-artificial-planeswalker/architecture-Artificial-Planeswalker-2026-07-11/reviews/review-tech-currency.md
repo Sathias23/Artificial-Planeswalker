@@ -3,7 +3,7 @@
 **Reviewer lens:** Verify every committed decision was reality-checked against the actual repo and live external sources, not asserted from training data.
 
 **Date:** 2026-07-11
-**Spine reviewed:** `_bmad-output/planning-artifacts/architecture/architecture-Artificial-Planeswalker-2026-07-11/ARCHITECTURE-SPINE.md`
+**Spine reviewed:** `_bmad-output/initiative-artificial-planeswalker/architecture-Artificial-Planeswalker-2026-07-11/architecture-Artificial-Planeswalker-2026-07-11.md`
 
 ---
 

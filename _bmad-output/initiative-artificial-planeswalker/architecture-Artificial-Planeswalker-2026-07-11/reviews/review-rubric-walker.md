@@ -1,6 +1,6 @@
 # Rubric-Walker Review — ARCHITECTURE-SPINE (deck-power-assessment)
 
-- **Spine:** `_bmad-output/planning-artifacts/architecture/architecture-Artificial-Planeswalker-2026-07-11/ARCHITECTURE-SPINE.md`
+- **Spine:** `_bmad-output/initiative-artificial-planeswalker/architecture-Artificial-Planeswalker-2026-07-11/architecture-Artificial-Planeswalker-2026-07-11.md`
 - **Reviewer role:** rubric-walker, pre-handoff gate against the GOOD-SPINE CHECKLIST
 - **Date:** 2026-07-11
 - **Verdict:** **PASS-WITH-FIXES**
