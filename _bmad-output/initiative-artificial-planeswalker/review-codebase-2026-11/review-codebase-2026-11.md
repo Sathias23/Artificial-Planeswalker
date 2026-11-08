@@ -75,7 +75,7 @@ One run per group, in a fresh session each. Say: *"run code review, no-code, on 
 | B11 | Companion backend: routes and wiring | `src/companion/app/routes/`, `__init__.py`, `main.py`, `server.py`, `deps.py`, `state.py`, `spa.py` | ~2,560 | AD-2 read-only, route contracts vs OpenAPI, error responses | [x] |
 | B12 | Companion backend: images, socket, safety | `src/companion/app/images.py`, `errors.py`, `ws.py`, `body_cap.py`, `security.py`, `singleton.py` | ~2,680 | Image fetch and cache bounds, the per-platform `singleton.py` (`msvcrt` vs `fcntl`), lazy `%`-style logging | [x] |
 | B13 | Build and maintenance scripts (quick) | `scripts/` except those in B3 and B6 | ~2,700 | `build_plugin.py` correctness, `migrate_*.py` safety, probe harnesses | [x] |
-| F1 | UI API and state, part 1 | `ui/src/api/` (hand-written files only), `ui/src/state/` first half | ~2,700 | Request deduping and cancellation, error states | [ ] |
+| F1 | UI API and state, part 1 | `ui/src/api/` (hand-written files only), `ui/src/state/` first half | ~2,700 | Request deduping and cancellation, error states | [x] |
 | F2 | UI state, part 2 | `ui/src/state/` second half (`agentView.ts`, `deck.ts`, `cards.ts`) | ~2,700 | `HISTORY_CAP` retention, revisit semantics, derived-state duplication | [x] |
 | F3 | UI components | `ui/src/components/` | ~3,000 (split if over) | Accessibility, duplicated presentational patterns, CSS token use | [ ] |
 | F4–F7 | UI containers | `ui/src/containers/`, split into four groups of about 3,000 lines by folder | ~12,100 | Re-render and request storms, cold-open cost (the release-gating budget), data fetching in components | [ ] |
@@ -896,6 +896,109 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `low` — `Companion.__init__` creates a missing `--data-dir`: the next step fails visibly on the missing `cards.db` or token.
 - `low` — `_outstanding_card_images` has no ceiling, so network events from an active drain could delay the push: unshown. If it happened, the positive control would fail the run visibly, not score it.
 - `low` — `_largest_deck(None)` fetches every deck's detail, and `_card_the_deck_does_not_hold` reads 20,000 rows: this is a developer tool run against a copy holding a few decks.
+
+### 2026-11-08 — F1 UI API and state, part 1
+
+**Code review complete.** 1 `decision-needed`, 8 `patch`, 0 `defer`, 23 rejected.
+
+- **Group:** F1. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change under `ui/src/api/` or `ui/src/state/` up to `7a9dd9c`).
+- **Files (3,988 lines; over the ~3,000 guideline, accepted rather than split, as the F2 note offered):** `ui/src/api/client.ts` (556), `schema.ts` (455); `ui/src/state/connection.ts` (192), `deckGroups.ts` (374), `faces.ts` (161), `formatCheck.ts` (229), `formatCheck.fixtures.ts` (277), `identity.ts` (67), `inspection.ts` (393), `panel.ts` (69), `poller.ts` (339), `socket.ts` (576), `systemState.ts` (300). Not reviewed: the generated `types.d.ts` and `openapi.json`, and F2's `agentView.ts`, `deck.ts` and `cards.ts`. The colocated suites were read as evidence only; T1 covers them.
+- **Mode:** no-code, thorough; lenses blind-hunter, edge-case-hunter, verification-gap, intent-alignment (none failed). Triage: leave as action items.
+- **Overlap:**
+  - The faces patch repeats F2's `cards.ts` inherited-key patch in another store. Fix both together, and grep every id-indexed plain object in `ui/src`.
+  - The `deckGroups.ts` patch touches research F1 (one land and type definition). Merge in step 4.
+  - The rejected `readFormatCheck` abort is the 2026-09-03 audit's open P3 "UI abort signals". Merge it with F2's rejected boot-reads abort.
+  - The decision below affects F2's three files too: `agentView.ts` and `cards.ts` cite the same deleted suites.
+- **What holds:**
+  - **Dedupe and cancellation:**
+    - Every loop (poller, socket, identity, format check) guards each await with a generation counter, and `stop()` bumps the counter as well, so a stale answer never writes and never forks a second timer chain.
+    - The socket bumps the generation on every failure, so a browser's `error` + `close` pair costs one timer.
+    - Emits fire only on change, and `applyInstanceId` is change-detected.
+    - `request` is the one `fetch`, with a 10 s timeout (twice the SQLite busy timeout), and its manual `AbortSignal.any` fallback leaks nothing (the caller signal is per refetch, `deck.ts:378`).
+    - The only request-level dedupe is `cards.ts`'s in-flight map (F2).
+  - **Error states:**
+    - Every reader is total and maps a missing response to `unreachable`, distinct from a decided refusal.
+    - `panelFor` and `RETRIES_QUIETLY` are read, not copied.
+    - The stalled escalation needs both elapsed time and observed refusals.
+    - A restarted poll always writes its first answer (CAP-3).
+    - `'live'` re-drives the deck boot (CAP-2), and `deck_changed` restarts the poll only if it has stopped.
+  - **Boundaries:** `client.ts` validates every body before it reaches a store. The socket dispatch over the six event kinds fails to compile on a seventh. `connection.ts` composes the three slices without a cycle.
+
+- [ ] [Review][Decision] The source comments cite UI gate suites that no longer exist, and nothing else enforces the rules they describe. Commit `e584980` (2026-09-04, audit story 2) deleted 26 source-reading `ui/tests` files, among them `store-writes.test.ts`, `posture.test.ts`, `copy-tails.test.ts` and `wire-contract.test.ts`. About twenty comments still name them as the enforcement, and some justify a module's shape by them:
+  - `connection.ts` is said to exist so that `deck.ts` never names `useSystemStore`, because `store-writes.test.ts:112-113` would flag it [`ui/src/state/connection.ts:15`].
+  - `faces.ts` has no `readFaceIndex` because "the scan" would see it [`ui/src/state/faces.ts:26`, `:81`, `:161`].
+  - `client.ts` is "the one door", and `posture.test.ts` is said to assert it [`ui/src/api/client.ts:3`, `:30`, `:223`].
+  - `keepsRetrying` exists so that `copy-tails`' fourth tail is checkable [`ui/src/state/socket.ts:264`, `:384`].
+  - The rest are in `systemState.ts:47`, `:105`, `:123`, `:162`, `:187`; `inspection.ts:16`, `:76`, `:138`; `formatCheck.ts:20`; `identity.ts:8`; and `schema.ts:17`.
+
+  `eslint.config.js` has no `no-restricted-globals` or `no-restricted-imports` rule for `fetch`, `WebSocket` or `localStorage`. So "one network door", "one writer per store" and "no persisted UI state" are now unenforced conventions that the comments say are gated. An editor who trusts a comment expects a gate to fire, and none will. Options:
+  - (a) Reword every citation to state the rule as a convention, and name what enforces it today, if anything.
+  - (b) Restore the cheap halves as ESLint rules, then do (a) for the rest. The cheap halves are `fetch` and `WebSocket` restricted outside `src/api/client.ts`, and `localStorage` and `document.cookie` banned in `src/state/`. These are linter rules, not source-scanning tests, so they stay within the 2026-09-04 "lint-as-tests out" ruling.
+  - (c) Delete the citations without replacing them.
+
+  Recommended: (b). The network door and the no-persistence rule are architecture invariants (AD-4, UX-DR15) that a one-line lint rule holds. The one-writer-per-store rule has no cheap lint form, so it becomes stated convention.
+- [ ] [Review][Patch] **The socket resets its backoff on every open, so an accept-then-drop backend reconnects every 2 s forever.** `succeed()` zeroes `failures`, `failingSince` and `delay` as soon as `onopen` fires.
+  - **Trigger:** a backend that accepts the upgrade and then closes it. `ws.py:520` closes `1011` on any post-accept fault, and `ws.py:402` closes on a failed broadcast send.
+  - **Effect:** the loop never reaches `'down'`, so the Disconnected panel never shows, and the pill flickers between live and reconnecting.
+  - **Cost per cycle:** a `'live'` (`refreshInstanceId` and a full `reconcileDeckBoot`, which is the active-deck, deck and format-check reads) plus `onReconnected` (`restartPoll` and `resetCardAttempts`). That is about six requests every 2 s.
+  - **Fix:** reset the failure count and the backoff only once a socket has stayed open for a minimum period. Emitting `'live'` on open can stay as it is.
+  - **Test:** in `socket.test.ts`, an open → immediate close loop that reaches `'down'` and backs off [`ui/src/state/socket.ts:436-446`].
+- [ ] [Review][Patch] **The face store reads inherited object keys as face indexes.** `faces` is a plain object indexed by card id, and agent-view ids come off the wire with no shape (AD-7, F2's `cards.ts` patch).
+  - **`useFaceIndex('constructor')`** returns `Object` rather than `0`, so the tile's face URL and the control's `aria-pressed` read a function.
+  - **`flipCard`** computes `(Object + 1) % 2`, which is `NaN`: exactly the `?face=NaN` its docstring says it prevents.
+  - **Fix:** read through `Object.hasOwn`, or use a null-prototype record. Fix it together with F2's `cards.ts` patch.
+  - **Test:** add a `"constructor"` id to `faces.test.ts` [`ui/src/state/faces.ts:132`, `:151`].
+- [ ] [Review][Patch] **`deckGroups.ts`'s header rests on a payload that no longer exists.** It says the deck row carries a bounded `CardSummary` "and no `card_faces`", so a `'Card // Card'` printing is "latent… rather than closed by fetching 99 card records".
+  - **What changed:** `schema.ts:66-78` records that `DeckCardFull` now embeds the whole `Card`, so `card_faces[0].type_line` is already in the payload. The real front-face type is free, and those printings (2,274 in the corpus) still group as `Other`.
+  - **`schema.ts`'s `CardFace` docstring** has the same stale premise: "hydration fills in place for 6% of a deck". `seedDeckCards` hydrates every row.
+  - **Fix:** correct both docstrings, and resolve the front-face type from `card_faces[0]` when the top-level line is the degenerate `Card // Card`. Merge this with research F1's single type rule in step 4.
+  - **Test:** a `deckGroups.test.ts` case for a `'Card // Card'` row [`ui/src/state/deckGroups.ts:15-22`, `ui/src/api/schema.ts:127-132`].
+- [ ] [Review][Patch] **Two guarded paths have no test that would fail if the guard were removed.**
+  - **The socket's `finally`:** `fail()` puts `schedule(next)` in `finally` so that a throwing `onStatus` cannot stop the loop. Every `onStatus` in `socket.test.ts` only records, so simplifying `fail()` to `emit(); schedule()` passes the whole suite.
+    - Add the throwing-`onStatus` case beside the throwing-constructor test (`socket.test.ts:871`).
+    - It must prove a second mint at `SOCKET_BASE_MS`.
+  - **`unreachable` resets the stalled clock:** the escalation guard runs before the `unreachable` early return, so a network rejection resets the clock, as the docstring states. No test feeds an `unreachable` into an active `database_unavailable` run, so moving the early return up passes.
+    - Add `script(UNAVAILABLE ×4, UNREACHABLE, UNAVAILABLE…)` to the "stalled escalation fires on ONE token only" block (`poller.test.ts:247`).
+    - Assert no stall at 60 s from the first refusal, and a stall 60 s after the post-blip refusals.
+
+  [`ui/src/state/socket.ts:429-433`, `ui/src/state/poller.ts:237-246`]
+- [ ] [Review][Patch] **A second click cannot release a pin whose card became the unknown-card placeholder.** `togglePin` refuses when the card is not inspectable *before* it checks for a release.
+  - **Trigger:** an agent-view thumbnail pinned while unseen (inspectable), which then hydrates to `unknown-card`. Clicking it again does nothing; only Esc or the panel's unpin control release it.
+  - **Fix:** apply the refusal only to pinning, never to releasing the card already pinned.
+  - **Test:** add the case to `inspection.test.ts` [`ui/src/state/inspection.ts:271-274`].
+- [ ] [Review][Patch] **The connection header's signal list is misnumbered and stale.** "THE THREE SIGNALS" are listed 1, 2, 3b, 3. Item 3b calls itself "the FOURTH signal" and describes only `suggestions`, while the code wires four push kinds. Renumber the list, with one entry covering all four push kinds [`ui/src/state/connection.ts:21-67`].
+- [ ] [Review][Patch] **Comments hard-code counts and line numbers that have drifted.**
+  - **Field and store counts:**
+    - `systemState.ts` says `App` "reads all three fields", but `instanceId` is a fourth field.
+    - It also calls `connection` "rather than a fourth store" and `instanceId` "rather than an eighth store".
+    - `inspection.ts` says "names all four" stores, `faces.ts` says "all five", and `formatCheck.ts` calls itself "a sixth store"; `ui/src` has seven.
+  - **Line citations:**
+    - `socket.ts` cites `poller.ts:161-168` and `poller.ts:200-204`; the code is now at `:166-172` and `:214`.
+    - The same `deck.ts` argument is cited as `deck.ts:286-302` in `socket.ts` and as `deck.ts:283-296` in `formatCheck.ts`.
+  - **Fix:** cite symbols rather than lines, and drop the ordinals.
+
+  [`ui/src/state/systemState.ts:46`, `:69`, `:156-159`; `inspection.ts:138-139`; `faces.ts:81`; `formatCheck.ts:23`, `:135`; `socket.ts:323-324`, `:406`]
+- [ ] [Review][Patch] **`byManaValueThenName` has no final tiebreak.** Two rows with the same `cmc` and name (two printings of one card) keep wire order, which `schema.ts` calls "not meaningful". Their tiles can swap places between refetches, and `coldOpenTargetOf` can change. Add a `card_id` tiebreak [`ui/src/state/deckGroups.ts:238-239`].
+
+**Rejected**
+
+- `false`: a throwing `onStatus` or `onUpdate` skips `onReconnected`, leaves `emitted` committed undelivered, or kills the poll (two lenses, five findings). `onStatus` is `applyConnection`, a zustand `setState`, plus `refreshInstanceId` and `reconcileDeckBoot`, which never throw. The store's listeners are React's and `deck.ts:631`'s, which only assigns and re-drives. F2 rejected the same premise. The `finally` that already exists is defensive, and its missing test is the patch above.
+- `false`: the store's status goes stale across `stop()` → `start()` (two lenses). `useAgentConnection` creates a fresh instance on every effect run, and nothing restarts a stopped instance. `App` is the one consumer and never unmounts in production, and StrictMode's cleanup runs before any socket opens.
+- `false`: `refreshInstanceId` rejects on a rejecting injected reader (two lenses). The production reader, `readInstanceId`, is total, and only tests inject a reader.
+- `false`: `deckOf` accepts a `cards` array holding `null` or card-less rows. The rows are Pydantic `DeckCardFull` from the same-origin backend, as F2 ruled.
+- `false`: the `mergedSignal` fallback leaks listeners. The caller signal is a per-refetch controller (`deck.ts:378`), and the timeout listener is `once` and fires within 10 s.
+- `false`: a row with no `cmc` sorts as `NaN`. `cmc` is a required `number` in the `Card` schema.
+- `false`: `inspection.ts` lacks `__proto__` hardening. It stores ids as values and compares them by equality; it indexes no object by id.
+- `false`: FR-14 and FR-15 disagree for `/health`. FR-14 is the backend's `instance_id` probe (the schema type), and FR-15 is the UI showing connection status (the refresh). Each comment cites the requirement it serves.
+- `false`: `localeCompare` with no locale is nondeterministic. It uses the user's runtime locale, which is fixed within a tab.
+- `low`: alternating `database_unavailable` and `unreachable` keeps the backoff at 2 s and the stalled clock reset. The reset on a network rejection is documented intent (`poller.ts:199`). A refusal is never cut off by the 10 s timeout, and a backend restart drops the socket, whose `restartPoll` resets everything anyway.
+- `low`: `readFormatCheck` takes no `AbortSignal`, so a superseded check still costs a `get_deck_with_cards`. This is the 2026-09-03 audit's open P3 "UI abort signals" and F2's rejected boot-reads abort; the fix threads a controller through `App`'s effect. Merge in step 4.
+- `low`: there is no connect timeout on a socket whose upgrade hangs. The mint is an HTTP request to the same process and fails first under `READ_TIMEOUT_MS`, and the fix adds a timer per attempt.
+- `low`: there is no ping and no `visibilitychange`/`online` fast path. A dead loopback peer sends an RST, so `close` fires, and a resumed tab waits at most the 30 s ceiling.
+- `low`: a burst of `deck_changed` frames restarts a stopped poll once per frame. That is one `GET /api/decks` per frame, which is the design (the deck list may have changed), and the fix exposes poller state.
+- `not a defect`: the extra focus areas live mostly outside F1's files (intent-alignment). Request dedupe is in `cards.ts`, the per-detail format-check trigger in `App.tsx`, and the panel decisions in `components/StatePanel/states.ts`. Noted for step 4; F3 and F8 cover the latter two.
+- `not a defect`: `formatCheck.fixtures.ts` is test-support data under `src/state/`. Only test files import it, so it is not bundled.
+- `not a defect`: `systemState.ts` has no colocated suite. It is exercised through `App.test.tsx`, which T1 reviews.
 
 ## Summary
 
