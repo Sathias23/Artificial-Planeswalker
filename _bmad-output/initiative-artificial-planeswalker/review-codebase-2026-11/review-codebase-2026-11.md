@@ -73,7 +73,7 @@ One run per group, in a fresh session each. Say: *"run code review, no-code, on 
 | B9 | MCP card and analysis tools | `src/mcp_server/tools/assess_deck_power.py`, `compare_deck_power.py`, `deck_analysis.py`, `find_similar.py`, `semantic_search.py`, `card_search.py`, `card_lookup.py` | ~2,700 | Same status vocabulary, observational analysis, the five shipped skills match each tool's real parameters | [ ] |
 | B10 | Companion contracts and client | `src/companion/contracts.py`, `client.py`, `discovery.py` | ~2,200 | `contracts.py` (1,361 lines) size, AD-9 staleness window, the import boundary (mcp_server may import only this leaf) | [ ] |
 | B11 | Companion backend: routes and wiring | `src/companion/app/routes/`, `__init__.py`, `main.py`, `server.py`, `deps.py`, `state.py`, `spa.py` | ~2,560 | AD-2 read-only, route contracts vs OpenAPI, error responses | [ ] |
-| B12 | Companion backend: images, socket, safety | `src/companion/app/images.py`, `errors.py`, `ws.py`, `body_cap.py`, `security.py`, `singleton.py` | ~2,680 | Image fetch and cache bounds, the per-platform `singleton.py` (`msvcrt` vs `fcntl`), lazy `%`-style logging | [ ] |
+| B12 | Companion backend: images, socket, safety | `src/companion/app/images.py`, `errors.py`, `ws.py`, `body_cap.py`, `security.py`, `singleton.py` | ~2,680 | Image fetch and cache bounds, the per-platform `singleton.py` (`msvcrt` vs `fcntl`), lazy `%`-style logging | [x] |
 | B13 | Build and maintenance scripts (quick) | `scripts/` except those in B3 and B6 | ~2,700 | `build_plugin.py` correctness, `migrate_*.py` safety, probe harnesses | [ ] |
 | F1 | UI API and state, part 1 | `ui/src/api/` (hand-written files only), `ui/src/state/` first half | ~2,700 | Request deduping and cancellation, error states | [ ] |
 | F2 | UI state, part 2 | `ui/src/state/` second half (`agentView.ts`, `deck.ts`, `cards.ts`) | ~2,700 | `HISTORY_CAP` retention, revisit semantics, derived-state duplication | [ ] |
@@ -266,6 +266,53 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `false` — `--prune` misses vectors that have no hash: that state is unreachable (above); the live orphans all have hashes and are pruned by `--prune`.
 - `false` — the `assert`s in `Embedder.encode` / `encode_batch` vanish under `-O`: they guard a count fastembed never produces.
 - `not a defect` — the extra focus lives at the tool layer and the content carries no tests (intent-alignment): descriptive; the tool call sites were read and are recorded under What holds.
+
+### 2026-11-08 — B12 Companion backend: images, socket, safety
+
+**Code review complete.** 0 `decision-needed`, 11 `patch`, 0 `defer`, 13 rejected.
+
+- **Group:** B12. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change to the six files up to `4b9c5d0`).
+- **Files (2,677 lines):** `src/companion/app/images.py`, `errors.py`, `ws.py`, `body_cap.py`, `security.py`, `singleton.py`.
+- **Mode:** no-code, thorough; lenses blind-hunter, edge-case-hunter, verification-gap, intent-alignment (none failed). Triage: leave as action items.
+- **Evidence gathered read-only from `cards.db`** (stdlib `sqlite3` in `mode=ro`; nothing written):
+  - 3,437 cards carry `card_faces`. One has per-face `image_uris` on some faces only: the `Clue // Clue` token (`7493d2a6-…`), faces `[True, False]`, which resolves correctly (face 1 answers 404). No row has the `[False, True]` shape that would shift the face index.
+  - No stored image URL has an explicit or malformed port, so the port patch below guards data, not a live failure.
+  - Starlette 0.48.0's `ServerErrorMiddleware` catches `Exception` (so `ClientDisconnect`), tries a 500 and re-raises; CI runs `mypy src/` on Linux plus `--platform win32` (`ci.yml:75`).
+- **Overlap with the architecture report:** research F5 (the image route holds a session through the pacer wait) is B11's route and dependency, not these files, and is not repeated here. AD-11's unbounded disk cache is accepted and not raised.
+- **What holds:**
+  - **Image bounds:** 16 MB body ceiling checked on the declared length and while streaming, a 20 s whole-exchange deadline, `follow_redirects=False`, an `https` host allow-list parsed with `urlsplit` (never a substring test), `Semaphore(4)` plus 0.1 s spacing under one FIFO lock, both released on cancellation through `async with`. The negative cache is capped at 2,048 entries, pruned on every insert, on a monotonic clock. Cache writes are temp + `os.replace` with a lost-race path on Windows.
+  - **`singleton.py`:** the `sys.platform` branch lets mypy narrow each half. Windows unlocks before close, `release_instance_lock` never raises, and the lock file is left in place on purpose.
+  - **Logging:** every log call in the six files uses lazy `%`-style args. The `f"…"` strings are exception messages only. Attacker-controlled `Host` and `Origin` are truncated at 100 characters.
+  - **Security:** exact `Host` match on `http` and `websocket` scopes, `Origin` checked on the upgrade, constant-time byte compare of the bearer token, no token value logged (AD-5). The body cap counts bytes, so a lying `Content-Length` cannot get through.
+  - **Layering:** the six files import FastAPI and Starlette, `src.companion` and only `src.data.schemas.card` from the data layer. They make no DB write (AD-2), and `build_app()`-time code has no side effects (AD-10).
+
+- [ ] [Review][Patch] `is_fetchable` reads `parts.port` outside its `try` — `SplitResult.port` raises `ValueError` for `https://cards.scryfall.io:99999/x` or `:abc`. The error escapes `fetch_image` as `500 internal_error`, not `502 image_fetch_failed`, and is never negative-cached, against the docstring's "False … including an unparseable one". Move the read inside the `try` and add both URLs to the refusal list in `TestUrlAllowList` [`src/companion/app/images.py:184`, `tests/unit/companion/test_images.py:200-216`]
+- [ ] [Review][Patch] A chunked request body is never tested through the body cap — every body-cap test declares a `Content-Length`, so dropping the `transfer-encoding` branch of `_announces_a_body` passes the suite and lets a chunked body of any size reach FastAPI unbounded. Add an ASGI-level test beside `test_a_lying_content_length_does_not_get_through`: a `transfer-encoding: chunked` scope with no `content-length`, over `_MAX_ENVELOPE_BYTES` across `more_body` chunks, answers `413 payload_too_large` without calling the inner app; pair it with an under-cap chunked body that arrives intact [`src/companion/app/body_cap.py:112-128`, `:141`; `tests/unit/companion/test_routes_agent_events.py:460-540`]
+- [ ] [Review][Patch] The 16 MB ceiling counts decoded bytes after the fact — httpx sends `Accept-Encoding: gzip, deflate` by default and `aiter_bytes()` yields decompressed chunks, so one compressed chunk from an allow-listed host can expand far past `_MAX_IMAGE_BYTES` before the running-total check runs. The declared `Content-Length` counts encoded bytes. Ask for `Accept-Encoding: identity` on the image client (images gain nothing from compression), or bound the raw stream [`src/companion/app/images.py:189-212`, `:897-911`]
+- [ ] [Review][Patch] `_read_cached` reads the whole file before the ceiling check — an oversized or planted entry under the cache root is buffered in full on every request before it is rejected; check `stat().st_size` (empty and over-ceiling) before `read_bytes()` [`src/companion/app/images.py:376-389`]
+- [ ] [Review][Patch] Cache-path containment rests on a type the signatures drop — the `DiskCache` docstring says `path_for` is safe because `size` is the closed `ImageSize` `Literal`, but `_cache_path`, `_read_cached`, `DiskCache.path_for` / `read` / `write` and the `NegativeCache` methods take `size: str`, so a future unvalidated caller type-checks; type `size` as `ImageSize` [`src/companion/app/images.py:335`, `:358`, `:495-546`, `:706-752`]
+- [ ] [Review][Patch] Displaced siblings are unlinked before `os.replace` — a replace that fails for a reason other than the Windows race re-raises after deleting the only servable copy under the other extension; unlink them after a successful replace instead, which prevents the shadowing just as well [`src/companion/app/images.py:434-444`]
+- [ ] [Review][Patch] `validation_error_handler` logs `exc.errors()` with each error's raw `input` — up to `_MAX_ENVELOPE_BYTES` of caller-chosen text at WARNING, where `Host` and `Origin` are capped at 100 characters and `ws.py` refuses to log the active-deck value; log `loc` and `type` only [`src/companion/app/errors.py:297-299`]
+- [ ] [Review][Patch] `ClientDisconnect` is re-raised into `ServerErrorMiddleware` — Starlette 0.48 catches it there, tries a 500 into the dead stream and re-raises, so uvicorn logs an ERROR traceback; the class docstring promises "no false-alarm `ERROR` record or a response into a dead stream". Return instead of raising, and update the test that expects the raise [`src/companion/app/errors.py:487-489`, `:525-530`; `tests/unit/companion/test_errors.py:591-602`]
+- [ ] [Review][Patch] The 1011 docstrings overstate it — `_INTERNAL_ERROR` says 1011 is "distinguishable from `_POLICY_VIOLATION` on the wire", but a close before `accept()` is rendered by uvicorn as HTTP 403 whatever the code, so only the post-accept 1011 is distinguishable; `_close_quietly` says it is "used for every pre-accept close" while it also serves post-accept closes and `broadcast` [`src/companion/app/ws.py:138-150`, `:305`]
+- [ ] [Review][Patch] The singleton comment names `mypy src/ --platform linux` as the second mandatory pass, while `AGENTS.md` and CI (`ci.yml:75`) run `--platform win32`; say "the other platform's pass" [`src/companion/app/singleton.py:56-59`]
+- [ ] [Review][Patch] `body_cap.py`'s module docstring says "Inside the routers"; the middleware runs outside them, before routing, which is the point of its own "Why it cannot be a dependency" paragraph [`src/companion/app/body_cap.py:48`]
+
+**Rejected**
+
+- `false` — a lowercase `allow` header yields two `Allow` headers on a 405 (two lenses): Starlette emits `Allow`, and nothing in the app raises a 405 with its own headers.
+- `false` — `require_agent_token` logs "invalid" when no token was minted: under uvicorn the lifespan mints the token before any request is served.
+- `false` — `Pacer(limit=0)` blocks forever: only the lifespan builds it, with the defaults.
+- `false` — `NegativeCache(base<=0)` never backs off: lifespan defaults only, and the constructor already guards the mis-injection cases that matter.
+- `false` — removing the auto-validation components leaves a dangling `$ref`: the committed `openapi.json` mentions `ValidationError` 0 times, and the `gen:types` drift check would catch one.
+- `false` — AD-15 is cited for the wrong decision (intent-alignment): AD-15's operational envelope covers the crash and the stale discovery file the code cites it for.
+- `low` — mixed per-face `image_uris` can shift the face index: the only mixed row (`Clue // Clue`) resolves correctly and the shifting shape has 0 rows; the fix changes the face contract the UI mirrors.
+- `low` — two concurrent failures of one key escalate the backoff twice: rarely visible, and the fix needs in-flight coalescing.
+- `low` — `supported_methods` is correct only while every mount is at `/`: documented in its own warning, true today, and the guard is new code.
+- `low` — `release_instance_lock` takes a bare `int`, so a second call can close a reused descriptor: one caller, in one `finally`; a handle type adds surface.
+- `low` — `Pacer.available_permits` reads `Semaphore._value`: a test-only seam; a hand-kept counter adds code.
+- `maybe-false` — the `Host` refusal's `websocket.close` can raise when the peer is already gone: if true, only an error log for a refused request; a uvicorn test that drops the TCP connection before the 403 would settle it.
+- `not a defect` — the diff carries module source only, without callers, tests or gates (intent-alignment): descriptive; the callers and tests were read during triage, and the image route's composition is B11's.
 
 ## Summary
 
