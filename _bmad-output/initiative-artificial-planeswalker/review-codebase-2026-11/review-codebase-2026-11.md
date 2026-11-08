@@ -78,7 +78,7 @@ One run per group, in a fresh session each. Say: *"run code review, no-code, on 
 | F1 | UI API and state, part 1 | `ui/src/api/` (hand-written files only), `ui/src/state/` first half | ~2,700 | Request deduping and cancellation, error states | [x] |
 | F2 | UI state, part 2 | `ui/src/state/` second half (`agentView.ts`, `deck.ts`, `cards.ts`) | ~2,700 | `HISTORY_CAP` retention, revisit semantics, derived-state duplication | [x] |
 | F3 | UI components | `ui/src/components/` | ~3,000 (split if over) | Accessibility, duplicated presentational patterns, CSS token use | [x] |
-| F4–F7 | UI containers | `ui/src/containers/`, split into four groups of about 3,000 lines by folder | ~12,100 | Re-render and request storms, cold-open cost (the release-gating budget), data fetching in components | [ ] |
+| F4–F7 | UI containers | `ui/src/containers/`, split into four groups of about 3,000 lines by folder | ~12,100 | Re-render and request storms, cold-open cost (the release-gating budget), data fetching in components | [x] |
 | F8 | UI shell and styles (quick) | `ui/src/App.tsx`, `main.tsx`, `index.css`, `ui/src/styles/` | ~1,200 | Token drift from DESIGN.md, global CSS | [ ] |
 
 Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder when each run starts; record the exact file list in that run's Code Review block.
@@ -1387,6 +1387,140 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `false` — the copy maps are mutable, so an importer could rewrite on-screen copy. No code writes to them, and their keys are already held to the unions.
 - `low` — in the format check, "not loaded yet" and "refused" both render nothing. That is the documented behaviour of `state/formatCheck.ts` (F1's file), and showing a refusal would be new UI.
 - `not a defect` — request volume, cold-open cost, `App`'s selector-less subscription and the cross-surface statistics all live outside this group's files (intent-alignment). They are noted above for step 4.
+
+### 2026-11-08 — F7 UI containers, part 4: tier list, swaps, groups and the shell's always-mounted containers
+
+**Code review complete.** 6 `decision-needed`, 15 `patch`, 0 `defer`, 8 rejected.
+
+- **Group:** F7. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change under `ui/src/containers/` up to `b166cb1`).
+- **Files (16 files, 3,210 lines of non-test source):**
+  - `TierListView/TierListView.css` (347), `TierListView.tsx` (480)
+  - `SwapsView/SwapsView.css` (194), `SwapsView.tsx` (312)
+  - `GroupsView/GroupsView.css` (224), `GroupsView.tsx` (368)
+  - `ConnectionPill/ConnectionPill.css` (237), `ConnectionPill.tsx` (250), `copy.ts` (140), `port.ts` (34)
+  - `DeckAnnouncer/DeckAnnouncer.tsx` (144), `copy.ts` (53)
+  - `SkipLink/SkipLink.css` (130), `SkipLink.tsx` (148), `copy.ts` (33)
+  - `focusHome.ts` (116)
+
+  All paths are under `ui/src/containers/`. This group covers `focusHome.ts`, which F4–F6 left unreviewed, so F4–F7 have now reviewed every non-test file under `ui/src/containers/`. The six colocated suites were read as evidence only; T1 covers them. Read during triage: `App.tsx` (the surface-transition rescue and the static imports), `AgentView.tsx`'s `focusHome` calls, `CardTile.tsx`'s badge naming, `components/AppShell/AppShell.css`, `styles/visually-hidden.css`, `ConnectionPill.test.tsx`'s announcement cases, `contracts.py`'s `SwapItem`, `deck_management.py`'s blank-name check, DESIGN.md's `group-section` block, EXPERIENCE.md's state-pattern rows, UX-DR45 (`archive-v6/epics-companion-app.md`), and commit `1305de4` with the deferred-work entry it added.
+- **Mode:** no-code, thorough; lenses blind-hunter, edge-case-hunter, verification-gap, intent-alignment (none failed). Triage: leave as action items.
+- **Overlap:**
+  - The dead-gate decision below is the same as the F1, F3, F4, F5 and F6 decision, for this group's files. Rule on all six together.
+  - The citation patch is F1's "cite symbols, not lines" patch (and F4's, F5's and F6's). Fix them together.
+  - The live-region count patch is F5's "three comments disagree on how many live regions the app has", in two more files. Fix them together.
+  - The tile-duplication decision is the comparison F5 handed on ("the four agent-view bodies … crosses into F6–F7"). `SuggestionRow` (F5) is the fourth copy.
+  - The pin-state decision F6 raised (rows, tiles and thumbnails carry no `aria-pressed`) also covers this group's `SwapTile`, `TierTile` and `GroupTile`, so it is not repeated here.
+  - The group-tile width decision was already recorded on 2026-08-23, as a deferred-work entry from `spec-tier-list-usability` (now on the `process` branch) and as a follow-up note in DESIGN.md's `group-section` block. It is raised again because it is still open on master.
+- **Outside this group's files (intent-alignment), for step 4:**
+  - On a cold open, only `ConnectionPill`, `DeckAnnouncer` and `SkipLink` from this group render, and none of them fetches anything. The three view bodies mount only while a view is open. `App.tsx` imports all six statically, so their bundle and CSS weight is decided there (F8) and measured by `scripts/cdp_harness.py budget` (B13).
+  - Whether the per-tile subscriptions re-render more than they should depends on the selectors in `state/` (F1, F2). These are `useCardEntry`, `useFaceIndex`, `useCardArt` and `usePinnedId`, plus `useDeckCardQuantity` in groups. Each hydration effect is keyed on `items`, so its cost also depends on whether `items` keeps its identity across store writes, which `state/agentView.ts` (F2) decides.
+  - The architecture rules the intent names (AD-2, AD-3, the Python layering, stateless tools, AD-15) have no surface in these files. Only the UI decisions (AD-7, AD-11, AD-12) do, and those hold (below).
+- **What holds:**
+  - **Request pattern:** each view hydrates once per unique id, from an effect keyed on `items`. A `Set` collapses duplicates across rows and sides. Blank and non-string ids cost no request: groups and tiers filter them out, and swaps fold them to `''`. `hydrateCard` dedupes in-flight and terminal ids, so `TierPreview`'s own hydration costs nothing for an id a tile already holds. Every image goes through `cardImageUrl` with the rendition unspelled, so tiles, the preview and the grid share one browser-cache key (AD-11).
+  - **Re-render scope:** `ConnectionPill` and `DeckAnnouncer` subscribe through primitive selectors (the deck name, the two counts, the deck id, the open-view boolean and the settle counter), so a board change does not re-render them. An instance-id change does not announce.
+  - **Malformed pushes cost one row or one tile:** every item field is read as `unknown` and gated. The tier letters and the swap confidences are closed vocabularies held by compile-time asserts. A malformed tier or group is skipped, and its neighbours still render.
+  - **`DeckAnnouncer`:** a settle that lands behind an open view is consumed, not queued. The keyed fragment re-announces an unchanged total. The sentence is cleared when its deck departs.
+  - **`focusHome`:** it refuses non-elements, leaves an authored `tabindex` alone, and removes its own `tabindex` when focus is refused.
+
+- [ ] [Review][Decision] **Group tiles have no width, so they collapse to slivers.** `.group-tile-thumb` is a flex box with `min-height: 6lh`, and its children are either absolutely positioned or empty. `card-shape`'s `aspect-ratio` cannot derive a width from an auto-height box with no in-flow content. This is the mechanism that collapsed the tier strip to "overlapping ~0px slivers" until `1305de4` gave `.tier-tile-thumb` DESIGN.md's `thumb-width: 176px`. `GroupsView.css:164-170` calls the same width "the outstanding fix", and DESIGN.md's `group-section` block records it as a follow-up. `.swap-tile-thumb` has the same rule. Its tile is a flex column whose "OUT · N COPIES" label sets the width, so it renders correctly only by coincidence (`SwapsView.css:126-133`). Nobody has checked the groups view in a real browser since. Options:
+  - (a) Give `.group-tile-thumb` and `.swap-tile-thumb` the tier strip's `176px`, and record it in DESIGN.md's `group-section` and `swap-row` blocks.
+  - (b) Rule a smaller group or swap thumbnail width in DESIGN.md first, since a wrapping strip of 176px tiles takes more room than a tier's scrolling one, then apply it.
+  - (c) Fix groups alone now, and size the swap tile only if its label ever stops setting the width.
+
+  Recommended: (a). It is the fix already proved on the tier strip, it needs one DESIGN.md line per block, and it removes the coincidence the swap tile depends on. Check it in a real browser, since jsdom resolves no layout. [`ui/src/containers/GroupsView/GroupsView.css:176-181`, `ui/src/containers/SwapsView/SwapsView.css:137-142`]
+- [ ] [Review][Decision] **In the groups and swaps views, hover and focus target a panel nobody can see.** `TierPreview` exists because "the persistent `CardDetail` panel sits BEHIND the agent view's scrim, so inside this view the target was invisible" (`TierListView.tsx:261-264`). `GroupTile` and `SwapTile` set the same inspection target but have no preview. So a hover or focus in those views shows nothing, and a click pins a card whose detail stays hidden until the view closes. Options:
+  - (a) Lift `TierPreview` into a shared in-view preview and mount it in the groups and swaps bodies too, with a DESIGN.md `components.*-preview` line for each layout.
+  - (b) Leave groups and swaps without a preview, and write in EXPERIENCE.md that only the tier list previews in place.
+
+  Recommended: (a). The tier-list spec already ruled that an invisible target makes the view unusable, and the swap and group tiles follow the same inspection contract. The preview is self-contained (it reads `useInspectionTargetId` and writes nothing), so it can move without new state. [`ui/src/containers/GroupsView/GroupsView.tsx:204-216`, `ui/src/containers/SwapsView/SwapsView.tsx:189-201`, `ui/src/containers/TierListView/TierListView.tsx:282`]
+- [ ] [Review][Decision] **The four near-copies of the agent-view tile have already drifted apart.** `SwapTile`, `TierTile`, `GroupTile` and F5's `SuggestionRow` each re-declare the same parts:
+  - `itemOf`, `renderableOf` and `isUnknownCard`;
+  - the five-verb button;
+  - the unknown-target release effect;
+  - the unknown → named → loading placeholder ladder.
+
+  Groups and tiers also share `cardIdsOf` verbatim. The comments call these copies "verbatim", but they now differ:
+  - the width fix landed in one stylesheet of the three (decision above);
+  - the `cardId === ''` guard is live in swaps, dead in tiers and removed in groups (patch below);
+  - titles are trimmed in groups but not in tiers (patch below).
+
+  Every later fix has to find each copy by hand. Options:
+  - (a) Extract a shared tile (button, verbs, release effect, ladder) with slots for the label and the badge, and a shared module for the untrusted-item helpers.
+  - (b) Extract only the helpers, and the release effect as a hook, and keep the JSX in each view.
+  - (c) Keep the copies, and make each header name its siblings so a fix reaches all of them.
+
+  Recommended: (b). It removes the copies whose behaviour has drifted (the gates and the release valve) without folding three different tile layouts into one component with slots. [`ui/src/containers/TierListView/TierListView.tsx:86`, `:146-161`, `:195-200`; `ui/src/containers/SwapsView/SwapsView.tsx:80`, `:128-135`, `:175-180`; `ui/src/containers/GroupsView/GroupsView.tsx:92`, `:136-151`, `:196-201`]
+- [ ] [Review][Decision] **The pill's announcement policy leaves two cases unruled.** The announcement is keyed on the connection status and nothing else (`ConnectionPill.tsx:164-171`):
+  - **Behind an open agent view:** UX-DR45 lists the pill as a live region, and EXPERIENCE.md's deck-refetch row rules that "no announcement fires from behind a modal". `DeckAnnouncer` follows that rule by gating on `useAgentViewIsOpen()`. The pill has no such gate, so a reconnect or a disconnect speaks while a view is open. Neither file says whether connection status is exempt.
+  - **The first connect on every cold load:** the `seen: null` sentinel silences only the first render, whose status is `'reconnecting'`. The first `reconnecting → live` change then announces "Connected" on every page load, usually before the deck name has arrived. The header's own reason for the sentinel (not to announce "before it has failed at anything") argues against this too. `ConnectionPill.test.tsx:512-517` pins it as an ordinary transition.
+
+  Options:
+  - (a) Add `DeckAnnouncer`'s modal gate, and treat the first `reconnecting → live` as part of the mount silence.
+  - (b) Keep speaking behind the modal and write that exemption into EXPERIENCE.md (a lost connection matters inside a dialog too), and silence the first connect.
+  - (c) Keep both behaviours, and write both into EXPERIENCE.md.
+
+  Recommended: (b). Losing the backend is news wherever focus is, while "Connected" on every page load is noise. Silencing the first connect is one more term in the capture's condition. [`ui/src/containers/ConnectionPill/ConnectionPill.tsx:155-171`]
+- [ ] [Review][Decision] **A one-copy swap reads "1 copies".** The label is always `` `${word} · ${qty} copies` ``, following `contracts.py`'s `SwapItem` docstring ("render as the literal "Out · N copies""). In singleton formats nearly every swap is one-for-one, so the common case shows "OUT · 1 COPIES". `DeckAnnouncer/copy.ts` does give "1 card" a singular, citing `ManaCurve/copy.ts`'s precedent, so the app has no single plural rule. Options:
+  - (a) Render "1 copy" for exactly one, and amend the `SwapItem` docstring. The docstring is wire-visible, so regenerate the OpenAPI types too.
+  - (b) Keep the literal, and record in `SwapsView.tsx` why the swap label does not follow the announcer's precedent.
+
+  Recommended: (a). It fixes the grammar of the common case, and zero still reads "0 copies" either way. [`ui/src/containers/SwapsView/SwapsView.tsx:182-186`]
+- [ ] [Review][Decision] **Comments cite deleted gates.** 32 citations in this group name 10 `ui/tests` files that commit `e584980` removed:
+  - `token-usage.test.ts` (9), `shell.test.ts` (5), `keyboard-floor.test.ts` (4)
+  - `wire-contract.test.ts` (3), `empty-push-copy.test.ts` (3)
+  - `deck-announcement-copy.test.ts`, `copy-rules.test.ts` and `connection-pill-copy.test.ts` (2 each)
+  - `pin-announcement-copy.test.ts` and `copy-tails.test.ts` (1 each)
+
+  The comments describe these as gated:
+  - the backend-name ban behind the `PushedSwap`, `PushedTier` and `PushedGroup` aliases;
+  - the one shared empty-push sentence (the `kind` prop docs in all three views);
+  - the pill's and the announcer's copy. The "NO IMPORTS" `copy.ts` headers exist so that `ui/tests` can import them, and no `ui/tests` file does now;
+  - `ConnectionPill/copy.ts`'s `RETRIES_QUIETLY` mirror, which "fails `copy-tails.test.ts`". `components/StatePanel/states.test.ts:110` still pins the coupling;
+  - the full-window fixed-layer guard that `SkipLink.css` reasons against.
+
+  Options: the same as F4's. Recommended: the F1/F3/F4/F5/F6 ruling. In this group, the `wire-contract` alias ban is the one most worth restoring as a real check, because three files name their types around it.
+- [ ] [Review][Patch] **A swap tile's accessible name leaves out the card.** The only text in the `<button>` is the label, and the image is `alt=""`. So a screen reader reads every tile as "Out · 2 copies" or "In · 2 copies", and the user cannot tell which cards are traded. The card detail that would say it sits behind the scrim. `TierTile` and `GroupTile` add a visually hidden `frontFaceName` span for exactly this reason. Add the same span after the label, and correct the header's claim that the label is "what a screen reader calls the control". `SwapsView.test.tsx:357` queries by the label alone and will need the name added [`ui/src/containers/SwapsView/SwapsView.tsx:141-146`, `:203`]
+- [ ] [Review][Patch] **No tile test covers a failed image.** None of the three view suites fires `error` on a tile `<img>`. `TierListView.test.tsx:594-606` fails only the preview's image, and `App.test.tsx:6132-6336` never fails one. If the `art === 'failed'` arm were dropped from any tile, a failed image would leave that tile on the loading well, and every test would pass. In each suite, fire `error` on one tile image and assert three things: the `<img>` is gone, the named placeholder shows the cached name, and the tile is still a button (the arrangement of `SuggestionsView.test.tsx:350`) [`ui/src/containers/GroupsView/GroupsView.tsx:230`, `ui/src/containers/SwapsView/SwapsView.tsx:211`, `ui/src/containers/TierListView/TierListView.tsx:229`]
+- [ ] [Review][Patch] **No tile test covers a flipped face.** Every tile `src` assertion runs after `resetFaces()`, so at face 0. The only test that seeds the faces store, `TierListView.test.tsx:578-592`, asserts on the preview. If any tile passed `undefined` for `face`, it would show the front face while the grid shows the back, and every test would pass. In each suite, seed `faces: { '<id>': 1 }` and assert that the tile's `src` ends in `?face=1` [`ui/src/containers/GroupsView/GroupsView.tsx:246`, `ui/src/containers/SwapsView/SwapsView.tsx:227`, `ui/src/containers/TierListView/TierListView.tsx:245`]
+- [ ] [Review][Patch] **No test asserts the preview's own hydration request.** The tileless-pin test (`TierListView.test.tsx:622-639`) forces the outcome with `seedUnknown`, and every `cardCalls()` test renders with no pin. If `TierPreview`'s hydration effect were deleted, a pin carried over from another surface would show no name, cost or type, and a dead pin would never be released. Every test would still pass. With an empty cache and a pin outside the push, assert that `cardCalls()` contains `/api/cards/<id>` before seeding the settle [`ui/src/containers/TierListView/TierListView.tsx:298-300`]
+- [ ] [Review][Patch] **`TierListView` still describes the blank-id path that `cardIdsOf` removed.** `cardIdsOf` now filters out blank and non-string ids before any tile mounts. So:
+  - The header says a bad id "degrades … through `hydrateCard('')`'s existing terminal refusal". That is stale: a non-blank bad id still degrades, but through its own hydration.
+  - `TierTile`'s `|| cardId === ''` can never be true. `GroupTile` removed the same guard for this reason and says so, and `TierPreview`'s comment calls the guard "reused".
+  - `cardIdsOf`'s "the numeral and the strip read one list" was copied from groups. A tier row has no numeral.
+  - The hydration effect's "after a malformed tier heals (it cannot; but …)" contradicts itself. `GroupsView` has the corrected wording.
+
+  Delete the dead guard and correct the four comments [`ui/src/containers/TierListView/TierListView.tsx:59-61`, `:143-144`, `:187-189`, `:284-286`, `:424-426`]
+- [ ] [Review][Patch] **Tier names and notes are not trimmed, but group titles and rationales are.** `GroupsView.titleOf` trims so that "'  Ramp  ' renders as 'Ramp'", to match the store's trim of the payload-level title. `TierListView.nameOf` and `noteOf` blank-check the trimmed value but return the raw one, and the raw name also goes into the row's key. The header claims "the same untrusted-item discipline, field for field". Return the trimmed value, as groups do [`ui/src/containers/TierListView/TierListView.tsx:114-131`]
+- [ ] [Review][Patch] **Two more comments miscount the live regions.**
+  - `ConnectionPill.tsx` calls its region "the app's SECOND polite live region (UX-DR45 — which authorises three: this one, the agent-view heading and the pin announcement)". That list leaves out `DeckAnnouncer`.
+  - `TierPreview` says "`App.test.tsx` pins the census at three, exhaustively". But the preview exists only while a view is open, and `DeckAnnouncer.tsx` counts four regions then.
+
+  Make the counts agree with the census, or drop the number (F5's patch) [`ui/src/containers/ConnectionPill/ConnectionPill.tsx:241-244`, `ui/src/containers/TierListView/TierListView.tsx:267-268`]
+- [ ] [Review][Patch] **`SkipLink` says the keyboard floor admits two document Escape listeners.** It names them as `CardDetail`'s bubble listener and the agent view's capture listener, "the two the keyboard floor admits". But `ConnectionPill` registers a document `keydown` listener for its whole lifetime, and `AgentViewsNav`'s History popover registers one while it is open (`ConnectionPill.tsx:121-125` says so). The claim that `SkipLink` adds none of its own is still true; only the count is wrong. Drop the count [`ui/src/containers/SkipLink/SkipLink.tsx:86-88`]
+- [ ] [Review][Patch] **`focusHome`'s header says it has two callers, both in event handlers.** It says "Two callers need the identical four lines" (`CardDetail` and `SkipLink`), and that "both call sites are event handlers where a throw would surface as a broken control". The callers are now:
+  - `CardDetail`;
+  - `SkipLink`, twice;
+  - `AgentView`, three times (the same header goes on to describe two of these);
+  - `App.tsx`'s surface-transition rescue.
+
+  `SkipLink`'s withdrawal hand-off and `App.tsx`'s rescue run from effects, not event handlers. Describe the callers by role, without a count [`ui/src/containers/focusHome.ts:6-15`, `:82-90`]
+- [ ] [Review][Patch] **Line citations have drifted.** `DeckAnnouncer.tsx` cites `ConnectionPill.tsx:86-109` as the template for its render-time capture. Those lines hold `DOT_CLASS` and the first lines of the component; the capture itself is at `:148-171`. `GroupsView.tsx` cites `EXPERIENCE.md:94` four times for the group-section row, which is now at `:96`. In this group, 56 lines carry DESIGN.md or EXPERIENCE.md line citations and 30 carry source line citations. Cite section, symbol or component names instead (F1's patch) [`ui/src/containers/DeckAnnouncer/DeckAnnouncer.tsx:152`, `ui/src/containers/GroupsView/GroupsView.tsx:44`, `:51`, `:256`, `:327`]
+- [ ] [Review][Patch] **The revealed tooltip covers the top of the pill's focus ring.** The tooltip's bottom edge is placed "a few pixels INSIDE the pill's top" on purpose, and the tooltip is an opaque fixed box painted after the pill. The pill's outline is drawn `--focus-ring-offset` outside its box, so when keyboard focus reveals the tooltip, the tooltip hides the ring's top band. The overlap also rests on a hand-estimated "~31px" pill height. Keep the bridge for the pointer, but move the overlap clear of the ring (for example, extend the bridge by the ring's width plus its offset). Check it in a real browser [`ui/src/containers/ConnectionPill/ConnectionPill.css:186-189`, `:211`]
+- [ ] [Review][Patch] **The pill renders `deckName` where its comment says `named`.** The comment says `named` is "Computed once and used for the render, the accessible name and the announcement alike, so the three can never disagree". But the JSX renders `{deckName}` inside the `named === null` branch. The two values agree today. Render `named`, so the claim holds by construction [`ui/src/containers/ConnectionPill/ConnectionPill.tsx:143-145`, `:222`]
+- [ ] [Review][Patch] **`SkipLink.css` says every clipped property is undone, but `white-space` is not.** `styles/visually-hidden.css:42` sets `white-space: nowrap`, and the `:focus-visible` reveal does not reset it. Today's label is short enough to hide the miss. Undo it as well, or narrow the claim [`ui/src/containers/SkipLink/SkipLink.css:49-52`]
+- [ ] [Review][Patch] **`DeckAnnouncer` says the pill's text never goes stale, but it can.** The pill's announcement includes the deck name. After a deck switch or rename, the region still holds the old deck's name, readable in browse mode. That is by design, since a name change alone must not announce. But `DeckAnnouncer.tsx:244-245` cites the pill as "a current-state reading that never goes stale". Correct the comparison [`ui/src/containers/DeckAnnouncer/DeckAnnouncer.tsx:244-245`, `ui/src/containers/ConnectionPill/ConnectionPill.tsx:160-162`]
+- [ ] [Review][Patch] **Group titles are not headings.** DESIGN.md sets the title in `{typography.heading}`, but it renders as a `<span>`, so a screen-reader user cannot move between groups by heading. The view's own title is the dialog's `h2`. Render the group title as an `h3`, with the count still beside it [`ui/src/containers/GroupsView/GroupsView.tsx:292-295`]
+
+**Rejected**
+
+- `false` — the tier letter is `aria-hidden`, so a screen reader never hears the rank. This is deliberate. The wire refuses a blank `name` because the name is "the accessible carrier of rank" (`contracts.py`), and the chip renders the name as text.
+- `false` — `TierPreview` keeps fetching images while it is hidden below 1100px. Its `src` is the same URL as the tile thumbnail it previews, so the request is a warm browser-cache hit. Only a pin from another surface could miss the cache, and that costs one image.
+- `false` — an empty deck name renders "Connected — ". `create_deck` and `update_deck` refuse a blank name (`deck_management.py:344`).
+- `low` — a flapping socket announces every flip. The socket loop's exponential backoff limits how often that happens, and coalescing the announcements would need timers.
+- `low` — the fixed pill may cover the bottom of the left column at the end of a scroll (WCAG 2.4.11). This is unverified: it depends on the column's padding at the scroll end, and settling it needs a check in a real browser. If it is real, the pill covers only part of the content, which 2.4.11 allows.
+- `low` — `GroupTile`'s "×N" joins its accessible name without saying "in this deck". `CardTile` names its badge under the same recorded rule, and a phrase giving the meaning would be new copy.
+- `low` — a refused `focusHome` leaves its `once` blur listener attached. There is at most one per refusal, it removes the same attribute that a later call sets, and no heading carries an authored `tabindex`.
+- `not a defect` — the cold-open budget, bundle weight, selector granularity and test design are decided in `App.tsx`, `state/`, the harness and the suites (intent-alignment). They are noted above for step 4 and T1.
 
 ## Summary
 
