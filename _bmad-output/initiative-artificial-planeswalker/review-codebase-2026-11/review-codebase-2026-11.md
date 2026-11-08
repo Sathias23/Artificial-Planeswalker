@@ -79,7 +79,7 @@ One run per group, in a fresh session each. Say: *"run code review, no-code, on 
 | F2 | UI state, part 2 | `ui/src/state/` second half (`agentView.ts`, `deck.ts`, `cards.ts`) | ~2,700 | `HISTORY_CAP` retention, revisit semantics, derived-state duplication | [x] |
 | F3 | UI components | `ui/src/components/` | ~3,000 (split if over) | Accessibility, duplicated presentational patterns, CSS token use | [x] |
 | F4–F7 | UI containers | `ui/src/containers/`, split into four groups of about 3,000 lines by folder | ~12,100 | Re-render and request storms, cold-open cost (the release-gating budget), data fetching in components | [x] |
-| F8 | UI shell and styles (quick) | `ui/src/App.tsx`, `main.tsx`, `index.css`, `ui/src/styles/` | ~1,200 | Token drift from DESIGN.md, global CSS | [ ] |
+| F8 | UI shell and styles (quick) | `ui/src/App.tsx`, `main.tsx`, `index.css`, `ui/src/styles/` | ~1,200 | Token drift from DESIGN.md, global CSS | [x] |
 
 Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder when each run starts; record the exact file list in that run's Code Review block.
 
@@ -1521,6 +1521,68 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `low` — `GroupTile`'s "×N" joins its accessible name without saying "in this deck". `CardTile` names its badge under the same recorded rule, and a phrase giving the meaning would be new copy.
 - `low` — a refused `focusHome` leaves its `once` blur listener attached. There is at most one per refusal, it removes the same attribute that a later call sets, and no heading carries an authored `tabindex`.
 - `not a defect` — the cold-open budget, bundle weight, selector granularity and test design are decided in `App.tsx`, `state/`, the harness and the suites (intent-alignment). They are noted above for step 4 and T1.
+
+### 2026-11-09 — F8 UI shell and styles
+
+**Code review complete.** 4 `decision-needed`, 6 `patch`, 0 `defer`, 0 rejected.
+
+- **Group:** F8, the last group of step 2. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change to these files up to `01299e7`).
+- **Files (9 files, 1,210 lines):** `ui/src/App.tsx` (270), `ui/src/main.tsx` (10), `ui/src/index.css` (82), and under `ui/src/styles/`: `tokens.css` (525), `surfaces.ts` (76), `surfaces.test.ts` (79), `card-geometry.css` (66), `fonts.css` (59), `visually-hidden.css` (43). Read during triage: `state/formatCheck.ts` (`clearFormatCheck`, `loadFormatCheck`), `FormatCheck.tsx`'s one branch, `state/systemState.ts`'s `useSystemState`, EXPERIENCE.md's format-check and deck-refetch rows, what is left of `ui/tests/`, `ui/tests/lint-gates.test.ts`'s iteration-count case, `.stylelintrc.json`, and every `visually-hidden`, `pointer-events` and focus-ring use under `ui/src/`.
+- **Mode:** no-code, quick; one lens (none failed). Triage: leave as action items.
+- **Overlap:**
+  - The `App` subscription patch is the root half of the architecture report's F8. F2's `seedDeckCards` patch and F4's `CardTile` memo patch are the other halves. Fix the three together.
+  - The dead-gate decision is the F1, F3, F4, F5, F6 and F7 decision, for this group's files. Rule on all seven together. The reduced-motion and offline-asset decisions are split out of it because each guards a user-facing requirement, not just a comment.
+  - The citation patch is F1's "cite symbols, not lines" patch (and F4–F7's). Fix them together.
+  - The focus-ring decision overlaps F6's option (b), forced colours as an app-wide policy. Both decide what `index.css` owns globally.
+- **Handed on from earlier groups, answered here:**
+  - **Bundle weight (F5, F7):** `App.tsx` imports all four agent-view bodies statically, so the build is one JS chunk (about 250 KB, uncompressed) and one stylesheet (about 36 KB). Lazy-loading the four bodies would take them off the cold-open path. Whether that is worth it on a localhost load is a step 4 call, measured with `scripts/cdp_harness.py budget` (B13). Not raised as a finding.
+  - **Format-check trigger (F1, F6):** one `loadFormatCheck` per settled `detail`, with a generation guard against stale writes. The request count holds, but the clear between requests removes the panel (patch below).
+- **What holds:**
+  - `useSystemState`, `useDeckState` and `useAgentConnection` are each mounted once, in `App`, as their headers require. The surface precedence is read from `surfaceOf`, never re-derived.
+  - The empty-deck and booting arms make no request and draw no image, so a cold open's first frame is empty rather than the Welcome surface.
+  - `index.css`'s box-sizing reset and `body` margin are the only global element rules. No stylesheet outside `tokens.css` declares a custom property today (unenforced; decision below).
+  - Every motion override in `tokens.css` matches its component selector today (`.card-tile-frame:hover`, the flip classes, `.agent-view[data-entering]`, `.app-shell-identity[data-updating]`, `.card-tile-quantity[data-flashed]`).
+  - `fonts.css` loads only the bundled Space Grotesk file. The one `https` string in these files is a licence URL inside a comment.
+
+- [ ] [Review][Decision] **The reduced-motion overrides depend on selector text in other files, and nothing checks it now.** `tokens.css` neutralises motion for `prefers-reduced-motion: reduce` by repeating six component selectors with `!important`. Its comments say a guard "compares selector TEXT" and turns the suite red on a mismatch, but that guard was `tests/token-usage.test.ts`, deleted in `e584980`. `tests/tokens.test.ts` checks the motion token values only. So renaming `.card-tile-frame`, `.agent-view` or the flip classes would silently bring back the 1.06 scale, the 8px rise or the 3D flip for reduced-motion users. jsdom does not evaluate media queries, so no component test can notice. The cross-file design is also why `!important` is needed: `tokens.css` loses on source order. Options:
+  - (a) Move each `@media (prefers-reduced-motion: reduce)` override into the component stylesheet beside the rule it cancels. Same specificity plus later source order wins without `!important`, and the token layer stops naming component classes.
+  - (b) Keep the overrides in `tokens.css`, and check them in a real browser with emulated reduced motion through the CDP harness.
+  - (c) Keep them, and reword the comments to say the match is held by review only.
+
+  Recommended: (a). It removes the coupling instead of guarding it, and it drops the `!important`s. Check each moved override once in a real browser with reduced motion emulated. [`ui/src/styles/tokens.css:373-397`, `:416-424`, `:475-477`, `:497-503`, `:522-524`]
+- [ ] [Review][Decision] **The offline guarantee for fonts and assets is no longer enforced, but the comments say it is.** `fonts.css` says `tests/fonts.test.ts` "fails the build on any external reference anywhere in the committed bundle", and `tokens.css` relies on "the bundle URL scan". `fonts.test.ts` is gone. `no-scryfall-hosts.test.ts` bans only Scryfall hosts, and `.stylelintrc.json` has no URL rule. So a Google Fonts `@import url('https://…')` or an `src: url('https://…')` passes every gate, which breaks NFR-06 and UX-DR2. Options:
+  - (a) Add stylelint's `function-url-scheme-allowed-list` (no `http` or `https`) and correct both comments.
+  - (b) Widen `no-scryfall-hosts.test.ts` into a scan of the built bundle for any external URL, and correct both comments.
+  - (c) Reword both comments to say the guarantee is held by review only.
+
+  Recommended: (a). It is one config line, it fails at the source rather than after a build, and it covers every stylesheet. [`ui/src/styles/fonts.css:13-15`, `ui/src/styles/tokens.css:62-64`]
+- [ ] [Review][Decision] **The rest of this group's comments cite deleted gates.** The citations:
+  - `App.tsx:24-26` cites `keyboard-floor.test.ts` for "one module writes `.tabIndex`". It holds today (`focusHome.ts` only).
+  - `App.tsx:81-82` and `visually-hidden.css:10-12` cite `shell.test.ts` and `posture.test.ts` for "a container may not reach the network". `eslint.config.js` has no import restriction that replaces them.
+  - `tokens.css:25-27`: no other stylesheet may declare a custom property. It holds today.
+  - `tokens.css:60`, `:134-135` cite `findRoleWithoutCompanions` and `findUnpairedNumericRole`. Every type-role block has its companions today.
+  - `tokens.css:100-102`, `:205-207`, `:214-215`, `:237-238`, `:262-263`, `:284` and `:467-468` cite `token-usage.test.ts`.
+  - `card-geometry.css:37-39`: the `CARD_SHAPED` allowlist "is a GATE".
+  - `surfaces.ts:14-15`, `:22-24` (see the patch below).
+  - One rule is now held by nothing: `tokens.css:331-334` says nothing loops under any setting, and `lint-gates.test.ts:543-548` shows that stylelint misses a numeric iteration count in the `animation` shorthand. Only the deleted `token-usage.test.ts` caught it.
+
+  Options: the same as F1's and F3's. Recommended: the F1/F3/F4/F5/F6/F7 ruling. If it is (b), restore real checks for the cheap ones: a stylelint rule banning custom-property declarations outside `tokens.css`, a `declaration-property-value-disallowed-list` entry banning `var(--radius-card)` outside `card-geometry.css`, and a ban on numeric iteration counts. `lint-gates.test.ts:546-548` also cites the deleted file (T1).
+- [ ] [Review][Decision] **The focus ring is written out 15 times, and `index.css` has no default.** The same `outline: var(--focus-ring-width) solid var(--focus-ring)` appears in 14 stylesheets (`CardDetailChrome.css` twice), almost always with `outline-offset: var(--focus-ring-offset)`. DESIGN.md requires a visible `{components.focus-ring}` on every interactive element, so a new control without its own rule ships without a ring. `index.css` already owns global rules for the same reason (box-sizing). Options:
+  - (a) Add one low-specificity `:where(:focus-visible)` rule to `index.css`, and keep only the variants (the tile's offset-0 ring, the ring over art).
+  - (b) Keep the per-component rules, and add a stylelint or test check that every interactive stylesheet declares one.
+  - (c) Keep them as they are.
+
+  Recommended: (a). It makes the requirement hold by default and deletes about a dozen copies. Decide it together with F6's forced-colours option (b), since both set what `index.css` owns. Check the rings in a real browser afterwards. [`ui/src/index.css`, `ui/src/components/Footer/Footer.css`, `ui/src/containers/CardDetail/CardDetailChrome.css`, and 12 more]
+- [ ] [Review][Patch] **Every agent edit removes the format-check panel until the new report arrives.** The effect is keyed on `detail`, which changes on every settled refetch. On each one the cleanup runs `clearFormatCheck()`, which resets the slice to `INITIAL_FORMAT_CHECK_STATE`. `loadFormatCheck` then writes `{status: 'loading'}`, and `FormatCheck` draws nothing unless the status is `'report'`. So after every `deck_changed` the panel at the bottom of the right column disappears for one round trip and comes back, and the column reflows. This breaks EXPERIENCE.md's "Right column, always present" (format-check row), "never a blank or skeleton teardown of a populated view" (deck-refetch row) and "Blank screens are never shown after first paint". `App.test.tsx:3900` and `:3937` count requests only, so nothing checks that the panel survives a refetch. For a refetch of the same deck id, keep the old report on screen until the new one lands (bump the generation, do not reset the state). Still clear when the id changes, the deck empties or the deck leaves the screen. Add a test that the panel stays rendered across a refetch [`ui/src/App.tsx:100-107`, `ui/src/state/formatCheck.ts:154-157`, `:201`]
+- [ ] [Review][Patch] **`App` re-renders on system-store writes it never reads.** `useSystemState()` returns `useSystemStore()` with no selector. `App` reads only `panel`, `connection` (through `surfaceOf`) and `decks`, but it re-renders, and with it every unmemoised child, on every write: each `applyInstanceId` after a `'live'`, and each poll write, which carries a new `decks` array. Select the three fields with `useShallow`, keeping the one-mount poller. This is the root half of the architecture report's F8 [`ui/src/App.tsx:57`, `ui/src/state/systemState.ts:244`]
+- [ ] [Review][Patch] **`styles/surfaces.ts` is dead code.** Nothing but `surfaces.test.ts` imports `SURFACE_RAMP`, `stepsExactlyOne`, `nextSurface` or `surfaceVar`. The header calls it "a MECHANISM PLUS ITS PROOF" checked against `tokens.css` "IN THIS ORDER" by `token-usage.test.ts`, which is deleted, so the copy can drift unnoticed. Delete the module and its test, and the pointer to it in `tokens.css` [`ui/src/styles/surfaces.ts`, `ui/src/styles/surfaces.test.ts`, `ui/src/styles/tokens.css:81-82`]
+- [ ] [Review][Patch] **`visually-hidden.css` and `index.css` name three consumers, and the class has eight.** Both list `CardDetail`, `ManaCurve` and `SkipLink`. It is also used in `AgentViewsNav`, `ConnectionPill`, `DeckAnnouncer`, `GroupsView` and `TierListView`. The file also says only the `CardDetail` announcement needs `pointer-events: none`, but `ConnectionPill`'s and `DeckAnnouncer`'s live regions are the same kind of 1px region with no such rule. Describe the consumers by role, without a list, and make the three live regions follow one rule: drop `CardDetail`'s if `clip-path: inset(50%)` already removes hit-testing (check in a real browser), or add it to the other two [`ui/src/styles/visually-hidden.css:3-6`, `:26-30`, `ui/src/index.css:31-33`, `ui/src/containers/CardDetail/CardDetailChrome.css:218-220`]
+- [ ] [Review][Patch] **Line citations and counts in the shared styles have drifted.** `card-geometry.css` cites `DESIGN.md:362` for the card-geometry sentence (now at `:673`; `:362` is frontmatter) and `DESIGN.md:389` for the loading well (now a tier-list comment). It says "Four components draw this rectangle", and `index.css` lists four; `card-shape` is used in seven (`CardPlaceholder`, `CardDetail`, `CardTile`, `GroupsView`, `SuggestionsView`, `SwapsView`, `TierListView`). `index.css` still calls the app "the placeholder shell". Cite section names and describe consumers by role (F1's patch) [`ui/src/styles/card-geometry.css:4`, `:11`, `:44`, `ui/src/index.css:12-13`, `:26-28`]
+- [ ] [Review][Patch] **The left slot's comment sits inside the ternary's condition.** After formatting it reads `surface.kind ===` / `'booting' /* six-line comment */ ? null : surface.panel === 'no-active-deck' ? …`, so the booting arm is hard to find and easy to break in an edit. Move the choice into a small function with early returns, each comment beside its arm [`ui/src/App.tsx:173-195`]
+
+**Rejected**
+
+None.
 
 ## Summary
 
