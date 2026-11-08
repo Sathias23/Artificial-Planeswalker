@@ -1110,6 +1110,97 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `not a defect` — accessibility, token values and container duplication live largely outside this group's files (intent-alignment). They are noted above for F4–F8.
 - `not a defect` — the intent's linter exclusion names only ruff, Prettier and mypy, while stylelint and jsx-a11y also gate part of F3's focus (intent-alignment). No finding here re-raises what those gates enforce.
 
+### 2026-11-08 — F4 UI containers, part 1: card surfaces
+
+**Code review complete.** 4 `decision-needed`, 15 `patch`, 0 `defer`, 10 rejected.
+
+- **Group:** F4. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change under `ui/src/containers/` up to `09f3821`).
+- **Files (18 files, 3,328 lines of non-test source; slightly over the ~3,000 guideline, reviewed in one run as the user-defined group):**
+  - `CardTile/CardTile.css` (319), `CardTile.tsx` (562), `imageUrl.ts` (112), `QuantityBadge.css` (93)
+  - `CardDetail/CardDetail.css` (96), `CardDetail.tsx` (603), `CardDetailChrome.css` (220), `copy.ts` (107), `deckMemory.ts` (45)
+  - `CardGrid/CardGrid.css` (86), `CardGrid.tsx` (146), `copy.ts` (50)
+  - `FlipControl/copy.ts` (44), `FlipControl.css` (233), `FlipControl.tsx` (170)
+  - `frontFaceCost.ts` (179), `imagedFaces.ts` (100), `useCardArt.ts` (163)
+
+  All paths are under `ui/src/containers/`. `focusHome.ts` (imported by `CardDetail`) is left to F5–F7. The six colocated suites (2,844 lines) were read as evidence only; T1 covers them. Read during triage: `ui/src/state/inspection.ts`, `cards.ts` and `faces.ts`, `App.tsx`'s mounts, and `cards.db` (one read-only query).
+- **Mode:** no-code, thorough; lenses blind-hunter, edge-case-hunter, verification-gap, intent-alignment (none failed). Triage: leave as action items.
+- **Overlap:**
+  - The dead-gate decision below is F1's and F3's decision in this folder. Rule on all three together.
+  - The citation-drift patch is F1's "cite symbols, not lines" patch. Fix them together. It also needs `inspection.ts:43-54` (F1's file) corrected.
+  - F3's blank-string patch already lists `CardDetail.tsx:143`, `CardTile.tsx:220` and `frontFaceCost.ts:66`. Not re-raised.
+  - The memo patch is the tile half of research F8. F8 also needs `App`'s whole-store subscription and `seedDeckCards` (F2's open patch). Consolidate in step 4.
+- **Outside this group's files (intent-alignment), for step 4:** the cold-open budget is measured by `scripts/cdp_harness.py budget` (B13) over `App.tsx`'s boot (F8) and the store seeding (F2). Image throughput is the backend pacer's (B12). The thumbnail request patterns of the agent views run through F4's `useCardArt`, `cardImageUrl` and `frontFaceCost`, but they live in F5–F7.
+- **What holds:**
+  - **AD-11:** every image goes through `cardImageUrl` to `/api/card-image/`, and `tests/no-scryfall-hosts.test.ts` still guards it. A failed face draws the named placeholder, never a broken-image glyph, and the two faces fail independently.
+  - **AD-12 hydration owner:** the panel's `hydrateCard` is the group's only component-started fetch, and `cards.ts` dedupes in-flight reads and terminal refusals. Deck cards arrive seeded `hydrated`, so the grid fetches no records.
+  - **Hover cost:** `useIsLiveTarget` returns a boolean per tile, so a hover re-renders the two tiles whose ring changed, not the grid.
+  - **Validity:** the flip control is a sibling of the tile's `<button>`, never inside it. `useCardArt` re-arms during render on a key change, so a stale `load` cannot mark the next card shown.
+  - **Split costs:** `frontFaceCost` splits before taking a cost verbatim, so no `' // '` reaches `ManaCost`. `cards.db` has 0 rows with an empty half.
+
+- [ ] [Review][Decision] **The detail panel starts a `size=large` fetch for every card the cursor crosses.** `src` binds straight to the inspection target (`CardDetail.tsx:496`, and `:516` for the back face of every flippable card, flipped or not). A sweep across a cold 99-tile grid starts up to 99 large requests (plus one per DFC). Each is a disk-cache miss that queues in the same backend pacer (`Semaphore(4)`, 0.1 s spacing) as the grid's own cold `normal` images. So a cursor moving during cold open slows the grid's first paint. The header's "each distinct card is fetched at most once" covers `hydrateCard` only, not the art. Options:
+  - (a) Hover intent: set the large `src` only once the target has held for about 150 ms. Meanwhile show the tile's `normal` URL, which the grid already has in the browser cache.
+  - (b) Always show the `normal` URL first and swap to `large` on settle, without a delay.
+  - (c) Mount the back face only after the first flip in the panel, alone or with (a) or (b).
+  - (d) Leave it, since AD-11 fetches only what the tab asks for and the pacer bounds the CDN rate.
+
+  Recommended: (a). It removes the sweep storm with no new request, and the panel never shows an empty well because the `normal` render is warm. (c) trades the warm flip for a cold fetch at the rotation midpoint, which the tile rejected for the same reason.
+- [ ] [Review][Decision] **Comments cite deleted gates.** 41 citations in this group name 9 `ui/tests` files that commit `e584980` deleted: `shell.test.ts` (13), `token-usage.test.ts` (9), `posture.test.ts` (5), `store-writes.test.ts` (3), `wire-contract.test.ts` (3), `empty-deck-copy.test.ts` (3), `copy-rules.test.ts` (2), `pin-announcement-copy.test.ts` (2) and `quantity-glow.test.ts` (1). Only `no-scryfall-hosts.test.ts` (2) survives. They describe as gated:
+  - the `CARD_SHAPED` split behind the three paired stylesheets (`CardTile.css`/`QuantityBadge.css`, `CardDetail.css`/`CardDetailChrome.css`, `FlipControl.css`);
+  - the one-door fetch posture (`useCardArt.ts`'s "`posture.test.ts`'s one-door list");
+  - the store-write ban (`CardTile.tsx:298`, `CardDetail.tsx:350`);
+  - the static flip label's attribute rule (`FlipControl.tsx`, `copy-rules.test.ts`);
+  - the three `copy.ts` headers' "NO IMPORTS is load-bearing", which existed for `ui/tests` importers that are gone.
+
+  Options: (a) reword each as a stated convention, naming what enforces it today, if anything; (b) restore the cheap halves as lint rules, then (a); (c) delete the citations. Recommended: the same ruling as F1 and F3. Here that is (a), plus the empty-deck literal test (patch below).
+- [ ] [Review][Decision] **Every flip control has the same accessible name.** `aria-label="Flip card"` is static on purpose (`FlipControl/copy.ts`, and no card data in a read-aloud attribute). But in a screen reader's button list on a deck with several DFCs, every entry reads "Flip card, toggle button", and the panel's copy reads the same as the tile's [`ui/src/containers/FlipControl/FlipControl.tsx:110`]. Options:
+  - (a) Add `aria-describedby`, pointing at the tile's caption id or the panel's name element. That needs a new optional prop on `FlipControl`.
+  - (b) Keep it, relying on DOM order (the control follows its tile).
+
+  Recommended: (a). The label stays static, the card data stays out of the copy module, and the description gives each control its card.
+- [ ] [Review][Decision] **A sideboard-only deck renders an empty list with no explanation.** `deckIsEmpty` is false for it, so `CardGrid` renders an empty `<ul>`. That announces "list, 0 items", which the header argues against, and the screen says nothing. The header calls it a named residue with no live population [`ui/src/containers/CardGrid/CardGrid.tsx:84-85`, `:126`]. Options:
+  - (a) Add a sideboard-only line to EXPERIENCE.md and `CardGrid/copy.ts`.
+  - (b) Render no `<ul>` when there are no tiles, and add no copy.
+  - (c) Leave it.
+
+  Recommended: (b). It removes the "0 items" announcement for the cost of one condition. The deck list beside the grid already shows the sideboard.
+- [ ] [Review][Patch] **Tabbing from a tile to its own flip control drops the inspection target for one commit.** `onBlur={() => clearFocused(cardId)}` and `onFocus` on the frame are separate dispatches. A user-initiated focus move runs a microtask checkpoint between `focusout` and `focusin`, so React commits the cleared state:
+  - the panel renders the hover or cold-open card;
+  - its `useCardArt` re-arms to `'loading'` on the way back, so the panel's art flashes the well.
+
+  The comments in `CardTile.tsx:356-362` and the test name claim the bubbling "keeps the tile's inspection target". `CardTile.test.tsx:669-686` checks only the end state. Skip the clear when `relatedTarget` is inside the frame. Test that the target never leaves the card across the move, for example with a store subscription that records every value [`ui/src/containers/CardTile/CardTile.tsx:364-370`]
+- [ ] [Review][Patch] **Esc while focus is on the Unpin button drops focus to `<body>`.** The document listener calls `clearPin()`, while the click path calls `releaseAndRefocus`. The Unpin button renders only while pinned, so Esc removes the focused element, and Tab restarts from the top of the page. This is the failure the click path's comment exists to prevent. When focus is inside the frame, Esc should hand it to the panel heading as the click does. Add a test in `CardDetail.test.tsx` [`ui/src/containers/CardDetail/CardDetail.tsx:375-385`, `:407-410`]
+- [ ] [Review][Patch] **The pin announcement names the front face while the panel shows the flipped one.** The capture calls `contentOf(readCardEntry(pinnedId))` with the default face 0. Deck cards are seeded `hydrated` (`cards.ts:194-208`), so `fromCard(card, 0)` returns `card_faces[0].name`. Pin a DFC flipped to its back, and the heading shows the back face while the live region says "Pinned — <front face>". The caption shows a third name, the combined one. The comment at `:310-314` blames the summary tier's combined name, which applies only to an unhydrated id. Read the pinned id's face index at capture, and correct the comment [`ui/src/containers/CardDetail/CardDetail.tsx:310-321`]
+- [ ] [Review][Patch] **The empty-deck sentence is pinned only against itself.** `CardGrid/copy.ts:8` and `:18-19` say `tests/empty-deck-copy.test.ts` parses the EXPERIENCE.md cell. That file is deleted. `CardGrid.test.tsx:200` and four `App.test.tsx` sites compare the rendered text with `EMPTY_DECK_LINE` itself, so rewording the sentence or losing the U+2014 passes every test. Add one rendered-output assertion against the literal, as F3's attribution patch does. The pin announcement already has one (`CardDetail.test.tsx:567`) [`ui/src/containers/CardGrid/CardGrid.test.tsx:200`]
+- [ ] [Review][Patch] **No test shows the detail panel's art as loaded.** Visibility depends on `data-loaded={frontArt === 'shown' …}` and `onLoad={onFrontLoad}` (and the back-face pair), and the image stays at `opacity: 0` until then. `CardDetail.test.tsx` fires only `error`, never `load`, and never reads `data-loaded` or checks for the well. Dropping `onLoad`, or binding the front's `data-loaded` to `backArt`, would hide every panel image and pass the suite. Mirror `CardTile.test.tsx:200-206` on `.is-front`, and add a load on `.is-back` to the flipped-face block [`ui/src/containers/CardDetail/CardDetail.tsx:481`, `:495`, `:508`, `:515`, `:519`]
+- [ ] [Review][Patch] **`settleIfCached` is never called by a test, and the comments say it can't be.** It is the only way out of `'loading'` for an image the browser finished before React listened, which is the warm-grid path. `useCardArt.test.ts:28-33`, the header at `useCardArt.ts:65-71` and `CardTile.test.tsx:41-47` call it unprovable in jsdom. But the hook returns it, and `renderHook` can call it with a stub node. Cover the four arms: `{ complete: true, naturalWidth: 300 }` gives `'shown'`, `naturalWidth: 0` gives `'failed'`, and `complete: false` and `null` stay `'loading'`. Then reword the comments [`ui/src/containers/useCardArt.ts:148-152`]
+- [ ] [Review][Patch] **The Esc listener's `isComposing` and key arms are untested.** `CardDetail.test.tsx:513-531` checks only that a plain Escape releases the pin. Removing `event.isComposing`, or loosening the key test, would release the pin on an IME-cancelling Esc in the agent view's input, or on any key, and every test would pass. Add `{ key: 'Escape', isComposing: true }` and `{ key: 'Enter' }` cases that keep `pinnedId` [`ui/src/containers/CardDetail/CardDetail.tsx:380`]
+- [ ] [Review][Patch] **The grid's `cost` and `typeLine` props reach no test.** They show only in a tile's named placeholder. `CardGrid.test.tsx` never fires `error`. Both props are strings, so swapping them, or dropping `typeLine=`, type-checks and passes. Render a grid card with both set, fire `error` on its `<img>`, and assert the placeholder's type line and pips [`ui/src/containers/CardGrid/CardGrid.tsx:136-137`]
+- [ ] [Review][Patch] **The panel's cold-open image has no fetch priority.** About 99 tile images mount eagerly at once, with no `loading` or `fetchPriority`. On HTTP/1.1 to localhost the browser sends six at a time, so the panel's cold `large` key waits behind most of the grid. Set `fetchPriority="high"` on the panel's front image. The tile comment's rejection of `loading="lazy"` does not cover this [`ui/src/containers/CardDetail/CardDetail.tsx:492-510`]
+- [ ] [Review][Patch] **Every deck refetch re-renders every tile.** `CardTile` is not memoised, and `CardGrid` maps a fresh `tiles` array on each new `boards` reference. Every agent-edit settle mints one, so all ~99 tiles re-run five hooks. Every prop is a primitive (`cardId`, `name`, `cost`, `typeLine`, `quantity`), so `React.memo` would limit a refetch to the rows that changed. This is the tile half of research F8, so fix it with that finding's store half [`ui/src/containers/CardTile/CardTile.tsx:226`, `ui/src/containers/CardGrid/CardGrid.tsx:126-139`]
+- [ ] [Review][Patch] **Moving the target between two DFCs in different face states plays the flip rotation in the panel.** `.card-faces` is one element across targets. `data-flipped` goes `'true'` → `'false'` with the transform transition still armed (`.card-faces[data-flipped]`). So a hover from a flipped DFC to an unflipped one rotates the panel, while both `src`s have already changed to the new card. Key the faces element on `targetId`, so a target change remounts and only a flip animates [`ui/src/containers/CardDetail/CardDetail.tsx:488-491`]
+- [ ] [Review][Patch] **The panel paints one frame without its art box on cold open.** `setDefaultTarget` runs in a passive effect, so the first commit has `targetId === null`. That frame shows the title with no art or text, and the next one pushes `DeckList` down by the art box. The header's "draws in full at first frame" (`:62`) holds only once a target exists. Reserve the art box while `targetId` is `null`, or correct the header [`ui/src/containers/CardDetail/CardDetail.tsx:351-358`, `:451`]
+- [ ] [Review][Patch] **Line citations have drifted, and two cite the wrong thing.**
+  - `CardTile.css:90` and `FlipControl.css:53` cite `AppShell.css:237` for `z-index: 20`; it is at `:274`.
+  - `CardDetailChrome.css:170` and `CardTile.css:152` cite `Footer.css:107`; the rule is at `:108`.
+  - `CardDetail.tsx:360` quotes `cards.ts:527`, but `cards.ts` has 325 lines.
+  - `FlipControl.tsx:46` cites `CardTile.tsx:86-92` and `inspection.ts:43-54` as restatements of "a flip is not an inspection". `CardTile.tsx` has no such passage, and `inspection.ts:43-54` still says the control sits inside the tile's `<button>` and stops propagation to it, the shape this group abandoned.
+
+  Cite symbols (F1's patch), and correct `inspection.ts`'s description.
+- [ ] [Review][Patch] **One comment block states the `react-hooks/refs` rationale twice.** `CardDetail.tsx:263-265` ("DESTRUCTURED, and that is a lint requirement…") and `:272-273` ("BOTH DESTRUCTURED, for `react-hooks/refs`…") say the same thing. Delete one [`ui/src/containers/CardDetail/CardDetail.tsx:263-273`]
+- [ ] [Review][Patch] **The second-change flash test cannot tell the two keyings apart, and its comment describes a defect that cannot occur.** With the effect keyed on `[flash.flashed]`, the first change's frame would fire on the same next frame that `[flash]`'s re-armed frame does. A second change can only land before that frame. So `CardTile.test.tsx:941-959` passes either way, and `CardTile.tsx:322-327` describes an early clear that never happens. Delete the test, or reword both to what keying on the object actually buys [`ui/src/containers/CardTile/CardTile.tsx:322-334`]
+
+**Rejected**
+
+- `false` — a single `requestAnimationFrame` can drop `data-flashed` before it paints. `setFlash` inside the frame callback is a default-lane update that React renders in a later task, after that frame's paint.
+- `false` — `'{2}{G} // '` trims to `'{2}{G} //'` and skips the split (two findings, top-level and face-level). `cards.db` has 0 rows with an empty half, and no face-level cost carries `' // '`.
+- `false` — a blank name leaves the tile's button unnamed. `CardTile` is mounted only by `CardGrid`, from the deck payload's `card.name`, and the corpus has 0 blank names.
+- `false` — a non-zero face index on a non-flippable card shows the back face's text. `flipCard` is reachable only from a rendered `FlipControl` (2 or more imaged faces), and a hydrated entry never downgrades (`hydrateCard` returns it as is, and `seedDeckCards` writes `hydrated`).
+- `low` — re-pinning straight to another printing with the same name is not re-announced. Real, but rare, and the fix adds a render or changes the copy.
+- `low` — when the target changes while keyboard focus is on the panel's flip control or oracle scroller, the control unmounts and focus drops. It needs a mouse hover while focus sits in the panel, and the fix is focus management on unmount.
+- `not a defect` — the blank-string helper copies (`given` ×2, `trimmedOrNull`). F3's patch already lists all three.
+- `not a defect` — cold open, re-render volume and image throughput are decided outside F4's files (intent-alignment). Noted above for step 4.
+- `not a defect` — the packet carries module source only, without tests, callers, the stores or the prior reviews (intent-alignment): all four were read during triage.
+
 ## Summary
 
 <!-- Written in step 4. -->
