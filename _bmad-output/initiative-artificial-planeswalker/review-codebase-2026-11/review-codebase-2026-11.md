@@ -77,7 +77,7 @@ One run per group, in a fresh session each. Say: *"run code review, no-code, on 
 | B13 | Build and maintenance scripts (quick) | `scripts/` except those in B3 and B6 | ~2,700 | `build_plugin.py` correctness, `migrate_*.py` safety, probe harnesses | [x] |
 | F1 | UI API and state, part 1 | `ui/src/api/` (hand-written files only), `ui/src/state/` first half | ~2,700 | Request deduping and cancellation, error states | [x] |
 | F2 | UI state, part 2 | `ui/src/state/` second half (`agentView.ts`, `deck.ts`, `cards.ts`) | ~2,700 | `HISTORY_CAP` retention, revisit semantics, derived-state duplication | [x] |
-| F3 | UI components | `ui/src/components/` | ~3,000 (split if over) | Accessibility, duplicated presentational patterns, CSS token use | [ ] |
+| F3 | UI components | `ui/src/components/` | ~3,000 (split if over) | Accessibility, duplicated presentational patterns, CSS token use | [x] |
 | F4–F7 | UI containers | `ui/src/containers/`, split into four groups of about 3,000 lines by folder | ~12,100 | Re-render and request storms, cold-open cost (the release-gating budget), data fetching in components | [ ] |
 | F8 | UI shell and styles (quick) | `ui/src/App.tsx`, `main.tsx`, `index.css`, `ui/src/styles/` | ~1,200 | Token drift from DESIGN.md, global CSS | [ ] |
 
@@ -999,6 +999,116 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `not a defect`: the extra focus areas live mostly outside F1's files (intent-alignment). Request dedupe is in `cards.ts`, the per-detail format-check trigger in `App.tsx`, and the panel decisions in `components/StatePanel/states.ts`. Noted for step 4; F3 and F8 cover the latter two.
 - `not a defect`: `formatCheck.fixtures.ts` is test-support data under `src/state/`. Only test files import it, so it is not bundled.
 - `not a defect`: `systemState.ts` has no colocated suite. It is exercised through `App.test.tsx`, which T1 reviews.
+
+### 2026-11-08 — F3 UI components
+
+**Code review complete.** 3 `decision-needed`, 8 `patch`, 0 `defer`, 12 rejected.
+
+- **Group:** F3. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change under `ui/src/components/` up to `64c18fe`).
+- **Files (33 files, 3,887 lines of non-test source; over the ~3,000 guideline, reviewed in one run rather than split, as instructed):**
+  - `AnalysisRow/AnalysisRow.css` (72), `AnalysisRow.tsx` (59)
+  - `AppShell/AppShell.css` (293), `AppShell.tsx` (244)
+  - `Badge/Badge.css` (155), `Badge.tsx` (49), `tones.ts` (21)
+  - `CardPlaceholder/CardPlaceholder.css` (133), `CardPlaceholder.tsx` (237), `copy.ts` (41)
+  - `DeckBadges/DeckBadges.css` (29), `DeckBadges.tsx` (88)
+  - `Footer/Footer.css` (112), `Footer.tsx` (61), `copy.ts` (86)
+  - `GroupHeader/GroupHeader.css` (45), `GroupHeader.tsx` (50)
+  - `ManaCost/ManaCost.css` (41), `ManaCost.tsx` (85), `parse.ts` (268)
+  - `ManaPip/ManaPip.css` (187), `ManaPip.tsx` (98)
+  - `Panel/Panel.css` (141), `Panel.tsx` (120)
+  - `StatChip/StatChip.css` (108), `StatChip.tsx` (79)
+  - `StatePanel/StatePanel.css` (140), `StatePanel.tsx` (148), `copy.ts` (201), `states.ts` (335)
+  - `Welcome/Welcome.css` (39), `Welcome.tsx` (42)
+  - `filled.ts` (80)
+
+  All paths are under `ui/src/components/`. The 15 colocated suites (2,755 lines) were read as evidence only; T1 covers them.
+- **Mode:** no-code, thorough; lenses blind-hunter, edge-case-hunter, verification-gap, intent-alignment (none failed; verification-gap found no gaps on the logic branches, only "other findings"). Triage: leave as action items.
+- **Overlap:**
+  - The dead-gate decision below is F1's decision in the component layer. Rule on both together.
+  - The comment-drift patch repeats F1's "comments hard-code counts and line numbers" patch. Fix them together.
+  - The blank-string helper patch spans F4–F7 files too (about fifteen copies, most in `ui/src/containers/`).
+- **Outside this group's files (intent-alignment), for F4–F8:** the composed accessibility (heading order, landmark nesting, the live-region inventory) is decided in `App.tsx` and the containers. Token values and contrast are in `ui/src/styles/tokens.css` (F8). Whether containers re-implement markup a primitive already provides is a container question.
+- **What holds:**
+  - **Token use:** stylelint (`ui/.stylelintrc.json`) holds every colour, spacing, radius, shadow, type, tracking and duration value to its token family. The only literals are the named geometry exceptions (452px, 1100px, z-index 20, 480px), each with a source comment. The single runtime-channel hatch is a name allowlist in `eslint.config.js`.
+  - **Accessibility:**
+    - Each `Panel` and `GroupHeader` is a named `<section>` with an `<h2>`.
+    - Cost pips are one `role="img"` with a spoken name, and the glyph inside is not announced twice.
+    - The decorative dot and the well are `aria-hidden`, and the Welcome hero has `alt=""`.
+    - The deck list has an explicit `role="list"` (the Safari list-style case).
+    - Footer links are persistently underlined, with a `:focus-visible` ring.
+    - Dark glyph contrast on every `--mana-*` fill is at least 6.5:1, computed from the one shipped theme.
+  - **Emptiness:** `filled()` is the one answer for node slots. The overlay and the analysis row both close the "a child returned null" gap with `:empty`.
+  - **Exhaustiveness:** `states.ts` and `CardPlaceholder` make a new wire token or variant a type error.
+
+- [ ] [Review][Decision] **Component comments cite deleted gates.** About 45 comments in this folder name 10 `ui/tests` files that commit `e584980` deleted: `shell.test.ts` (21), `token-usage.test.ts` (17), `copy.test.ts` (6), `copy-rules.test.ts` (4), `unknown-card-copy.test.ts` (3), `attribution.test.ts` (3), and one each for `posture`, `gate-geometry`, `fonts` and `copy-tails`. They describe as gated a set of rules that no gate now holds:
+  - the bare-`fr` grid-track ban (`AppShell.css:162`);
+  - no `hidden`/`clip` on the root elements and the scroller (`AppShell.css:175`);
+  - the one full-window fixed layer (`AppShell.css:268`);
+  - the presentation-only import posture of the primitives (`Panel.tsx:13`, `filled.ts`, `AppShell.tsx`, `StatePanel.tsx:85`);
+  - the closed token set (`declaredTokens.size`) and the paired-numeric-role check `findUnpairedNumericRole` (`DeckBadges.tsx:40`, `DeckBadges.css`). `eslint.config.js`'s style hatch also says its allowlist "moves together" with `RUNTIME_CUSTOM_PROPERTIES` in the deleted `token-usage.test.ts`;
+  - the "no imports, permanently" copy modules (`CardPlaceholder/copy.ts`).
+
+  Still enforced: `tests/tokens.test.ts` (token names against DESIGN.md), stylelint, and eslint's `COPY_BANS` and inline-style bans. Options:
+  - (a) Reword each citation as a stated convention, naming what enforces it today, if anything.
+  - (b) Restore the cheap halves as lint rules, then do (a) for the rest. Candidates are a stylelint `declaration-property-value-disallowed-list` entry for `overflow: hidden|clip` on the named roots, and `position: fixed` confined by file.
+  - (c) Delete the citations.
+
+  Recommended: the same ruling as F1's decision. For this folder that is (a), plus the attribution literal test (patch below). The layout rules here have no cheap lint form, except possibly the overflow ban.
+- [ ] [Review][Decision] **The footer attribution omits part of the Fan Content notice.** `Footer/copy.ts` renders DESIGN.md's sentence verbatim, ending "Not approved/endorsed by Wizards.". The repository's own `NOTICE:29-30` adds "Portions of the materials used are property of Wizards of the Coast. (c) Wizards of the Coast LLC.", which is the Policy's standard notice. The component calls itself a condition of public release [`ui/src/components/Footer/copy.ts:64-73`]. Options:
+  - (a) Add the clause to DESIGN.md and `ATTRIBUTION`. Check that it still fits one line at 1100px, because `ConnectionPill.css`'s footer clearance assumes a 37px single-line footer (`AppShell.css:51-56`).
+  - (b) Keep the short line, since the footer links the Policy and `NOTICE` carries the full text, and say so in `copy.ts`.
+
+  Recommended: (a). It is the Policy's own wording, it already ships in `NOTICE`, and the only cost is the line-fit check.
+- [ ] [Review][Decision] **Two primitives carry props that no caller sets.**
+  - **`StatChip.delta`:** the one consumer, `SwapsView.tsx:266`, passes only `label` and `value`. The delta path's comment is also wrong: it says `Math.sign` is needed because the written-out comparison mishandles `-0`, but `-0 > 0` and `-0 < 0` are both false, and line 66 *is* the written-out comparison. The path also does no rounding (`0.1 + 0.2` would render `+0.30000000000000004`).
+  - **`Panel.live`:** no caller sets it (`Panel.tsx:55` says so). It keeps the `live` type union, the dot, and `.panel-live` / `.panel-dot` in `Panel.css`.
+
+  [`ui/src/components/StatChip/StatChip.tsx:42-66`, `ui/src/components/Panel/Panel.tsx:55-67`, `:90`, `:108`] Options:
+  - (a) Delete both, with their CSS and tests.
+  - (b) Delete `delta`, and keep `live` as the reservation for DESIGN.md's "live agent attention" panel state.
+  - (c) Keep both, and correct the `Math.sign` comment.
+
+  Recommended: (b). `delta` has no designed consumer and a wrong comment. `live` is the documented hook for a designed state.
+- [ ] [Review][Patch] **The state panel renders guidance before the action, so two states read out of order.** `StatePanel` renders all guidance parts, then the action, while `copy.ts` and EXPERIENCE.md:68-69 write them in source order.
+  - **internal-error:** shows "The traceback is in that terminal" before "Restart the companion in your terminal", so "that terminal" has no antecedent.
+  - **disconnected:** joins "Check your terminal." to "If it moved ports, this tab can't follow it automatically.", so "it" reads as the terminal.
+  - **Fix:** render the body parts in source order, each with its role's style.
+  - **Test:** a `StatePanel.test.tsx` case asserting the order for `internal-error` and `disconnected`.
+
+  [`ui/src/components/StatePanel/StatePanel.tsx:100-122`, `ui/src/components/StatePanel/copy.ts:169-180`]
+- [ ] [Review][Patch] **The attribution sentence is pinned only against itself.** `Footer.test.tsx:35` and `App.test.tsx:2033`, `:2123` and `:2126` compare the rendered text with `sentenceOf()`, the module's own join, and `attribution.test.ts` is deleted. So rewording or dropping any part of `ATTRIBUTION` (for example "Not approved/endorsed by Wizards.") passes every test; only the two hrefs are literal (`App.test.tsx:2040-2043`). Add a rendered-output assertion against the literal sentence. That tests behaviour and reads no docs [`ui/src/components/Footer/Footer.test.tsx:35`]
+- [ ] [Review][Patch] **The size badge's text has no space between the count and the label.** `<span>{mainboardCount}</span>` followed by `maindeck` on its own JSX line loses the whitespace, so `textContent` and copy-paste read "100maindeck" (the gap is flex `gap` only), and the sideboard badge does the same. Add a text space, and assert `textContent` in `DeckBadges.test.tsx` [`ui/src/components/DeckBadges/DeckBadges.tsx:76-84`]
+- [ ] [Review][Patch] **Snow mana is announced as a bare "S".** `classify` sends `{S}` to `unknown`, so the pip shows "S" and `describeManaCost` speaks "S" (pinned at `parse.test.ts:364-365`). That is real corpus data, and "S" means nothing when spoken. Recognise `{S}` as a colourless-fill symbol named "snow", and update the two pins [`ui/src/components/ManaCost/parse.ts:104-113`]
+- [ ] [Review][Patch] **The blank-string-to-null guard is copied about fifteen times.** The same `typeof value !== 'string' … trim()` helper is redefined in:
+  - `CardPlaceholder.tsx:151`, `ManaCost.tsx:62` and `DeckBadges.tsx:71`;
+  - `CardDetail.tsx:144`, `CardTile.tsx:221` and `frontFaceCost.ts:67`;
+  - `GroupsView.tsx:106` and `:119`, `SuggestionsView.tsx:167`, `SwapsView.tsx:106` and `:123`, and `TierListView.tsx:104`, `:116` and `:129`.
+
+  `CardDetail.tsx:132` and `CardTile.tsx:213` cite "the identical spelling" in the others. The copies have already diverged: `CardPlaceholder`'s `given()` returns the trimmed value and calls that load-bearing, while `DeckBadges` checks the trimmed value but renders the untrimmed `format`. Export one text-or-null helper beside `filled.ts`, and point every copy at it. This is the AGENTS.md repeated-pattern pitfall, so grep for every copy [`ui/src/components/filled.ts`, `ui/src/components/CardPlaceholder/CardPlaceholder.tsx:151-155`, `ui/src/components/DeckBadges/DeckBadges.tsx:71`]
+- [ ] [Review][Patch] **`AnalysisRow`'s prop docstring says "more wrap".** The stylesheet and the component header both say there is deliberately no `flex-wrap`, so three or more children shrink to 1/n and never wrap. Correct the docstring [`ui/src/components/AnalysisRow/AnalysisRow.tsx:53`, `AnalysisRow.css:8-9`]
+- [ ] [Review][Patch] **Comments hard-code counts and line numbers that have drifted.**
+  - **Token counts:** `AppShell.css:8-9` pins "`declaredTokens.size` at 64" and `Badge.css:11` says the layer is "closed at **69**", but `tokens.css` declares 70 and `tests/tokens.test.ts:346` expects 70.
+  - **Error count:** `states.ts:47` says `tsc` "reported FIVE errors" and lists three.
+  - **Line citation:** `DeckBadges.tsx:34` cites `Badge.css:77` for `font: var(--type-label)`, which is at `:74`.
+  - **Primitive count:** `Panel.tsx:13` says "all four primitives"; the folder has thirteen components.
+  - **Revalidation size:** `Welcome.tsx:12` calls `no-cache` "a 420 KB revalidation on every open", but a validated revalidation is a 304.
+  - **Fix:** cite symbols rather than lines, and drop the ordinals and counts (F1's patch, same fix).
+- [ ] [Review][Patch] **`MANA_COLOUR_ORDER` is exported mutable.** It is typed `ManaColour[]` and is the single order source for `ManaPip`'s classes and `colours.ts`'s segments. `BADGE_TONES`, the sibling anchor, is `as const`. Make it `readonly` (`as const`) [`ui/src/components/ManaCost/parse.ts:44`]
+
+**Rejected**
+
+- `false` — a right column whose child renders `null` leaves a dead 452px track (two lenses). `App.tsx:208-216` passes `undefined` or a fragment that always holds `DeckList`, which never returns `null`.
+- `false` — a dark glyph may be near-invisible on coloured pips. `--text-inverse` (`#10121c`) on every `--mana-*` fill is at least 6.5:1 (lowest `--mana-r`, `#f0716b`), and there is one theme.
+- `false` — a live `Panel` with a blank title (two lenses). No caller sets `live`; the unused prop is the decision above.
+- `false` — StatChip renders `+0.30000000000000004` (two lenses). No caller passes `delta`; the decision above covers it.
+- `false` — a named `CardPlaceholder` with everything blank renders an empty, unnamed box (two lenses). This is the documented pre-hydration state (`SuggestionsView.tsx:310-314`), and the row's own text carries the card.
+- `false` — `StatePanel`'s `name.trim()` throws on a `null` deck name (two lenses). `client.ts:217` filters the names to non-blank strings before any store sees them.
+- `false` — an unknown `state` key crashes `StatePanel`. `StateKey` is closed, and the panel decision comes from `panelFor` (`ui/src/state/panel.ts:68`), which returns a `StateKey`.
+- `false` — a `NaN` count renders "NaN maindeck" (three lenses). `mainboard_count` and `sideboard_count` are Pydantic `int`s from the same-origin backend, as F1 and F2 ruled.
+- `low` — the `min-width: 1100px` floor with the `width < 1100px` restack, and `100dvh` with the floor's horizontal scrollbar, hide about a scrollbar's height of the footer (two lenses). This only happens below the stated target window, the comment names the horizontal scrollbar as the accepted failure mode, and the fix is a layout redesign.
+- `low` — footer links open a new tab without a cue. That is an advisory technique, not a WCAG failure, and the cue would change the release-gated attribution sentence.
+- `not a defect` — accessibility, token values and container duplication live largely outside this group's files (intent-alignment). They are noted above for F4–F8.
+- `not a defect` — the intent's linter exclusion names only ruff, Prettier and mypy, while stylelint and jsx-a11y also gate part of F3's focus (intent-alignment). No finding here re-raises what those gates enforce.
 
 ## Summary
 
