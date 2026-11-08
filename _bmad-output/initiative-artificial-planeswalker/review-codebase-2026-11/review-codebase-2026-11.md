@@ -1290,6 +1290,104 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - `low` — every row subscribes to `usePinnedId`, so a pin change re-renders every row. There are at most the contract's item cap of rows, the cost is invisible, and the fix adds a selector.
 - `not a defect` — re-render and request volume, cold-open cost, bundle weight and test design live in the store, `App`, the harness and the suites (intent-alignment, five points). They are noted above for step 4 and T1.
 
+### 2026-11-08 — F6 UI containers, part 3: deck list and analysis panels
+
+**Code review complete.** 3 `decision-needed`, 11 `patch`, 0 `defer`, 9 rejected.
+
+- **Group:** F6. **Reviewed revision:** `ee0263d652a46f021515860bbc2a19e3dac60eed` (no change under `ui/src/containers/` up to `70f2095`).
+- **Files (14 files, 2,741 lines of non-test source):**
+  - `DeckList/DeckList.css` (209), `DeckList.tsx` (307), `copy.ts` (115)
+  - `ManaCurve/ManaCurve.css` (150), `ManaCurve.tsx` (204), `copy.ts` (111), `curve.ts` (253)
+  - `ColourDistribution/ColourDistribution.css` (215), `ColourDistribution.tsx` (211), `colours.ts` (256), `copy.ts` (138)
+  - `FormatCheck/FormatCheck.css` (164), `FormatCheck.tsx` (264), `copy.ts` (144)
+
+  All paths are under `ui/src/containers/`. `focusHome.ts`, which F4 and F5 left unreviewed, is not in this group's folders, so it falls to F7. The six colocated suites (2,887 lines) were read as evidence only; T1 covers them. Read during triage: `state/cards.ts` (`seedDeckCards`, `hydrateCard`), `state/deck.ts` (the seed call sites), `state/inspection.ts`, `state/formatCheck.ts`, `api/client.ts` (`formatCheckOf`, `readFormatCheck`), `App.tsx`'s panel mounts, `eslint.config.js`'s style-attribute selector, `src/data/models/deck_card.py`, `src/data/models/card.py`, `deck_validator.py`'s `CHECK_ORDER` and `FormatCheckRow`, and EXPERIENCE.md.
+- **Mode:** no-code, thorough; lenses blind-hunter, edge-case-hunter, verification-gap, intent-alignment (none failed). Triage: leave as action items.
+- **Overlap:**
+  - The dead-gate decision below is the same as the F1, F3, F4 and F5 decision, for this group's files. Rule on all five together.
+  - The citation patch is F1's "cite symbols, not lines" patch (and F4's and F5's). Fix them together.
+  - The architecture report's F1 lands here as three functions: `isLand` and `bucketOf` in `ManaCurve/curve.ts`, and `coloursOf` in `ColourDistribution/colours.ts`. Each one documents its divergence from `src/logic` in its own header (the MDFC land rule, the 0-into-1 fold and the `7+` cap, the hybrid and Phyrexian credit). So the UI half is a written choice, not an accident. Two of those headers then claim that the panel and the MCP tool "cannot answer the same question differently" (patch below). The ruling on one definition per statistic belongs to step 4, and it should cover these three functions.
+  - `colours.ts` imports `isLand` from `ManaCurve/curve.ts`, so the two panels share one land rule through a cross-container import. If F1 moves the statistics to `src/logic`, both move together.
+- **Outside this group's files (intent-alignment), for step 4:**
+  - None of the 14 files fetches anything. `FormatCheck` reads `useFormatCheck()`, and its one request per settled deck belongs to `App.tsx` (F8) and `state/formatCheck.ts` (F1). Every other panel reads `boards` and the card cache. So request volume and cold-open cost are decided in the store, `App` and the harness.
+  - The architecture report's F8 (`App` subscribes with no selector, so every `App` render re-renders all four panels) lands here only at the receiving end. None of the four panels is memoised, and the curve and colour derivations run in render.
+  - `ColourDistribution` adds a second re-render driver of its own: it subscribes to the whole card map, so it re-renders on every cache write. That means two seeds per cold open, plus every `hydrateCard` for an id outside the deck (agent-view rows, or a detail-panel target outside the deck). Each render is cheap (about 48 µs per `coloursOf` call over 99 rows, as measured), but bounding how many there are is the store's job.
+  - The only bundle weight in this group is the four stylesheets.
+- **What holds:**
+  - **No second derivation:** `DeckList`, `curveOf` and `coloursOf` all walk `boardsOf`'s partition, and none of them filters, sorts or regroups cards. The sideboard is excluded by not reading it. Every count is a summed quantity, never a row count.
+  - **Hooks discipline:** `DeckRow` subscribes per row (`useIsLiveTarget`, `useCardEntry`). `ColourDistribution`'s single whole-map subscription returns the stored reference, so it cannot loop.
+  - **Closed vocabularies:** a compile-time assert holds every copy map to its union in both directions (`TypeGroup`, `ManaColour`, the check names and the statuses). `TONE_FOR_STATUS` is held to `BADGE_TONES`, so a mistyped tone cannot reach `Badge`.
+  - **Format check:** it renders rows in the payload's `CHECK_ORDER`, binds nothing to `is_legal`, and adds no Tab stop. The empty-deck hide is at `App.tsx:213`.
+  - **Empty states:** the curve hides when its total is zero, and the colour bar hides when its pip total is zero. Both divisions are guarded (`total === 0`, and segments are filtered before the percentage is taken).
+
+- [ ] [Review][Decision] **Comments cite deleted gates.** 11 citations in this group name 4 `ui/tests` files that no longer exist:
+  - `tests/token-usage.test.ts` (7): `ColourDistribution.css:5`, `ColourDistribution.tsx:165`, `DeckList.css:6`, `FormatCheck.css:10`, `:21`, `:132`, `ManaCurve.css:18`
+  - `shell.test.ts` (2): `DeckList.css:53`, `FormatCheck.css:52`
+  - `copy-rules.test.ts` (1): `ManaCurve/copy.ts:17`
+  - `ui/tests/format-check-source.test.ts` (1): `FormatCheck.tsx:75`
+
+  They describe these as gated:
+  - the `MANA_DATA_INK` list. `ManaCurve.css:24` and `FormatCheck.css:18` also disagree about how many entries it has;
+  - the `RUNTIME_CUSTOM_PROPERTIES` half of the `--colour-bar-share` channel. The ESLint half (`eslint.config.js:58`) still exists;
+  - the rule that `is_legal` appears nowhere in `src/`, which `FormatCheck.tsx:61-79` calls "a machine-checkable fact". The rule still holds today (no non-test `src/` file reads `is_legal`), but nothing checks it. The formatless-report case in `FormatCheck.test.tsx` is the behavioural pin that remains.
+
+  The four `copy.ts` headers also say "NO IMPORTS, load-bearing", so that `ui/tests/` can import them. For the same reason, the label couplings are split out into `DeckList.tsx:89-118`, `ColourDistribution.tsx:100-130` and `FormatCheck.tsx:157-179`. No `ui/tests` file imports any of the four. Options: the same as F4's. Recommended: the F1/F3/F4/F5 ruling. In this group, the `is_legal` guard is the one most worth restoring as a real check: the trap it closes has zero live exposure, so a regression would ship green.
+- [ ] [Review][Decision] **Under forced colours (Windows High Contrast), the data marks and the live marker in this group disappear.** No stylesheet in `ui/src` has a `@media (forced-colors: active)` rule:
+  - The live deck row is marked only by `background-color` and an inset `box-shadow` (`DeckList.css`, `.deck-row.is-live`). Forced colours replace the first and drop the second, so the live row looks like every other row.
+  - The curve bars and the colour segments are painted only with `background` (`ManaCurve.css`, `ColourDistribution.css`), so they merge into the track.
+
+  The numbers survive as text (the curve's visually hidden table and the colour legend), and the detail panel still shows the target. Options:
+  - (a) Add a forced-colours fallback in this group: a `Highlight` outline on the live row, and `CanvasText` or `forced-color-adjust: none` on the bars and segments. That is three small rules.
+  - (b) Make forced colours an app-wide policy: decide it in DESIGN.md, then apply it in F8's styles, F3's primitives and here.
+  - (c) Leave forced colours unsupported, and say so in DESIGN.md.
+
+  Recommended: (a) now, and raise (b) at step 4. The three rules are cheap and close the visible gaps in this group. The app-wide question also covers tiles, pills and badges, which are outside this group.
+- [ ] [Review][Decision] **No control exposes the pin state.** Clicking a deck row toggles the pin (`DeckList.tsx:199`), but the row carries no `aria-pressed`. The live state is only a class (`is-live`) with a tint, so a screen-reader user on a row cannot tell whether pressing it will pin or unpin. Tiles (F4) and agent-view thumbnails (F5) work the same way. In EXPERIENCE.md's model, a pin is announced once through `CardDetail`'s polite region, and the detail panel shows its unpin control only while a card is pinned. Options:
+  - (a) Add `aria-pressed` to rows, tiles and thumbnails, read from a per-id pinned selector. Every one of these controls then reads as a toggle button, and on a large deck about 200 of them say "not pressed".
+  - (b) Keep the announcement model and write it into EXPERIENCE.md: the pin state is announced when it changes and exposed by the detail panel's unpin control, not on each control.
+
+  Recommended: (b). The unpin control already exposes the state in one place, and 200 "not pressed" announcements cost more than they tell the user.
+- [ ] [Review][Patch] **Several headers describe a hydration sweep that no longer exists.** `seedDeckCards` writes every deck row's whole `Card` into the cache before the deck reaches the store (`state/cards.ts:194`, called at `state/deck.ts:278` and `:325`). `hydrateCard` serves only ids outside the open deck (`cards.ts:6-7`). So cards in the deck are already hydrated at first paint, and `App.tsx` runs no sweep. These comments base decisions on the sweep:
+  - `ColourDistribution.tsx:28-52`: "percentages move after first paint", "~99 hydrations during a cold-open sweep", "`App.tsx` owns the sweep".
+  - `colours.ts:47-64`, `:185-201` and `:210-213`: the same claims, including the "~4.8 ms across the whole sweep" cost used to justify having no `useMemo`.
+  - `DeckList.tsx:170-176`: "re-renders exactly the row whose hydration landed" and "the deck-wide sweep in `App.tsx` is what fetches".
+  - `curve.ts:12-19`, `:24` and `ManaCurve.tsx:28-29`: "the sweep's no-re-drive window is not triggered here".
+
+  Rewrite each one in terms of seeding. For `ColourDistribution`, the cost worth recording is the real driver: one re-render per cache write (two seeds per cold open, plus hydrations of ids outside the deck). These are the same kind of stale comment as the architecture report's F8, in more places. [`ui/src/containers/ColourDistribution/ColourDistribution.tsx:28`, `ui/src/containers/ColourDistribution/colours.ts:47`, `ui/src/containers/DeckList/DeckList.tsx:170`, `ui/src/containers/ManaCurve/curve.ts:12`]
+- [ ] [Review][Patch] **`DeckRow`'s reactive cache subscription is untested.** The double-faced cases in `DeckList.test.tsx` (`:405-427`, `:444-462`) seed the cache before `render`, and `:429-442` renders with an empty cache and asserts nothing after that. So replacing `useCardEntry(cardId)` with `readCardEntry(cardId)`, or memoising `DeckRow` on `entry`, would pass every test. Because seeding comes first, the subscription matters only when the cache changes while `boards` does not; one such case is a refetch that reseeds the same entries. Add a test shaped like `ColourDistribution.test.tsx:301-341`: render a blank-cost double-faced row with an empty cache, write a hydrated entry with `card_faces` inside `act`, and assert that the row's cost `img` appears [`ui/src/containers/DeckList/DeckList.tsx:186`, `:216`]
+- [ ] [Review][Patch] **No test checks the table's row headers, including `7+`.** A `<th scope="row">` has the role `rowheader`, but `ManaCurve.test.tsx:229-242` queries only `columnheader` and `cell`. "7+" is checked only on the axis spans and the bar names. If the last row header rendered as `7`, the accessible table would say "exactly seven" while the axis and the bars say "7+", and no test would fail. Assert that the `rowheader` texts equal `['1','2','3','4','5','6','7+']` [`ui/src/containers/ManaCurve/ManaCurve.tsx:195`]
+- [ ] [Review][Patch] **The test for the table's hiding cannot fail, and three comments still describe the old local rules.** `ManaCurve.test.tsx:244-253` checks only that the table has no `aria-hidden` and no `hidden`. Dropping `visually-hidden` from the class list would paint a duplicate table in every curve panel and still pass. The test's own comment, `ManaCurve.tsx:50-51` and `:179-181` all say the clip-rect is in `ManaCurve.css`. `:182-183` says it is the shared `src/styles/` utility, which is what ships. Assert the class, as `SkipLink.test.tsx:87` and `DeckAnnouncer.test.tsx:221` do, and correct the three comments [`ui/src/containers/ManaCurve/ManaCurve.tsx:179-184`]
+- [ ] [Review][Patch] **`ColourDistribution`'s "no visually-hidden block" test cannot see what it guards.** `ColourDistribution.test.tsx:246-255` checks that there is no `<table>`, no `clip-path` in `innerHTML` and no `[hidden]`. A `<span className="visually-hidden">` added to the legend hides by class, puts no `clip-path` in the markup, and would pass. The reason the test gives (the third-instance trigger) no longer applies either, because the utility is already shared. Assert that `container.querySelectorAll('.visually-hidden')` is empty, and update the comment [`ui/src/containers/ColourDistribution/ColourDistribution.tsx:65`]
+- [ ] [Review][Patch] **A card in both boards appears twice in the list, though the comment says it cannot.** The primary key of `deck_cards` is `(deck_id, card_id, sideboard)` (`src/data/models/deck_card.py:20`), and `seedDeckCards` notes that "a card in both boards lands twice". The key comment says the table is keyed on `(deck_id, card_id)`, so "no id appears twice across the whole list". React keys are scoped to each `<ul>`, so nothing collides. But `useIsLiveTarget` is keyed by id, so hovering or pinning either row lights both. Correct the comment and state the shared highlight as accepted behaviour [`ui/src/containers/DeckList/DeckList.tsx:294-297`]
+- [ ] [Review][Patch] **Two parity claims are contradicted a few lines later.** `curve.ts:48-51` and `colours.ts:112-113` say the panel and the MCP tool "cannot answer the same question differently". But `curve.ts:89-95` then says `analyze_mana_curve` reports a different non-land count, and `colours.ts:128-134` lists five ways in which `compute_pip_signals` differs. The parity holds only for the board partition. Narrow both sentences to "the same boards", and point to the divergence notes (this is the UI half of the architecture report's F1) [`ui/src/containers/ManaCurve/curve.ts:48-51`, `ui/src/containers/ColourDistribution/colours.ts:112-113`]
+- [ ] [Review][Patch] **Nothing checks the seven-bucket tuple against `BUCKETS`.** `curve.ts:60-62` says `CurveBuckets` "is coupled to it in the type, so a change that wanted an eighth bucket would have to say so in the open". But `curveOf` ends with `as unknown as CurveBuckets['buckets']` (`:250`), which accepts an array of any length, so an eighth entry in `BUCKETS` would compile. Either correct the comment, or derive the tuple type from `typeof BUCKETS` so that the claim holds [`ui/src/containers/ManaCurve/curve.ts:60-62`, `:250`]
+- [ ] [Review][Patch] **Some comments still describe the build order rather than the code.**
+  - `ManaCurve.tsx:110` calls the curve "the second of an eventual three panels in a fluid column". It is one of two panels in `AnalysisRow`, and the format check sits in the right column.
+  - `ManaCurve/copy.ts:7-9` says "This is the tenth copy module … the nine before it". That count goes stale with every new module.
+  - `FormatCheck.tsx:115-118` says that hiding the panels on an empty deck "is deliberately not pre-implemented". `App.tsx:213` implements it for the format check, and `App.tsx:202` says so.
+
+  Correct or drop each one [`ui/src/containers/ManaCurve/ManaCurve.tsx:110`, `ui/src/containers/ManaCurve/copy.ts:7-9`, `ui/src/containers/FormatCheck/FormatCheck.tsx:115-118`]
+- [ ] [Review][Patch] **Line citations and measured figures have drifted, and sibling files disagree.**
+  - `DeckList.tsx:81` cites `EXPERIENCE.md:70` and `:113` for the empty-deck rule, which is now at `:71` and `:116`.
+  - `curve.ts:45` cites `deckGroups.ts:199` for the sideboard quote. `colours.ts:110` cites `:197`, which is where the quote is.
+  - The corpus count for `Artifact Land` is 32 in `curve.ts:84-85` but 25 in `colours.ts:97`.
+  - The `curveOf` timing is ~24 µs in `ManaCurve.tsx:37` but ~21 µs in `colours.ts:197-199`.
+
+  About 84 lines in this group carry `file:line` citations: 42 into DESIGN.md or EXPERIENCE.md and 42 into source. Cite section, symbol or component names instead (F1's patch). Keep one figure per measurement, or cite where it was measured [`ui/src/containers/DeckList/DeckList.tsx:81`, `ui/src/containers/ManaCurve/curve.ts:45`, `:84-85`, `ui/src/containers/ColourDistribution/colours.ts:97`]
+- [ ] [Review][Patch] **No production code reads `CurveBuckets.tallest`.** `ManaCurve.tsx` reads only `buckets` and `total`, and `share` is already divided by `tallest`. Only `curve.test.ts:296-312` reads the field. Drop it along with its two tests, or keep it internal to `curveOf` [`ui/src/containers/ManaCurve/curve.ts:191-192`, `:252`]
+
+**Rejected**
+
+- `false` — the accessible names of the row and the legend entry run together ("×4Lightning Bolt"). `.deck-row` is `display: grid` (`DeckList.css:65`) and `.colour-legend-entry` is a flex container, so their spans are blockified, and Chromium puts spaces between block-level children when it computes a name.
+- `false` — the format check does not hide on an empty deck. `App.tsx:213` renders `emptyDeck ? null : <FormatCheck />`. The stale panel comment is covered by the build-order patch above.
+- `false` — the colour panel pops in after hydration and reflows the analysis row. `seedDeckCards` fills the cache before the deck write (`state/deck.ts:278`, `:325`), so the first paint already counts face costs.
+- `false` — a non-string `row.detail` throws in render. `FormatCheckRow.detail` is `str` (`deck_validator.py:547`), and the response model validates it.
+- `false` — two rows with the same `check` collide as React keys. The validator emits exactly one row per `CHECK_ORDER` entry (`deck_validator.py:487-494`).
+- `false` — a `NaN` or missing `cmc` drops a card from the curve. `cards.cmc` is a non-null `Float`, `CardSummary.cmc` is a required `float`, and JSON cannot carry `NaN`.
+- `false` — the copy maps are mutable, so an importer could rewrite on-screen copy. No code writes to them, and their keys are already held to the unions.
+- `low` — in the format check, "not loaded yet" and "refused" both render nothing. That is the documented behaviour of `state/formatCheck.ts` (F1's file), and showing a refusal would be new UI.
+- `not a defect` — request volume, cold-open cost, `App`'s selector-less subscription and the cross-surface statistics all live outside this group's files (intent-alignment). They are noted above for step 4.
+
 ## Summary
 
 <!-- Written in step 4. -->
