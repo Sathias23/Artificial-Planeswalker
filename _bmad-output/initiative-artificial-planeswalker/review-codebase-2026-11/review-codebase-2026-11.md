@@ -38,7 +38,7 @@ Out of scope: style the linters already enforce (ruff, Prettier, mypy), the gene
 - [x] PR #116 (v7 migration) merged, so this file and the ticket tree are on `master`.
 - [x] Commit this file straight to `master` (planning artifact).
 - [x] Record the reviewed revision: `ee0263d` (the PR #116 merge), in the frontmatter. All runs review that same commit.
-- [ ] Database and semantic index built (`python setup.py`, `uv run python scripts/build_card_embeddings.py`), so reviewers can run integration tests and the search sanity eval if they need evidence.
+- [x] Database and semantic index built (`python setup.py`, `uv run python scripts/build_card_embeddings.py`), so reviewers can run integration tests and the search sanity eval if they need evidence. (2026-11-08: refreshed with `scripts/import_scryfall_data.py`, then the incremental embeddings build.)
 - [ ] Budget: a thorough `bmad-code-review` run takes 30 minutes or more; the plan below is about 20 runs. Run groups in separate fresh sessions.
 
 ### 1. Architecture pass (`bmad-deep-recon`)
