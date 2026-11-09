@@ -86,6 +86,13 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 ### 3. Tests and tooling pass
 
 - [ ] **T1, `bmad-code-review` quick, per suite:** `tests/unit/`, `tests/integration/`, `ui/src/**/*.test.*`, `ui/tests/`, focused on test design only: real-entry-point rule, duplicated fixtures, slow tests, assertion-free tests, missing coverage on the risky paths the group reviews found. `ui/src/App.test.tsx` (7,229 lines) deserves its own look.
+  - Decision (2026-11-09, Brad): the suites total about 89,000 lines (`tests/unit` ~39k, `ui/src` tests ~29k, `tests/integration` ~17k, `ui/tests` ~3k), far past the ~3,000-line review size, so T1 runs **targeted**, not one run per suite. Each area run reads the `## Code Review` blocks of its groups, picks the tests covering the paths those findings name (plus the fixtures and conftest they use), keeps to about 3,000 lines and records its exact file list.
+  - [ ] **T1-0 sweep:** `uv run pytest --durations=30` (integration included) and the vitest per-file timings; grep for tests with no assertion. Records the slowest tests and the assertion-free ones for the area runs.
+  - [ ] **T1-1 data, logic, search (B1-B6):** `tests/unit/{data,logic,search,viewer}/`, `tests/integration/{data,logic,search}/`.
+  - [ ] **T1-2 MCP tools and scripts (B7-B9, B13):** `tests/integration/mcp_server/`, `tests/integration/test_mcp_tools.py`, `tests/integration/test_build_plugin.py`, `tests/test_setup.py`.
+  - [ ] **T1-3 companion backend (B10-B12):** `tests/unit/companion/`, `tests/integration/companion/`.
+  - [ ] **T1-4 UI (F1-F8):** `ui/src/**/*.test.*` except `App.test.tsx`, and `ui/tests/`.
+  - [ ] **T1-5 `ui/src/App.test.tsx`** on its own.
 - [ ] **T2, `bmad-review` on the configuration:** `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/`, `ui/package.json`, `ui/vite.config.*`, `ui/tsconfig*.json`. Look for gate gaps between local and CI, slow CI steps, pinned versions that are stale.
 
 ### 4. Consolidate the findings
