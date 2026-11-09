@@ -946,16 +946,16 @@ references = ["review — _bmad-output/initiative-artificial-planeswalker/review
 [[entry]]
 id = 65
 type = "story"
-title = "Pre-commit runs the locked toolchain and the leak guard catches any user path"
-description = "Per D10, the ruff and mypy hooks become language: system hooks running uv run (pass_filenames: false), additional_dependencies and its AGENTS.md sentence go, and a github-actions dependabot.yml is added; per D11, no-local-machine-paths matches any Windows user-profile path or project slug case-insensitively, the three tracked files are cleaned or excluded, and quality runs the hook on every push. Today the hooks and CI can disagree (fastembed is already missing from the hook list), and the leak guard watches only the old username."
-verify = "`pre-commit run --all-files` passes on the uv.lock toolchain; a planted user-profile path under another username fails the hook locally and in the quality job."
+title = "Pre-commit and CI run the locked toolchain, match what users run, and their guards can go red"
+description = "Per D10, the ruff and mypy hooks become language: system hooks running uv run (pass_filenames: false), additional_dependencies and its AGENTS.md sentence go, and a github-actions dependabot.yml is added; per D11, no-local-machine-paths matches any Windows user-profile path or project slug case-insensitively, the three tracked files are cleaned or excluded, and quality runs the hook on every push. Today the hooks and CI can disagree (fastembed is already missing from the hook list), and the leak guard watches only the old username. Merged from story 67 (board review 2026-11-09): commits a .python-version (3.12) that build_plugin.py copies into plugin/server/ (option b), raises the Node floor to >=22.13.0 with node-version, @types/node and the jest-dom pin moved together (option a), makes the live-contract canary fail on 4xx, 5xx and non-JSON answers and keeps its schedule from switching itself off, drops the 3.13 leg's repeated steps, skips the full CI on docs-only pushes, gives the ui/tests .tsx file a tsconfig, and corrects the stale CI comments and CONTRIBUTING's gate list. Today the canary goes green on a 5xx, plugin users may run an untested Python, and docs-only pushes run the Windows job."
+verify = "`pre-commit run --all-files` passes on the uv.lock toolchain; a planted user-profile path under another username fails the hook locally and in the quality job; the canary against a stub answering 500 fails; a docs-only push skips the code jobs; plugin/server/ carries .python-version; `npm run typecheck` covers the ui/tests .tsx file."
 covers = ["R24"]
 after = [4]
 hitl = false
 risk = "low"
-findings = ["T2-D1", "T2-D2"]
-width = ".pre-commit-config.yaml, .github/workflows/ci.yml, .github/dependabot.yml, AGENTS.md, CONTRIBUTING.md, three tracked files with user-profile paths"
-references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q24; the `## Code Review` stamps (and Merged findings rows for M-groups) for T2-D1, T2-D2"]
+findings = ["T2-D1", "T2-D2", "T2-D5", "T2-D6", "T2-P1", "T2-P2", "T2-P4", "T2-P6", "T2-P9", "T2-P10", "T2-P11"]
+width = ".pre-commit-config.yaml, .github/workflows/ci.yml, .github/dependabot.yml, AGENTS.md, CONTRIBUTING.md, three tracked files with user-profile paths; .github/workflows/ci.yml and live-contract.yml, .python-version, scripts/build_plugin.py, ui/package.json, the tsconfigs, CONTRIBUTING.md; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q24; the `## Code Review` stamps (and Merged findings rows for M-groups) for T2-D1, T2-D2; and Q24's T2-D5, T2-D6, T2-P1, T2-P2, T2-P4, T2-P6, T2-P9, T2-P10, T2-P11"]
 
 [[entry]]
 id = 66
@@ -981,8 +981,8 @@ covers = ["R24"]
 after = [4, 66]
 hitl = false
 risk = "low"
-findings = ["T2-D5", "T2-D6", "T2-P1", "T2-P2", "T2-P4", "T2-P6", "T2-P9", "T2-P10", "T2-P11"]
-width = ".github/workflows/ci.yml and live-contract.yml, .python-version, scripts/build_plugin.py, ui/package.json, the tsconfigs, CONTRIBUTING.md; plugin rebuild"
+findings = []
+width = "merged into story 65 (board review 2026-11-09)"
 references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q24; the `## Code Review` stamps (and Merged findings rows for M-groups) for T2-D5, T2-D6, T2-P1, T2-P2, T2-P4, T2-P6, T2-P9, T2-P10, T2-P11"]
 
 [[entry]]
@@ -992,7 +992,7 @@ title = "Migrations are safe to re-run on a user's only database"
 description = "Tests every migrate_*.py for idempotence on a database of its pre-change schema, then commits the strategy ALTER TABLE and its index together so a failed index step is retried, disposes the engine only after the session closes, moves build_plugin.py's logging.basicConfig out of import, and corrects the test_build_plugin and dump_openapi docstrings. Today no test covers any migration, though CHANGELOG.md sends users with saved decks to run them on their real databases."
 verify = "Each migration run twice on a fixture database of its pre-change schema ends in the same schema and data, and a re-run after an injected index failure completes the index."
 covers = ["R25"]
-after = [1, 67]
+after = [1, 65]
 hitl = false
 risk = "medium"
 findings = ["B13-P17", "B13-P18", "B13-P19", "B13-P22", "B13-P23", "B13-P26"]
