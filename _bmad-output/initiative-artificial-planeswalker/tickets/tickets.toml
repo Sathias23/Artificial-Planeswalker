@@ -14,6 +14,7 @@ slug = "epic-reliable-deck-workflows"
 title = "Reliable deck workflows"
 description = "A whole deck resolves in one bounded request, imports with explicit partial results and exports to Arena without manual name repairs or silent substitutions."
 covers = ["R7", "R8", "R9", "R10", "R11", "R12", "R13", "R17", "R18", "R19", "R20", "R21", "R22"]
+after = [{ epic = 4, needs = "story 16's single card-name resolver before entry 1, and story 71's mixed-printing import fix before entry 4" }]
 
 [[epic]]
 id = 3
@@ -28,4 +29,4 @@ slug = "epic-codebase-quality-pass"
 title = "Codebase quality pass"
 description = "Every fix finding of the 2026-11 codebase review is resolved on master, one PR per story, and the two deferred findings stay recorded in deferred-work.md."
 covers = []
-after = [{ epic = 3, needs = "R16 measured against today's assessment baseline before story 38 moves scores" }]
+after = [{ epic = 1, needs = "entry 5's deck_id payload field before story 44 edits the agent-view contracts" }, { epic = 3, needs = "R16 measured against today's assessment baseline before story 38 moves scores" }]

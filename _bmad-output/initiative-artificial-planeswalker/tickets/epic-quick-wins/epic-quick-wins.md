@@ -73,4 +73,5 @@ The agent operator does ordinary edits without remove-and-re-add dances, freezes
 - Source conflict: R4 never emits a Companion section; epic-reliable-deck-workflows R7 (initiative R13) preserves one. Settle before entry 3 is built.
 - Assumption: Done when was written by the v6-to-v7 migration from the spec's Success signal; confirm with Sofia.
 - Decision: 2026-11-09, board review, Brad (settles the R6 source conflict with epic-codebase-quality-pass story 32): story 32 makes restricted a checked rule and builds before entry 4 (`after`), so R6's Vintage report lists no restricted line; "no verdict changes" binds entry 4 only.
-- Handoff: entry 5's `deck_id` payload field meets epic-codebase-quality-pass stories 44, 45, 50, 51, 56 and 58, which edit `contracts.py`, `agentView.ts` and `SuggestionsView`; build order is an open question in the initiative's Notes.
+- Handoff: entry 5's `deck_id` payload field meets epic-codebase-quality-pass stories 44, 45, 50, 51, 56 and 58, which edit `contracts.py`, `agentView.ts` and `SuggestionsView`.
+- Decision: 2026-11-09, board review, Brad: entry 5 lands first; quality-pass story 44 waits on it (`after` key `1.5`).

@@ -653,7 +653,7 @@ title = "Push deadlines and the active-deck receipt survive slow and skewed back
 description = "Tests the active-deck receipt under a concurrent PUT, sets the push and notify deadlines so a delivered push and a dead port are each reported as such (tests use the production values), closes server.run's probe client, folds the near-copy outcome mappers and attempt functions, and drops ActiveDeckSetReceipt's extra=\"forbid\" so a skewed backend's extra key no longer fails a stored switch (option a), with the wrong rationale comments corrected. Today a completed deck switch can read as backend_error, and a 2 s read deadline misreports slow fan-outs."
 verify = "Against a live backend, a receipt carrying an extra key yields ok, a push answered after the old 2 s deadline is reported delivered, a dead port is reported unreachable within the notify deadline, and the probe client closes (no ResourceWarning)."
 covers = ["R18"]
-after = [43]
+after = [43, "1.5"]
 hitl = false
 risk = "medium"
 plan_checkpoint = true
