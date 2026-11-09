@@ -106,9 +106,9 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 
 ### 5. Turn the fix list into tickets (Sofia, `bmad-agent-po`)
 
-- [ ] Ask Sofia: *"write an epic for the codebase quality pass from `review-codebase-2026-11.md`, Summary section, and slice it into stories"*. Expected: `epic-codebase-quality-pass` under the initiative, one story per theme or per independently shippable fix, each covering the findings it resolves.
-- [ ] Order stories so test gaps on a path are closed before that path is refactored.
-- [ ] Mark stories that change a tool contract, the OpenAPI contract or a schema with `plan_checkpoint = true`.
+- [x] Ask Sofia: *"write an epic for the codebase quality pass from `review-codebase-2026-11.md`, Summary section, and slice it into stories"*. Expected: `epic-codebase-quality-pass` under the initiative, one story per theme or per independently shippable fix, each covering the findings it resolves. (2026-11-09, `d412dd5`: `tickets/epic-codebase-quality-pass/`, 71 stories; each of the 385 fix findings is in exactly one entry's `findings`, the 2 deferred stay in `deferred-work.md`. Brad's scope ruling took everything; he judges the board next.)
+- [x] Order stories so test gaps on a path are closed before that path is refactored. (Each story's tests-first findings land first in its PR; the cross-theme order is held by `after` keys.)
+- [x] Mark stories that change a tool contract, the OpenAPI contract or a schema with `plan_checkpoint = true`. (17 entries; the rule and the list are in the epic's Notes.)
 
 ### 6. Fix (`bmad-build`, one story at a time)
 
