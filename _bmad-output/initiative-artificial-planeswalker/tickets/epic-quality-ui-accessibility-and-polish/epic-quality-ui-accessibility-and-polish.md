@@ -43,13 +43,13 @@ A keyboard, screen-reader or High Contrast user can use every companion panel as
 - Every story is done or dropped with a `Dropped:` line, and the closure check finds each fix finding named in a story's `findings` resolved on `master` by that story's PR.
 - No story built an item that `deferred-work.md` records for the 2026-11 review or its board review.
 - The D5-D9 behaviours (full Fan Content notice, recoverable reasons, forced-colours marks, in-view previews, the pill's announcement policy) hold in a real browser on `master` (R21).
-- The cold open, re-measured with the R4 harness after the motion, fonts and focus-ring story (was 60), meets its release budget.
+- The cold open, re-measured with the R4 harness after the motion, fonts and focus-ring story (10.9, was 60), meets its release budget.
 - CI on `master` is green, `plugin/`, `openapi.json`, `types.d.ts` and the five skills are in step with the code, and the lane's changes ship in a tagged release.
 
 ## Boundaries
 
 - Not here: the other quality lanes (epic-codebase-quality-pass for groundwork, and the epic-quality-* lanes beside it); the deferred findings in `deferred-work.md`; the review Summary's Dropped directions (a generic slotted tile, `aria-pressed` on every control, an app-wide forced-colours pass); any new feature.
-- Touch point: agent-view payloads — the suggestion-reasons and groups-and-swaps stories (was 56 and 58) edit `SuggestionsView` and `contracts.py` after epic-quick-wins entry 5 adds `deck_id`; owner of the payload fields: epic-quick-wins.
+- Touch point: agent-view payloads — the suggestion-reasons and groups-and-swaps stories (10.5 and 10.7, was 56 and 58) edit `SuggestionsView` and `contracts.py` after epic-quick-wins entry 5 adds `deck_id`; owner of the payload fields: epic-quick-wins.
 
 ## References
 
@@ -63,5 +63,7 @@ A keyboard, screen-reader or High Contrast user can use every companion panel as
 ## Notes
 
 - Decision: 2026-11-09, board review, Brad: split out of epic-codebase-quality-pass, one of six lane epics beside it (groundwork stays there). Requirement ids keep the review's numbering (R<n> is theme Q<n>), so a line here may be one part of a theme another lane shares; story ids were renumbered on the move, and the old-to-new map is in epic-codebase-quality-pass's Notes. The slicing rule, the sequencing rule, the `plan_checkpoint` rule and the board-review rulings recorded there bind this lane. No Refactor sweep (board review batch 2).
-- Decision: 2026-11-09, tracer bullet: the first entry (footer, state panel, badges and mana symbols, was story 52). The lane adds no new path through the layers.
+- Decision: 2026-11-09, tracer bullet: the first entry (footer, state panel, badges and mana symbols, 10.1, was story 52). The lane adds no new path through the layers.
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.
+- Assumption: a lint-rule guard (an ESLint, stylelint or ruff rule, or a pre-commit hook) is proved by the linter itself failing on a planted violation, its command output pasted into the PR, because the committed probe harnesses run only pytest and vitest; Brad to confirm (board review validation, 2026-11-09).
+- Decision: 2026-11-09, board review validation: two lanes re-measure the cold open; 9.6's run is the baseline after the render fixes, and 10.9's run is the release check this lane's Done when names.

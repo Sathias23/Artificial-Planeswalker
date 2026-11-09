@@ -65,6 +65,7 @@ The maintainer refreshes the card database and the search index and gets an hone
 ## Notes
 
 - Decision: 2026-11-09, board review, Brad: split out of epic-codebase-quality-pass, one of six lane epics beside it (groundwork stays there). Requirement ids keep the review's numbering (R<n> is theme Q<n>), so a line here may be one part of a theme another lane shares; story ids were renumbered on the move, and the old-to-new map is in epic-codebase-quality-pass's Notes. The slicing rule, the sequencing rule, the `plan_checkpoint` rule and the board-review rulings recorded there bind this lane. No Refactor sweep (board review batch 2).
-- Decision: 2026-11-09, tracer bullet: the first entry (engine and model conventions, was story 21). The lane adds no new path through the layers.
-- Assumption: the English-printing and WUBRG changes (was story 25) reach existing databases through the next `initialize_database(update=true)`, with no connect-hook repair.
+- Decision: 2026-11-09, tracer bullet: the first entry (engine and model conventions, 6.1, was story 21). The lane adds no new path through the layers.
+- Assumption: the English-printing and WUBRG changes (6.5, was story 25) reach existing databases through the next `initialize_database(update=true)`, with no connect-hook repair.
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.
+- Assumption: a lint-rule guard (an ESLint, stylelint or ruff rule, or a pre-commit hook) is proved by the linter itself failing on a planted violation, its command output pasted into the PR, because the committed probe harnesses run only pytest and vitest; Brad to confirm (board review validation, 2026-11-09).

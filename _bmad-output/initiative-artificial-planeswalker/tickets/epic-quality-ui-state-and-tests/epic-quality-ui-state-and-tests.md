@@ -50,8 +50,8 @@ A user watching the companion while the agent edits a deck sees every change pro
 ## Boundaries
 
 - Not here: the other quality lanes (epic-codebase-quality-pass for groundwork, and the epic-quality-* lanes beside it); the deferred findings in `deferred-work.md`; the review Summary's Dropped directions (a bounded-backoff recovery timer above all); any new feature.
-- Touch point: agent-view payloads — the inherited-keys and guard stories (was 50 and 51) edit `agentView.ts` and `SuggestionsView` after epic-quick-wins entry 5 adds `deck_id`; owner of the payload fields: epic-quick-wins.
-- Must not change: `HISTORY_CAP` retention and revisit semantics beyond the unread fix (was story 49).
+- Touch point: agent-view payloads — the inherited-keys and guard stories (9.9 and 9.10, was 50 and 51) edit `agentView.ts` and `SuggestionsView` after epic-quick-wins entry 5 adds `deck_id`; owner of the payload fields: epic-quick-wins.
+- Must not change: `HISTORY_CAP` retention and revisit semantics beyond the unread fix (9.8, was story 49).
 
 ## References
 
@@ -65,6 +65,7 @@ A user watching the companion while the agent edits a deck sees every change pro
 ## Notes
 
 - Decision: 2026-11-09, board review, Brad: split out of epic-codebase-quality-pass, one of six lane epics beside it (groundwork stays there). Requirement ids keep the review's numbering (R<n> is theme Q<n>), so a line here may be one part of a theme another lane shares; story ids were renumbered on the move, and the old-to-new map is in epic-codebase-quality-pass's Notes. The slicing rule, the sequencing rule, the `plan_checkpoint` rule and the board-review rulings recorded there bind this lane. No Refactor sweep (board review batch 2).
-- Decision: 2026-11-09, tracer bullet: the first entry (unused UI surface, was story 9). The lane adds no new path through the layers.
-- Decision: 2026-11-09 (carried from epic-codebase-quality-pass): `M25` (D4) is split; the ESLint story (was 46) adds the two rules here, and the citation rewording in epic-quality-ui-accessibility-and-polish carries `M25` in its `findings`. `T1-5-D1` is split the same way: the harness story (was 70) builds the harness and the split story (was 11) carries `T1-5-D1`.
+- Decision: 2026-11-09, tracer bullet: the first entry (unused UI surface, 9.1, was story 9). The lane adds no new path through the layers.
+- Decision: 2026-11-09 (carried from epic-codebase-quality-pass): `M25` (D4) is split; the ESLint story (9.5, was 46) adds the two rules here, and the citation rewording in epic-quality-ui-accessibility-and-polish carries `M25` in its `findings`. `T1-5-D1` is split the same way: the harness story (9.2, was 70) builds the harness and the split story (9.3, was 11) carries `T1-5-D1`.
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.
+- Assumption: a lint-rule guard (an ESLint, stylelint or ruff rule, or a pre-commit hook) is proved by the linter itself failing on a planted violation, its command output pasted into the PR, because the committed probe harnesses run only pytest and vitest; Brad to confirm (board review validation, 2026-11-09).

@@ -8,7 +8,7 @@ title = "Unused UI props, exports and styles are deleted"
 description = "Narrows AgentViewContentBase.count to the values the builders produce, deletes StatChip's `delta` prop (keeping `live`, the reservation for a designed panel state; option b), CurveBuckets.tallest and styles/surfaces.ts. Today they are kept, tested and reviewed in step with live code."
 verify = "The UI gate passes (lint, typecheck, test, build) and none of the deleted names remains under ui/src."
 covers = ["R5"]
-after = []
+after = ["1.5"]
 hitl = false
 risk = "low"
 findings = ["F2-P10", "F3-D3", "F6-P11", "F8-P3"]
@@ -67,6 +67,7 @@ covers = ["R22"]
 after = []
 hitl = false
 risk = "low"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q22 and decision D4; the M25 row in Merged findings"]
 findings = []
 width = "ui/eslint.config.js"
 

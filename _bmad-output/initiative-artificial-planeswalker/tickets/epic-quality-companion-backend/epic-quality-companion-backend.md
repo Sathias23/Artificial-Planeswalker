@@ -47,7 +47,7 @@ The companion serves images cheaply, starts on Windows while a reader holds its 
 ## Boundaries
 
 - Not here: the other quality lanes (epic-codebase-quality-pass for groundwork, and the epic-quality-* lanes beside it); the deferred findings in `deferred-work.md`; the review Summary's Dropped directions; any new feature or tool.
-- Touch point: agent-view payloads — the push-deadline and contract stories (was 44 and 45) edit `contracts.py` after epic-quick-wins entry 5 adds `deck_id` to the `companion_show_*` payloads; owner of the payload fields: epic-quick-wins.
+- Touch point: agent-view payloads — the push-deadline and contract stories (8.4 and 8.5, was 44 and 45) edit `contracts.py` after epic-quick-wins entry 5 adds `deck_id` to the `companion_show_*` payloads; owner of the payload fields: epic-quick-wins.
 
 ## References
 
@@ -61,5 +61,5 @@ The companion serves images cheaply, starts on Windows while a reader holds its 
 ## Notes
 
 - Decision: 2026-11-09, board review, Brad: split out of epic-codebase-quality-pass, one of six lane epics beside it (groundwork stays there). Requirement ids keep the review's numbering (R<n> is theme Q<n>), so a line here may be one part of a theme another lane shares; story ids were renumbered on the move, and the old-to-new map is in epic-codebase-quality-pass's Notes. The slicing rule, the sequencing rule, the `plan_checkpoint` rule and the board-review rulings recorded there bind this lane. No Refactor sweep (board review batch 2).
-- Decision: 2026-11-09, tracer bullet: the first entry (the image route, was story 41). The lane adds no new path through the layers.
+- Decision: 2026-11-09, tracer bullet: the first entry (the image route, 8.1, was story 41). The lane adds no new path through the layers.
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.

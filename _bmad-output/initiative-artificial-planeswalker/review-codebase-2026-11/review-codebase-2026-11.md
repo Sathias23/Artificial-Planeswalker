@@ -2188,6 +2188,33 @@ Step 4 read every `## Code Review` block (27 runs: the architecture report's F1-
 - **Order.** The themes are numbered in fix order (`Q1` first). Within a theme, the **Tests first** findings close the test gaps on a path before the **Then** findings change it, which step 5 relies on. Cross-theme dependencies are listed after the theme table.
 - **Rejected findings.** Those the runs rejected are not re-raised here.
 
+### Board review (2026-11-09)
+
+Sofia walked the step 5 board with Brad. **Outcome:** 67 stories in seven lane epics; 380 fix findings stay, each in exactly one story; 5 more are deferred to `deferred-work.md`.
+- **Split.** `epic-codebase-quality-pass` keeps the groundwork lane: Q1-Q4, Q25 and the toolchain half of Q24. Six lane epics sit beside it:
+  - `epic-quality-mcp-tools`
+  - `epic-quality-data-and-search`
+  - `epic-quality-analysis`
+  - `epic-quality-companion-backend`
+  - `epic-quality-ui-state-and-tests`
+  - `epic-quality-ui-accessibility-and-polish`
+
+  Stories were renumbered on the move. The old-to-new map is in the groundwork epic's Notes.
+- **Drops and merges.**
+  - 67 merged into 65, and 35 merged into 34 (now 7.3).
+  - 33 (now 7.2) dropped, with `B4-P10`, `B4-P13`, `B4-P16` and `B4-P18` deferred.
+  - `B6-D3` deferred out of 30 (now 6.10).
+  - 69, the Refactor sweep, dropped. No lane gets a sweep.
+- **Order against epics 1-3.**
+  - 5.6 before epic-reliable-deck-workflows entry 1, and 5.9 before its entry 4.
+  - Epic-quick-wins entry 5 before 8.4, 5.2 and 9.1, and its entry 4 before 5.2.
+  - 7.1 before quick-wins entry 4.
+  - 7.6 before epic-trustworthy-assessment, and that epic before 7.7.
+- **Source conflicts settled.**
+  - B4-D1 beats quick-wins R6: restricted becomes a checked rule, and R6 drops the Vintage line.
+  - Initiative R16 binds only epic-trustworthy-assessment's own changes.
+- **Validation.** Fresh-context Tree, Set and Dependencies checks passed after their mechanical fixes. One open item: how lint-rule guards are proved, recorded as an `Assumption:` line for Brad.
+
 ### Decisions
 
 Walked with Brad on 2026-11-09 in four rounds grouped by theme: D1-D3 (Q16, Q11, Q10), D4, D10 and D11 (Q22, Q24), D5-D7 (Q21), then D8 and D9 (Q21). Every answer took the recommended option. Each answer turns its findings into **fix**. The parts it set aside are under Deferred or Dropped.

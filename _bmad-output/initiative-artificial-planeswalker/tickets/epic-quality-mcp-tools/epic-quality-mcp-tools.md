@@ -53,8 +53,8 @@ An agent calling any MCP tool gets a status it can act on, never a raised error,
 ## Boundaries
 
 - Not here: the other quality lanes (epic-codebase-quality-pass for groundwork, and the epic-quality-* lanes beside it); the deferred findings in `deferred-work.md`; the review Summary's Dropped directions; any new feature or tool; the frozen viewer's display.
-- Touch point: card-name resolution — the one-resolver story (was 16) lands before epic-reliable-deck-workflows entry 1, which builds on it; owner: epic-reliable-deck-workflows (initiative R10).
-- Touch point: Arena import — the mixed-printing story (was 71) lands before epic-reliable-deck-workflows entry 4; owner of import results and round trips: epic-reliable-deck-workflows (R11, R13).
+- Touch point: card-name resolution — the one-resolver story (5.6, was 16) lands before epic-reliable-deck-workflows entry 1, which builds on it; owner: epic-reliable-deck-workflows (initiative R10).
+- Touch point: Arena import — the mixed-printing story (5.9, was 71) lands before epic-reliable-deck-workflows entry 4; owner of import results and round trips: epic-reliable-deck-workflows (initiative R11, R13).
 
 ## References
 
@@ -68,5 +68,5 @@ An agent calling any MCP tool gets a status it can act on, never a raised error,
 ## Notes
 
 - Decision: 2026-11-09, board review, Brad: split out of epic-codebase-quality-pass, one of six lane epics beside it (groundwork stays there). Requirement ids keep the review's numbering (R<n> is theme Q<n>), so a line here may be one part of a theme another lane shares; story ids were renumbered on the move, and the old-to-new map is in epic-codebase-quality-pass's Notes. The slicing rule, the sequencing rule, the `plan_checkpoint` rule and the board-review rulings recorded there bind this lane. No Refactor sweep (board review batch 2).
-- Decision: 2026-11-09, tracer bullet: the first entry (dead backend surface, was story 8). The lane adds no new path through the layers; deleting the dead surface first means no later story fixes code that is about to go.
+- Decision: 2026-11-09, tracer bullet: the first entry (dead backend surface, 5.1, was story 8). The lane adds no new path through the layers; deleting the dead surface first means no later story fixes code that is about to go.
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.

@@ -5,7 +5,7 @@
 id = 1
 type = "story"
 title = "Resolve playable card names consistently"
-description = """Front-face and full card names resolve to the same playable identity across lookup and import, so art cards and ambiguous names never cause accidental card selection.
+description = """Front-face and full card names resolve to the same playable identity across lookup and import, so art cards and ambiguous names never cause accidental card selection. Handoff: builds on the single card-name resolver from epic-quality-mcp-tools 5.6 and waits on it.
 
 Original acceptance criteria:
 - Given a front-face name with one playable identity and a similarly named art card, when card lookup or the existing qualified-list importer runs, then both resolve the same playable identity, and ordinary playable-card resolution excludes the art card.
@@ -57,7 +57,7 @@ v6_key = "1-3-resolve-a-whole-deck-with-bounded-bulk-lookup"
 id = 4
 type = "story"
 title = "Import common Arena deck lists with clear partial results"
-description = """Name-only and printing-qualified lists import, and rejected lines are easy to correct.
+description = """Name-only and printing-qualified lists import, and rejected lines are easy to correct. Handoff: builds on epic-quality-mcp-tools 5.9's mixed-printing fix and waits on it.
 
 Original acceptance criteria:
 - Given a list with name-only and qualified card lines in supported sections, when it is imported into an existing saved deck, then the shared resolver determines identities and the import preserves quantities and supported section placement, and additive behavior remains intact.

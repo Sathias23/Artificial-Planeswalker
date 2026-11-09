@@ -49,8 +49,8 @@ A player gets legality, synergy and power verdicts that are right for their deck
 ## Boundaries
 
 - Not here: the other quality lanes (epic-codebase-quality-pass for groundwork, and the epic-quality-* lanes beside it); the deferred findings and options in `deferred-work.md` (`B4-D3` option b, `B5-D3` option b, `B5-D5` option b, the mana-curve polish); the review Summary's Dropped directions; any new feature or tool; the frozen viewer's display.
-- Touch point: legality coverage — the restricted-card story (was 32) lands before epic-quick-wins entry 4, so R6's coverage table lists no restricted line; owner of the coverage table: epic-quick-wins.
-- Touch point: combo credit — the combo-scoring story (was 39) credits each Spellbook variant once; owner of the combo list: epic-trustworthy-assessment (R15).
+- Touch point: legality coverage — the restricted-card story (7.1, was 32) lands before epic-quick-wins entry 4, so initiative R6's coverage table lists no restricted line; owner of the coverage table: epic-quick-wins.
+- Touch point: combo credit — the combo-scoring story (7.8, was 39) credits each Spellbook variant once; owner of the combo list: epic-trustworthy-assessment (initiative R15).
 
 ## References
 
@@ -64,7 +64,10 @@ A player gets legality, synergy and power verdicts that are right for their deck
 ## Notes
 
 - Decision: 2026-11-09, board review, Brad: split out of epic-codebase-quality-pass, one of six lane epics beside it (groundwork stays there). Requirement ids keep the review's numbering (R<n> is theme Q<n>), so a line here may be one part of a theme another lane shares; story ids were renumbered on the move, and the old-to-new map is in epic-codebase-quality-pass's Notes. The slicing rule, the sequencing rule, the `plan_checkpoint` rule and the board-review rulings recorded there bind this lane. No Refactor sweep (board review batch 2).
-- Decision: 2026-11-09, tracer bullet: the first entry (snow basics and restricted cards, was story 32), which also unblocks epic-quick-wins entry 4.
-- Decision: 2026-11-09, board review, Brad: initiative R16 binds only epic-trustworthy-assessment's own changes; the assessment pins (was story 37) land before that epic's first story, and that epic lands before the classifier story (was 38), so R16 is measured against today's baseline. The classifier, combo and bracket stories each re-run the benchmark and record their deltas in the PR.
+- Decision: 2026-11-09, tracer bullet: the first entry (snow basics and restricted cards, 7.1, was story 32), which also unblocks epic-quick-wins entry 4.
+- Decision: 2026-11-09, board review, Brad: initiative R16 binds only epic-trustworthy-assessment's own changes; the assessment pins (7.6, was story 37) land before that epic's first story, and that epic lands before the classifier story (7.7, was 38), so R16 is measured against today's baseline. The classifier, combo and bracket stories each re-run the benchmark and record their deltas in the PR.
 - Assumption: whether the assessment profile version moves is settled in the classifier and combo stories' PRs (B5-D1).
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.
+- Dropped: 7.2 (was 33), 2026-11-09, board review batch 2: only visible effect is the tiny-deck land message, in a file 7.5 rewrites; B4-P10, B4-P13, B4-P16 and B4-P18 are in `deferred-work.md`.
+- Dropped: 7.4 (was 35), 2026-11-09, board review batch 2: merged into 7.3 (same file and tests); none deferred.
+- Decision: 2026-11-09, board review validation: the assessment pins (7.6) now wait only on 4.2 and 4.5, and the statistics story (7.5) waits on 7.6, so the pins land before the code they pin changes and epic-trustworthy-assessment is not held behind the index-rebuild and UI chains.

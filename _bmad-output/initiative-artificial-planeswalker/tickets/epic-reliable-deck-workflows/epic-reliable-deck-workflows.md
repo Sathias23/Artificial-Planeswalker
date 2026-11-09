@@ -55,6 +55,7 @@ A deckbuilder resolves, imports and exports a representative 100-card Arena deck
 - The mixed-failure and injected-stall cases in `acceptance.md` pass without disappearing inputs or lingering resource exhaustion.
 - Measured batch, concurrency and deadline limits are documented with the measurements behind them.
 - Arena acceptance, not only this project's parser, is evidenced for split and double-faced fixtures including The Emperor of Palamecia (FIN 219) and the identity associated with Commit.
+- The changes ship in a tagged release with the skills, `plugin/` and generated API artifacts in step.
 
 ## Boundaries
 

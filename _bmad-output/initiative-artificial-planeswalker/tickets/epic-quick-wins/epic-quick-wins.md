@@ -46,7 +46,7 @@ The agent operator does ordinary edits without remove-and-re-add dances, freezes
 - The spec's Success signal runs end to end on master: rename, set to three copies, clone, export to Arena text, re-import into an empty deck to an identical list.
 - The companion shows a week-old swap suggestion labelled with its deck name and marked stale.
 - A commander deck's legality panel says in words that commander size and colour identity were not checked.
-- Skills, `plugin/` and generated API artifacts are in step for every shipped entry.
+- Skills, `plugin/` and generated API artifacts are in step for every shipped entry, and each entry ships in a tagged release.
 
 ## Boundaries
 
