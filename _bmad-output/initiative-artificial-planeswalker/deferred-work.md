@@ -29,3 +29,15 @@ Ids are those stamped in `review-codebase-2026-11/review-codebase-2026-11.md` (s
 - source_plan: `_bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md`
   summary: "A colour-identity search filter (follows decision D2, 2026-11-09): `search_cards`' `at_most` and the semantic tools filter card colours, so a Commander search returns off-identity cards (Golgari Signet under mono-white) unless the agent checks identity itself. D2 kept the colour semantics and corrects the docstrings and skills. An identity filter is a new tool parameter, and on the semantic path it also needs new vec0 metadata columns and a `--rebuild`."
   evidence: 'B2 code review (`B2-D1`), 2026-11-08, `src/data/repositories/card.py:435`, `:463`, `:517-524`; `src/search/index_builder.py:372-375` stores `cards.colors`, deliberately not `color_identity`.'
+
+## Deferred from: board review of epic-codebase-quality-pass (2026-11-09)
+
+Fix findings Brad dropped at the board review; ids are those stamped in `review-codebase-2026-11/review-codebase-2026-11.md`. The ruling and its reason are in the epic's Notes (`tickets/epic-codebase-quality-pass/epic-codebase-quality-pass.md`).
+
+- source_plan: `_bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md`
+  summary: "Story 33 (`B4-P10`, `B4-P13`, `B4-P16`, `B4-P18`), mana-curve polish: assert the land recommendations as exact strings rather than substrings; name the repeated curve thresholds (35/45/40/3.5/0.25 and the early-play count) once; stop a deck under three cards being told \"Add ~0 lands (target: 0 lands)\"; split lands from spells in one pass instead of a pairwise Pydantic comparison, dropping the dead `cmc is None` arms. Dropped because the only visible effect is the tiny-deck message and story 36 rewrites land detection in the same file; revisit if `mana_curve.py` is touched for its own sake."
+  evidence: 'B4 code review, 2026-11-08, `src/logic/mana_curve.py:74-88`, `:146-234`, `:203-206`; `tests/unit/logic/test_mana_curve.py:125`, `:136`.'
+
+- source_plan: `_bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md`
+  summary: "`B6-D3` option (a): fold `MODEL_NAME` and `EMBEDDING_DIM` into the index's content hash, so a model swap that keeps 384 dimensions re-embeds every card instead of ranking new query vectors against old card vectors. Deferred because it forces one full re-embed on every user's machine to guard a swap nobody has planned; add it in the PR that changes the embedding model."
+  evidence: 'B6 code review, 2026-11-08, `src/search/index_builder.py:225-244`, `src/search/embedder.py:39-40`.'

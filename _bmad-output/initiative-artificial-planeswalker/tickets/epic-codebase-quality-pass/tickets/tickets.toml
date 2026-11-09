@@ -449,16 +449,16 @@ references = ["review — _bmad-output/initiative-artificial-planeswalker/review
 [[entry]]
 id = 30
 type = "story"
-title = "The index records its model and trusts no half-written state"
-description = "Pins 'hash recorded iff vector written' across a failed build, orders the build's first N, folds MODEL_NAME and EMBEDDING_DIM into the hashed text so a same-dimension model swap re-embeds (option a; one full re-embed when it lands), checks vectors as well as hashes, refuses unrecognised database URLs, warns when journal_mode is not wal, times with perf_counter and fixes stale comments. Today a model swap that keeps 384 dimensions silently ranks new queries against old card vectors."
-verify = "A build interrupted mid-batch leaves no hash without its vector; changing MODEL_NAME with the same dimension makes the next build re-embed every card; `--limit N` embeds the same N cards on two runs; the recall sanity eval passes."
+title = "The index trusts no half-written state"
+description = "Pins 'hash recorded iff vector written' across a failed build, orders the build's first N, checks vectors as well as hashes, refuses unrecognised database URLs, warns when journal_mode is not wal, times with perf_counter and fixes stale comments. Today the build's first N has no ORDER BY, so `--limit N` can embed a different N each run, and no test pins that a hash is recorded only with its vector. The model fingerprint (B6-D3) is deferred to the PR that changes the model (board review 2026-11-09)."
+verify = "A build interrupted mid-batch leaves no hash without its vector; `--limit N` embeds the same N cards on two runs; an unrecognised database URL is refused; the recall sanity eval passes."
 covers = ["R14"]
 after = [4, 20, 29]
 hitl = false
 risk = "medium"
-findings = ["B6-P8", "M44", "B6-D3", "B6-P2", "B6-P11", "B6-P12", "B6-P14", "B6-P15"]
+findings = ["B6-P8", "M44", "B6-P2", "B6-P11", "B6-P12", "B6-P14", "B6-P15"]
 width = "src/search/index_builder.py, connection.py, embedder.py, query.py, scripts/build_card_embeddings.py, their tests"
-references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q14; the `## Code Review` stamps (and Merged findings rows for M-groups) for B6-P8, M44, B6-D3, B6-P2, B6-P11, B6-P12, B6-P14, B6-P15"]
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q14; the `## Code Review` stamps (and Merged findings rows for M-groups) for B6-P8, M44, B6-P2, B6-P11, B6-P12, B6-P14, B6-P15"]
 
 [[entry]]
 id = 31
@@ -500,23 +500,23 @@ covers = ["R15"]
 after = [8]
 hitl = false
 risk = "low"
-findings = ["B4-P10", "B4-P13", "B4-P16", "B4-P18"]
-width = "src/logic/mana_curve.py and its tests"
+findings = []
+width = "dropped at board review 2026-11-09; its findings are in deferred-work.md"
 references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P10, B4-P13, B4-P16, B4-P18"]
 
 [[entry]]
 id = 34
 type = "story"
-title = "Synergy detection sees every card that should count"
-description = "Pins a strong-strength detection and replaces the `len(...) >= 0` lifelink assertion, then reads multi-face text from card_faces, parses tribal types properly (\"Elves\", Kindred; option a, option b deferred), finds keyword holders past the first line, makes tribal payoffs independent of deck order without counting lords twice, and requires both halves of a mechanic combo. Today every multi-face card is invisible to synergy detection, and one-sided mechanic combos are reported."
-verify = "detect_synergies on a fixture deck with an MDFC payoff, an Elf lord, a second-line keyword holder and a one-sided mechanic finds the first three, rejects the fourth, and returns the same result for the deck in reverse order."
+title = "Synergy detection sees every card that should count, and scores it monotonically and in order"
+description = "Pins a strong-strength detection and replaces the `len(...) >= 0` lifelink assertion, then reads multi-face text from card_faces, parses tribal types properly (\"Elves\", Kindred; option a, option b deferred), finds keyword holders past the first line, makes tribal payoffs independent of deck order without counting lords twice, and requires both halves of a mechanic combo. Today every multi-face card is invisible to synergy detection, and one-sided mechanic combos are reported. Merged from story 35 (board review 2026-11-09): asserts cohesion `high`, then makes cohesion rise with coverage (option a), states the strength tiering once instead of five times, and sorts the synergy output so it is identical across processes. Today cohesion can fall as coverage rises, and the output order changes between processes."
+verify = "detect_synergies on a fixture deck with an MDFC payoff, an Elf lord, a second-line keyword holder and a one-sided mechanic finds the first three, rejects the fourth, and returns the same result for the deck in reverse order; two processes with different PYTHONHASHSEED return byte-identical detect_synergies output, and adding coverage to a fixture deck never lowers its cohesion."
 covers = ["R15"]
 after = [8]
 hitl = false
 risk = "medium"
-findings = ["B4-P8", "B4-P9", "M23", "B4-D3", "B4-P3", "B4-P4", "B4-P6"]
+findings = ["B4-P8", "B4-P9", "M23", "B4-D3", "B4-P3", "B4-P4", "B4-P6", "B4-P7", "B4-D4", "B4-P14", "B4-P15"]
 width = "src/logic/synergy.py and tests/unit/logic/test_synergy.py"
-references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P8, B4-P9, M23, B4-D3, B4-P3, B4-P4, B4-P6"]
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P8, B4-P9, M23, B4-D3, B4-P3, B4-P4, B4-P6; and Q15's B4-P7, B4-D4, B4-P14, B4-P15"]
 
 [[entry]]
 id = 35
@@ -528,8 +528,8 @@ covers = ["R15"]
 after = [34]
 hitl = false
 risk = "low"
-findings = ["B4-P7", "B4-D4", "B4-P14", "B4-P15"]
-width = "src/logic/synergy.py and its tests"
+findings = []
+width = "merged into story 34 (board review 2026-11-09)"
 references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P7, B4-D4, B4-P14, B4-P15"]
 
 [[entry]]
@@ -539,7 +539,7 @@ title = "The agent and the companion report the same card statistics"
 description = "Per D1, src/logic owns land detection (the MDFC rule settled once), mana-value bucketing and the colour counts; the deck-detail payload carries the computed figures, the UI draws them and deletes isLand, bucketOf and coloursOf, and a test ties the seven-bucket tuple to BUCKETS. Today the agent reports one land count and curve in chat while the companion shows another for the same deck (MDFC lands, mana value 0 and 7+, pip counts), and two UI headers claim the two cannot disagree."
 verify = "For a deck with an MDFC land, a 0-cost spell and a 7-drop, analyze_mana_curve's land count and buckets equal the deck-detail figures and what the companion panels render; the gen:api output is committed."
 covers = ["R16"]
-after = [9, 23, 33, 10]
+after = [9, 23, 10]
 hitl = false
 risk = "high"
 plan_checkpoint = true
