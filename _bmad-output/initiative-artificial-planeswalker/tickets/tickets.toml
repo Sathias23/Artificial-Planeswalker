@@ -20,3 +20,10 @@ slug = "epic-trustworthy-assessment"
 title = "Trustworthy assessment"
 description = "Brawl scoring reads as unsupported and functioning combos are distinguished from missing-card suggestions, with supported assessments unchanged."
 covers = ["R14", "R15", "R16", "R20", "R21"]
+
+[[epic]]
+id = 4
+slug = "epic-codebase-quality-pass"
+title = "Codebase quality pass"
+description = "Every fix finding of the 2026-11 codebase review is resolved on master, one PR per story, and the two deferred findings stay recorded in deferred-work.md."
+covers = []

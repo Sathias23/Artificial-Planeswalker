@@ -72,3 +72,5 @@ The agent operator does ordinary edits without remove-and-re-add dances, freezes
 - Open question: R6, should the unchecked-rule list also appear in `validate_deck`'s LLM-facing summary text, or only in the structured result?
 - Source conflict: R4 never emits a Companion section; epic-reliable-deck-workflows R7 (initiative R13) preserves one. Settle before entry 3 is built.
 - Assumption: Done when was written by the v6-to-v7 migration from the spec's Success signal; confirm with Sofia.
+- Source conflict: R6 lists restricted as an unchecked Vintage rule; epic-codebase-quality-pass story 32 (review B4-D1) makes restricted a checked rule. Settle before entry 4 or story 32 is built, whichever comes first.
+- Handoff: entry 5's `deck_id` payload field meets epic-codebase-quality-pass stories 44, 45, 50, 51, 56 and 58, which edit `contracts.py`, `agentView.ts` and `SuggestionsView`; build order is an open question in the initiative's Notes.

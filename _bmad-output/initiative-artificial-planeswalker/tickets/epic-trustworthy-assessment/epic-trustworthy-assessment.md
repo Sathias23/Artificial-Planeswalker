@@ -55,4 +55,6 @@ A Brawl player gets an honest account of what the assessor supports and what the
 ## Notes
 
 - Assumption: the first Brawl deliverable is explicit unsupported scoring.
+- Source conflict: R3 (initiative R16) keeps supported Commander and Standard scores unchanged apart from the incomplete-combo correction; epic-codebase-quality-pass stories 38-40 (review Q17) change them. Settle before story 38 is built.
+- Handoff: epic-codebase-quality-pass story 39 credits each Spellbook variant once in scoring (B5-D3 option a); this epic's R15 owns the combo list itself.
 - Assumption: Done when was written by the v6-to-v7 migration from the breakdown's Epic 2; confirm with Sofia when refining and planning its stories.

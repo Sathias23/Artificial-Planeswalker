@@ -70,6 +70,11 @@ An agent operator can build, copy, move and judge a real Arena deck end to end w
 
 - Not here: format-specific rule enforcement, transactional preview/apply, durable revisions or undo (spec-quick-wins Non-goals); calibrated Brawl scoring, complete Brawl legality, atomic swaps, broad synergy expansion, companion launch diagnostics (spec-deck-workflow-reliability Non-goals).
 - Must not change: the frozen viewer and `view_deck` (AD-15).
+- Touch point: card-name resolution — epic-codebase-quality-pass story 16 folds the three existing resolvers into one; R10's consistent resolution builds on it; owner: epic-reliable-deck-workflows.
+- Touch point: Arena import — epic-codebase-quality-pass story 71 sums mixed-printing lines in `import_decklist`; owner: epic-reliable-deck-workflows (R11, R13).
+- Touch point: legality coverage — epic-codebase-quality-pass story 32 makes restricted a checked Vintage rule; owner of the unchecked-rule table: epic-quick-wins (R6).
+- Touch point: agent-view payloads — epic-codebase-quality-pass stories 44, 45, 50, 51, 56 and 58 edit `contracts.py`, `agentView.ts` and `SuggestionsView`; owner of the `deck_id` payload field: epic-quick-wins (R5).
+- Touch point: combo credit — epic-codebase-quality-pass story 39 credits each Spellbook variant once; owner of the combo list: epic-trustworthy-assessment (R15).
 - Tracer path: a deck edited and cloned (epic-quick-wins), resolved and exported for Arena (epic-reliable-deck-workflows), then assessed honestly (epic-trustworthy-assessment).
 
 ## References
@@ -84,5 +89,9 @@ An agent operator can build, copy, move and judge a real Arena deck end to end w
 ## Notes
 
 - Decision: 2026-11-07, Brad: shipped Epics 1–17 and the finished specs (deck power assessment, quality audit P1, quality review fixes) are archived in `archive-v6/` unchanged rather than rebuilt as done tickets; their sprint status stays on the `process` branch.
+- Decision: 2026-11-09, Brad: epic-codebase-quality-pass (epic 4) carries the 2026-11 codebase review's 385 fix findings. It serves no Requirements line here, so its `covers` is empty and its own Requirements cite the review Summary; it is listed last in the breakdown, and its build order against epics 1-3 is Brad's call at board review.
+- Open question: where epic-codebase-quality-pass meets epics 1-3 (story 16 with epic-reliable-deck-workflows entry 1, story 71 with its entry 4, story 32 with epic-quick-wins entry 4, the agent-view payload stories with epic-quick-wins entry 5, story 39 with epic-trustworthy-assessment R15), which side builds first? Brad, at board review; the answer becomes cross-epic `after` keys.
+- Source conflict: R16 (spec-deck-workflow-reliability FR10) vs epic-codebase-quality-pass stories 38-40 (review Q17) — R16 keeps supported Commander and Standard scores unchanged apart from the incomplete-combo correction; Q17 changes them. Settle before story 38 is built: does R16 bind only epic-trustworthy-assessment's own changes?
+- Source conflict: R6 (spec-quick-wins CAP-6) vs epic-codebase-quality-pass story 32 (review B4-D1) — R6 reports restricted as an unchecked Vintage rule and promises no verdict change; story 32 checks restricted cards. Settle before epic-quick-wins entry 4 or story 32 is built.
 - Source conflict: R4 (spec-quick-wins CAP-4) never emits a Companion section on export; R13 (spec-deck-workflow-reliability FR7) preserves a Companion section across round trips. Sofia to settle before epic-quick-wins entry 3 or epic-reliable-deck-workflows entry 5 is built.
 - Open question: epic-quick-wins entry 3 (decklist export) and epic-reliable-deck-workflows entry 5 (verified Arena export) build overlapping export paths; whether one subsumes the other is unsettled.
