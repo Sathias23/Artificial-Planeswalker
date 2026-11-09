@@ -243,7 +243,7 @@ plugin root instead ([finding that root](docs/companion.md#running-from-a-plugin
 
 ```bash
 PLUGIN_ROOT="$HOME/.claude/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
-uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion --open
+uv run --no-dev --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion --open
 ```
 
 It serves in the foreground until Ctrl-C and prints one launch line naming the real URL — port

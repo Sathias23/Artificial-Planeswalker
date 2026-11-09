@@ -88,13 +88,19 @@ def _plugin_json(project: dict) -> dict:
 
 
 def _mcp_json() -> dict:
-    """MCP server config anchored to the installed plugin via CLAUDE_PLUGIN_ROOT."""
+    """MCP server config anchored to the installed plugin via CLAUDE_PLUGIN_ROOT.
+
+    ``--no-dev`` because ``uv run`` syncs the project before launching, and its default is to
+    include the ``dev`` dependency group: without the flag every plugin launch installs mypy,
+    pytest, ruff and pre-commit into an end user's plugin environment.
+    """
     return {
         "mcpServers": {
             "artificial-planeswalker": {
                 "command": "uv",
                 "args": [
                     "run",
+                    "--no-dev",
                     "--directory",
                     "${CLAUDE_PLUGIN_ROOT}/server",
                     "python",
@@ -137,7 +143,8 @@ def _codex_mcp_json() -> dict:
     so ``cwd: "./server"`` + plain ``uv run`` is the launch anchor. The wrapper key is
     camelCase ``mcpServers`` — Codex's own plugin-creator scaffold stubs
     ``{"mcpServers": {}}``; a snake_case ``mcp_servers`` wrapper is silently ignored
-    and no tools mount (found the hard way on the first live install).
+    and no tools mount (found the hard way on the first live install). ``--no-dev`` for the
+    reason :func:`_mcp_json` gives.
 
     Returns:
         The payload for ``plugin/codex-mcp.json``.
@@ -146,7 +153,7 @@ def _codex_mcp_json() -> dict:
         "mcpServers": {
             "artificial-planeswalker": {
                 "command": "uv",
-                "args": ["run", "python", "-m", "src.mcp_server"],
+                "args": ["run", "--no-dev", "python", "-m", "src.mcp_server"],
                 "cwd": "./server",
                 "env": {"MCP_TRANSPORT": "stdio"},
             }

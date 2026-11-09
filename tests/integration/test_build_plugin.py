@@ -189,6 +189,9 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     mcp_json = json.loads((out / ".mcp.json").read_text(encoding="utf-8"))
     args = mcp_json["mcpServers"]["artificial-planeswalker"]["args"]
     assert "${CLAUDE_PLUGIN_ROOT}/server" in args
+    # `uv run` syncs before launching and includes the dev group by default; an end user's
+    # plugin install must never get mypy, pytest, ruff and pre-commit.
+    assert "--no-dev" in args
 
     # Codex manifest must be the Claude manifest plus exactly the two Codex pointer keys —
     # anything else means the two clients' metadata has drifted.
@@ -210,7 +213,7 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     codex_mcp = json.loads(codex_mcp_text)
     codex_server = codex_mcp["mcpServers"]["artificial-planeswalker"]
     assert codex_server["cwd"] == "./server"
-    assert codex_server["args"] == ["run", "python", "-m", "src.mcp_server"]
+    assert codex_server["args"] == ["run", "--no-dev", "python", "-m", "src.mcp_server"]
     assert codex_server["env"] == {"MCP_TRANSPORT": "stdio"}
 
 

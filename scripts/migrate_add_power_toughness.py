@@ -2,9 +2,11 @@
 
 Adds the optional ``power`` and ``toughness`` columns to the existing cards
 table for the viewer power/toughness-display feature. Idempotent: skips any
-column that already exists. After running this, re-import Scryfall data
-(``uv run python scripts/import_scryfall_data.py --type oracle_cards``) to
-backfill P/T for the existing corpus.
+column that already exists. After running this, re-import Scryfall data with the
+default import (``uv run python scripts/import_scryfall_data.py``, or the
+``initialize_database`` tool with ``update=true``) to backfill P/T for the existing
+corpus. Not ``--type oracle_cards``: its one-printing-per-identity ``games`` brings
+back the Arena false positives the default union-of-printings import prevents.
 
 Run with: uv run python scripts/migrate_add_power_toughness.py
 """

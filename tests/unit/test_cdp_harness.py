@@ -26,6 +26,7 @@ Two rules inherited from ``test_vitest_probe_harness.py``, both standing agreeme
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -74,6 +75,16 @@ def _run(index: int = 1, **over: Any) -> dict[str, Any]:
 
 
 ARGS = SimpleNamespace(json=None)
+
+
+@pytest.fixture(autouse=True)
+def _no_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No developer's exported ``CARDS_DATABASE_URL`` reaches a gate under test.
+
+    The operator gate counts the URL's directory as operator data, so an exported URL would add a
+    candidate no test here chose. Tests that exercise the URL set it themselves.
+    """
+    monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)
 
 
 class TestARunThatMeasuredNothingIsRefused:
@@ -196,7 +207,7 @@ class TestTheRealDataDirectoryIsRefused:
         default = Path(user_data_dir("artificial-planeswalker", appauthor=False)).resolve()
 
         with pytest.raises(SystemExit) as refused:
-            cdp.refuse_the_operators_data_dir(default)
+            cdp.refuse_the_operators_data_dir(default, command="refetch")
 
         assert "refuses to touch your real data dir" in str(refused.value)
         assert str(default) in str(refused.value)
@@ -209,7 +220,7 @@ class TestTheRealDataDirectoryIsRefused:
         monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(mine))
 
         with pytest.raises(SystemExit) as refused:
-            cdp.refuse_the_operators_data_dir(mine.resolve())
+            cdp.refuse_the_operators_data_dir(mine.resolve(), command="refetch")
 
         assert str(mine.resolve()) in str(refused.value)
 
@@ -222,7 +233,7 @@ class TestTheRealDataDirectoryIsRefused:
         monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(mine))
 
         with pytest.raises(SystemExit) as refused:
-            cdp.refuse_the_operators_data_dir((mine / nested).resolve())
+            cdp.refuse_the_operators_data_dir((mine / nested).resolve(), command="refetch")
 
         assert "nested with it" in str(refused.value)
 
@@ -234,7 +245,7 @@ class TestTheRealDataDirectoryIsRefused:
         monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(mine))
 
         with pytest.raises(SystemExit):
-            cdp.refuse_the_operators_data_dir((tmp_path / "parent").resolve())
+            cdp.refuse_the_operators_data_dir((tmp_path / "parent").resolve(), command="refetch")
 
     def test_a_genuine_copy_is_allowed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         """THE POSITIVE TWIN, and the one that keeps every refusal above meaningful.
@@ -245,7 +256,7 @@ class TestTheRealDataDirectoryIsRefused:
         """
         monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
 
-        cdp.refuse_the_operators_data_dir((tmp_path / "ap-copy").resolve())
+        cdp.refuse_the_operators_data_dir((tmp_path / "ap-copy").resolve(), command="refetch")
 
     def test_the_check_creates_nothing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         """``src.paths.data_dir()`` creates the directory it resolves; this must not.
@@ -310,6 +321,281 @@ class TestTheRealDataDirectoryIsRefused:
             cdp.cmd_refetch(SimpleNamespace(runs=runs, data_dir=str(tmp_path / "ap-copy")))
 
         assert "--runs must be at least 1" in str(refused.value)
+
+
+class TestTheDatabaseUrlIsOperatorData:
+    """An exported ``CARDS_DATABASE_URL`` names the operator's database, wherever it points.
+
+    The gate used to count only the platform default and ``PLANESWALKER_DATA_DIR``, so an operator
+    whose real database lives where their URL says could pass that directory to a writing command
+    and be waved through.
+    """
+
+    def test_the_urls_directory_is_refused(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        url_dir = tmp_path / "url-home"
+        monkeypatch.setenv(
+            "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(url_dir / 'cards.db').as_posix()}"
+        )
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.refuse_the_operators_data_dir(url_dir.resolve(), command="refetch")
+
+        assert "refuses to touch your real data dir" in str(refused.value)
+        assert str(url_dir.resolve()) in str(refused.value)
+
+    def test_the_twin_a_sibling_of_the_urls_directory_is_allowed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        monkeypatch.setenv(
+            "CARDS_DATABASE_URL",
+            f"sqlite+aiosqlite:///{(tmp_path / 'url-home' / 'cards.db').as_posix()}",
+        )
+
+        cdp.refuse_the_operators_data_dir((tmp_path / "ap-copy").resolve(), command="refetch")
+
+    def test_resolving_the_url_creates_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        ghost = tmp_path / "never-created"
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "also-never-created"))
+        monkeypatch.setenv(
+            "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(ghost / 'cards.db').as_posix()}"
+        )
+
+        assert ghost.resolve() in cdp.operator_data_dirs()
+        assert not ghost.exists()
+        assert not (tmp_path / "also-never-created").exists()
+
+
+class TestTheCompanionChildSeesOnlyItsOwnDataDir:
+    """The child inherits the environment, and ``CARDS_DATABASE_URL`` outranks the data dir.
+
+    Repointing ``PLANESWALKER_DATA_DIR`` alone left an exported URL in place, so the "isolated"
+    companion opened the operator's database anyway.
+    """
+
+    def test_the_child_env_has_no_url_and_the_isolated_data_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        monkeypatch.setenv("CARDS_DATABASE_URL", "sqlite+aiosqlite:///C:/real/cards.db")
+        seen: dict[str, Any] = {}
+
+        class _PopenStub:
+            pid = 0
+
+            def __init__(self, argv: list[str], **kwargs: Any) -> None:
+                seen.update(kwargs)
+
+        monkeypatch.setattr(cdp.subprocess, "Popen", _PopenStub)
+        companion = cdp.Companion(tmp_path / "scratch")
+        try:
+            companion.start(wait=False)
+        finally:
+            companion._log.close()
+
+        env = seen["env"]
+        assert "CARDS_DATABASE_URL" not in env
+        assert env["PLANESWALKER_DATA_DIR"] == str((tmp_path / "scratch").resolve())
+        assert os.environ["CARDS_DATABASE_URL"] == "sqlite+aiosqlite:///C:/real/cards.db", (
+            "the child's environment is a copy; this process's own must be untouched"
+        )
+
+    def test_the_in_process_repoint_strips_the_url_too(self, tmp_path: Path):
+        """``cmd_refetch`` repoints THIS process for the real notifier; the same rule applies."""
+        env = {"CARDS_DATABASE_URL": "sqlite+aiosqlite:///C:/real/cards.db", "OTHER": "kept"}
+
+        cdp.point_env_at(env, tmp_path)
+
+        assert env == {"PLANESWALKER_DATA_DIR": str(tmp_path), "OTHER": "kept"}
+
+
+class _PanelsCompanionStub:
+    """Records construction and fakes every method ``cmd_panels`` calls; starts nothing."""
+
+    built: list[Path] = []
+
+    def __init__(self, data_dir: Path, port: int | None = None) -> None:
+        self.data_dir = data_dir
+        self.url = "http://127.0.0.1:1"
+        _PanelsCompanionStub.built.append(data_dir)
+
+    def start(self, wait: bool = True) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def await_down(self, timeout: float = 30.0) -> None:
+        pass
+
+
+class _PanelsBrowserStub:
+    """A browser that answers every call ``cmd_panels`` makes without launching anything."""
+
+    def __init__(self, headless: bool = True) -> None:
+        pass
+
+    def __enter__(self) -> _PanelsBrowserStub:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        pass
+
+    def send(self, method: str, **params: Any) -> dict[str, Any]:
+        return {}
+
+    def navigate(self, url: str, settle: float = 2.0) -> None:
+        pass
+
+    def reload(self, ignore_cache: bool = True, settle: float = 2.0) -> None:
+        pass
+
+    def js(self, expression: str, await_promise: bool = True) -> Any:
+        return {"headings": ["", ""], "storyKeys": []}
+
+    def screenshot(self, path: Path) -> None:
+        pass
+
+    def pump(self, seconds: float) -> None:
+        pass
+
+    def block(self, patterns: list[str]) -> None:
+        pass
+
+    def unblock(self) -> None:
+        pass
+
+
+def _panels_args(tmp_path: Path, data_dir: Path | None) -> SimpleNamespace:
+    return SimpleNamespace(
+        data_dir=None if data_dir is None else str(data_dir),
+        out=str(tmp_path / "out"),
+        port=None,
+        headed=False,
+        stall_wait=0.0,
+    )
+
+
+class TestPanelsRefusesADataDirItWouldDestroy:
+    """``panels`` deletes and corrupts ``cards.db``, so it refuses any dir that holds one.
+
+    It used to unlink every ``cards.db*`` in the directory it was handed and then write garbage
+    over ``cards.db`` -- the live database included, if that was the directory passed. Every
+    refusal fires before the screenshot directory or a companion exists.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _stubs(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        _PanelsCompanionStub.built = []
+        monkeypatch.setattr(cdp, "Companion", _PanelsCompanionStub)
+        monkeypatch.setattr(cdp, "Browser", _PanelsBrowserStub)
+
+    def test_a_dir_holding_a_database_is_refused_and_left_byte_identical(self, tmp_path: Path):
+        scratch = tmp_path / "scratch"
+        scratch.mkdir()
+        (scratch / "cards.db").write_bytes(b"precious cards")
+        (scratch / "cards.db-wal").write_bytes(b"precious wal")
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.cmd_panels(_panels_args(tmp_path, scratch))
+
+        message = str(refused.value)
+        assert "cards.db, cards.db-wal" in message, "the refusal must name every file it saw"
+        assert (scratch / "cards.db").read_bytes() == b"precious cards"
+        assert (scratch / "cards.db-wal").read_bytes() == b"precious wal"
+        assert not (tmp_path / "out").exists(), "the refusal created the screenshot directory"
+        assert _PanelsCompanionStub.built == [], "the refusal fired after a companion existed"
+
+    @pytest.mark.parametrize("where", ["equal", "inside", "around"])
+    def test_an_operator_dir_is_refused_even_when_empty(self, tmp_path: Path, where: str):
+        real = tmp_path / "my-real-data"
+        target = {"equal": real, "inside": real / "copy", "around": tmp_path}[where]
+        target.mkdir(parents=True, exist_ok=True)
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.cmd_panels(_panels_args(tmp_path / "elsewhere", target))
+
+        assert "refuses to touch your real data dir" in str(refused.value)
+        assert "panels" in str(refused.value), "the refusal must name the command that refused"
+        assert "omit --data-dir" in str(refused.value), "a copy would hit the cards.db refusal"
+        assert "robocopy" not in str(refused.value)
+        assert not (tmp_path / "elsewhere" / "out").exists()
+        assert _PanelsCompanionStub.built == []
+
+    def test_the_twin_an_empty_scratch_dir_passes_both_gates(self, tmp_path: Path):
+        """A gate that refused every directory would pass both refusals above."""
+        scratch = tmp_path / "scratch"
+        scratch.mkdir()
+
+        assert cdp.cmd_panels(_panels_args(tmp_path, scratch)) == 0
+
+        assert _PanelsCompanionStub.built == [scratch.resolve()]
+        assert scratch.is_dir(), "a directory the operator passed is theirs; it is never removed"
+
+
+class TestPanelsRemovesItsOwnScratchDir:
+    """With no ``--data-dir`` the harness makes a temp dir, and it must not leak one per run."""
+
+    @pytest.fixture
+    def scratch(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        made = tmp_path / "cdp-panels-made"
+
+        def fake_mkdtemp(prefix: str = "") -> str:
+            made.mkdir()
+            return str(made)
+
+        monkeypatch.setattr(cdp.tempfile, "mkdtemp", fake_mkdtemp)
+        monkeypatch.setattr(cdp, "Browser", _PanelsBrowserStub)
+        monkeypatch.setattr(cdp.time, "sleep", lambda seconds: None)
+        return made
+
+    def test_the_temp_dir_is_removed_after_a_run(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scratch: Path
+    ):
+        monkeypatch.setattr(cdp, "Companion", _PanelsCompanionStub)
+
+        assert cdp.cmd_panels(_panels_args(tmp_path, None)) == 0
+
+        assert not scratch.exists()
+
+    def test_the_temp_dir_is_removed_when_a_step_raises(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scratch: Path
+    ):
+        class _Exploding(_PanelsCompanionStub):
+            def start(self, wait: bool = True) -> None:
+                (self.data_dir / "companion.log").write_text("held", encoding="utf-8")
+                raise RuntimeError("companion did not start")
+
+        monkeypatch.setattr(cdp, "Companion", _Exploding)
+
+        with pytest.raises(RuntimeError, match="companion did not start"):
+            cdp.cmd_panels(_panels_args(tmp_path, None))
+
+        assert not scratch.exists()
+
+    def test_a_removal_failure_is_reported_not_raised(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        scratch: Path,
+        capsys: pytest.CaptureFixture[str],
+    ):
+        monkeypatch.setattr(cdp, "Companion", _PanelsCompanionStub)
+
+        def refuse(*args: Any, **kwargs: Any) -> None:
+            raise PermissionError("held open")
+
+        monkeypatch.setattr(cdp.shutil, "rmtree", refuse)
+
+        assert cdp.cmd_panels(_panels_args(tmp_path, None)) == 0
+
+        err = capsys.readouterr().err
+        assert "could not remove" in err and str(scratch) in err
 
 
 class TestARepaintThisHarnessCannotAttributeToAPushIsNotAMeasurement:

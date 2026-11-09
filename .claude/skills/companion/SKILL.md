@@ -36,7 +36,7 @@ running, and confirm the browser tab opened.
      It looks like:
 
      ```bash
-     uv run --directory "<install root>" artificial-planeswalker companion --open
+     uv run --no-dev --directory "<install root>" artificial-planeswalker companion --open
      ```
 
      The `--directory` is the server's own install root, so it works from any working directory

@@ -11,12 +11,15 @@ and does NOT trigger the re-import. Backfilling with real values is a separate,
 deliberate, operator-invoked step (the Scryfall re-import is heavy, ~60k cards).
 
 After running this migration, backfill ``game_changer`` for the existing corpus
-by explicitly running the Scryfall re-import:
+by explicitly running the default Scryfall re-import (or the ``initialize_database``
+tool with ``update=true``, which runs the same import):
 
-    uv run python scripts/import_scryfall_data.py --type oracle_cards
+    uv run python scripts/import_scryfall_data.py
 
-``oracle_cards`` is sufficient (and lighter than ``default_cards``) because
-``game_changer`` is a per-oracle-identity property. The re-import replays
+Use the default (``default_cards``), not ``--type oracle_cards``: ``oracle_cards``
+keeps one printing per identity, so its ``games`` misses Arena/MTGO availability
+carried only by other printings and brings back the Arena false positives the
+union-of-printings import exists to prevent. The re-import replays
 ``transform_scryfall_card`` and overwrites every card's ``game_changer`` with the
 real bulk value. This migration does NOT run that step for you.
 

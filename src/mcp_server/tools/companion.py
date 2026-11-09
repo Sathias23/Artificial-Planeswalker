@@ -725,14 +725,15 @@ def launch_command() -> str:
     """The exact shell command that starts the companion and opens a browser tab on it.
 
     The ``--directory`` form so the same string works from any working directory and for a plugin
-    install; ``--open`` so the page appears without a second step. The
+    install; ``--no-dev`` so ``uv run``'s pre-launch sync never installs the ``dev`` dependency
+    group into a plugin install; ``--open`` so the page appears without a second step. The
     companion's own process opens the browser — the MCP server never spawns it (AD-15); the agent
     runs this in a background shell it owns.
 
     Returns:
         One command line, quoted for a shell.
     """
-    return f'uv run --directory "{_INSTALL_ROOT}" artificial-planeswalker companion --open'
+    return f'uv run --no-dev --directory "{_INSTALL_ROOT}" artificial-planeswalker companion --open'
 
 
 class CompanionStatusResult(BaseModel):

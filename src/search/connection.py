@@ -1,19 +1,15 @@
 """Sync SQLite connection factory: loads sqlite-vec, enables WAL, one connection per thread."""
 
 import logging
-import os
 import sqlite3
 import threading
 from typing import Literal
 
 import sqlite_vec
 
-from src.paths import database_path
+from src.paths import database_file
 
 logger = logging.getLogger(__name__)
-
-# SQLAlchemy-style URL prefixes the async engine uses; the sync factory needs the bare file path.
-_SQLALCHEMY_PREFIXES = ("sqlite+aiosqlite:///", "sqlite:///")
 
 
 def _resolve_db_path(db_path: str | None) -> str:
@@ -23,12 +19,11 @@ def _resolve_db_path(db_path: str | None) -> str:
     but ``sqlite3.connect`` needs a filesystem path. Resolution order:
 
     1. An explicit ``db_path`` argument (tests pass ``tmp_path / "x.db"``).
-    2. The ``CARDS_DATABASE_URL`` env var (empty/whitespace treated as unset — mirrors
-       ``src.paths.database_url()`` so the async engine and this factory can never diverge), with
-       the SQLAlchemy prefix stripped to a file path. (``CARDS_DATABASE_URL`` — *not*
-       ``DATABASE_URL``, which Chainlit hijacks.)
-    3. ``src.paths.database_path()`` — ``cards.db`` in the shared central OS data dir, the same
-       file the async engine resolves to by default.
+    2. :func:`src.paths.database_file` — the file ``src.paths.database_url()`` names: the
+       ``CARDS_DATABASE_URL`` file with its SQLAlchemy prefix stripped (empty/whitespace treated as
+       unset), else ``cards.db`` in the shared central OS data dir. One resolver for both, so the
+       async engine and this factory can never diverge onto different files. (``CARDS_DATABASE_URL``
+       — *not* ``DATABASE_URL``, which Chainlit hijacks.)
 
     Args:
         db_path: Explicit filesystem path, or ``None`` to derive from the environment.
@@ -38,15 +33,7 @@ def _resolve_db_path(db_path: str | None) -> str:
     """
     if db_path is not None:
         return db_path
-
-    url = (os.getenv("CARDS_DATABASE_URL") or "").strip()
-    if not url:
-        return str(database_path())
-
-    for prefix in _SQLALCHEMY_PREFIXES:
-        if url.startswith(prefix):
-            return url[len(prefix) :]
-    return url
+    return database_file()
 
 
 class ConnectionFactory:
@@ -70,8 +57,8 @@ class ConnectionFactory:
     driver is stdlib ``sqlite3``. (An ``ApswConnectionFactory`` adapter would slot in here.)
 
     Args:
-        db_path: Explicit SQLite file path. If ``None``, derived from ``CARDS_DATABASE_URL``
-            (SQLAlchemy prefix stripped) or the central ``src.paths.database_path()`` default.
+        db_path: Explicit SQLite file path. If ``None``, :func:`src.paths.database_file` — the
+            ``CARDS_DATABASE_URL`` file (SQLAlchemy prefix stripped) or the central default.
         driver: Connection driver. ``"sqlite3"`` (default) uses the stdlib. ``"apsw"`` is the
             documented contingency seam and raises ``NotImplementedError``.
 

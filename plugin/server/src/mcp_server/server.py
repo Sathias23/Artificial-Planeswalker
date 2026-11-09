@@ -170,7 +170,7 @@ def build_server(
         connection_factory: Sync :class:`~src.search.connection.ConnectionFactory` the
             ``semantic_search_cards`` and ``find_similar_cards`` tools use to reach the
             ``sqlite-vec`` index. If ``None``, a default is constructed that resolves the **same**
-            DB file as the async engine via ``CARDS_DATABASE_URL`` / ``src.paths.database_path()``
+            DB file as the async engine via ``src.paths.database_file()``
             (single-file topology).
         embedder: Optional :class:`~src.search.embedder.Embedder` override (a **test seam**) used
             only by ``semantic_search_cards``. In production this stays ``None`` and the tool

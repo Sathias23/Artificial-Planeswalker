@@ -107,6 +107,7 @@ Claude Code installs it:
       "command": "uv",
       "args": [
         "run",
+        "--no-dev",
         "--directory", "${CLAUDE_PLUGIN_ROOT}/server",
         "python", "-m", "src.mcp_server"
       ],
@@ -117,6 +118,10 @@ Claude Code installs it:
   }
 }
 ```
+
+`--no-dev` matters because `uv run` syncs the project before it launches and includes the `dev`
+dependency group by default; without it every launch would install mypy, pytest, ruff and
+pre-commit into an end user's plugin environment. The Codex config below carries it too.
 
 The skills call the server's tools by name, so the tool names must match exactly what
 `src/mcp_server` registers (guarded by `tests/integration/test_build_plugin.py`).
@@ -148,7 +153,7 @@ config and `.agents/plugins/marketplace.json` — are guarded by
 `${CLAUDE_PLUGIN_ROOT}/server` anchor would be passed to `uv` literally and break the
 launch. Codex plugin-config paths are documented as `./`-relative to the plugin root, so
 the Codex config instead anchors the launch with `cwd: "./server"` + plain
-`uv run python -m src.mcp_server`. Both the manifest pointer key and the wrapper inside
+`uv run --no-dev python -m src.mcp_server`. Both the manifest pointer key and the wrapper inside
 the file are camelCase `mcpServers` — verified against Codex's own plugin-creator
 scaffold; a snake_case `mcp_servers` wrapper is silently ignored and no tools mount.
 
@@ -226,7 +231,7 @@ resolve to:
 
 ```bash
 PLUGIN_ROOT="$HOME/.claude/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
-uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+uv run --no-dev --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
 ```
 
 That path is Claude Code's; a Codex install is the same shape under whatever root Codex
