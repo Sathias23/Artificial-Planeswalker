@@ -105,12 +105,15 @@ def recorded_run(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture(autouse=True)
 def isolated_data_dir(tmp_path, monkeypatch):
-    """Point ``PLANESWALKER_DATA_DIR`` at this test's own ``tmp_path``.
+    """Point ``PLANESWALKER_DATA_DIR`` at this test's own ``tmp_path``, and drop the URL.
 
     ``_log_startup_diagnostics`` opens the real card database otherwise, and the companion path
-    would take a lock in the developer's real data directory.
+    would take a lock in the developer's real data directory. ``CARDS_DATABASE_URL`` is deleted
+    too: it outranks the data dir for the database file, so a developer who exports it would
+    otherwise have every test here open *that* database.
     """
     monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)
 
 
 def test_main_defaults_to_stdio_transport(monkeypatch: pytest.MonkeyPatch):
@@ -175,6 +178,53 @@ class TestTheBareInvocationIsUnchanged:
         main_mod.main([])
 
         assert not [n for n in sys.modules if n.startswith("src.companion.app")]
+
+
+class TestTheDiagnosticsNameTheDatabaseTheServerOpens:
+    """The startup diagnostics report the file ``CARDS_DATABASE_URL`` names, when it is set.
+
+    They used to report ``cards.db`` in the data dir regardless, so an operator who exported the
+    URL was told about a database the server never opened: "exists=False" beside a populated
+    database, the opposite of self-diagnosing.
+    """
+
+    @staticmethod
+    def _populated(path: Path, *, decks: int, cards: int) -> None:
+        import sqlite3
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        con = sqlite3.connect(path)
+        try:
+            con.execute("CREATE TABLE decks (id TEXT)")
+            con.execute("CREATE TABLE cards (id TEXT)")
+            con.executemany("INSERT INTO decks VALUES (?)", [(str(n),) for n in range(decks)])
+            con.executemany("INSERT INTO cards VALUES (?)", [(str(n),) for n in range(cards)])
+            con.commit()
+        finally:
+            con.close()
+
+    def test_a_url_names_the_file_reported_and_counted(self, tmp_path, monkeypatch, capsys):
+        other = tmp_path / "other" / "cards.db"
+        self._populated(other, decks=2, cards=3)
+        monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{other.as_posix()}")
+
+        main_mod._log_startup_diagnostics()
+
+        err = capsys.readouterr().err
+        assert f"database={other} exists=True" in err
+        assert "decks=2 cards=3" in err
+        assert "startup-diagnostics-error" not in err
+
+    def test_the_twin_without_a_url_reports_the_data_dir_file(self, tmp_path, capsys):
+        """No URL: the data dir's ``cards.db`` is the one reported, so the test above is not
+        passing on a resolver that ignores the data dir entirely."""
+        self._populated(tmp_path / "cards.db", decks=1, cards=4)
+
+        main_mod._log_startup_diagnostics()
+
+        err = capsys.readouterr().err
+        assert f"database={tmp_path / 'cards.db'} exists=True" in err
+        assert "decks=1 cards=4" in err
 
 
 class TestTheCompanionSubcommand:
@@ -378,6 +428,7 @@ class TestMcpJsonNeedsNoChange:
         assert server["command"] == "uv"
         assert server["args"] == [
             "run",
+            "--no-dev",
             "--directory",
             "${CLAUDE_PLUGIN_ROOT}/server",
             "python",

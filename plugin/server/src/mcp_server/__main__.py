@@ -35,6 +35,7 @@ import os
 import sqlite3
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Literal, TextIO, cast
 
 from src.mcp_server.server import build_server
@@ -78,7 +79,9 @@ def _log_startup_diagnostics() -> None:
     try:
         from src import paths
 
-        db = paths.database_path()
+        # The file the engine opens: an exported CARDS_DATABASE_URL outranks the data dir, and a
+        # report about any other file describes a database the server never reads.
+        db = Path(paths.database_file())
         exists = db.exists()
         size = db.stat().st_size if exists else 0
         print(f"[planeswalker] data_dir={paths.data_dir()}", file=sys.stderr, flush=True)

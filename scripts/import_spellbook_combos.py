@@ -21,14 +21,7 @@ from pathlib import Path
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers.spellbook import import_spellbook_snapshot
-from src.paths import database_path
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+from src.paths import database_file, database_url
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +68,21 @@ Examples:
 
     engine = None
     try:
-        db_path = Path(args.db_path) if args.db_path else database_path()
+        # Resolve the database: an explicit --db-path wins; otherwise the file the server opens.
+        # The engine gets `database_url()` itself, so it opens exactly the URL the server opens,
+        # and an exported CARDS_DATABASE_URL is honoured rather than silently refreshing the
+        # data dir's cards.db (a file the server then never reads).
+        if args.db_path:
+            db_path = Path(args.db_path)
+            url = f"sqlite+aiosqlite:///{db_path.absolute().as_posix()}"
+        else:
+            url = database_url()
+            db_path = Path(database_file())
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        database_url = f"sqlite+aiosqlite:///{db_path.absolute().as_posix()}"
 
-        logger.info(f"Database path: {db_path.absolute()}")
+        logger.info("Database path: %s", db_path.absolute())
 
-        engine = create_engine(database_url)
+        engine = create_engine(url)
 
         # Creates the combo tables additively on any existing DB (create_all only
         # creates missing tables) — this replaces any migration script.
@@ -120,7 +121,7 @@ Examples:
         return 130  # Standard exit code for SIGINT
 
     except Exception as e:
-        logger.error(f"Import failed: {e}", exc_info=True)
+        logger.error("Import failed: %s", e, exc_info=True)
         return 1
 
     finally:
@@ -129,4 +130,11 @@ Examples:
 
 
 if __name__ == "__main__":
+    # Configured here rather than at import, so importing this module (the tests drive `main()`)
+    # never reconfigures the importer's root logger.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
     sys.exit(asyncio.run(main()))

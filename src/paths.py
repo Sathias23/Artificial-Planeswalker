@@ -19,6 +19,9 @@ from platformdirs import user_data_dir
 
 _APP = "artificial-planeswalker"
 
+# SQLAlchemy URL schemes the project's engines use; everything after one is the database file.
+_SQLITE_URL_PREFIXES = ("sqlite+aiosqlite:///", "sqlite:///")
+
 
 def data_dir() -> Path:
     """Return the shared, OS-appropriate data directory, creating it if absent.
@@ -46,7 +49,11 @@ def data_dir() -> Path:
 
 
 def database_path() -> Path:
-    """Return the shared SQLite card database (``cards.db``) inside :func:`data_dir`."""
+    """Return ``cards.db`` inside :func:`data_dir`.
+
+    Not necessarily the database the server opens: an explicit ``CARDS_DATABASE_URL`` outranks it.
+    Resolve the file to open or write with :func:`database_file`.
+    """
     return data_dir() / "cards.db"
 
 
@@ -76,3 +83,41 @@ def database_url() -> str:
     """
     explicit = (os.getenv("CARDS_DATABASE_URL") or "").strip()
     return explicit or f"sqlite+aiosqlite:///{database_path().as_posix()}"
+
+
+def sqlite_file_from_url(url: str) -> str:
+    """Return the database *file* a SQLite SQLAlchemy URL names. Pure: touches no filesystem.
+
+    Strips a ``sqlite+aiosqlite:///`` or ``sqlite:///`` scheme and returns the rest verbatim, so a
+    relative URL path (``./data/cards.db``) stays relative and resolves against the working
+    directory exactly as the engine resolves it. A value with neither scheme is returned unchanged.
+
+    Args:
+        url: A SQLAlchemy SQLite URL, e.g. ``sqlite+aiosqlite:///C:/data/cards.db``.
+
+    Returns:
+        The file path the URL names, as a string.
+    """
+    for prefix in _SQLITE_URL_PREFIXES:
+        if url.startswith(prefix):
+            return url[len(prefix) :]
+    return url
+
+
+def database_file() -> str:
+    """Return the SQLite file :func:`database_url` names: the one file every component opens.
+
+    With ``CARDS_DATABASE_URL`` set (empty or whitespace counts as unset), the URL's file, and the
+    data dir is neither consulted nor created. Otherwise ``str(database_path())``, which creates the
+    data dir as :func:`data_dir` always does. Anything that needs the database as a *file* (the
+    sync connection factory, the import CLIs, the startup diagnostics) resolves it here, never
+    from :func:`database_path`, which ignores the URL and so names a different file whenever the
+    URL is set.
+
+    Returns:
+        The file path as a string; a URL path is passed through verbatim (no resolution).
+    """
+    explicit = (os.getenv("CARDS_DATABASE_URL") or "").strip()
+    if explicit:
+        return sqlite_file_from_url(explicit)
+    return str(database_path())

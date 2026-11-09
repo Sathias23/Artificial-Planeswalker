@@ -1188,7 +1188,9 @@ class TestCompanionStatusIsReadOnlyAndNamesTheNextStep:
         command = companion.launch_command()
         root = companion._INSTALL_ROOT
 
-        assert command == f'uv run --directory "{root}" artificial-planeswalker companion --open'
+        assert command == (
+            f'uv run --no-dev --directory "{root}" artificial-planeswalker companion --open'
+        )
         assert (root / "pyproject.toml").is_file(), "the root must be the uv project directory"
         assert root == Path(companion.__file__).resolve().parents[3]
 

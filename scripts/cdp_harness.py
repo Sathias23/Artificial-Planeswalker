@@ -15,10 +15,11 @@ next reader re-runs a measurement instead of re-deriving a method.
 
 **It is a developer tool, not shipped code.** It lives in ``scripts/`` beside the other operator
 utilities and is never packaged into ``plugin/``. It imported nothing from ``src`` at all until
-c7-7: the ``refetch`` subcommand — and only that one — reaches ``src.mcp_server.server``,
-``src.data.database`` and ``src.paths``, all inside function bodies so no other subcommand pays for
-them. Its docstrings say why (the short version: ``refetch``'s subject *is* the notifier path, so
-routing around the code that path is made of would measure something else).
+c7-7: the ``refetch`` subcommand reaches ``src.mcp_server.server``, ``src.data.database`` and
+``src.paths``, and the writing commands (``refetch``, ``push --arm drain``, ``panels``) reach
+``src.paths`` through :func:`operator_data_dirs`, all inside function bodies so no other
+subcommand pays for them. Its docstrings say why (the short version: ``refetch``'s subject *is*
+the notifier path, so routing around the code that path is made of would measure something else).
 
 Usage::
 
@@ -29,15 +30,22 @@ Usage::
     uv run python -m scripts.cdp_harness shot --url http://127.0.0.1:8765 --out x.png
 
 Every subcommand runs the companion against an **isolated data directory** unless ``--data-dir``
-says otherwise.
+says otherwise. The companion child gets ``PLANESWALKER_DATA_DIR`` pointed at that directory and
+``CARDS_DATABASE_URL`` **removed** (:func:`point_env_at`), because the URL outranks the data dir:
+left in place, an exported URL would point the "isolated" companion at the operator's database.
 
-**``refetch`` is the first subcommand that WRITES** (c7-7). ``budget``, ``push`` and ``panels``
-only read a data directory, so for them the isolation is hygiene; ``refetch`` drives a real
-``add_card_to_deck`` against a real database, so for it the isolation is a **gate**:
-:func:`cmd_refetch` refuses to run against the operator's data directory — the platform default and
-any ``PLANESWALKER_DATA_DIR`` override, and anything nested either way — before it opens anything,
-and it undoes every add it makes. That refusal is exercised by ``tests/unit/test_cdp_harness.py``,
-because a gate nothing tests is a gate that is wrong when it finally matters.
+**Three subcommands WRITE, and for them the isolation is a gate.** ``refetch`` (c7-7) drives a real
+``add_card_to_deck``; ``push --arm drain`` empties ``image_cache``; ``panels`` deletes ``cards.db``
+and then writes garbage over it to produce its two database states. Each refuses the operator's
+data directory — the platform default, any ``PLANESWALKER_DATA_DIR`` override, the directory of an
+exported ``CARDS_DATABASE_URL``, and anything nested with any of them — before it creates or starts
+anything (:func:`refuse_the_operators_data_dir`). ``panels`` goes further and refuses *any*
+``--data-dir`` that holds a ``cards.db*`` file (:func:`refuse_a_data_dir_holding_a_database`), since
+destroying the database is its method; with no ``--data-dir`` it makes its own temp dir and removes
+it afterwards. ``refetch`` undoes every add it makes. ``budget`` and the other ``push`` arms only
+read, so for them the isolation is hygiene. The refusals are exercised by
+``tests/unit/test_cdp_harness.py``, because a gate nothing tests is a gate that is wrong when it
+finally matters.
 
 **The four traps this harness is built to refuse**, the first three recorded failures from C4 and
 the fourth this harness's own:
@@ -73,6 +81,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections.abc import MutableMapping
 from concurrent.futures import Future
 from datetime import UTC, datetime
 from pathlib import Path
@@ -263,6 +272,21 @@ class Browser:
         self.close()
 
 
+def point_env_at(env: MutableMapping[str, str], data_dir: Path) -> None:
+    """Repoint *env* at *data_dir*: set ``PLANESWALKER_DATA_DIR`` and drop ``CARDS_DATABASE_URL``.
+
+    Both halves, at every site that repoints an environment. ``CARDS_DATABASE_URL`` outranks the
+    data dir for the database file (``src.paths.database_url``), so setting the data dir alone
+    leaves an exported URL aiming whatever reads *env* at the operator's real database.
+
+    Args:
+        env: The environment to edit in place: a child's copy, or ``os.environ`` itself.
+        data_dir: The isolated data directory.
+    """
+    env["PLANESWALKER_DATA_DIR"] = str(data_dir)
+    env.pop("CARDS_DATABASE_URL", None)
+
+
 class Companion:
     """The companion backend as a child process, against a data directory you choose."""
 
@@ -280,7 +304,7 @@ class Companion:
 
     def start(self, wait: bool = True) -> None:
         env = dict(os.environ)
-        env["PLANESWALKER_DATA_DIR"] = str(self.data_dir)
+        point_env_at(env, self.data_dir)
         self._log = self.log_path.open("ab")
         self.proc = subprocess.Popen(
             ["uv", "run", "artificial-planeswalker", "companion", "--port", str(self.port)],
@@ -968,9 +992,9 @@ def cmd_push(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir).resolve()
     if args.arm == "drain":
         # The drain arm WRITES to the data dir -- it empties `image_cache` per run -- so it
-        # inherits `refetch`'s gate rather than `budget`'s hygiene note. The message names
-        # `refetch`, but the instruction is the same: copy the data dir, pass the copy.
-        refuse_the_operators_data_dir(data_dir)
+        # inherits `refetch`'s gate rather than `budget`'s hygiene note: copy the data dir, pass
+        # the copy.
+        refuse_the_operators_data_dir(data_dir, command="push --arm drain")
         if not (data_dir / "cards.db").is_file():
             # Checked BEFORE the companion is started, as `cmd_refetch` does: a drain against an
             # empty data dir has no deck view and therefore no queue to measure.
@@ -1649,11 +1673,13 @@ def _report_refetch(runs: list[dict[str, Any]], args: argparse.Namespace) -> int
 def operator_data_dirs() -> list[Path]:
     """Every directory that could BE the operator's real data, resolved without creating any.
 
-    Two candidates, because ``src.paths.data_dir()`` has two answers and the gate must refuse
-    both (c7-7 review, P6):
+    Up to three candidates, because ``src.paths`` has that many answers to "where is my data" and
+    the gate must refuse all of them (c7-7 review, P6):
 
-    * the **platform default** (``%LOCALAPPDATA%/artificial-planeswalker`` on Windows), and
-    * the **``PLANESWALKER_DATA_DIR`` override**, if the operator exports one.
+    * the **platform default** (``%LOCALAPPDATA%/artificial-planeswalker`` on Windows),
+    * the **``PLANESWALKER_DATA_DIR`` override**, if the operator exports one, and
+    * the **directory of the ``CARDS_DATABASE_URL`` file**, if the operator exports one: it
+      outranks the data dir for the database, so wherever it points is where the real cards are.
 
     Checking only the value ``data_dir()`` happens to return would disarm the gate against the
     other: an operator who already exports that variable for an unrelated reason would find the
@@ -1663,7 +1689,10 @@ def operator_data_dirs() -> list[Path]:
     side effect, which is wrong for a gate (a refusal check must not make the thing it is checking
     for) and wrong for the unit tests that exercise this, which would otherwise create a real data
     directory on whatever machine they run on. The resolution is mirrored from that function
-    instead, and the app name is imported from it so the two cannot drift apart by rename.
+    instead, and the app name is imported from it so the two cannot drift apart by rename. For the
+    same reason the URL is read here and parsed with the pure ``src.paths.sqlite_file_from_url``:
+    ``src.paths.database_file()`` falls back to ``data_dir()`` when the URL is unset, and so
+    creates a directory too.
 
     Returns:
         The candidates, resolved. They need not exist.
@@ -1676,16 +1705,22 @@ def operator_data_dirs() -> list[Path]:
     override = (os.getenv("PLANESWALKER_DATA_DIR") or "").strip()
     if override:
         candidates.append(Path(override).expanduser())
+    url = (os.getenv("CARDS_DATABASE_URL") or "").strip()
+    if url:
+        db_file = Path(paths.sqlite_file_from_url(url)).expanduser()
+        # Both the directory the URL names and the one the file really lives in: resolving the
+        # FILE before taking its parent follows a file symlink, which `.parent.resolve()` misses.
+        candidates.extend([db_file.parent, db_file.resolve().parent])
     return [candidate.resolve() for candidate in candidates]
 
 
-def refuse_the_operators_data_dir(data_dir: Path) -> None:
+def refuse_the_operators_data_dir(data_dir: Path, *, command: str) -> None:
     """Raise unless *data_dir* is safely away from the operator's real data. Nesting counts.
 
-    The one gate between this harness and a live 325 MB database, and the only reason ``refetch``
-    is allowed to exist as a committed tool at all. ``cmd_budget`` merely *tells* the operator to
-    copy their data dir, because it measures a read; this command drives a real
-    ``add_card_to_deck``, so the instruction has to be enforced.
+    The one gate between this harness and a live 325 MB database, and the only reason the writing
+    subcommands (``refetch``, ``push --arm drain``, ``panels``) are allowed to exist as committed
+    tools at all. ``cmd_budget`` merely *tells* the operator to copy their data dir, because it
+    measures a read; these write, so the instruction has to be enforced.
 
     **Nesting is refused in both directions**, which plain equality missed: ``<real>/copy`` would
     put a scratch companion inside the live tree, and passing ``<real>``'s parent would make the
@@ -1693,17 +1728,25 @@ def refuse_the_operators_data_dir(data_dir: Path) -> None:
 
     Args:
         data_dir: The resolved directory the operator asked for.
+        command: The subcommand asking, named in the refusal so the operator knows which one.
 
     Raises:
         SystemExit: If it is, contains, or is contained by an operator data directory.
     """
+    # `panels` needs an EMPTY dir: a copy holds cards.db and would only hit its second refusal.
+    remedy = (
+        "Pass an empty directory, or omit --data-dir to use a fresh temp dir."
+        if command == "panels"
+        else "Copy it and pass the copy:\n"
+        r'  robocopy "%LOCALAPPDATA%\artificial-planeswalker" C:\tmp\ap-copy /E'
+    )
     for real in operator_data_dirs():
         if data_dir == real or real in data_dir.parents or data_dir in real.parents:
             raise SystemExit(
-                f"refetch MUTATES the database and refuses to touch your real data dir ({real}).\n"
+                f"{command} WRITES to its data dir and refuses to touch your real data dir "
+                f"({real}).\n"
                 f"{data_dir} is that directory, or nested with it.\n"
-                "Copy it and pass the copy:\n"
-                r'  robocopy "%LOCALAPPDATA%\artificial-planeswalker" C:\tmp\ap-copy /E'
+                f"{remedy}"
             )
 
 
@@ -1727,7 +1770,7 @@ def cmd_refetch(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir).resolve()
     # THE GATE, resolved BEFORE `PLANESWALKER_DATA_DIR` is repointed below, so it compares
     # against whatever the operator's environment actually means by "my data".
-    refuse_the_operators_data_dir(data_dir)
+    refuse_the_operators_data_dir(data_dir, command="refetch")
     db_path = data_dir / "cards.db"
     if not db_path.is_file():
         raise SystemExit(f"No cards.db in {data_dir}; there is no deck view to measure.")
@@ -1766,8 +1809,9 @@ def cmd_refetch(args: argparse.Namespace) -> int:
 
         # ⚠️ THIS PROCESS MUST RESOLVE THE SAME DATA DIR, or the real notifier reads the operator's
         # discovery record instead of this companion's and the event is delivered to the wrong
-        # backend (or nowhere). Set after the refusal above has already captured the real one.
-        os.environ["PLANESWALKER_DATA_DIR"] = str(data_dir)
+        # backend (or nowhere). Set after the refusal above has already captured the real one,
+        # and the URL dropped with it: it outranks the data dir for the database file.
+        point_env_at(os.environ, data_dir)
 
         agent = _Agent(db_path)
         agent.open()
@@ -1912,6 +1956,50 @@ _PANEL_JS = """
 """
 
 
+def refuse_a_data_dir_holding_a_database(data_dir: Path) -> None:
+    """Raise if *data_dir* holds any ``cards.db*`` file: ``panels`` would delete it.
+
+    ``panels`` produces its two database states by having no ``cards.db`` and then a corrupt one,
+    so it needs a directory whose database it may destroy. It used to make one by unlinking every
+    ``cards.db*`` it found, which made ``--data-dir <a copy you cared about>`` (or the live data
+    dir) a deletion. A directory that holds a database is left byte-identical and refused instead,
+    whoever's it is.
+
+    Args:
+        data_dir: The resolved directory the operator asked for.
+
+    Raises:
+        SystemExit: Naming every ``cards.db*`` file found, if there is one.
+    """
+    found = sorted(path.name for path in data_dir.glob("cards.db*"))
+    if found:
+        raise SystemExit(
+            f"panels deletes and corrupts cards.db, and {data_dir} holds "
+            f"{', '.join(found)}; refusing to touch it.\n"
+            "Pass an empty directory, or omit --data-dir to use a fresh temp dir."
+        )
+
+
+def _remove_scratch_dir(data_dir: Path, attempts: int = 5) -> None:
+    """Remove a temp dir this harness made, reporting (never raising) if it will not go.
+
+    Retried briefly because on Windows the killed companion's grandchild can hold ``cards.db`` or
+    the log open for a moment after ``stop()`` returns. A failure here must not mask the run's own
+    result or exception, so it is printed and swallowed.
+    """
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(data_dir)
+            return
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            if attempt == attempts - 1:
+                print(f"could not remove the temp data dir {data_dir}: {exc!r}", file=sys.stderr)
+                return
+            time.sleep(0.5)
+
+
 def cmd_panels(args: argparse.Namespace) -> int:
     """Render the system-state panels a unit test cannot see (manual-checklist Block I).
 
@@ -1919,16 +2007,29 @@ def cmd_panels(args: argparse.Namespace) -> int:
     ``cards.db`` gives ``503 database_not_initialized``, and a ``cards.db`` that exists but is not
     a SQLite file gives a ``DatabaseError`` and therefore ``503 database_unavailable``. That the
     same status yields two different panels is the point of the check.
+
+    **It destroys the database in its data dir, so the data dir is gated.** An explicit
+    ``--data-dir`` is refused if it is (or is nested with) the operator's data dir, or if it holds
+    any ``cards.db*`` file; both refusals fire before the screenshot directory is made or a
+    companion started. With no ``--data-dir`` the harness makes a temp dir and removes it
+    afterwards, whether the run succeeded or raised.
     """
-    data_dir = (
-        Path(args.data_dir).resolve()
-        if args.data_dir
-        else Path(tempfile.mkdtemp(prefix="cdp-panels-"))
-    )
+    if args.data_dir:
+        data_dir = Path(args.data_dir).resolve()
+        refuse_the_operators_data_dir(data_dir, command="panels")
+        refuse_a_data_dir_holding_a_database(data_dir)
+        return _render_panels(data_dir, args)
+    data_dir = Path(tempfile.mkdtemp(prefix="cdp-panels-")).resolve()
+    try:
+        return _render_panels(data_dir, args)
+    finally:
+        _remove_scratch_dir(data_dir)
+
+
+def _render_panels(data_dir: Path, args: argparse.Namespace) -> int:
+    """Drive the four panel states against *data_dir*, which the caller has already gated."""
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    for stale in data_dir.glob("cards.db*"):
-        stale.unlink()
 
     companion = Companion(data_dir, args.port)
     companion.start()
@@ -2058,7 +2159,12 @@ def build_parser() -> argparse.ArgumentParser:
     refetch.set_defaults(func=cmd_refetch)
 
     panels = sub.add_parser("panels", help="render the system-state panels (Block I)")
-    panels.add_argument("--data-dir", default=None, help="defaults to a fresh temp dir")
+    panels.add_argument(
+        "--data-dir",
+        default=None,
+        help="an EMPTY dir (refused if it holds cards.db* or is your real data dir); defaults to "
+        "a fresh temp dir, removed afterwards",
+    )
     panels.add_argument("--out", default="cdp-panels", help="screenshot directory")
     panels.add_argument("--stall-wait", type=float, default=70.0)
     panels.add_argument("--port", type=int, default=None)

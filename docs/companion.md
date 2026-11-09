@@ -220,25 +220,26 @@ wholesale replacement of it is not.
 Every command on this page assumes you are standing in a checkout of this repo. The plugin carries
 the same app — every flag, message and behaviour applies unchanged — but the **invocation** is
 anchored at the installed plugin root rather than at the working directory, so add `--directory`
-to each command:
+to each command, and `--no-dev` so `uv run`'s pre-launch sync does not install the development
+tools (mypy, pytest, ruff, pre-commit) into the plugin's environment:
 
 ```bash
 # Claude Code keeps its plugin cache under ~/.claude, Codex under ~/.codex — same shape either way
 ls -d ~/.claude/plugins/cache/*/artificial-planeswalker/*/    # list the versioned install(s)
 PLUGIN_ROOT="$HOME/.claude/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
-uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+uv run --no-dev --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
 ```
 
 ```powershell
 # Windows (PowerShell) — wherever your client installed the plugin (~\.claude or ~\.codex)
 Get-ChildItem -Directory -Recurse -Depth 3 "$HOME\.claude\plugins\cache" -Filter server
 $PluginRoot = "<the directory listed above, without \server>"
-uv run --directory "$PluginRoot/server" artificial-planeswalker companion
+uv run --no-dev --directory "$PluginRoot/server" artificial-planeswalker companion
 ```
 
 So `--port 9000` becomes
-`uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion --port 9000`, and the
-`COMPANION_PORT` variants work the same way. This `--directory` form is exactly what
+`uv run --no-dev --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion --port 9000`,
+and the `COMPANION_PORT` variants work the same way. This `--no-dev --directory` form is exactly what
 `companion_status` returns as its `launch_command` (with `--open` appended), derived from where the
 server is actually installed — so the agent's launch works from a plugin install and a clone alike.
 
