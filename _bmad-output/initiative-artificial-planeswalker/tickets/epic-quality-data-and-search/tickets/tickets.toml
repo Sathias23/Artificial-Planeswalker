@@ -1,0 +1,186 @@
+# epic-quality-data-and-search: one entry per story, in build order. Moved from epic-codebase-quality-pass at the 2026-11-09 board review.
+# `covers` names this epic's Requirements ids (R<n> is review theme Q<n>). Keys beyond the template, ignored by tickets.py: `findings` (review finding ids) and `width`.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Database engine and model conventions hold as AGENTS.md states them"
+description = "Pins the connect-time metadata repair where it can go wrong, the corrupt-file guarantee through the engine on every hook, and the `# noqa: F401` model imports, then sets DeckCardModel.deck and .card to lazy=\"raise\" (option a) with AGENTS.md and the two comments reworded to 'collections noload, scalar relations raise', drops the no-op autocommit kwarg and its test, logs a broken logfire install instead of passing, and states the import_state SQL once. Today the two scalar relations lazy-select (MissingGreenlet on a missed eager load) while AGENTS.md says noload, and a dropped model import passes every test."
+verify = "Removing one `# noqa: F401` model import fails a test; a corrupt file connects through create_engine and only warns on every hook; reading DeckCardModel.card without selectinload raises at the access."
+covers = ["R12"]
+after = ["4.2", "5.1", "5.2", "4.5", "5.8"]
+hitl = false
+risk = "medium"
+findings = ["B1-P1", "T1-1-P4", "T1-1-P5", "M12", "M43", "B1-P5", "B1-P6"]
+width = "src/data/database.py, src/data/import_state.py, src/data/models/deck_card.py, the two noload comments in src/data/repositories/deck.py, their tests, AGENTS.md"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q12; the `## Code Review` stamps (and Merged findings rows for M-groups) for B1-P1, T1-1-P4, T1-1-P5, M12, M43, B1-P5, B1-P6", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Deck repository writes follow one transaction rule"
+description = "Switches the MCP list_decks to list_deck_summaries, shares one tolerant JSON-list parser across the eight copies (one rule for JSON null), tolerates NoResultFound and KeyError on the post-commit reload, makes clone_deck return its reloaded snapshot, gives no-op and not-found branches one stated transaction rule, corrects the UNIQUE-name docstring and removes the repository boilerplate. Today list_decks hydrates every card of every deck (99 ms against 3 ms for 52 decks in #109), and a landed write is reported failed when its row vanishes before the reload."
+verify = "list_decks returns the same summaries with no card-row query (statement count in the test); a row deleted between commit and reload still answers ok; clone_deck's result equals a fresh load; one JSON-list parse helper remains."
+covers = ["R12"]
+after = ["5.5", "5.11", 1]
+hitl = false
+risk = "medium"
+findings = ["M6", "M50", "B2-P6", "B2-P8", "B2-P9", "B2-P10", "B2-P13"]
+width = "src/data/repositories/deck.py and card.py, src/mcp_server/tools/deck_management.py (list_decks), the eight JSON-list parse sites (models, query.py, index_builder.py)"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q12; the `## Code Review` stamps (and Merged findings rows for M-groups) for M6, M50, B2-P6, B2-P8, B2-P9, B2-P10, B2-P13", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Published deck and card schemas match the database"
+description = "Types Deck.format and DeckSummary.format as non-null, makes DeckSummary's from_deck-only rule true (no zero-default counts for model_validate to fill), gives DeckDetail and DeckDetailFull distinct first sentences, dates the CardFace census, then regenerates the OpenAPI contract and types. Today the companion publishes format as nullable although the column is NOT NULL, and /docs shows two schemas with one description."
+verify = "`npm run gen:api` emits format as required on the deck schemas, the UI typecheck passes, and DeckSummary.model_validate on a row missing a count fails."
+covers = ["R12"]
+after = [2]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B1-P2", "B1-P3", "B1-P9", "B1-P10"]
+width = "src/data/schemas/deck.py and card.py, then npm run gen:api (openapi.json, types.d.ts) and the UI typecheck"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q12; the `## Code Review` stamps (and Merged findings rows for M-groups) for B1-P2, B1-P3, B1-P9, B1-P10"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Import pipeline paths are pinned through the orchestrator"
+description = "Adds tests for reconcile's sideboard key, the orchestrator's first-run marker, Spellbook's piece-key dedup at the write, cleanup of a caller-supplied temp_dir and every column of the upsert's update branch, and replaces _run_two_pass_import's retyped stages with the orchestrator itself. Today the 'e2e' import tests bypass the orchestrator, so its wiring and these branches can break unnoticed."
+verify = "Each new test fails when its branch is removed (probe harness proof lines in the PR), and the e2e suite drives import_scryfall_bulk_data rather than a copy of its stages."
+covers = ["R13"]
+after = ["4.2", "4.5"]
+hitl = false
+risk = "low"
+findings = ["B3-P6", "B3-P7", "B3-P8", "B3-P9", "T1-1-P1", "T1-1-P2"]
+width = "tests/integration/data/ import suites (test_scryfall_import_e2e.py, test_spellbook_import_e2e.py, test_download_hardening.py); test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q13; the `## Code Review` stamps (and Merged findings rows for M-groups) for B3-P6, B3-P7, B3-P8, B3-P9, T1-1-P1, T1-1-P2"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Imported cards store their English printing and WUBRG colours"
+description = "Prefers the English printing when choosing a card's canonical printing (option a; the next import repoints the 91 through the existing reconcile), stores card colours in WUBRG order, and keeps the commander flag through the reconcile merge. Today 91 cards are stored in a non-English printing, 5,350 rows hold colours out of WUBRG order, and a re-import can drop a deck's commander flag."
+verify = "After an import of the sample bulk file, every card's colours are WUBRG-ordered, a card whose first printing is non-English stores its English one, and a deck whose commander row is reconciled keeps its commander flag; a database imported before the change reaches the same state after initialize_database(update=true)."
+covers = ["R13"]
+after = [4]
+hitl = false
+risk = "high"
+findings = ["B3-D1", "B3-P1", "B3-P3"]
+width = "src/data/importers/scryfall.py and transformers.py; existing databases are repaired by the next update import"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q13; the `## Code Review` stamps (and Merged findings rows for M-groups) for B3-D1, B3-P1, B3-P3"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "A degraded or empty import reports failure"
+description = "Refuses an empty pass 1 as the Spellbook import already does, cleans the temp download only once no reader holds it, states _insert_batch's column list once and surfaces its error count, makes the CLI exit non-zero on a degraded run and shut down cleanly on Ctrl-C under asyncio.run, and adds the re-embed hint to the CLI summary. Today a zero-card download answers 'tools are ready' while every tool then reports the database uninitialised, and the CLI exits 0 on a degraded run."
+verify = "A zero-card bulk file makes initialize_database answer a failure status and the CLI exit non-zero; a failed batch reports its error count; Ctrl-C during the CLI import exits cleanly with the temp file removed."
+covers = ["R13"]
+after = ["4.1", 5]
+hitl = false
+risk = "medium"
+findings = ["M41", "B3-P4", "B3-P10", "B3-P11", "B3-D3", "B3-P13", "B3-P14"]
+width = "src/data/importers/{scryfall,spellbook,importer}.py, scripts/import_scryfall_data.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q13; the `## Code Review` stamps (and Merged findings rows for M-groups) for M41, B3-P4, B3-P10, B3-P11, B3-D3, B3-P13, B3-P14"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "One downloader with honest failure classes"
+description = "Folds the two drifted downloaders into one helper that sends a User-Agent and counts wire bytes, stops retrying a permanent 4xx, guards the response shape, and maps zlib.error to SpellbookImportError. Today a permanent 4xx retries with backoff, a malformed payload escapes unguarded, and a damaged deflate body escapes as a raw zlib.error."
+verify = "Against a local stub server, a 404 fails at once, a 503 retries, a non-JSON body and a damaged deflate body raise the importer's own error, and every request carries the User-Agent."
+covers = ["R13"]
+after = [6]
+hitl = false
+risk = "medium"
+findings = ["B3-D2", "B3-P16", "B3-P17"]
+width = "src/data/importers/scryfall_api.py, spellbook_api.py and spellbook.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q13; the `## Code Review` stamps (and Merged findings rows for M-groups) for B3-D2, B3-P16, B3-P17"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Setup tools run one at a time, off the loop, and say what they change"
+description = "Defaults import_scryfall_bulk_data to default_cards and checks the tool's bulk type, runs the whole import off the MCP event loop, serialises initialize_database and build_search_index (a queued call waits and gets its normal answer; no new vocabulary, option a), emits deck_changed after an update that changed decks, and corrects both tools' descriptions. Today the import blocks the MCP loop for minutes, and two setup calls can run at once, with one's DELETE FROM cards landing while the other is mid-batch."
+verify = "Through the tool entry points, a second initialize_database during a first starts no second import, another tool call is answered while the import runs, an update that reconciles a deck emits deck_changed, and the bulk type used is default_cards."
+covers = ["R13"]
+after = ["5.2", "5.10", 7]
+hitl = false
+risk = "high"
+findings = ["M42", "M8", "B7-D1", "B7-P2", "B7-P5"]
+width = "src/mcp_server/tools/{initialize_database,build_search_index}.py, server.py, src/data/importers/scryfall.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q13; the `## Code Review` stamps (and Merged findings rows for M-groups) for M42, M8, B7-D1, B7-P2, B7-P5", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Both index rebuild paths share one tested implementation"
+description = "Drives both rebuild entry points and the embeddings CLI main() in tests, then makes --rebuild load the model before it drops the index, through one shared rebuild routine, reuses is_database_initialized (with its import-in-progress check) in the CLI, and moves ConnectionFactory and the parent mkdir inside the CLI's try. Today the rebuild steps live in two drifted copies, the CLI drops the index before it knows the model loads, and a permission error escapes as a raw traceback."
+verify = "Tests run build_search_index(rebuild=True) and the CLI main() against a seeded database; with the model load forced to fail, --rebuild leaves the existing index intact."
+covers = ["R14"]
+after = [2, 8]
+hitl = false
+risk = "medium"
+findings = ["M24", "B6-P1", "B6-P3", "B6-P16"]
+width = "scripts/build_card_embeddings.py, src/mcp_server/tools/build_search_index.py, src/search/index_builder.py, their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q14; the `## Code Review` stamps (and Merged findings rows for M-groups) for M24, B6-P1, B6-P3, B6-P16"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "The index trusts no half-written state"
+description = "Pins 'hash recorded iff vector written' across a failed build, orders the build's first N, checks vectors as well as hashes, refuses unrecognised database URLs, warns when journal_mode is not wal, times with perf_counter and fixes stale comments. Today the build's first N has no ORDER BY, so `--limit N` can embed a different N each run, and no test pins that a hash is recorded only with its vector. The model fingerprint (B6-D3) is deferred to the PR that changes the model (board review 2026-11-09)."
+verify = "A build interrupted mid-batch leaves no hash without its vector; `--limit N` embeds the same N cards on two runs; an unrecognised database URL is refused; the recall sanity eval passes."
+covers = ["R14"]
+after = ["4.4", "5.11", 9]
+hitl = false
+risk = "medium"
+findings = ["B6-P8", "M44", "B6-P2", "B6-P11", "B6-P12", "B6-P14", "B6-P15"]
+width = "src/search/index_builder.py, connection.py, embedder.py, query.py, scripts/build_card_embeddings.py, their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q14; the `## Code Review` stamps (and Merged findings rows for M-groups) for B6-P8, M44, B6-P2, B6-P11, B6-P12, B6-P14, B6-P15"]
+
+[[entry]]
+id = 11
+type = "story"
+title = "Filtered semantic searches come back full"
+description = "Pins limit and color_mode forwarding to hybrid_search in both sync tools, then replaces the fixed k=200 with an adaptive over-fetch (still bounded, per AGENTS.md; option a) that fills filtered results, prunes orphan vectors on the default build path, and drops the prune advice the agent cannot follow. Today a standard-filtered query keeps 5-24 of its 200 candidates, so limit=10 can come back short, and 14,472 orphan vectors (26.8%) take 43-83 of every 200 slots."
+verify = "On the real index, a standard-filtered limit=10 query returns 10 results, the default build leaves no vector without a card, and the recall sanity eval passes, with its numbers and a timing at the cap in the PR."
+covers = ["R14"]
+after = ["4.4", "5.11", 10]
+hitl = false
+risk = "high"
+plan_checkpoint = true
+findings = ["B9-P17", "M10", "M9"]
+width = "src/search/query.py (hybrid_search), index_builder.py, src/mcp_server/tools/{semantic_search,find_similar,build_search_index,initialize_database}.py, the skills, AGENTS.md's build command; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q14; the `## Code Review` stamps (and Merged findings rows for M-groups) for B9-P17, M10, M9", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 12
+type = "story"
+title = "Python tests that cannot fail are fixed or deleted"
+description = "Gives the assertion-free survivors real assertions or deletes them, removes the tests that assert documentation text or read planning artefacts, drives the production sqlite-vec path instead of hand-typed SQL, rewrites the brittle wiring-level database tests on the trace pattern, seeds the null-keywords state production writes, tightens the weak engine-URL and format-filter assertions, makes the tool-list guard check what its docstring claims, deletes tests/test_setup.py's non-tests, lets the list-route spy see the statement it guards, folds the six copies of the cross-cutting route guards, deletes the pins that cannot fail, and checks the live backend's stale-file reclaim path. Today these tests stay green through the regressions they are named for."
+verify = "Each rewritten test fails against a planted regression (probe harness proof lines in the PR), and no test under tests/ reads a file under docs/ or _bmad-output/."
+covers = ["R23"]
+after = [11, "7.6", "8.5", "7.1"]
+hitl = false
+risk = "low"
+findings = ["M46", "M45", "T1-1-D2", "T1-1-D3", "T1-1-P10", "T1-1-P13", "T1-1-P15", "T1-2-P8", "T1-2-P9", "T1-3-P2", "T1-3-P3", "T1-3-P14", "T1-3-P16"]
+width = "across tests/ (unit and integration), tests/test_setup.py; test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q23; the `## Code Review` stamps (and Merged findings rows for M-groups) for M46, M45, T1-1-D2, T1-1-D3, T1-1-P10, T1-1-P13, T1-1-P15, T1-2-P8, T1-2-P9, T1-3-P2, T1-3-P3, T1-3-P14, T1-3-P16"]
+
+[[entry]]
+id = 13
+type = "story"
+title = "Eager log formatting and untyped scripts are caught"
+description = "Enables ruff's G rule and converts the eager f-string log calls to lazy %-style args, then type-checks scripts/ in CI and the hook after fixing its 13 errors, with a relaxed override for the probe and CDP harnesses only (option b). Today nothing stops a new eager log call, and scripts/ is type-checked by nothing."
+verify = "`uv run ruff check .` with the G rule and `uv run mypy src/ scripts/` pass in CI, and a planted f-string log call fails ruff."
+covers = ["R24"]
+after = ["4.7", 1, 6, 10, "4.65", 11]
+hitl = false
+risk = "low"
+findings = ["M22", "T2-D4"]
+width = "pyproject.toml (ruff G rule, mypy scripts override), the 29 f-string log calls in src/ and those in scripts/, the 13 mypy errors in four scripts, ci.yml and the pre-commit mypy hook"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q24; the `## Code Review` stamps (and Merged findings rows for M-groups) for M22, T2-D4"]

@@ -1,6 +1,6 @@
 ---
 type: epic
-title: "Codebase quality pass: the 2026-11 review's fix list is closed"
+title: "Codebase quality pass, groundwork: no command can destroy the operator's data, and the tests, CI and harnesses can go red"
 parent: initiative-artificial-planeswalker
 covers: []
 sources:
@@ -13,15 +13,15 @@ refined: true
 risk: high
 ---
 
-# Codebase quality pass: the 2026-11 review's fix list is closed
+# Codebase quality pass, groundwork: no command can destroy the operator's data, and the tests, CI and harnesses can go red
 
 ## Description
 
-The 2026-11 full codebase review (an architecture pass, 21 group reviews, five targeted test runs and a configuration review, all at `ee0263d`) left 387 distinct findings in 25 themes: 385 fix, 2 deferred, none open after decisions D1-D11. This epic carries every fix finding to `master`, one PR per story, in the review's fix order: the data-loss traps first, then the test, CI and harness groundwork the later themes rely on, then the tool, data, analysis, companion and UI themes, and the comment, test-design and toolchain cleanup last. Brad's 2026-11-09 ruling takes all of it; he judges at board review which stories are worth building, so each entry states what it fixes, what that costs today, how wide it is and the finding ids it resolves.
+The groundwork lane of the 2026-11 full codebase review's fix list (themes Q1-Q4, Q25 and the toolchain half of Q24). The review (an architecture pass, 21 group reviews, five targeted test runs and a configuration review, all at `ee0263d`) left 385 fix findings in 25 themes; this epic carried all of them until the 2026-11-09 board review dropped four stories, deferred five findings and split the rest into six lane epics beside this one (epic-quality-mcp-tools, epic-quality-data-and-search, epic-quality-analysis, epic-quality-companion-backend, epic-quality-ui-state-and-tests, epic-quality-ui-accessibility-and-polish). This lane goes first: the data-loss traps, then the test, CI, harness, toolchain and migration groundwork the other lanes rely on. Each entry states what it fixes, what that costs today, how wide it is and the finding ids it resolves.
 
 ## Outcome
 
-The maintainer works on a codebase whose tools answer every failure as a status, whose agent and companion agree on every figure, whose guards and harnesses can go red, and whose comments and tests mean what they say; the signal is the closure check below, run against the review's finding stamps.
+The maintainer can run every repository command without risk to the operator's data, and trusts that the tests, CI and harnesses go red when they should; the signal is the closure check below, run against the review's finding stamps.
 
 ## Requirements
 
@@ -29,27 +29,8 @@ The maintainer works on a codebase whose tools answer every failure as a status,
 2. R2 (review Summary Q2): Python and UI tests run without touching the developer's data directory, share one set of fixtures and builders, fail on React warnings, and do not hang or poll where an awaited condition will do.
 3. R3 (review Summary Q3): CI runs the semantic recall eval and the Windows halves of the companion unit suite, every job has a timeout, uv is pinned, and a delete-only commit triggers the plugin-sync check.
 4. R4 (review Summary Q4): A probe-harness proof line and a cold-open budget verdict are each true of the run they report, every harness run is bounded in time, and a failed harness step leaves no browser or companion process behind.
-5. R5 (review Summary Q5): The repository holds no unused repository methods, unreachable analysis code, sentinel-writing health check, stale scripts, unused UI props or exports, or unused dev dependency.
-6. R6 (review Summary Q6): The root UI tests sit in a shared harness that routes every endpoint, resets every store and declares each helper once, so their outcome does not depend on file order, and `useDeckState` has direct tests.
-7. R7 (review Summary Q7): Every MCP tool answers a corrupt or locked database, a missing sqlite-vec extension, an offline model load and a failed combo read with a status, never a raised error, and a failed combo read degrades the assessment instead of scoring it combo-free.
-8. R8 (review Summary Q8): Each tool parameter kind (format, games, ids, names, colours, paging) is normalised once at the tool edge, so the same input means the same thing in every tool and an unbindable or unknown value answers `invalid`.
-9. R9 (review Summary Q9): Every tool resolves card names through one indexed, bounded resolver that escapes wildcards and reports a capped count as capped.
-10. R10 (review Summary Q10): Tool descriptions, result models and the five skills name every status a tool returns and document every tool; one fact has one token where D3 does not keep two; mixed-printing Arena imports and format defaults behave as an agent would expect; stdio is the only transport.
-11. R11 (review Summary Q11): Colour, rarity and paging filters do what their docstrings say, the same way on the relational and semantic paths, and `at_most` is documented as filtering card colours (D2).
-12. R12 (review Summary Q12): The data model and the deck repository follow the relationship-loading, transaction and reload rules `AGENTS.md` states (collections noload, scalar relations raise; one transaction rule; a reload that tolerates a vanished row), `list_decks` reads no card rows, and the published deck and card schemas match the database.
-13. R13 (review Summary Q13): The import is serialised, runs off the MCP loop, reports an empty or degraded run as a failure, stores the English canonical printing and WUBRG colours, keeps deck commander flags through reconcile, and its downloader classifies failures honestly.
-14. R14 (review Summary Q14): Filtered semantic searches return a full result where the index holds one, orphan vectors are pruned by default, the index trusts no half-written build, and both rebuild paths are one tested implementation.
-15. R15 (review Summary Q15): Format verdicts are right for snow basics and restricted cards, synergy detection sees multi-face text, every keyword holder and real tribal types, cohesion rises with coverage, and analysis output is deterministic across processes.
-16. R16 (review Summary Q16): Land count, mana-value buckets and colour counts are defined once in `src/logic` and the companion draws the figures the deck-detail payload carries (D1).
-17. R17 (review Summary Q17): The power assessment scores deterministic two-card wins as infinite, credits a combo once, counts the common ramp, removal, draw and tutor wordings, keeps mass land denial for real land denial, names the cards behind each bracket flag, and is pinned by tests before it changes.
-18. R18 (review Summary Q18): The image route touches the database only on a cache miss and holds no session through the pacer wait, request and image size ceilings hold on wire bytes, logs carry no raw caller input, discovery publishes on Windows and stays private on POSIX, push and receipt outcomes name the real result, and the published contract carries only answerable responses and bounded fields.
-19. R19 (review Summary Q19): A UI store write re-renders only what changed, the cold open meets its budget when re-measured, and no transient refusal, reconnect loop or agent edit leaves the companion showing stale or blank state without a marker.
-20. R20 (review Summary Q20): Agent-pushed values cannot reach inherited object keys or unmount a view, and each guard and tile helper exists once.
-21. R21 (review Summary Q21): The DESIGN.md, EXPERIENCE.md and NFR-06 accessibility and interaction requirements hold in a real browser: focus stays where it belongs, every control and tile has a distinct accurate name, forced colours keep the data marks (best-effort, D7), the full Fan Content notice shows (D5), truncated reasons are recoverable (D6), and previews and announcements follow D8 and D9.
-22. R22 (review Summary Q22): UI comments name what enforces each rule today, two ESLint rules hold the one network door and the no-persisted-state rule (D4), and no comment cites a drifted line number or count.
-23. R23 (review Summary Q23): Every remaining test can fail on the regression it is named for, and no test asserts documentation text or reads a planning artefact.
-24. R24 (review Summary Q24): Pre-commit and CI run the same locked toolchain (D10), the leak guard catches any user-profile path in CI (D11), eager log formatting and untyped scripts are caught, and CI covers the runtimes users run with a canary that can go red.
-25. R25 (review Summary Q25): Every `migrate_*.py` is tested and safe to re-run on a user's only database, and the build scripts install no global logging on import.
+5. R24 (review Summary Q24, part): Pre-commit and CI run the same locked toolchain (D10), the leak guard catches any user-profile path in CI (D11), and CI covers the runtimes users run with a canary that can go red.
+6. R25 (review Summary Q25): Every `migrate_*.py` is tested and safe to re-run on a user's only database, and the build scripts install no global logging on import.
 
 ## Constraints
 
@@ -64,21 +45,15 @@ The maintainer works on a codebase whose tools answer every failure as a status,
 
 ## Done when
 
-- Every story is done or dropped with a `Dropped:` line, and the closure check finds each of the 385 fix findings resolved on `master` by the PR of the story whose `findings` name it.
-- `deferred-work.md` still records `M15`, `T1-2-D1` and the four deferred options, and no story built one of them.
-- CI on `master` is green, including the recall-eval job and the Windows companion unit files R3 adds.
-- The cold open, re-measured with the R4 harness after the last UI story (story 60), meets its release budget.
-- `plugin/`, `openapi.json`, `types.d.ts` and the five skills are in step with the tools, and the changes ship in a tagged release.
+- Every story is done or dropped with a `Dropped:` line, and the closure check finds each fix finding named in a story's `findings` resolved on `master` by that story's PR.
+- `deferred-work.md` still records `M15`, `T1-2-D1`, the four deferred options and the board-review drops (story 33's findings, `B6-D3`), and no story in any quality lane built one of them.
+- CI on `master` is green, including the recall-eval job and the Windows companion unit files R3 adds, and every job has a timeout.
+- A probe-harness run and a cold-open budget run on `master` each report a verdict that is true of the run (R4).
+- `plugin/` is in step with the code, and the lane's changes ship in a tagged release.
 
 ## Boundaries
 
-- Not here: the deferred findings and options in `deferred-work.md` (`M15`, `T1-2-D1`, `B4-D3` option b, `B5-D5` option b, `B5-D3` option b, a colour-identity search filter); the Dropped directions in the review Summary; any new feature or tool; the frozen viewer's display.
-- Touch point: card-name resolution — story 16 folds today's three resolvers into one; epic-reliable-deck-workflows R10 (bulk lookup and import resolution) builds on the same resolver; owner: epic-reliable-deck-workflows (initiative R10). Story 16 lands first.
-- Touch point: legality coverage — story 32 models restricted cards and lands before epic-quick-wins entry 4, so R6's coverage table lists no restricted line; owner of the coverage table: epic-quick-wins.
-- Touch point: combo credit — story 39 credits each Spellbook variant once; epic-trustworthy-assessment R15 separates complete combos from suggestions; owner of the combo list: epic-trustworthy-assessment.
-- Touch point: Arena import — story 71 sums mixed-printing lines; epic-reliable-deck-workflows R11 and R13 own import results and round trips; owner: epic-reliable-deck-workflows. Story 71 lands first.
-- Touch point: agent-view payloads — stories 44, 45, 50, 51, 56 and 58 edit `contracts.py`, `agentView.ts` and `SuggestionsView`, where epic-quick-wins entry 5 adds `deck_id` to the `companion_show_*` payloads; owner of the payload fields: epic-quick-wins, whose entry 5 lands first.
-- Must not change: `HISTORY_CAP` retention and revisit semantics beyond story 49's unread fix.
+- Not here: the six other quality lanes (epic-quality-mcp-tools, epic-quality-data-and-search, epic-quality-analysis, epic-quality-companion-backend, epic-quality-ui-state-and-tests, epic-quality-ui-accessibility-and-polish), which own every touch point with epics 1-3; the deferred findings and options in `deferred-work.md`; the Dropped directions in the review Summary; any new feature or tool.
 
 ## References
 
@@ -110,6 +85,9 @@ The maintainer works on a codebase whose tools answer every failure as a status,
 - Dropped: story 33, 2026-11-09, board review batch 2: its one visible effect is "Add ~0 lands" for a deck under three cards; the rest (named thresholds, an exact-string test, a land/spell split quadratic over at most 100 cards, dead `cmc` arms) is cosmetic in a file story 36 rewrites. B4-P10, B4-P13, B4-P16 and B4-P18 are in `deferred-work.md`.
 - Dropped: story 69 (Refactor sweep), 2026-11-09, board review batch 2: a sweep after a cleanup pass is cleanup of cleanup.
 - Decision: 2026-11-09, board review batch 2: B6-D3 (a model fingerprint in the index hash) is deferred out of story 30. It forces one full re-embed on every user's machine to guard a model swap nobody has planned; the PR that changes the model adds it. In `deferred-work.md`.
+- Decision: 2026-11-09, board review pass 3, Brad: the split is applied. This epic keeps the groundwork lane (1-7, 65, 68, with dropped 67 and 69) and Requirements R1-R4, R25 and the toolchain part of R24; R5-R23 and the lint part of R24 moved to the six lane epics, each line keeping its review number. The UI lane split in two (state and tests; accessibility and polish) by the same rule that split the tools lane. Order conflicts between the lanes are expected (initiative Notes).
+- Decision: 2026-11-09, story ids renumbered by the lane split (old → new; the old ids appear in the Decisions above and in the review plan's step 5 note): epic-quality-mcp-tools 8→5.1, 12→5.2, 13→5.3, 14→5.4, 15→5.5, 16→5.6, 17→5.7, 18→5.8, 71→5.9, 19→5.10, 20→5.11; epic-quality-data-and-search 21→6.1, 22→6.2, 23→6.3, 24→6.4, 25→6.5, 26→6.6, 27→6.7, 28→6.8, 29→6.9, 30→6.10, 31→6.11, 63→6.12, 66→6.13; epic-quality-analysis 32→7.1, 33→7.2, 34→7.3, 35→7.4, 36→7.5, 37→7.6, 38→7.7, 39→7.8, 40→7.9; epic-quality-companion-backend 41→8.1, 42→8.2, 43→8.3, 44→8.4, 45→8.5; epic-quality-ui-state-and-tests 9→9.1, 70→9.2, 11→9.3, 10→9.4, 46→9.5, 47→9.6, 48→9.7, 49→9.8, 50→9.9, 51→9.10; epic-quality-ui-accessibility-and-polish 52→10.1, 53→10.2, 54→10.3, 55→10.4, 56→10.5, 57→10.6, 58→10.7, 59→10.8, 60→10.9, 61→10.10, 62→10.11, 64→10.12. Groundwork keeps its ids (1-7, 65, 68; 67 and 69 dropped).
+- Decision: 2026-11-09, tracer bullet unchanged: story 1 (the data-loss traps).
 - Assumption: a `-D` finding that D1-D11 do not rule is fixed with the option its review run recommended; each story names the option where it shapes the work.
 - Assumption: stories 38 and 39 re-run the assessment benchmark, and whether the profile version moves is settled in their PRs (B5-D1).
 - Assumption: story 25's data changes (English printing, WUBRG colours) reach existing databases through the next `initialize_database(update=true)` (upsert plus reconcile), with no connect-hook repair.

@@ -1,4 +1,5 @@
-# The initiative's agreed epics, in build order. Shipped Epics 1–17 are archived in ../archive-v6/.
+# The initiative's agreed epics, in the order they start (not a gate; epics interleave through entry-level `after` keys). Shipped Epics 1–17 are archived in ../archive-v6/.
+# Epics 4-10 are the seven lanes of the 2026-11 codebase quality pass (board review 2026-11-09).
 
 [[epic]]
 id = 1
@@ -6,7 +7,22 @@ slug = "epic-quick-wins"
 title = "Quick wins"
 description = "An operator edits, re-counts, clones, exports and judges a deck through tools that already have their repository pieces, and every companion push names its deck."
 covers = ["R1", "R2", "R3", "R4", "R5", "R6"]
-after = [{ epic = 4, needs = "story 32 checks restricted cards before entry 4 reports legality coverage" }]
+after = [{ epic = 7, needs = "7.1 before 1.4" }]
+
+[[epic]]
+id = 4
+slug = "epic-codebase-quality-pass"
+title = "Codebase quality pass: groundwork"
+description = "No repository command can destroy the operator's data, the tests are hermetic, CI runs the recall eval and the Windows halves, the probe and cold-open harnesses report true results, and pre-commit and CI run one locked toolchain; the first of seven quality-pass lanes."
+covers = []
+
+[[epic]]
+id = 5
+slug = "epic-quality-mcp-tools"
+title = "Quality pass: MCP tools"
+description = "Every MCP tool answers infrastructure failures as a status, normalises each parameter kind once, resolves card names through one resolver, and documents every status it returns."
+covers = []
+after = [{ epic = 4, needs = "4.1, 4.2, 4.4 before 5.1, 5.2, 5.7, 5.11" }, { epic = 7, needs = "7.1 before 5.4, 5.8" }]
 
 [[epic]]
 id = 2
@@ -14,7 +30,23 @@ slug = "epic-reliable-deck-workflows"
 title = "Reliable deck workflows"
 description = "A whole deck resolves in one bounded request, imports with explicit partial results and exports to Arena without manual name repairs or silent substitutions."
 covers = ["R7", "R8", "R9", "R10", "R11", "R12", "R13", "R17", "R18", "R19", "R20", "R21", "R22"]
-after = [{ epic = 4, needs = "story 16's single card-name resolver before entry 1, and story 71's mixed-printing import fix before entry 4" }]
+after = [{ epic = 5, needs = "5.6, 5.9 before 2.1, 2.4" }]
+
+[[epic]]
+id = 6
+slug = "epic-quality-data-and-search"
+title = "Quality pass: data and search"
+description = "The data model, deck repository, import pipeline and semantic index follow one set of rules, report failure honestly, and fill filtered searches."
+covers = []
+after = [{ epic = 4, needs = "4.1, 4.2, 4.4, 4.5, 4.7, 4.65 before 6.1, 6.4, 6.6, 6.10, 6.11, 6.13" }, { epic = 5, needs = "5.1, 5.2, 5.5, 5.8, 5.10, 5.11 before 6.1, 6.2, 6.8, 6.10, 6.11" }, { epic = 7, needs = "7.1, 7.6 before 6.12" }, { epic = 8, needs = "8.5 before 6.12" }]
+
+[[epic]]
+id = 7
+slug = "epic-quality-analysis"
+title = "Quality pass: analysis"
+description = "Legality, synergy, card statistics and power scores are right, pinned by tests, and agree between the agent and the companion."
+covers = []
+after = [{ epic = 3, needs = "the whole epic before 7.7" }, { epic = 4, needs = "4.2, 4.5 before 7.1, 7.6" }, { epic = 5, needs = "5.1, 5.3 before 7.1, 7.2, 7.3, 7.8" }, { epic = 6, needs = "6.3, 6.9 before 7.5, 7.6" }, { epic = 9, needs = "9.1, 9.4 before 7.5" }]
 
 [[epic]]
 id = 3
@@ -24,9 +56,25 @@ description = "Brawl scoring reads as unsupported and functioning combos are dis
 covers = ["R14", "R15", "R16", "R20", "R21"]
 
 [[epic]]
-id = 4
-slug = "epic-codebase-quality-pass"
-title = "Codebase quality pass"
-description = "Every fix finding of the 2026-11 codebase review is resolved on master, one PR per story, and the two deferred findings stay recorded in deferred-work.md."
+id = 8
+slug = "epic-quality-companion-backend"
+title = "Quality pass: companion backend"
+description = "The companion's image route, error handling, discovery, push outcomes and published contract say what the code does."
 covers = []
-after = [{ epic = 1, needs = "entry 5's deck_id payload field before story 44 edits the agent-view contracts" }, { epic = 3, needs = "R16 measured against today's assessment baseline before story 38 moves scores" }]
+after = [{ epic = 1, needs = "1.5 before 8.4" }, { epic = 4, needs = "4.1, 4.2, 4.4 before 8.1, 8.3" }, { epic = 5, needs = "5.7 before 8.3" }]
+
+[[epic]]
+id = 9
+slug = "epic-quality-ui-state-and-tests"
+title = "Quality pass: UI state and tests"
+description = "The companion UI re-renders only what changed, recovers without silent stale state, and its tests run on one harness."
+covers = []
+after = [{ epic = 4, needs = "4.3, 4.5, 4.7 before 9.2, 9.6" }, { epic = 7, needs = "7.5 before 9.8" }, { epic = 8, needs = "8.5 before 9.9" }]
+
+[[epic]]
+id = 10
+slug = "epic-quality-ui-accessibility-and-polish"
+title = "Quality pass: UI accessibility and polish"
+description = "The companion meets DESIGN.md, EXPERIENCE.md and NFR-06 in a real browser, and its comments and tests mean what they say."
+covers = []
+after = [{ epic = 7, needs = "7.5 before 10.6" }, { epic = 8, needs = "8.5 before 10.7" }, { epic = 9, needs = "9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10 before 10.1, 10.2, 10.4, 10.6, 10.7, 10.8, 10.10, 10.12" }]

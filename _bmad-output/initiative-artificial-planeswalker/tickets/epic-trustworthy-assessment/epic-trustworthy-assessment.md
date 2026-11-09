@@ -55,7 +55,7 @@ A Brawl player gets an honest account of what the assessor supports and what the
 ## Notes
 
 - Assumption: the first Brawl deliverable is explicit unsupported scoring.
-- Decision: 2026-11-09, board review, Brad (settles the R3 source conflict with epic-codebase-quality-pass stories 38-40): R3 binds this epic's own changes only and is measured against today's baseline; this epic builds before quality-pass story 38, which then moves scores on purpose.
-- Handoff: epic-codebase-quality-pass story 39 credits each Spellbook variant once in scoring (B5-D3 option a); this epic's R15 owns the combo list itself.
-- Decision: 2026-11-09, board review, Brad: this epic's first story waits on epic-codebase-quality-pass story 37, which pins the assessment dimensions to values (test code only); when the stories are planned, it takes `after` key `4.37`.
+- Decision: 2026-11-09, board review, Brad (settles the R3 source conflict with epic-codebase-quality-pass stories 38-40, now 7.7-7.9): R3 binds this epic's own changes only and is measured against today's baseline; this epic builds before quality-pass story 7.7 (was 38), which then moves scores on purpose.
+- Handoff: quality-pass story 7.8 (epic-quality-analysis, was 39) credits each Spellbook variant once in scoring (B5-D3 option a); this epic's R15 owns the combo list itself.
+- Decision: 2026-11-09, board review, Brad: this epic's first story waits on quality-pass story 7.6 (epic-quality-analysis, was 37), which pins the assessment dimensions to values (test code only); when the stories are planned, it takes `after` key `7.6`.
 - Assumption: Done when was written by the v6-to-v7 migration from the breakdown's Epic 2; confirm with Sofia when refining and planning its stories.

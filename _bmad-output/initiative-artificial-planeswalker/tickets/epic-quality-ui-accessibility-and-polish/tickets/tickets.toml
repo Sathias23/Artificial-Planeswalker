@@ -1,0 +1,172 @@
+# epic-quality-ui-accessibility-and-polish: one entry per story, in build order. Moved from epic-codebase-quality-pass at the 2026-11-09 board review.
+# `covers` names this epic's Requirements ids (R<n> is review theme Q<n>). Keys beyond the template, ignored by tickets.py: `findings` (review finding ids) and `width`.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Footer, state panel, badges and mana symbols read correctly"
+description = "Pins the attribution against the full notice and per D5 renders the whole Fan Content notice (DESIGN.md and Footer/copy.ts together, one-line fit at 1100px checked in a real browser), puts the state panel's action before its guidance, spaces the size badge, and announces snow mana by name. Today the footer stops at 'Not approved/endorsed by Wizards.', two states read out of order, and snow mana is announced as a bare 'S'."
+verify = "The footer test pins the full NOTICE sentence, a cdp_harness shot at 1100px shows it on one line, and an {S} cost's accessible text names snow."
+covers = ["R21"]
+after = ["9.9"]
+hitl = false
+risk = "low"
+findings = ["F3-P2", "F3-D2", "F3-P1", "F3-P3", "F3-P4"]
+width = "ui/src/components/ (Footer and copy.ts, the state panel, DeckBadges, mana/parse.ts), DESIGN.md"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F3-P2, F3-D2, F3-P1, F3-P3, F3-P4"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Grid tiles and flip controls are named and explained"
+description = "Pins the empty-deck sentence and the grid's cost and typeLine props, then gives each flip control its card through a description (the label stays static; option a), stops announcing '0 items' for a sideboard-only deck (option b), and keeps the inspection target while focus moves from a tile to its own flip control. Today every flip control has the same accessible name, and a sideboard-only deck renders an empty list with no explanation."
+verify = "Tests find each flip control described by its card, no '0 items' announcement for a sideboard-only deck, and no inspection-target change across the tile-to-flip tab."
+covers = ["R21"]
+after = ["9.6", "9.10"]
+hitl = false
+risk = "low"
+findings = ["F4-P4", "F4-P8", "F4-D3", "F4-D4", "F4-P1"]
+width = "ui/src/containers/CardGrid, CardTile, ui/src/state/inspection.ts and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F4-P4, F4-P8, F4-D3, F4-D4, F4-P1"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "The detail panel keeps focus, face and art steady"
+description = "Tests the panel's loaded art, settleIfCached and the Esc listener's isComposing and key arms, then keeps focus on a real target when Esc lands on Unpin, announces the face the panel shows, plays no flip rotation when the target moves between two DFCs in different face states, and reserves the art box on the first cold-open frame. Today Esc on Unpin drops focus to <body>."
+verify = "Tests cover each case, and a cdp_harness shot of the cold open shows the art box on the first frame."
+covers = ["R21"]
+after = [2]
+hitl = false
+risk = "medium"
+findings = ["F4-P5", "F4-P6", "F4-P7", "F4-P2", "F4-P3", "F4-P11", "F4-P12"]
+width = "ui/src/containers/CardDetail (CardDetail.tsx, useCardArt.ts) and its tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F4-P5, F4-P6, F4-P7, F4-P2, F4-P3, F4-P11, F4-P12"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "The agent view's modal and history popover keep focus"
+description = "Tests a History pill press while the popover is open and closePopover's focus-on-body branch, then makes the background inert while the modal is open (option a), returns focus to the right place under StrictMode, adds a hover state to history entries, and re-measures the popover anchor on layout changes rather than only on resize. Today the focus trap leaks to the background, and the History popover then opens uninvited."
+verify = "A test tabbing past the modal's last control lands on its first, the StrictMode close test returns focus to the opener, and a real-browser shot shows the history hover state."
+covers = ["R21"]
+after = ["9.10"]
+hitl = false
+risk = "medium"
+findings = ["F5-P3", "F5-P4", "F5-D1", "F5-P6", "F5-P14", "F5-P15"]
+width = "ui/src/containers/AgentView, AgentViewsNav, HistoryPopover and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F5-P3, F5-P4, F5-D1, F5-P6, F5-P14, F5-P15"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Suggestion reasons can be read in full"
+description = "Per D6, a suggestion row's title carries the full reason, and the companion_show_suggestions docstring and the companion skill ask agents to keep reasons short (a tool-description change, so plugin/ is rebuilt); also makes the push-replace crossfade play, settles the kicker's casing rationale and labels the header count. Today a sighted user cannot read a reason past its one-line ellipsis (up to 200 characters)."
+verify = "A test finds the full reason in the row's title, a cdp_harness recording shows the crossfade, and plugin/ is in step."
+covers = ["R21"]
+after = [4]
+hitl = false
+risk = "low"
+plan_checkpoint = true
+findings = ["F5-D2", "F5-P5", "F5-P8", "F5-P13"]
+width = "ui/src/containers/SuggestionsView and AgentView (tsx, css, copy.ts), the companion_show_suggestions docstring, the companion skill; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F5-D2, F5-P5, F5-P8, F5-P13"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "Analysis panels survive forced colours and state the pin model"
+description = "Tests DeckRow's reactive cache subscription and the curve table's row headers including 7+, then per D7 adds three forced-colours rules (a Highlight outline on the live row, forced-color-adjust on the curve bars and colour segments) with DESIGN.md calling forced colours best-effort, and writes the pin announcement model into EXPERIENCE.md (option b; aria-pressed on every control was dropped). Today under Windows High Contrast the live deck row, the curve bars and the colour segments disappear."
+verify = "A cdp_harness shot under forced-colors emulation shows the live row, the curve bars and the colour segments, and the new tests pass."
+covers = ["R21"]
+after = ["7.5", "9.10"]
+hitl = false
+risk = "low"
+findings = ["F6-P2", "F6-P3", "F6-D2", "F6-D3"]
+width = "ui/src/containers/DeckList, ManaCurve, ColourDistribution, DESIGN.md, EXPERIENCE.md"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F6-P2, F6-P3, F6-D2, F6-D3"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Groups and swaps views preview cards and read naturally"
+description = "Gives group tiles a width (option a), per D8 makes TierPreview a shared in-view preview mounted in the groups and swaps bodies (a DESIGN.md line per layout), renders '1 copy' for one (option a: the wire-visible SwapItem docstring changes, so gen:api runs), puts the card in a swap tile's accessible name, and makes group titles headings. Today group tiles collapse to slivers, hover and focus target a panel hidden behind the scrim, and swap tiles read 'Out · 2 copies' with no card name."
+verify = "A real-browser shot shows full-width group tiles and the preview in both views; tests find the card name and '1 copy' in a swap tile's accessible name and group titles as headings; the gen:api output is committed."
+covers = ["R21"]
+after = ["8.5", "9.10"]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["F7-D1", "F7-D2", "F7-D5", "F7-P1", "F7-P15"]
+width = "ui/src/containers/GroupsView, SwapsView, TierListView (TierPreview), DESIGN.md, the SwapItem docstring in src/companion/contracts.py, then npm run gen:api"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F7-D1, F7-D2, F7-D5, F7-P1, F7-P15"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "The connection pill speaks by a stated policy"
+description = "Per D9, the pill keeps speaking behind an open agent view (EXPERIENCE.md records the exemption) and the first reconnecting → live change on each page load is silent (ConnectionPill.test.tsx:512-517 changes with it); also lifts the revealed tooltip off the focus ring, aligns the deckName comment and undoes white-space in SkipLink.css. Today the pill announces 'Connected' on every page load."
+verify = "ConnectionPill tests show no announcement on the first live after load and an announcement on a later drop with a view open; a real-browser shot shows the focus ring clear of the tooltip."
+covers = ["R21"]
+after = ["9.7", "9.8"]
+hitl = false
+risk = "low"
+findings = ["F7-D4", "F7-P11", "F7-P12", "F7-P13"]
+width = "ui/src/containers/ConnectionPill, SkipLink.css, EXPERIENCE.md"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F7-D4, F7-P11, F7-P12, F7-P13"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Motion, fonts and focus rings rest on enforced rules"
+description = "Moves each reduced-motion override beside the rule it overrides and drops the !importants (option a), adds stylelint's function-url-scheme-allowed-list so a remote font or asset URL fails at the source (option a), gives index.css a default focus ring and deletes the written-out copies (option a), and moves the left slot's comment out of the ternary. Today the reduced-motion and offline-font guarantees rest on deleted checks, and there is no default focus ring."
+verify = "A planted https font URL fails stylelint; a real-browser shot with reduced motion emulated shows each moved override applied; a plain button shows the default focus ring. `cdp_harness budget` on the branch still meets the cold-open release budget, with the numbers in the PR."
+covers = ["R21"]
+after = [1, 2, 3, 4, 5, 6, 7, 8]
+hitl = false
+risk = "medium"
+findings = ["F8-D1", "F8-D2", "F8-D4", "F8-P6"]
+width = "ui/src/index.css, ui/src/styles/ (tokens.css, fonts.css), .stylelintrc.json, App.tsx, the ~15 component stylesheets that write out a focus ring"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q21; the `## Code Review` stamps (and Merged findings rows for M-groups) for F8-D1, F8-D2, F8-D4, F8-P6"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "UI comments cite what enforces each rule today"
+description = "Per D4, rewords each comment that cites a suite deleted in e584980 as a stated convention naming what enforces it today (the two ESLint rules, or nothing). Today an editor who trusts such a comment expects a gate that will not fire."
+verify = "A grep for each suite deleted in e584980 finds no citation under ui/src, and the UI gate passes."
+covers = ["R22"]
+after = ["9.5", 9]
+hitl = false
+risk = "low"
+findings = ["M25"]
+width = "about 200 comments across ui/src"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q22; the `## Code Review` stamps (and Merged findings rows for M-groups) for M25"]
+
+[[entry]]
+id = 11
+type = "story"
+title = "Drifted UI comments and counts are corrected"
+description = "Replaces hard-coded line numbers and counts with symbol citations, pins the live-region census with a view open, deletes the descriptions of the removed hydration sweep, resolves a 'Card // Card' row's group from its front face with story 7.5's single type rule (was 36) (F1-P3), and corrects the seventeen individual stale comments. Today dozens of line citations and counts have drifted, and comments disagree on how many live regions the app has."
+verify = "The live-region census test passes with a view open, a 'Card // Card' row groups by its front face, and no comment under ui/src cites a source line number."
+covers = ["R22"]
+after = [10]
+hitl = false
+risk = "low"
+findings = ["M26", "M27", "M31", "F2-P7", "F2-P8", "F2-P9", "F1-P3", "F1-P6", "F3-P6", "F4-P14", "F5-P7", "F5-P10", "F5-P11", "F6-P6", "F6-P9", "F7-P5", "F7-P8", "F7-P9", "F7-P14", "F8-P4"]
+width = "comments across ui/src, one live-region census test, deckGroups.ts's front-face type for 'Card // Card' rows"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q22; the `## Code Review` stamps (and Merged findings rows for M-groups) for M26, M27, M31, F2-P7, F2-P8, F2-P9, F1-P3, F1-P6, F3-P6, F4-P14, F5-P7, F5-P10, F5-P11, F6-P6, F6-P9, F7-P5, F7-P8, F7-P9, F7-P14, F8-P4", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 12
+type = "story"
+title = "UI tests that cannot fail are fixed or deleted"
+description = "Rewrites the second-change flash test so it tells the two keyings apart, the table-hiding and ColourDistribution tests so they can see what they guard, the three swaps tests whose names claim more than they check, and the three assertions that cannot fail for their claim. Today they pass whatever the code does."
+verify = "Each rewritten test fails against a planted regression (vitest probe harness proof lines in the PR)."
+covers = ["R23"]
+after = ["9.4", 2, 6, 7, 11]
+hitl = false
+risk = "low"
+findings = ["F4-P15", "F6-P4", "F6-P5", "T1-4-P7", "T1-4-P11"]
+width = "CardTile, ManaCurve, ColourDistribution and SwapsView tests and three other suites; test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q23; the `## Code Review` stamps (and Merged findings rows for M-groups) for F4-P15, F6-P4, F6-P5, T1-4-P7, T1-4-P11"]

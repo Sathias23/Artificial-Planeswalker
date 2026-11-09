@@ -1,0 +1,164 @@
+# epic-quality-mcp-tools: one entry per story, in build order. Moved from epic-codebase-quality-pass at the 2026-11-09 board review.
+# `covers` names this epic's Requirements ids (R<n> is review theme Q<n>). Keys beyond the template, ignored by tickets.py: `findings` (review finding ids) and `width`.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Unused backend surface is deleted"
+description = "Deletes merge_decks, find_deck_by_name, update_deck_color_identity, the unused combo meta readers, the three script-only search methods and the script that is their only caller, the dead single-card validator, about 350 lines of unreachable curve feedback, health_check's sentinel-card write, the dead src/data re-exports, migrate_add_card_vec.py, verify_image_data.py and pytest-cov, with the tests that cover only them. Today that code carries latent bugs (a non-atomic merge, a second copy-limit rule that disagrees with the live one, a fake card written into cards) and is reviewed and kept in step like live code."
+verify = "The full Python gate passes, a grep finds no reference to any deleted name in src/, scripts/, docs/ or the five skills, and `uv run python -m scripts.build_plugin` leaves plugin/ in step."
+covers = ["R5"]
+after = ["4.2"]
+hitl = false
+risk = "medium"
+findings = ["M13", "M14", "B4-D6", "B4-P17", "B1-D2", "B1-P8", "B13-P20", "B13-P21", "T2-P12"]
+width = "src/data/repositories/{deck,card,combo_snapshot}.py, src/logic/{deck_validator,mana_curve}.py, src/data/database.py, src/data/__init__.py, three scripts, pyproject.toml, the tests that cover only deleted code"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q5; the `## Code Review` stamps (and Merged findings rows for M-groups) for M13, M14, B4-D6, B4-P17, B1-D2, B1-P8, B13-P20, B13-P21, T2-P12", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Every tool answers infrastructure failures as a status"
+description = "Pins the untested DatabaseError and database_not_initialized arms and set_active_deck's session release, then puts the readiness probe, connection and embedder setup and the card tools' pre-reads inside one shared guard, so a locked or corrupt file, a missing sqlite-vec extension or an offline first model load answers status=\"error\" (a new `error` token on the two semantic result models); semantic_search_cards loads the embedder after the database and index guards, initialize_database's error names the real cause, and add_card_to_deck stops reporting every IntegrityError as `exists`. Today those failures reach the agent as an MCP isError, and in compare_deck_power a failure on side A means side B never runs."
+verify = "With a corrupt cards.db, a locked file, a missing vec extension and an offline model load injected in turn, every MCP tool answers a status through its real entry point and none raises."
+covers = ["R7"]
+after = ["4.2", 1]
+hitl = false
+risk = "high"
+plan_checkpoint = true
+findings = ["B8-P4", "B8-P6", "B9-P18", "T1-2-P5", "M19", "B7-P1", "B7-P12", "B8-P7"]
+width = "src/mcp_server/tools/ (deck_management, deck_analysis, assess and compare, semantic_search, find_similar, build_search_index, companion, and view_deck's failure path only), server.py, the readiness probe in src/data/database.py; about 18 call sites"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q7; the `## Code Review` stamps (and Merged findings rows for M-groups) for B8-P4, B8-P6, B9-P18, T1-2-P5, M19, B7-P1, B7-P12, B8-P7"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "A failed combo read degrades instead of scoring zero"
+description = "Drives the combo-provisioning rollback in a test, then makes an OperationalError after a good availability probe surface as combo data unavailable (AD-6's degradation path, no new vocabulary) instead of an empty variant list. Today a locked database mid-assessment scores combo_potential 0 at high confidence with no combo_data_unavailable reason."
+verify = "An injected OperationalError on the variant read makes assess_deck_power report combo_data_unavailable with reduced confidence, and the rollback test drives the provisioning failure path."
+covers = ["R7"]
+after = [2]
+hitl = false
+risk = "medium"
+findings = ["B9-P12", "B9-D1"]
+width = "src/data/repositories/combo_snapshot.py, src/mcp_server/tools/assess_deck_power.py and compare_deck_power.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q7; the `## Code Review` stamps (and Merged findings rows for M-groups) for B9-P12, B9-D1"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Card search inputs mean the same thing in every tool"
+description = "Pins search_cards' normalisation and pass-throughs and the two-game platform rule, then adds one normaliser per parameter kind at the tool edge: the format key case-folded before it enters the JSON path, games stripped before use, names stripped in lookup_card_by_name, one copy of the search vocabularies and mana bounds, and `invalid` for an unknown lookup platform (CardLookupResult gains the token) and for a page whose offset cannot be bound. Today format=\"Standard\" matches nothing on four search paths, games=[\" arena\"] marks every card unavailable, and a huge page escapes as an OverflowError."
+verify = "Through the tool entry points, \"Standard\" and \"standard\" return the same cards on every search tool, \" arena\" behaves as \"arena\", an unknown platform answers invalid on lookup_card_by_name, and page=2**62 answers invalid."
+covers = ["R8"]
+after = [2, "7.1"]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B4-P11", "B9-P15", "M16", "M18", "M5", "M49", "B9-D3", "B9-P8"]
+width = "src/data/repositories/card.py, src/search/query.py, src/mcp_server/tools/{card_lookup,card_search,semantic_search,find_similar,deck_analysis}.py, src/logic/deck_validator.py, a shared normaliser module"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q8; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P11, B9-P15, M16, M18, M5, M49, B9-D3, B9-P8", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Deck tool inputs are normalised the same way"
+description = "Strips deck_id in load_deck, delete_deck and set_active_deck, normalises create_deck's format and metadata the way update_deck does, answers `invalid` for commander=True with sideboard=True, and leaves About metadata lines out of the 250-line import pre-count. Today a padded deck id works for add and update but not for load, delete or set_active_deck, a deck created as \"Commander\" never lists under commander, and a sideboard commander is stored though the assessment ignores it."
+verify = "Through the tool entry points, a padded deck id loads, deletes and activates; create_deck(format=\"Commander\") lists under commander; the commander-plus-sideboard call answers invalid; an import of 250 card lines plus About lines is not refused by the pre-count."
+covers = ["R8"]
+after = [4]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B8-P1", "B8-P3", "B8-P11", "B8-P12", "B8-P13"]
+width = "src/mcp_server/tools/{deck_management,companion,deck_import}.py, src/data/repositories/deck.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q8; the `## Code Review` stamps (and Merged findings rows for M-groups) for B8-P1, B8-P3, B8-P11, B8-P12, B8-P13"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "One indexed, bounded card-name resolver"
+description = "Pins printed-name matching, lookup_card's cap, blank-name guard and games pass-through, and find_similar's seed resolution, then routes lookup, deck management, import and find_similar through one resolver that uses the NOCASE index, caps the partial read at the match limit plus one and says \"more than N\" (option b), escapes LIKE wildcards in user text, and shares the wording remove_card_from_deck copies. Today three resolvers order candidates differently, find_similar's exact match is a full scan (58 ms against 0.5 ms in #108), and a two-letter query materialises thousands of rows and reports the capped count as exact."
+verify = "Through the tool entry points, a printed-name lookup resolves on every tool, a two-letter partial query reads at most the cap plus one rows and says \"more than N\", `50%` matches literally, and EXPLAIN QUERY PLAN for find_similar's seed match uses the NOCASE index."
+covers = ["R9"]
+after = [1, 4, 5]
+hitl = false
+risk = "medium"
+findings = ["B2-P5", "B9-P14", "B9-P16", "M4", "M51", "M3", "B2-P7"]
+width = "src/data/repositories/card.py and deck.py, src/mcp_server/tools/{card_lookup,deck_management,deck_import,find_similar}.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q9; the `## Code Review` stamps (and Merged findings rows for M-groups) for B2-P5, B9-P14, B9-P16, M4, M51, M3, B2-P7", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "stdio is the only transport, in code and docs"
+description = "Removes the HTTP transports MCP_TRANSPORT can still open and the docs and comments that plan for them, and corrects _run_mcp_server's diagnostics count and the package docstring that names a tool that does not exist. Today an MCP_TRANSPORT value opens an unauthenticated transport that AGENTS.md says is unsupported."
+verify = "Whatever MCP_TRANSPORT is set to, the server serves stdio only, and a grep finds no HTTP-transport plan left in docs/, SECURITY.md, .env.example or src/mcp_server/."
+covers = ["R10"]
+after = ["4.1", 2]
+hitl = false
+risk = "low"
+plan_checkpoint = true
+findings = ["M48", "B7-P9", "B7-P10"]
+width = "src/mcp_server/server.py, __main__.py and __init__.py, docs/architecture.md, SECURITY.md, .env.example; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q10; the `## Code Review` stamps (and Merged findings rows for M-groups) for M48, B7-P9, B7-P10", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Deck tools answer one token per fact and validate the stored format"
+description = "Pins update_deck's stripped emit, then makes set_card_quantity answer not_in_deck like remove_card_from_deck, keeps clone_deck's default name inside the 100-character cap, corrects the stale echo-bound rationale, lists the deck tools' differing not-found tokens side by side in the magic-deckbuilding skill (D3: b), and makes validate_deck fall back to the deck's stored format as assess_deck_power does (option a). Today set_card_quantity says card_not_found for a known card that is not in the board, and a Commander deck validated without a format is checked as Standard."
+verify = "Through the tool entry points, set_card_quantity on a card absent from the board answers not_in_deck; validate_deck on a stored Commander deck with no format checks Commander rules; a 100-character source name clones within the cap."
+covers = ["R10"]
+after = [5, 6, 7, "7.1"]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B7-P4", "M52", "B8-D3", "B8-P8", "B8-P15", "B9-D2"]
+width = "src/mcp_server/tools/{deck_management,companion,deck_analysis}.py, server.py wrappers, the magic-deckbuilding and format-legality skills; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q10; the `## Code Review` stamps (and Merged findings rows for M-groups) for B7-P4, M52, B8-D3, B8-P8, B8-P15, B9-D2", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Arena imports keep mixed printings and show every line status"
+description = "Pins the import's per-line quantity < 1 and > 250 branches, then sums the lines of one card printed twice in one Arena export and checks the sum against the quantity cap, keeping `exists` only for rows already in the deck (option a, a tool behaviour change), and stops _line_result hiding unexpected statuses. Today an Arena export with mixed-art basics imports short, its second printing answered `exists`, and the deck comes back `partial`."
+verify = "Through import_decklist, an Arena export with `2 Island (ELD) 250` and `2 Island (THB) 251` imports 4 Islands, lines summing past 250 are refused, and a line with an unexpected status is reported as such."
+covers = ["R10"]
+after = [5, 6, 8]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B8-P5", "B8-D1", "B8-P14"]
+width = "src/mcp_server/tools/deck_import.py and its tests, the import_decklist wrapper docstring in src/mcp_server/server.py, the magic-deckbuilding skill; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q10; the `## Code Review` stamps (and Merged findings rows for M-groups) for B8-P5, B8-D1, B8-P14"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "Tool descriptions and skills list what the tools really do"
+description = "Names every status each tool returns (database_not_initialized above all) in its docstring, result-model description and skill, adds readOnlyHint to the observational tools, states the semantic tools' limit cap, corrects the skills' 'silently clamped' page_size claim, documents assess_deck_power and compare_deck_power in a shipped skill, tells a page past the last apart from no match, and carries each failed side's own explanation into the compare summary. Today the descriptions omit statuses the tools return, and no shipped skill documents either power tool."
+verify = "Through tools/list, every observational tool carries readOnlyHint; search_cards past the last page and compare_deck_power with one failed side answer the new messages; a reviewer reading each docstring against its result model finds no returned status missing."
+covers = ["R10"]
+after = [3, 4, 7, 8, 9]
+hitl = false
+risk = "low"
+plan_checkpoint = true
+findings = ["M20", "B7-P7", "B7-P8", "B9-P1", "B9-P2", "B9-P5", "B9-P6"]
+width = "src/mcp_server/server.py wrappers, the result models in src/mcp_server/tools/*.py, the five shipped skills, docs/architecture.md §5; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q10; the `## Code Review` stamps (and Merged findings rows for M-groups) for M20, B7-P7, B7-P8, B9-P1, B9-P2, B9-P5, B9-P6"]
+
+[[entry]]
+id = 11
+type = "story"
+title = "Search colour, rarity and paging filters do what they say"
+description = "Pins exact and at_most on the semantic path, then gives colors=[] one meaning on both search paths, counts distinct colours in exact mode, handles an empty rarity list explicitly, adds an id tie-break to the paging order, and per D2 corrects the at_most docstrings and the skills' 'pass the deck's colors' advice to say card colours, not identity. Today at_most with colors=[] returns every card, exact with [\"W\",\"W\"] returns two-colour cards, rarity=[] silently drops the filter, and paging can repeat or skip tied rows."
+verify = "Through search_cards and semantic_search_cards, colors=[] means the same in each mode on both paths, exact [\"W\",\"W\"] returns only mono-white cards, paging over a tied result yields each card once, and the recall sanity eval passes."
+covers = ["R11"]
+after = ["4.2", "4.4", 4, 10]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B6-P9", "M17", "B2-D1", "B2-P2", "B2-P11", "B2-P12"]
+width = "search_advanced in src/data/repositories/card.py, the filter builder in src/search/query.py, the search docstrings and the skills; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q11; the `## Code Review` stamps (and Merged findings rows for M-groups) for B6-P9, M17, B2-D1, B2-P2, B2-P11, B2-P12"]

@@ -77,6 +77,6 @@ A deckbuilder resolves, imports and exports a representative 100-card Arena deck
 - Assumption: the review's consolidated three changes supersede the source document's conflicting shortlists.
 - Assumption: existing additive import behaviour remains, with partial success clearly reported.
 - Source conflict: R7 preserves a Companion section across round trips; epic-quick-wins R4 never emits one on export. Settle before entry 5 or epic-quick-wins entry 3 is built.
-- Handoff: epic-codebase-quality-pass story 16 folds the three existing card-name resolvers into one indexed, bounded resolver, and story 71 sums mixed-printing Arena lines in `import_decklist`; entries 1 and 4 build on the same code.
-- Decision: 2026-11-09, board review, Brad: story 16 lands before entry 1 and story 71 before entry 4 (`after` keys `4.16` and `4.71`).
+- Handoff: quality-pass story 5.6 (epic-quality-mcp-tools, was 16) folds the three existing card-name resolvers into one indexed, bounded resolver, and story 5.9 (was 71) sums mixed-printing Arena lines in `import_decklist`; entries 1 and 4 build on the same code.
+- Decision: 2026-11-09, board review, Brad: story 5.6 (was 16) lands before entry 1 and story 5.9 (was 71) before entry 4 (`after` keys `5.6` and `5.9`).
 - Assumption: the five entries are v6 review drafts ("epic-1-stories-draft-awaiting-review"); refine with Sofia before building. Done when was written by the migration; confirm with Sofia.

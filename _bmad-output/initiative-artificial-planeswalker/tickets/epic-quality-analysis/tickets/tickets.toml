@@ -1,0 +1,131 @@
+# epic-quality-analysis: one entry per story, in build order. Moved from epic-codebase-quality-pass at the 2026-11-09 board review.
+# `covers` names this epic's Requirements ids (R<n> is review theme Q<n>). Keys beyond the template, ignored by tickets.py: `findings` (review finding ids) and `width`.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Snow basics and restricted cards get the right verdict"
+description = "Checks _KNOWN_FORMATS against the real legality keys, exempts snow basics from the copy limit, and treats a restricted card as legal at one copy and a violation above it (option a: new wording and possibly a new rule token through CHECK_FOR_RULE, the OpenAPI contract and the skill). Today five or more snow basics make a deck illegal, and one restricted card makes a legal Vintage deck read illegal on the tool and on the companion panel."
+verify = "Through validate_deck and the companion format-check route, a deck with ten Snow-Covered Forests is legal, one Black Lotus in Vintage is legal and two are a violation, and a test fails when a real legality key is missing from _KNOWN_FORMATS."
+covers = ["R15"]
+after = ["4.2", "5.1"]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B4-P12", "M2", "B4-D1"]
+width = "src/logic/deck_validator.py, the format-check route's CHECK_FOR_RULE mapping, the format-legality skill, then npm run gen:api"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P12, M2, B4-D1", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Mana-curve advice uses named thresholds and sane small-deck output"
+description = "Asserts land recommendations as values rather than substrings, then names the curve thresholds once, stops telling a tiny deck to 'Add ~0 lands (target: 0 lands)', and splits lands from spells by identity rather than pairwise model comparison, dropping the dead cmc None arms. Today the thresholds are repeated magic numbers and the land/spell split is quadratic."
+verify = "analyze_mana_curve on a five-card deck gives no zero-land advice, the recommendation tests compare numbers, and the curve suite otherwise passes unchanged."
+covers = ["R15"]
+after = ["5.1"]
+hitl = false
+risk = "low"
+findings = []
+width = "dropped at board review 2026-11-09; its findings are in deferred-work.md"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P10, B4-P13, B4-P16, B4-P18"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Synergy detection sees every card that should count, and scores it monotonically and in order"
+description = "Pins a strong-strength detection and replaces the `len(...) >= 0` lifelink assertion, then reads multi-face text from card_faces, parses tribal types properly (\"Elves\", Kindred; option a, option b deferred), finds keyword holders past the first line, makes tribal payoffs independent of deck order without counting lords twice, and requires both halves of a mechanic combo. Today every multi-face card is invisible to synergy detection, and one-sided mechanic combos are reported. Merged from story 7.4, was 35 (board review 2026-11-09): asserts cohesion `high`, then makes cohesion rise with coverage (option a), states the strength tiering once instead of five times, and sorts the synergy output so it is identical across processes. Today cohesion can fall as coverage rises, and the output order changes between processes."
+verify = "detect_synergies on a fixture deck with an MDFC payoff, an Elf lord, a second-line keyword holder and a one-sided mechanic finds the first three, rejects the fourth, and returns the same result for the deck in reverse order; two processes with different PYTHONHASHSEED return byte-identical detect_synergies output, and adding coverage to a fixture deck never lowers its cohesion."
+covers = ["R15"]
+after = ["5.1"]
+hitl = false
+risk = "medium"
+findings = ["B4-P8", "B4-P9", "M23", "B4-D3", "B4-P3", "B4-P4", "B4-P6", "B4-P7", "B4-D4", "B4-P14", "B4-P15"]
+width = "src/logic/synergy.py and tests/unit/logic/test_synergy.py"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P8, B4-P9, M23, B4-D3, B4-P3, B4-P4, B4-P6; and Q15's B4-P7, B4-D4, B4-P14, B4-P15"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Synergy scoring is monotonic, tiered once and ordered"
+description = "Asserts cohesion `high`, then makes cohesion rise with coverage (option a), states the strength tiering once instead of five times, and sorts the synergy output so it is identical across processes. Today cohesion can fall as coverage rises, and the output order changes between processes."
+verify = "Two processes with different PYTHONHASHSEED return byte-identical detect_synergies output, and adding coverage to a fixture deck never lowers its cohesion."
+covers = ["R15"]
+after = [3]
+hitl = false
+risk = "low"
+findings = []
+width = "merged into story 7.3, was 34 (board review 2026-11-09)"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q15; the `## Code Review` stamps (and Merged findings rows for M-groups) for B4-P7, B4-D4, B4-P14, B4-P15"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "The agent and the companion report the same card statistics"
+description = "Per D1, src/logic owns land detection (the MDFC rule settled once), mana-value bucketing and the colour counts; the deck-detail payload carries the computed figures, the UI draws them and deletes isLand, bucketOf and coloursOf, and a test ties the seven-bucket tuple to BUCKETS. Today the agent reports one land count and curve in chat while the companion shows another for the same deck (MDFC lands, mana value 0 and 7+, pip counts), and two UI headers claim the two cannot disagree."
+verify = "For a deck with an MDFC land, a 0-cost spell and a 7-drop, analyze_mana_curve's land count and buckets equal the deck-detail figures and what the companion panels render; the gen:api output is committed."
+covers = ["R16"]
+after = ["9.1", "6.3", "9.4"]
+hitl = false
+risk = "high"
+plan_checkpoint = true
+findings = ["M1", "F6-P8"]
+width = "src/logic/mana_curve.py, src/logic/assessment/{mana_base,classifiers}.py, the deck-detail schema and route, ui/src curve.ts, colours.ts and deckGroups.ts, then npm run gen:api; the frozen viewer is left as it is"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q16; the `## Code Review` stamps (and Merged findings rows for M-groups) for M1, F6-P8", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "Assessment dimensions are pinned before they change"
+description = "Pins the three range-only dimensions to values, speed's average-mana-value direction, almost_included half credit, multi-face land source counting, the direction of structural_gaps_added and _removed on a real difference, and wire-byte determinism across hash seeds. Today these can move without a test noticing, so the assessment accuracy fixes that follow would land unguarded."
+verify = "Each new test fails when its rule is inverted (probe harness proof lines in the PR), and the determinism test compares two subprocesses with different PYTHONHASHSEED."
+covers = ["R17"]
+after = ["4.2", "4.5", 5, "6.9"]
+hitl = false
+risk = "low"
+findings = ["B5-P8", "B5-P9", "B5-P10", "B5-P11", "B9-P13", "T1-2-P6"]
+width = "tests for src/logic/assessment/ (dimensions, mana_base) and the compare and assess tool tests; test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q17; the `## Code Review` stamps (and Merged findings rows for M-groups) for B5-P8, B5-P9, B5-P10, B5-P11, B9-P13, T1-2-P6"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "The role classifiers recognise common wordings"
+description = "Stops graveyard land recursion firing mass land denial, catches Winter Orb, counts any-colour rocks and dorks and basic-type land fetches as ramp, recognises the common removal and draw wordings, reads face power for finishers, stops counting Entomb as a tutor and accepts real 'nonland' tutors, then re-runs the assessment benchmark. Today graveyard land recursion flags Bracket 4 mass land denial, and Birds of Paradise, Nature's Lore, Cyclonic Rift and Toxic Deluge go uncounted."
+verify = "A classifier test table over each named card gives its expected role, and the benchmark re-run's score changes and the profile-version call are in the PR."
+covers = ["R17"]
+after = [6, "epic-trustworthy-assessment"]
+hitl = false
+risk = "medium"
+findings = ["B5-P1", "B5-P2", "B5-P3", "B5-P4", "B5-P5", "B5-P6", "B5-P7", "B5-P12", "B5-P13"]
+width = "src/logic/assessment/classifiers.py and mana_base.py, the assessment benchmark"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q17; the `## Code Review` stamps (and Merged findings rows for M-groups) for B5-P1, B5-P2, B5-P3, B5-P4, B5-P5, B5-P6, B5-P7, B5-P12, B5-P13"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Combo and mana scoring track the deck"
+description = "Scores deterministic two-card wins (Thassa's Oracle with Demonic Consultation) as infinite, narrows the two win-route patterns that tag anthems and Clones, credits a Spellbook variant once rather than each superset (option a; dropping supersets from the combos list stays deferred), corrects mana_efficiency's profile comment and counts fetchland sources (option a; Karsten's tables stay deferred), and fixes three multi-face cmc docstrings; then re-runs the benchmark. Today superset variants push combo_potential to 100, anthems and Clones count as win routes in nearly every creature deck, and multicolour Commander decks score mana_efficiency near 0."
+verify = "assess_deck_power on benchmark decks with Thassa's Oracle and Consultation, an anthem-heavy creature deck and a three-colour Commander deck gives the expected combo and mana scores; the benchmark deltas and any profile-version bump are in the PR."
+covers = ["R17"]
+after = ["5.3", 7]
+hitl = false
+risk = "high"
+findings = ["B5-D1", "B5-D2", "B5-D3", "B5-D5", "B5-P14"]
+width = "src/logic/assessment/{dimensions,combos,mana_base,consistency,profiles}.py, the assessment benchmark"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q17; the `## Code Review` stamps (and Merged findings rows for M-groups) for B5-D1, B5-D2, B5-D3, B5-D5, B5-P14"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Bracket flags name the cards behind them"
+description = "Carries the mass-land-denial, extra-turn and early two-card-infinite card names that bracket_floor already computes into the assessment flags (option a), and stops a Standard assessment's summary saying 'commander unidentified'. Today the flags block shows mass_land_denial: true with no card behind it."
+verify = "assess_deck_power on a deck with Armageddon names Armageddon under its flag, and a Standard deck's summary does not mention a commander."
+covers = ["R17"]
+after = [8]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B5-D4", "B9-P11"]
+width = "src/logic/assessment/ (bracket_floor, CoreAssessment), src/mcp_server/tools/assess_deck_power.py flags and summary, the skills; plugin rebuild"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q17; the `## Code Review` stamps (and Merged findings rows for M-groups) for B5-D4, B9-P11"]

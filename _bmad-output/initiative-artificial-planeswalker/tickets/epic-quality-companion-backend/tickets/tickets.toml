@@ -1,0 +1,74 @@
+# epic-quality-companion-backend: one entry per story, in build order. Moved from epic-codebase-quality-pass at the 2026-11-09 board review.
+# `covers` names this epic's Requirements ids (R<n> is review theme Q<n>). Keys beyond the template, ignored by tickets.py: `findings` (review finding ids) and `width`.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Card images touch the database only on a cache miss"
+description = "Skips the readiness probe and releases the session before the pacer wait on the image route, guards is_fetchable's port parse, enforces the 16 MB ceiling on wire bytes while streaming and before reading a cached file, keeps cache-path containment in the types the signatures carry, replaces before unlinking displaced siblings, and corrects the fetch-gate comment. Today every image request runs a four-SELECT probe and holds a pooled connection through the pacer wait, an unparseable image port escapes as a 500, and a compressed body can expand past the ceiling."
+verify = "Through the image route, a cached image is served with no database statement, an uncached one holds no session during the pacer wait, a URL with a bad port answers the placeholder, and a compressed body that expands past 16 MB is cut off at the ceiling."
+covers = ["R18"]
+after = ["4.2", "4.4"]
+hitl = false
+risk = "medium"
+findings = ["M7", "B12-P1", "B12-P3", "B12-P4", "B12-P5", "B12-P6", "B11-P10"]
+width = "src/companion/app/images.py, deps.py, routes/cards.py and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q18; the `## Code Review` stamps (and Merged findings rows for M-groups) for M7, B12-P1, B12-P3, B12-P4, B12-P5, B12-P6, B11-P10", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Backend errors log safely and name the real failure"
+description = "Tests a chunked body through the body cap, stops validation_error_handler logging raw caller input (and the test that pins it), keeps ClientDisconnect out of ServerErrorMiddleware, reports a malformed CARDS_DATABASE_URL with an ERROR naming the setting and a directory URL as not initialised, and corrects the 1011, body-cap, ticket and connection-registry docstrings. Today a validation error logs up to 64 KB of caller text, and a directory URL shows 'Database updating' and then escalates to stalled."
+verify = "A chunked body over the cap is refused, a validation error's log record carries no request text, a directory CARDS_DATABASE_URL answers not initialised on the data routes, and a malformed one logs an ERROR naming CARDS_DATABASE_URL."
+covers = ["R18"]
+after = [1]
+hitl = false
+risk = "medium"
+findings = ["B12-P2", "M33", "B12-P8", "B12-P9", "B12-P11", "M36", "B11-P5", "B11-P6", "B11-P7"]
+width = "src/companion/app/{errors,body_cap,ws,deps,state,session}.py and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q18; the `## Code Review` stamps (and Merged findings rows for M-groups) for B12-P2, M33, B12-P8, B12-P9, B12-P11, M36, B11-P5, B11-P6, B11-P7"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Discovery works on Windows and stays private on POSIX"
+description = "Tests the discovery file's 0o600 mode, publishes it on Windows with a short bounded retry while a reader holds it (option a), keeps read_discovery and remove_discovery's never-raise promise past path resolution, corrects the singleton comment's mypy platform and documents COMPANION_PORT in .env.example. Today a reader holding companion.json aborts a companion launch on Windows."
+verify = "On the Windows CI lane, publishing while another handle reads the file succeeds; on Linux the published file is mode 0o600; read_discovery with an unresolvable data directory returns None without raising."
+covers = ["R18"]
+after = ["4.1", "4.4", "5.7", 2]
+hitl = false
+risk = "medium"
+findings = ["B10-P1", "M37", "B10-P2", "B12-P10", "B11-P9"]
+width = "src/companion/discovery.py, src/paths.py, the singleton.py comment, .env.example, their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q18; the `## Code Review` stamps (and Merged findings rows for M-groups) for B10-P1, M37, B10-P2, B12-P10, B11-P9"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Push deadlines and the active-deck receipt survive slow and skewed backends"
+description = "Tests the active-deck receipt under a concurrent PUT, sets the push and notify deadlines so a delivered push and a dead port are each reported as such (tests use the production values), closes server.run's probe client, folds the near-copy outcome mappers and attempt functions, and drops ActiveDeckSetReceipt's extra=\"forbid\" so a skewed backend's extra key no longer fails a stored switch (option a), with the wrong rationale comments corrected. Today a completed deck switch can read as backend_error, and a 2 s read deadline misreports slow fan-outs."
+verify = "Against a live backend, a receipt carrying an extra key yields ok, a push answered after the old 2 s deadline is reported delivered, a dead port is reported unreachable within the notify deadline, and the probe client closes (no ResourceWarning)."
+covers = ["R18"]
+after = [3, "1.5"]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["B11-P1", "M35", "M34", "B10-P6", "B10-D2", "B10-P13"]
+width = "src/companion/client.py, contracts.py (ActiveDeckSetReceipt), app/server.py, routes/active_deck.py, their tests, then npm run gen:api"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q18; the `## Code Review` stamps (and Merged findings rows for M-groups) for B11-P1, M35, M34, B10-P6, B10-D2, B10-P13"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "The published companion contract says only what the code does"
+description = "Drops /health's 503 that can never be answered, bounds HealthResponse.clients at 0 and SwapItem's quantities from above, replaces the import-time assert with a check python -O keeps, corrects the three published descriptions that contradict the code, moves the measured numbers out of ErrorResponse's prose and completes the wire-edit maintenance notes; then regenerates the contract. Today openapi.json and types.d.ts carry a /health 503 branch nothing can answer, and a 300-digit swap quantity fits the envelope."
+verify = "The gen:api output shows no 503 on /health and the new bounds, a push with a 300-digit swap quantity is refused, and the UI typecheck passes."
+covers = ["R18"]
+after = [4]
+hitl = false
+risk = "medium"
+plan_checkpoint = true
+findings = ["M32", "B10-P7", "B10-P8", "B10-P9", "B10-P10", "B10-P11", "B10-P12"]
+width = "src/companion/contracts.py, app/main.py and errors.py, the SuggestionsView comment, then npm run gen:api"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q18; the `## Code Review` stamps (and Merged findings rows for M-groups) for M32, B10-P7, B10-P8, B10-P9, B10-P10, B10-P11, B10-P12"]

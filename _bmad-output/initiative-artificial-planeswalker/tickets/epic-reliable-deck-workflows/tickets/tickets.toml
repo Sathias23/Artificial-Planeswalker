@@ -13,7 +13,7 @@ Original acceptance criteria:
 - Given format/platform filters and full split or double-faced names, when the lookup entry point resolves them, then existing filters remain effective and full identities are preserved, and observational calls do not change the deck."""
 verify = "Lookup and import resolve a front-face name to the same playable identity, never the art card, and ambiguity or no match is reported explicitly, through the tool entry points."
 covers = ["R4", "R11", "R12"]
-after = ["4.16"]
+after = ["5.6"]
 hitl = false
 risk = "medium"
 v6_key = "1-1-resolve-playable-card-names-consistently"
@@ -65,7 +65,7 @@ Original acceptance criteria:
 - Given a repeated import or duplicate lines, when it is retried, then the outcome follows documented additive/duplicate semantics, and actual saved quantities and returned totals agree."""
 verify = "A mixed list imports its valid lines with accurate totals, every rejected line carries a diagnostic, partial success is reported as partial, and a retry follows the documented additive semantics."
 covers = ["R5", "R7", "R11", "R12"]
-after = [2, "4.71"]
+after = [2, "5.9"]
 hitl = false
 risk = "medium"
 v6_key = "1-4-import-common-arena-deck-lists-with-clear-partial-results"

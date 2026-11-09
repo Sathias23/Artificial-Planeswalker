@@ -1,0 +1,141 @@
+# epic-quality-ui-state-and-tests: one entry per story, in build order. Moved from epic-codebase-quality-pass at the 2026-11-09 board review.
+# `covers` names this epic's Requirements ids (R<n> is review theme Q<n>). Keys beyond the template, ignored by tickets.py: `findings` (review finding ids) and `width`.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Unused UI props, exports and styles are deleted"
+description = "Narrows AgentViewContentBase.count to the values the builders produce, deletes StatChip's `delta` prop (keeping `live`, the reservation for a designed panel state; option b), CurveBuckets.tallest and styles/surfaces.ts. Today they are kept, tested and reviewed in step with live code."
+verify = "The UI gate passes (lint, typecheck, test, build) and none of the deleted names remains under ui/src."
+covers = ["R5"]
+after = []
+hitl = false
+risk = "low"
+findings = ["F2-P10", "F3-D3", "F6-P11", "F8-P3"]
+width = "ui/src/state/agentView.ts, StatChip, ui/src/containers/ManaCurve/curve.ts, ui/src/styles/surfaces.ts and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q5; the `## Code Review` stamps (and Merged findings rows for M-groups) for F2-P10, F3-D3, F6-P11, F8-P3"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "App.test.tsx gets one shared harness"
+description = "Builds the harness half of T1-5-D1 inside the file: one fetch router that routes /health in place of six hand-written ones, a beforeEach that resets every store, the module focusablesNow used everywhere, the three misplaced docblocks fixed and the harness rule kept by every test id, and rewrites or deletes the assertions that can no longer fail or that pin test-library behaviour. Today six hand-written routers miss /health, four stores leak between tests so results depend on file order, and some assertions cannot fail."
+verify = "`npm test` passes with `--sequence.shuffle`, and App.test.tsx has one fetch router and one store reset."
+covers = ["R6"]
+after = ["4.3", "4.5"]
+hitl = false
+risk = "medium"
+findings = ["T1-5-P1", "T1-5-P2", "T1-5-P3", "T1-5-P4", "T1-5-P10", "T1-5-P12", "T1-5-P13"]
+width = "ui/src/App.test.tsx (7,229 lines); test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q6; the `## Code Review` stamps (and Merged findings rows for M-groups) for T1-5-P1, T1-5-P2, T1-5-P3, T1-5-P4, T1-5-P10, T1-5-P12, T1-5-P13"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "App.test.tsx is split into suites over its harness"
+description = "Splits App.test.tsx move-only into suites over the shared harness (T1-5-D1's second change), and deletes the App-level tests that repeat container suites, folding the four near-copy agent-view kind describes (T1-5-D2). Today one 7,229-line file declares bootedDeck 13 times and runs on one vitest worker, and one behaviour change means editing two tests."
+verify = "`npm test` passes with `--sequence.shuffle`, the split suites run on more than one worker, and file count, test count and wall time before and after are in the PR."
+covers = ["R6"]
+after = [2]
+hitl = false
+risk = "medium"
+findings = ["T1-5-D1", "T1-5-D2"]
+width = "ui/src/App.test.tsx, split move-only into suites; test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q6; the `## Code Review` stamps (and Merged findings rows for M-groups) for T1-5-D1, T1-5-D2"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "UI suites share one set of builders, and useDeckState has its own tests"
+description = "Adds direct tests for useDeckState's composition layer, then moves the copied CardSummary builders and seed helpers into one shared module and folds agentView.test.ts's four near-copy builder suites and deck.test.ts's three harness copies into one each. Today about 20 suites build their own CardSummary, and useDeckState's composition is tested only through App.test.tsx."
+verify = "`npm test` passes; the new useDeckState tests fail when its composition is broken (vitest probe harness proof line); no suite outside the shared module defines a CardSummary builder."
+covers = ["R6"]
+after = [1, 3]
+hitl = false
+risk = "low"
+findings = ["T1-4-P6", "T1-4-P4", "T1-4-P9", "T1-4-P10"]
+width = "ui/src/state/deck.test.ts, agentView.test.ts, the four agent-view body suites and a new shared test-builder module; test code only"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q6; the `## Code Review` stamps (and Merged findings rows for M-groups) for T1-4-P6, T1-4-P4, T1-4-P9, T1-4-P10"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "ESLint guards the one network door and no persisted UI state"
+description = "Adds the two D4 ESLint rules ahead of the UI refactors: fetch and WebSocket only in src/api/client.ts (AD-4), and no localStorage or document.cookie in src/state/ (UX-DR15). This is the guard half of M25; M25 is counted in the story that rewords the citations. Today nothing enforces either rule, though about 200 comments say a deleted suite does."
+verify = "A planted fetch outside client.ts and a planted localStorage call in src/state/ each fail `npm run lint`, and master passes it."
+covers = ["R22"]
+after = []
+hitl = false
+risk = "low"
+findings = []
+width = "ui/eslint.config.js"
+
+[[entry]]
+id = 6
+type = "story"
+title = "A store write re-renders only the tiles that changed"
+description = "Adds render-count tests and pins the connected cold open's request count, then gives the system store a selector, memoises CardTile, keeps unchanged entries in seedDeckCards, sets the detail panel's large image only after hover intent (showing the warm normal image meanwhile; option a) and gives its cold-open image a fetch priority; then re-measures the cold open with cdp_harness budget. Today every store write re-renders every tile (twice on a cold open, up to about four times per deck_changed), and a hover sweep across a cold grid starts up to 99 large-image fetches that queue ahead of the grid's own."
+verify = "A render-count test shows only the changed cards' tiles re-render on a deck_changed, the cold-open request count is pinned, and `cdp_harness budget` on the branch meets the release budget, with the numbers in the PR."
+covers = ["R19"]
+after = ["4.3", "4.7", 3, 5, 4]
+hitl = false
+risk = "high"
+findings = ["M11", "T1-5-P7", "F4-D1", "F4-P9"]
+width = "ui/src/state/systemState.ts and cards.ts, CardTile, CardGrid, CardDetail, App.tsx and their tests; cold-open re-measure"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q19; the `## Code Review` stamps (and Merged findings rows for M-groups) for M11, T1-5-P7, F4-D1, F4-P9", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Deck and connection recovery never leave silent stale state"
+description = "Pins the CAP-3 probe re-arm, the socket's finally and the poller's unreachable reset, then defers deck_changed while a boot is unsettled, routes a refetch's transient refusal through the existing CAP-3 probe (no timer, AD-12; option a), resets the socket backoff only after a minimum open time, and keeps the format-check panel's last result while an agent edit refetches. Today an accept-then-drop backend reconnects every 2 s forever (about six requests a cycle) and the Disconnected panel never shows, a transient refusal on a refetch leaves the deck stale with no marker, and every agent edit blanks the format-check panel."
+verify = "In vitest, an open-then-close socket loop reaches 'down' and backs off; a deck_changed during boot paints the in-flight response; a refetch refusal followed by a healthy probe refetches; the format-check panel keeps its rows through an agent edit."
+covers = ["R19"]
+after = [6]
+hitl = false
+risk = "high"
+findings = ["F2-P3", "F1-P4", "M38", "F2-D1", "M40", "M39"]
+width = "ui/src/state/deck.ts, socket.ts, poller.ts, formatCheck.ts, App.tsx and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q19; the `## Code Review` stamps (and Merged findings rows for M-groups) for F2-P3, F1-P4, M38, F2-D1, M40, M39"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Pins, history and deck order behave on edge cases"
+description = "Tests HISTORY_CAP eviction of a retained kind, then clears unread and marks displaced only for the retained view, lets a second click release a pin whose card became the unknown-card placeholder, and adds a card_id tiebreak to byManaValueThenName. Today reopening an older history entry clears the dot for an unseen newer view, and two printings of one card can swap tiles between refetches."
+verify = "agentView, inspection and deckGroups tests cover each case and fail against the old code."
+covers = ["R19"]
+after = [4, "7.5", 3]
+hitl = false
+risk = "low"
+findings = ["T1-4-P8", "F2-P2", "F1-P5", "F1-P8"]
+width = "ui/src/state/agentView.ts, inspection.ts, deckGroups.ts and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q19; the `## Code Review` stamps (and Merged findings rows for M-groups) for T1-4-P8, F2-P2, F1-P5, F1-P8"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Agent-pushed ids cannot reach inherited object keys"
+description = "Tests a null array element and the first-paint empty-id guard, then reads the card and face stores through own keys only, folds the four *ViewOf builders into one keyed on AGENT_VIEW_LABELS, and freezes MANA_COLOUR_ORDER. Today a push with the card id \"constructor\" can blank the app (ui/src has no error boundary), a null element is untested, and a guard change needs four builder edits."
+verify = "A push carrying \"constructor\" and \"toString\" ids renders placeholders, a push with a null element leaves the dialog mounted, and the four builders are one function."
+covers = ["R20"]
+after = ["8.5", 7, 8]
+hitl = false
+risk = "medium"
+findings = ["M28", "F2-P4", "F5-P1", "F5-P2", "F3-P8"]
+width = "ui/src/state/cards.ts, faces.ts, agentView.ts, mana/parse.ts, SuggestionsView and their tests"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q20; the `## Code Review` stamps (and Merged findings rows for M-groups) for M28, F2-P4, F5-P1, F5-P2, F3-P8"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "One copy of each agent-view guard and tile helper"
+description = "Tests failed images, flipped faces and the preview's own hydration request on the tiles, then replaces the ~15 blank-string-to-null guards with one helper, extracts the drifted tile helpers and release effect as one hook (option b; a generic slotted tile was dropped), and trims tier names and notes as group titles are trimmed. Today the '' guard is live in one copy, dead in another and removed in a third."
+verify = "The new tile tests pass on the tier, groups and swaps views; one blank-string guard definition remains; a tier named '  A  ' renders 'A'."
+covers = ["R20"]
+after = [9]
+hitl = false
+risk = "medium"
+findings = ["F7-P2", "F7-P3", "F7-P4", "M29", "M30", "F7-P6"]
+width = "about fifteen ui/src container files, the four agent-view bodies (TierListView, GroupsView, SwapsView, SuggestionsView) and a shared hook"
+references = ["review — _bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md, Summary, Q20; the `## Code Review` stamps (and Merged findings rows for M-groups) for F7-P2, F7-P3, F7-P4, M29, M30, F7-P6", "research — _bmad-output/initiative-artificial-planeswalker/research-codebase-architecture/research-codebase-architecture.md, the findings its merge groups cite"]
