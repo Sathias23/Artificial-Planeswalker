@@ -87,7 +87,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 
 - [ ] **T1, `bmad-code-review` quick, per suite:** `tests/unit/`, `tests/integration/`, `ui/src/**/*.test.*`, `ui/tests/`, focused on test design only: real-entry-point rule, duplicated fixtures, slow tests, assertion-free tests, missing coverage on the risky paths the group reviews found. `ui/src/App.test.tsx` (7,229 lines) deserves its own look.
   - Decision (2026-11-09, Brad): the suites total about 89,000 lines (`tests/unit` ~39k, `ui/src` tests ~29k, `tests/integration` ~17k, `ui/tests` ~3k), far past the ~3,000-line review size, so T1 runs **targeted**, not one run per suite. Each area run reads the `## Code Review` blocks of its groups, picks the tests covering the paths those findings name (plus the fixtures and conftest they use), keeps to about 3,000 lines and records its exact file list.
-  - [ ] **T1-0 sweep:** `uv run pytest --durations=30` (integration included) and the vitest per-file timings; grep for tests with no assertion. Records the slowest tests and the assertion-free ones for the area runs.
+  - [x] **T1-0 sweep:** `uv run pytest --durations=30` (integration included) and the vitest per-file timings; grep for tests with no assertion. Records the slowest tests and the assertion-free ones for the area runs.
   - [ ] **T1-1 data, logic, search (B1-B6):** `tests/unit/{data,logic,search,viewer}/`, `tests/integration/{data,logic,search}/`.
   - [ ] **T1-2 MCP tools and scripts (B7-B9, B13):** `tests/integration/mcp_server/`, `tests/integration/test_mcp_tools.py`, `tests/integration/test_build_plugin.py`, `tests/test_setup.py`.
   - [ ] **T1-3 companion backend (B10-B12):** `tests/unit/companion/`, `tests/integration/companion/`.
@@ -1590,6 +1590,104 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 **Rejected**
 
 None.
+
+### 2026-11-09 — T1-0 test suite sweep
+
+Measured, not reviewed. Nothing failed and nothing flaked, and no code changed. The area runs T1-1 to T1-5 read this block.
+
+- **Revision:** `e9410fba7c8645308d60ea0645d21c2f54a8ea6b`, clean tree. Windows 11, Python 3.12.13, pytest 8.4.2, Node 24.20.0, vitest ^4.1.10. The card database and the semantic index were built, so the integration tests ran against real data.
+
+**Python: `uv run pytest --durations=30`, integration included**
+
+- **Result:** 3,308 collected, **3,307 passed, 1 skipped, 0 failed**. pytest reported 273.29 s (4:33); the wall time including `uv` start-up was 276 s.
+- **The one skip:** `tests/unit/companion/test_discovery.py:128` (`test_reader_returns_none_when_the_file_is_unreadable`), with the reason "chmod does not remove read access on Windows". The skip is platform-conditional by design, so it runs on Linux CI.
+- **Cost is concentrated:** 29 of the 30 slowest tests are in `tests/integration/test_mcp_tools.py`. The other is the companion live-backend test. Every entry is a `call` phase. No setup or teardown made the list.
+
+| Time | Test |
+|---|---|
+| 11.44 s | `tests/integration/test_mcp_tools.py::test_compare_gc_delta_equals_assess_subtraction_through_client` |
+| 11.44 s | `tests/integration/test_mcp_tools.py::test_compare_wire_bytes_deterministic` |
+| 9.52 s | `tests/integration/test_mcp_tools.py::test_compare_combo_completion_through_client` |
+| 8.34 s | `tests/integration/test_mcp_tools.py::test_assess_deck_power_wire_bytes_deterministic` |
+| 7.30 s | `tests/integration/test_mcp_tools.py::test_wire_shape_parity_commander_vs_standard` |
+| 6.42 s | `tests/integration/test_mcp_tools.py::test_add_game_changer_raises_bracket_floor` |
+| 6.30 s | `tests/integration/test_mcp_tools.py::test_clone_deck_round_trip` |
+| 6.29 s | `tests/integration/test_mcp_tools.py::test_compare_graceful_failures_through_client` |
+| 6.25 s | `tests/integration/test_mcp_tools.py::test_assess_commander_deck_through_client` |
+| 5.26 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_targets_the_requested_board_only` |
+| 5.24 s | `tests/integration/test_mcp_tools.py::test_combo_completion_flips_bucket_and_raises_combo_potential` |
+| 5.22 s | `tests/integration/test_mcp_tools.py::test_unidentified_commander_degrades_gracefully_e2e` |
+| 5.19 s | `tests/integration/test_mcp_tools.py::test_deck_lifecycle_through_client` |
+| 4.20 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_zero_removes_and_refreshes_the_deck` |
+| 4.20 s | `tests/integration/test_mcp_tools.py::test_absent_combo_snapshot_degrades_gracefully_e2e` |
+| 4.19 s | `tests/integration/test_mcp_tools.py::test_null_game_changer_degrades_gracefully_e2e` |
+| 4.19 s | `tests/integration/test_mcp_tools.py::test_assess_standard_deck_full_contract_through_client` |
+| 4.19 s | `tests/integration/test_mcp_tools.py::test_deck_analysis_through_client` |
+| 3.40 s | `tests/integration/companion/test_live_backend.py::test_the_real_channel_end_to_end` |
+| 3.28 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_by_name_reaches_the_same_row` |
+| 3.16 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_sets_the_stored_count` |
+| 3.16 s | `tests/integration/test_mcp_tools.py::test_standard_deck_never_fires_commander_unidentified_e2e` |
+| 2.30 s | `tests/integration/test_mcp_tools.py::test_update_deck_null_clears_the_field[changes0-strategy-None]` |
+| 2.28 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_graceful_failures[args5-invalid]` |
+| 2.17 s | `tests/integration/test_mcp_tools.py::test_update_deck_rename_only_leaves_the_rest_alone` |
+| 2.17 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_never_adds_a_card_absent_from_the_board[True-0]` |
+| 2.16 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_graceful_failures[args6-invalid]` |
+| 2.16 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_graceful_failures[args1-card_not_found]` |
+| 2.15 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_never_adds_a_card_absent_from_the_board[True-2]` |
+| 2.15 s | `tests/integration/test_mcp_tools.py::test_set_card_quantity_never_adds_a_card_absent_from_the_board[False-0]` |
+
+- **For T1-2:** the top 30 alone add up to about 146 s, just over half the suite's 273 s, and all of them except the live-backend test are in `test_mcp_tools.py`. The times fall into steps of about 1 s (2.15, 3.16, 4.19, 5.2, 6.3 s), which suggests a fixed cost per tool call or per client session paid several times in each test. Several names end in `through_client`, so these tests likely drive a real MCP client. This is unverified: T1-2 should read the client fixture and the `compare`/`assess` paths before calling it a finding.
+
+**UI: `npm test` (vitest, `node` and `dom` projects; `test:gates` not included)**
+
+- **Result:** 58 files, **1,786 passed, 0 failed, 0 skipped, 0 todo**. vitest reported 12.53 s (transform 12.93 s, setup 30.36 s, import 19.22 s, tests 21.95 s, environment 175.82 s, which are summed across workers). The wall time including `npm` was 13 s.
+- **stderr:** one line, from `src/components/AppShell/AppShell.test.tsx` › "AppShell overlay slot › does not CONSUME a one-shot iterable while inspecting it". React warns "Using Iterators as children is unsupported…". The test passes the iterator on purpose, so this is expected noise, not a failure. T1-4 can decide whether to silence it.
+- **15 slowest files** (the per-file time vitest reports):
+
+| Time | Tests | File |
+|---|---|---|
+| 6,319 ms | 83 | `src/state/deck.test.ts` |
+| 5,420 ms | 203 | `src/App.test.tsx` |
+| 756 ms | 47 | `src/containers/AgentViewsNav/AgentViewsNav.test.tsx` |
+| 645 ms | 38 | `src/containers/DeckList/DeckList.test.tsx` |
+| 608 ms | 53 | `src/containers/AgentView/AgentView.test.tsx` |
+| 519 ms | 36 | `src/containers/CardDetail/CardDetail.test.tsx` |
+| 497 ms | 52 | `src/containers/CardTile/CardTile.test.tsx` |
+| 473 ms | 37 | `src/containers/TierListView/TierListView.test.tsx` |
+| 450 ms | 23 | `src/containers/ManaCurve/ManaCurve.test.tsx` |
+| 424 ms | 38 | `src/containers/SuggestionsView/SuggestionsView.test.tsx` |
+| 407 ms | 31 | `src/containers/FormatCheck/FormatCheck.test.tsx` |
+| 347 ms | 24 | `src/containers/SwapsView/SwapsView.test.tsx` |
+| 325 ms | 44 | `src/containers/ConnectionPill/ConnectionPill.test.tsx` |
+| 318 ms | 32 | `src/components/AppShell/AppShell.test.tsx` |
+| 313 ms | 12 | `src/containers/CardGrid/CardGrid.test.tsx` |
+
+- **For T1-4, `deck.test.ts`:** 83 tests take longer than `App.test.tsx`'s 203. No single test dominates: 35 tests run for at least 100 ms each and add up to 5.07 s, and the slowest is 310 ms ("lets a NEWER re-drive supersede a probe-style re-drive in flight", CAP-3). Several sit at exactly 186 ms. The file makes 59 `vi.waitFor` calls on the default poll interval, and its `flush` helpers are microtask-only, so polling is the likely cost. This is unverified.
+- **For T1-5, `App.test.tsx`:** the time is spread out. Only 4 tests take 100 ms or more (715 ms together), and the slowest is the 206-element Atraxa pin at 369 ms.
+
+**Tests with no assertion**
+
+How each scan worked:
+- **Python:** an AST walk over every `test_*` function in `tests/`. A test counted as asserting if it had an `assert`, a `pytest.raises`/`pytest.warns` block, or a call to a helper named `assert*`/`_assert*`/`expect*`/`check*`/`fail`. The only helper that saved a test was `_assert_bundles_match` (`tests/integration/test_build_plugin.py:112`), and it does assert.
+- **vitest:** a TypeScript-AST walk over every `it`/`test` callback in `ui/src` and `ui/tests` (60 files, 1,583 blocks before `.each` expansion). A block counted as asserting if it contained an `expect`, `expectTypeOf`, `assert` or `assertType` identifier.
+
+**Python, 7 hits, 3 dropped as false positives.** These are pytest fixtures whose names start with `test_`, not tests:
+- `tests/integration/data/test_deck_repository.py:82` (`test_cards`)
+- `tests/integration/data/test_scryfall_import_e2e.py:27` (`test_db`)
+- `tests/integration/data/test_spellbook_import_e2e.py:29` (`test_db`)
+
+These three do not change the result, but the `test_` prefix is what made the scan flag them, so T1-1 may want to rename them.
+
+**Python, 4 survivors.** Each is a "does not raise" test: the call itself is the only check, and nothing is asserted.
+- `tests/unit/test_cdp_harness.py:239` (`test_a_genuine_copy_is_allowed`): calls `refuse_the_operators_data_dir` and relies on no `SystemExit`.
+- `tests/unit/companion/test_singleton.py:184` (`test_release_on_a_never_opened_descriptor_does_not_raise`): `release_instance_lock(-1)`.
+- `tests/unit/companion/test_ws.py:568` (`test_nothing_escapes_the_handler`): drives the handshake with an exploding drain loop. The comment says "No pytest.raises: the assertion is that this line simply returns". The sibling test above it asserts the 1011 close code.
+- `tests/unit/search/test_schema.py:209` (`test_drop_card_vec_table_is_idempotent`): drops a table that was never created, and does not check afterwards that `card_vec` is still absent.
+
+**vitest, 0 survivors.**
+- Every block has an `expect`.
+- The 10 blocks in `ui/src/api/schema.test.ts` (lines 40, 49, 64, 87, 94, 114, 120, 127, 135, 157) assert only with `expectTypeOf`. That check is a no-op at runtime. It is enforced by `npm run typecheck` (`tsc -b`, whose `tsconfig.app.json` includes `src`), not by `npm test`, so this file shows 10 passing tests in 3 ms whatever its types say. Not a defect, as long as typecheck stays in the gate (it is in the UI gate). T1-4 should know about it.
+- There are no `.skip`, `.only` or `.todo` blocks in either tree.
 
 ## Summary
 
