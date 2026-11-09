@@ -6,6 +6,7 @@ slug = "epic-quick-wins"
 title = "Quick wins"
 description = "An operator edits, re-counts, clones, exports and judges a deck through tools that already have their repository pieces, and every companion push names its deck."
 covers = ["R1", "R2", "R3", "R4", "R5", "R6"]
+after = [{ epic = 4, needs = "story 32 checks restricted cards before entry 4 reports legality coverage" }]
 
 [[epic]]
 id = 2
@@ -27,3 +28,4 @@ slug = "epic-codebase-quality-pass"
 title = "Codebase quality pass"
 description = "Every fix finding of the 2026-11 codebase review is resolved on master, one PR per story, and the two deferred findings stay recorded in deferred-work.md."
 covers = []
+after = [{ epic = 3, needs = "R16 measured against today's assessment baseline before story 38 moves scores" }]
