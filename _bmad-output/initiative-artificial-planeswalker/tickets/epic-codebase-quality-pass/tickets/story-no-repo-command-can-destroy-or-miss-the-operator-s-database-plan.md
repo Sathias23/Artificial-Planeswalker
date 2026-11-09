@@ -3,7 +3,7 @@ title: "No repo command can destroy or miss the operator's database"
 type: 'bugfix'
 ticket: 1
 created: '2026-11-09'
-status: 'built'
+status: done
 baseline_revision: 'fa4362e4dd506afb8b8a5217baf41ad5a9b50877'
 route: 'full'
 route_source: 'auto'
