@@ -2215,6 +2215,65 @@ Sofia walked the step 5 board with Brad. **Outcome:** 67 stories in seven lane e
   - Initiative R16 binds only epic-trustworthy-assessment's own changes.
 - **Validation.** Fresh-context Tree, Set and Dependencies checks passed after their mechanical fixes. One open item: how lint-rule guards are proved, recorded as an `Assumption:` line for Brad.
 
+### Re-scope (2026-11-09)
+
+**Ruling (Brad).** Build only the stories that fix something a user or the user's data would hit, then return to feature work. Every other live story stays on the board as backlog, pulled in when a feature touches the same files. Nothing is dropped or deferred by this ruling.
+
+**Core set: 15 stories.** These are the 13 Brad named plus two pulled in as prerequisites.
+- 4.1 No repo command can destroy or miss the operator's database
+- 4.2 Python tests are hermetic and share one fixture set
+- 4.4 CI runs the recall eval, the Windows halves and bounded jobs
+- 4.68 Migrations are safe to re-run on a user's only database
+- 5.2 Every tool answers infrastructure failures as a status
+- 5.6 One indexed, bounded card-name resolver
+- 5.9 Arena imports keep mixed printings and show every line status
+- 6.4 Import pipeline paths are pinned through the orchestrator (**pulled in**: 6.5 rewrites the reconcile and upsert paths that repoint 91 cards in saved decks, and 6.4 pins exactly those paths first)
+- 6.5 Imported cards store their English printing and WUBRG colours
+- 6.11 Filtered semantic searches come back full
+- 7.1 Snow basics and restricted cards get the right verdict
+- 7.5 The agent and the companion report the same card statistics
+- 7.6 Assessment dimensions are pinned before they change (**pulled in**: 7.5 moves land detection, which feeds the scores 7.6 pins; epic-trustworthy-assessment needs 7.6 first anyway, so only its timing moved)
+- 8.1 Card images touch the database only on a cache miss
+- 9.7 Deck and connection recovery never leave silent stale state
+
+**Backlog.** The other 52 live stories in epics 4-10 are backlog. Each one's plan file holds `status: draft` with a `blocked_reason` starting "backlog (re-scope 2026-11-09", so `tickets.py next` lists them as blocked. That is all of epic 10, and everything in epics 4-9 outside the list above. To pull one in, run `tickets.py mark <ref> draft` to clear the block, then check its `after`. (The brief counted 62 live stories; the tree holds 67, which is 71 lane entries less the 4 dropped.)
+
+**Build order, first to last.** Quick-wins entries 1.4 and 1.5 are feature stories. They sit in the order because 5.2 and 9.7 share files with them and wait on them.
+1. 4.1
+2. 4.2
+3. 4.4
+4. 4.68
+5. 6.4
+6. 6.5
+7. 7.1
+8. 1.4 (feature; waits on 7.1)
+9. 1.5 (feature)
+10. 5.2
+11. 5.6 (before epic-reliable-deck-workflows 2.1)
+12. 5.9 (before epic-reliable-deck-workflows 2.4)
+13. 6.11
+14. 7.6
+15. 7.5
+16. 8.1
+17. 9.7
+
+**Prerequisites settled.** Each lane epic's Notes carries a dated `Decision:` line per change.
+- **Pulled in (Brad):** 6.4 for 6.5, and 7.6 for 7.5.
+- **Kept backlog (Brad):** 4.5, the probe-harness fix. Until it lands, a story that proves a guard through the probe harness pastes the proof line together with the run's exit code. 6.4's and 7.6's `verify` now say so, and neither waits on 4.5.
+- **Relaxed (Sofia).** In each case the shared files are a collision, not a prerequisite. The backlog story now waits on the core one instead, so a path remains.
+  - 4.68 no longer waits on 4.65. They share only `build_plugin.py`.
+  - 5.2 no longer waits on 5.1. 5.1's `health_check` is not the readiness probe that 5.2 guards.
+  - 5.6 no longer waits on 5.1, 5.4 or 5.5. Its resolver owns name stripping, and 5.4 leaves names to it.
+  - 5.9 no longer waits on 5.5 or 5.8.
+  - 6.11 no longer waits on 5.11 or 6.10. It now waits on 5.2 and 5.6 for shared tool files.
+  - 7.1 no longer waits on 5.1. It changes the live validator and leaves the dead one to 5.1.
+  - 7.5 no longer waits on 9.1, 6.3 or 9.4. It now waits on 7.1, because both regenerate the contract.
+  - 9.7 no longer waits on 9.6. It now waits on 1.4 and 1.5.
+- **Reversed collision paths:** 4.3 after 9.7; 4.65 after 4.68; 5.1 after 5.2, 5.6, 7.1 and 7.5; 5.4 after 5.6 and 6.11; 5.5 after 5.9; 5.7 after 5.9; 5.11 after 6.11; 6.3 after 7.5; 6.10 after 6.11; 6.12 after 6.4 and 6.5; 7.7 after 7.5; 9.1 after 7.5.
+- **Cross-epic order kept:** 1.4 and 1.5 before 5.2; 5.6 before 2.1; 5.9 before 2.4; 7.1 before 1.4.
+
+**Validation.** A fresh-context Set (dependencies) and Dependencies check ran on the re-scoped tree. It found three collisions and four smaller gaps, all fixed above. `tickets.py status` then reported no cycle, drift, `unpinned_after`, `undeclared_after` or `problems`. Two new order conflicts are expected: groundwork after UI state (4.3 after 9.7), and MCP tools after data and search (5.4 and 5.11 after 6.11). They are recorded in the initiative's Notes.
+
 ### Decisions
 
 Walked with Brad on 2026-11-09 in four rounds grouped by theme: D1-D3 (Q16, Q11, Q10), D4, D10 and D11 (Q22, Q24), D5-D7 (Q21), then D8 and D9 (Q21). Every answer took the recommended option. Each answer turns its findings into **fix**. The parts it set aside are under Deferred or Dropped.

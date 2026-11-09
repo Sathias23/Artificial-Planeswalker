@@ -8,7 +8,7 @@ title = "Unused backend surface is deleted"
 description = "Deletes merge_decks, find_deck_by_name, update_deck_color_identity, the unused combo meta readers, the three script-only search methods and the script that is their only caller, the dead single-card validator, about 350 lines of unreachable curve feedback, health_check's sentinel-card write, the dead src/data re-exports, migrate_add_card_vec.py, verify_image_data.py and pytest-cov, with the tests that cover only them. Today that code carries latent bugs (a non-atomic merge, a second copy-limit rule that disagrees with the live one, a fake card written into cards) and is reviewed and kept in step like live code. migrate_add_card_vec.py goes with no test of its own; 4.68's migration tests skip it."
 verify = "The full Python gate passes, a grep finds no reference to any deleted name in src/, scripts/, docs/ or the five skills, and `uv run python -m scripts.build_plugin` leaves plugin/ in step."
 covers = ["R5"]
-after = ["4.2"]
+after = ["4.2", 2, 6, "7.1", "7.5"]
 hitl = false
 risk = "medium"
 findings = ["M13", "M14", "B4-D6", "B4-P17", "B1-D2", "B1-P8", "B13-P20", "B13-P21", "T2-P12"]
@@ -22,7 +22,7 @@ title = "Every tool answers infrastructure failures as a status"
 description = "Pins the untested DatabaseError and database_not_initialized arms and set_active_deck's session release, then puts the readiness probe, connection and embedder setup and the card tools' pre-reads inside one shared guard, so a locked or corrupt file, a missing sqlite-vec extension or an offline first model load answers status=\"error\" (a new `error` token on the two semantic result models); semantic_search_cards loads the embedder after the database and index guards, initialize_database's error names the real cause, and add_card_to_deck stops reporting every IntegrityError as `exists`. Today those failures reach the agent as an MCP isError, and in compare_deck_power a failure on side A means side B never runs."
 verify = "With a corrupt cards.db, a locked file, a missing vec extension and an offline model load injected in turn, every MCP tool answers a status through its real entry point and none raises."
 covers = ["R7"]
-after = ["4.2", 1, "1.4", "1.5"]
+after = ["4.2", "1.4", "1.5"]
 hitl = false
 risk = "high"
 plan_checkpoint = true
@@ -51,7 +51,7 @@ title = "Card search inputs mean the same thing in every tool"
 description = "Pins search_cards' normalisation and pass-throughs and the two-game platform rule, then adds one normaliser per parameter kind at the tool edge: the format key case-folded before it enters the JSON path, games stripped before use, names stripped in lookup_card_by_name, one copy of the search vocabularies and mana bounds, and `invalid` for an unknown lookup platform (CardLookupResult gains the token) and for a page whose offset cannot be bound. Today format=\"Standard\" matches nothing on four search paths, games=[\" arena\"] marks every card unavailable, and a huge page escapes as an OverflowError."
 verify = "Through the tool entry points, \"Standard\" and \"standard\" return the same cards on every search tool, \" arena\" behaves as \"arena\", an unknown platform answers invalid on lookup_card_by_name, and page=2**62 answers invalid."
 covers = ["R8"]
-after = [2, "7.1"]
+after = [2, "7.1", 6, "6.11"]
 hitl = false
 risk = "medium"
 plan_checkpoint = true
@@ -66,7 +66,7 @@ title = "Deck tool inputs are normalised the same way"
 description = "Strips deck_id in load_deck, delete_deck and set_active_deck, normalises create_deck's format and metadata the way update_deck does, answers `invalid` for commander=True with sideboard=True, and leaves About metadata lines out of the 250-line import pre-count. Today a padded deck id works for add and update but not for load, delete or set_active_deck, a deck created as \"Commander\" never lists under commander, and a sideboard commander is stored though the assessment ignores it."
 verify = "Through the tool entry points, a padded deck id loads, deletes and activates; create_deck(format=\"Commander\") lists under commander; the commander-plus-sideboard call answers invalid; an import of 250 card lines plus About lines is not refused by the pre-count."
 covers = ["R8"]
-after = [4]
+after = [4, 9]
 hitl = false
 risk = "medium"
 plan_checkpoint = true
@@ -81,7 +81,7 @@ title = "One indexed, bounded card-name resolver"
 description = "Pins printed-name matching, lookup_card's cap, blank-name guard and games pass-through, and find_similar's seed resolution, then routes lookup, deck management, import and find_similar through one resolver that uses the NOCASE index, caps the partial read at the match limit plus one and says \"more than N\" (option b), escapes LIKE wildcards in user text, and shares the wording remove_card_from_deck copies. Today three resolvers order candidates differently, find_similar's exact match is a full scan (58 ms against 0.5 ms in #108), and a two-letter query materialises thousands of rows and reports the capped count as exact. Handoff: epic-reliable-deck-workflows entry 1 (2.1) builds consistent playable-name resolution on this resolver and waits on it."
 verify = "Through the tool entry points, a printed-name lookup resolves on every tool, a two-letter partial query reads at most the cap plus one rows and says \"more than N\", `50%` matches literally, and EXPLAIN QUERY PLAN for find_similar's seed match uses the NOCASE index."
 covers = ["R9"]
-after = [1, 4, 5]
+after = [2]
 hitl = false
 risk = "medium"
 findings = ["B2-P5", "B9-P14", "B9-P16", "M4", "M51", "M3", "B2-P7"]
@@ -95,7 +95,7 @@ title = "stdio is the only transport, in code and docs"
 description = "Removes the HTTP transports MCP_TRANSPORT can still open and the docs and comments that plan for them, and corrects _run_mcp_server's diagnostics count and the package docstring that names a tool that does not exist. Today an MCP_TRANSPORT value opens an unauthenticated transport that AGENTS.md says is unsupported."
 verify = "Whatever MCP_TRANSPORT is set to, the server serves stdio only, and a grep finds no HTTP-transport plan left in docs/, SECURITY.md, .env.example or src/mcp_server/."
 covers = ["R10"]
-after = ["4.1", 2]
+after = ["4.1", 2, 9]
 hitl = false
 risk = "low"
 plan_checkpoint = true
@@ -125,7 +125,7 @@ title = "Arena imports keep mixed printings and show every line status"
 description = "Pins the import's per-line quantity < 1 and > 250 branches, then sums the lines of one card printed twice in one Arena export and checks the sum against the quantity cap, keeping `exists` only for rows already in the deck (option a, a tool behaviour change), and stops _line_result hiding unexpected statuses. Today an Arena export with mixed-art basics imports short, its second printing answered `exists`, and the deck comes back `partial`. Handoff: epic-reliable-deck-workflows entry 4 (2.4) writes the import's duplicate-line rules on top of this fix and waits on it."
 verify = "Through import_decklist, an Arena export with `2 Island (ELD) 250` and `2 Island (THB) 251` imports 4 Islands, lines summing past 250 are refused, and a line with an unexpected status is reported as such."
 covers = ["R10"]
-after = [5, 6, 8]
+after = [6]
 hitl = false
 risk = "medium"
 plan_checkpoint = true
@@ -155,7 +155,7 @@ title = "Search colour, rarity and paging filters do what they say"
 description = "Pins exact and at_most on the semantic path, then gives colors=[] one meaning on both search paths, counts distinct colours in exact mode, handles an empty rarity list explicitly, adds an id tie-break to the paging order, and per D2 corrects the at_most docstrings and the skills' 'pass the deck's colors' advice to say card colours, not identity. Today at_most with colors=[] returns every card, exact with [\"W\",\"W\"] returns two-colour cards, rarity=[] silently drops the filter, and paging can repeat or skip tied rows."
 verify = "Through search_cards and semantic_search_cards, colors=[] means the same in each mode on both paths, exact [\"W\",\"W\"] returns only mono-white cards, paging over a tied result yields each card once, and the recall sanity eval passes."
 covers = ["R11"]
-after = ["4.2", "4.4", 4, 10]
+after = ["4.2", "4.4", 4, 10, "6.11"]
 hitl = false
 risk = "medium"
 plan_checkpoint = true

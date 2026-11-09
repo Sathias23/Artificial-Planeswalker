@@ -15,6 +15,7 @@ slug = "epic-codebase-quality-pass"
 title = "Codebase quality pass: groundwork"
 description = "No repository command can destroy the operator's data, the tests are hermetic, CI runs the recall eval and the Windows halves, the probe and cold-open harnesses report true results, and pre-commit and CI run one locked toolchain; the first of seven quality-pass lanes."
 covers = []
+after = [{ epic = 9, needs = "9.7 before 4.3" }]
 
 [[epic]]
 id = 5
@@ -22,7 +23,7 @@ slug = "epic-quality-mcp-tools"
 title = "Quality pass: MCP tools"
 description = "Every MCP tool answers infrastructure failures as a status, normalises each parameter kind once, resolves card names through one resolver, and documents every status it returns."
 covers = []
-after = [{ epic = 1, needs = "1.4, 1.5 before 5.2" }, { epic = 4, needs = "4.1, 4.2, 4.4 before 5.1, 5.2, 5.7, 5.11" }, { epic = 7, needs = "7.1 before 5.4, 5.8" }]
+after = [{ epic = 1, needs = "1.4, 1.5 before 5.2" }, { epic = 4, needs = "4.1, 4.2, 4.4 before 5.1, 5.2, 5.7, 5.11" }, { epic = 6, needs = "6.11 before 5.4, 5.11" }, { epic = 7, needs = "7.1 before 5.1, 5.4, 5.8; 7.5 before 5.1" }]
 
 [[epic]]
 id = 2
@@ -38,7 +39,7 @@ slug = "epic-quality-data-and-search"
 title = "Quality pass: data and search"
 description = "The data model, deck repository, import pipeline and semantic index follow one set of rules, report failure honestly, and fill filtered searches."
 covers = []
-after = [{ epic = 4, needs = "4.1, 4.2, 4.4, 4.5, 4.7, 4.65, 4.68 before 6.1, 6.4, 6.6, 6.10, 6.11, 6.13" }, { epic = 5, needs = "5.1, 5.2, 5.5, 5.8, 5.10, 5.11 before 6.1, 6.2, 6.8, 6.10, 6.11" }, { epic = 7, needs = "7.1, 7.6 before 6.12" }, { epic = 8, needs = "8.5 before 6.12" }]
+after = [{ epic = 4, needs = "4.1, 4.2, 4.4, 4.5, 4.7, 4.65, 4.68 before 6.1, 6.4, 6.6, 6.10, 6.11, 6.13" }, { epic = 5, needs = "5.1, 5.2, 5.5, 5.8, 5.10, 5.11 before 6.1, 6.2, 6.8, 6.10, 6.11" }, { epic = 7, needs = "7.5 before 6.3; 7.1, 7.6 before 6.12" }, { epic = 8, needs = "8.5 before 6.12" }]
 
 [[epic]]
 id = 7
@@ -46,7 +47,7 @@ slug = "epic-quality-analysis"
 title = "Quality pass: analysis"
 description = "Legality, synergy, card statistics and power scores are right, pinned by tests, and agree between the agent and the companion."
 covers = []
-after = [{ epic = 3, needs = "the whole epic before 7.7" }, { epic = 4, needs = "4.2, 4.5 before 7.1, 7.6" }, { epic = 5, needs = "5.1, 5.3 before 7.1, 7.2, 7.3, 7.8" }, { epic = 6, needs = "6.3 before 7.5" }, { epic = 9, needs = "9.1, 9.4 before 7.5" }]
+after = [{ epic = 3, needs = "the whole epic before 7.7" }, { epic = 4, needs = "4.2 before 7.1, 7.6" }, { epic = 5, needs = "5.1, 5.3 before 7.2, 7.3, 7.8" }]
 
 [[epic]]
 id = 3
@@ -70,7 +71,7 @@ slug = "epic-quality-ui-state-and-tests"
 title = "Quality pass: UI state and tests"
 description = "The companion UI re-renders only what changed, recovers without silent stale state, and its tests run on one harness."
 covers = []
-after = [{ epic = 1, needs = "1.5 before 9.1" }, { epic = 4, needs = "4.3, 4.5, 4.7 before 9.2, 9.6" }, { epic = 7, needs = "7.5 before 9.8" }, { epic = 8, needs = "8.5 before 9.9" }]
+after = [{ epic = 1, needs = "1.5 before 9.1, 9.7; 1.4 before 9.7" }, { epic = 4, needs = "4.3, 4.5, 4.7 before 9.2, 9.6" }, { epic = 7, needs = "7.5 before 9.1, 9.8" }, { epic = 8, needs = "8.5 before 9.9" }]
 
 [[epic]]
 id = 10
