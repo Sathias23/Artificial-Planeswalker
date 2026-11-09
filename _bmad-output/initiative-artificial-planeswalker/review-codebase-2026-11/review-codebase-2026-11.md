@@ -93,7 +93,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - [x] **T1-3 companion backend (B10-B12):** `tests/unit/companion/`, `tests/integration/companion/`.
   - [x] **T1-4 UI (F1-F8):** `ui/src/**/*.test.*` except `App.test.tsx`, and `ui/tests/`.
   - [x] **T1-5 `ui/src/App.test.tsx`** on its own.
-- [ ] **T2, `bmad-review` on the configuration:** `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/`, `ui/package.json`, `ui/vite.config.*`, `ui/tsconfig*.json`. Look for gate gaps between local and CI, slow CI steps, pinned versions that are stale.
+- [x] **T2, `bmad-review` on the configuration:** `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/`, `ui/package.json`, `ui/vite.config.*`, `ui/tsconfig*.json`. Look for gate gaps between local and CI, slow CI steps, pinned versions that are stale.
 
 ### 4. Consolidate the findings
 
@@ -2040,6 +2040,139 @@ These three do not change the result, but the `test_` prefix is what made the sc
 **Rejected**
 
 - None. All 17 raw findings were verified as real. The three about comments (drifted line citations, deleted suites, docblocks) were merged into two: the citation patch and the docblock patch. The order-dependence example (`:2257` → `:2289`) was confirmed from the code but not run; the patch says how to confirm it.
+
+### 2026-11-09 — T2 configuration review
+
+**Review complete.** 6 `decision-needed`, 12 `patch`, 0 `defer`, 4 rejected.
+
+- **Area:** T2, the last review run of this plan: build, gate and CI configuration. **Revision:** `10b3bdaa43c41f607c3918c324f3dfa3fa87d315` (local `master`, 30 docs-only commits ahead of `origin/master`). None of the files below changed since `ee0263d`.
+- **Mode:** `bmad-review`, no-code. Three independent lenses (adversarial, verification-gap, edge-case-hunter), each in its own subagent. None failed. 34 raw findings. Triage re-read every cited line, then merged them to 18 and rejected 4. Triage leaves the findings as action items.
+- **Files (10 files, 832 lines):** `pyproject.toml` (114), `.pre-commit-config.yaml` (60), `.github/workflows/ci.yml` (341), `.github/workflows/live-contract.yml` (64), `ui/package.json` (62), `ui/vite.config.ts` (92), `ui/vitest.gates.config.ts` (21), `ui/tsconfig.json` (4), `ui/tsconfig.app.json` (45), `ui/tsconfig.node.json` (29).
+- **Context read as evidence:** `uv.lock`, `ui/package-lock.json`, `ui/.npmrc`, `ui/eslint.config.js`, `.gitignore`, `CONTRIBUTING.md`, `src/search/embedder.py`, `src/data/importers/scryfall_api.py` and `tests/integration/data/test_scryfall_live_contract.py`.
+- **What was run (all read-only):**
+  - `uv run mypy scripts/` and `uv run pytest --collect-only -m integration`;
+  - greps over `src/` and the tracked tree;
+  - `gh run view` timings for the last `master` CI run (`42355227612`, 2026-11-07) and the last three `live-contract` runs.
+- **Not repeated:** T1-3's decision that the Windows halves of `tests/unit/companion/` never run in CI (`ci.yml:321-341`). That decision says the workflow edit can ride with T2. Also B13's `--no-dev` plugin launch patch, and B12's singleton comment that names `--platform linux`.
+- **Slow CI steps: none worth a change.** The last `master` run took 2 min 13 s of wall time. The critical path is the `quality` pytest step (94-97 s per leg). The `frontend` job finishes in 60 s, and the Windows job in 29 s. `uv sync --locked` and `npm ci` take 2-4 s each, because both caches hit. The only waste is the duplicate 3.13 mypy pair below, which costs runner minutes but no wall time.
+- **What holds:**
+  - Every generated artifact has a CI drift check that sees untracked and ignored files: `plugin/` (`ci.yml:83-130`), `src/companion/app/static/` (`:202-230`) and `ui/src/api/` (`:252-280`). Each check uses `git status --porcelain` with per-subject non-vacuity guards. The Python half of `gen:api` is the `test_openapi_contract.py` snapshot test, which runs in `quality`.
+  - Both mypy platforms run in CI (`:63`, `:75`), and so does `format:check` (`:167`).
+  - Every action is SHA-pinned. `permissions: contents: read` is set on both workflows. `npm ci` runs with `engine-strict=true`. `--strict-markers` is in `addopts`.
+  - The `ruff` and `mypy` hook revisions match `uv.lock` today (0.14.0, 1.18.2), but nothing ties them together (first decision).
+
+- [ ] [Review][Decision] **The pre-commit hooks run their own toolchain, which `uv.lock` does not pin, so the hooks and CI can disagree.**
+  - `ruff-pre-commit` `v0.14.0` and `mirrors-mypy` `v1.18.2` (`.pre-commit-config.yaml:3`, `:12`) match the lock only because they were set by hand. `pyproject.toml:54` and `:59` give mypy and ruff open floors, so a `uv lock --upgrade` moves CI's ruff and mypy and leaves the hooks behind.
+  - The mypy hook's `additional_dependencies` (`:17-27`) are open floors. They resolve to whatever PyPI serves on the day the hook env is built, not to the lock (fastapi 0.140.0, numpy 2.4.6, mcp 1.28.0).
+  - fastembed is missing from the list, even though it ships `py.typed` and `src/search/embedder.py:29` imports it. `embedder.py:31-33` already works around the hook seeing `TextEmbedding` as `Any`. The AGENTS.md rule ("a new runtime dependency that mypy must resolve also goes into `additional_dependencies`") is unenforced, and fastembed shows it has already been missed.
+  - The hook keeps `pass_filenames: true` with `files: ^src/`. So it checks only the staged files and the modules they import, never their importers: a staged signature change that breaks an unstaged caller passes the hook. It also has no second-platform pass. `CONTRIBUTING.md:29` says every commit is gated by "`mypy --strict` over `src/`".
+  - No `.github/dependabot.yml` or renovate config exists, so the SHA-pinned actions and every pin above go stale silently.
+
+  Options:
+  - (a) Replace both hook repos with `language: system` hooks: `uv run ruff check --fix`, `uv run ruff format` and `uv run mypy src/` with `pass_filenames: false`. The hooks then use the locked venv, the `additional_dependencies` list and its AGENTS.md rule go away, and an optional second hook can run `uv run mypy src/ --platform linux` for the Windows maintainer.
+  - (b) Keep the mirror repos. Pin every `additional_dependencies` entry to its `uv.lock` version, add fastembed, and add a unit test that fails when a hook rev or pin differs from the lock.
+  - (c) Leave the hooks as they are, and let CI be the only authority.
+
+  For any option, add a `dependabot.yml` for `github-actions` at least. Recommended: (a). It deletes a hand-kept list instead of guarding it, and it makes the hook as strong as the claim in CONTRIBUTING. The cost is that a commit needs a synced `.venv`, which `setup.py` already creates. AGENTS.md's `additional_dependencies` sentence changes in the same PR. [`.pre-commit-config.yaml:2-28`; `pyproject.toml:54`, `:59`; `src/search/embedder.py:29-33`]
+- [ ] [Review][Decision] **The leak guard watches only the old username, matches case-sensitively, and has no CI counterpart.**
+  - `no-local-machine-paths` (`.pre-commit-config.yaml:36-40`) matches `C:[\\/]+Users[\\/]+brads|c-{2}Users-brads`. The maintainer's Windows username is now `Sathias`, and three tracked files already carry the `C:/Users/<that name>/` path: `research-codebase-architecture.md:14` (its `repository:` frontmatter, written by `bmad-deep-recon`), `archive-v6/spec-deck-workflow-reliability/SPEC.md:6` and `tickets/epic-reliable-deck-workflows/.memlog.md:6`.
+  - pygrep is case-sensitive, and the Claude project-slug form is `C--Users-<name>` with a capital C, so the second pattern misses the slug form it was written for.
+  - No CI job runs the hook (`grep pre-commit .github/workflows/*` finds only the `ci.yml:5` comment). A GitHub web edit, a suggestion commit or a clone without hooks therefore merges a leak green.
+
+  Options:
+  - (a) Generalise the pattern to any `[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s]+` or `[A-Za-z]-{2}Users-` path with `args: [--ignore-case]`. Clean or exclude the three files, and add a `uvx pre-commit run no-local-machine-paths --all-files` step to `quality`.
+  - (b) Add `Sathias` to the current pattern and add the CI step.
+  - (c) Leave it: `Sathias` is the public GitHub handle, so these paths disclose nothing new.
+
+  Recommended: (a) if the guard's purpose is "no machine paths in the public tree". Otherwise choose (c) and say so in the hook's comment. [`.pre-commit-config.yaml:30-40`; `.github/workflows/ci.yml:35-130`]
+- [ ] [Review][Decision] **16 integration tests run in no CI job, including the semantic-search recall eval that AGENTS.md relies on.**
+  - `uv run pytest --collect-only -m integration` collects 27 tests. `quality` deselects all of them (`ci.yml:78`). `companion-integration` runs 1 by path (`:341`), and `live-contract` runs the 10 Scryfall tests (`live-contract.yml:54`).
+  - The 16 that never run in CI:
+    - `test_rag_eval.py:328` and `:353` (the recall sanity eval, whose own docstring says "part of the active suite");
+    - `test_embedder.py:29`;
+    - `test_semantic_search_tool.py:295`;
+    - `test_index_builder.py:568`;
+    - 11 in `test_assessment_benchmark.py`, which also need `cards.db`.
+  - The search tests build hermetic `tmp_path` databases and need only the fastembed model. The model floor is open (`pyproject.toml:25`, locked at 0.8.0), so a lock bump or a ranking change can drop recall below `TARGET_HIT_RATE` with CI green. AGENTS.md's pitfall ("recall degrades silently") describes exactly this.
+
+  Options:
+  - (a) Add a scheduled-plus-path-filtered job, in `live-contract.yml` or a new workflow, that caches `FASTEMBED_CACHE_DIR` keyed on the locked fastembed version. It runs the search, embedder and semantic-tool integration tests on changes to `src/search/**`, `semantic_search.py`, `find_similar.py` or `uv.lock`, and weekly. Required checks stay model-free.
+  - (b) Run them in `quality` with a cached model, and drop the "no model" claim at `ci.yml:15-16`.
+  - (c) Leave them local-only.
+
+  The benchmark tests stay local in every option. Recommended: (a). It guards the one silent-degradation risk AGENTS.md names, without making PRs depend on a model download. [`.github/workflows/ci.yml:78`, `:306-311`; `tests/integration/search/test_rag_eval.py:328-359`]
+- [ ] [Review][Decision] **`scripts/` is type-checked by nothing, and `uv run mypy scripts/` reports 13 errors in 4 files today.** Every mypy run is scoped to `src/`: `ci.yml:63` and `:75`, and the hook's `files: ^src/`. That covers neither `build_plugin.py`, which produces a CI-gated artifact, nor the `migrate_*.py` scripts that run against a user's only `cards.db`. One example: `scripts/cdp_harness.py:1451` `var-annotated`. The `[[tool.mypy.overrides]] module = "tests.*"` block (`pyproject.toml:90-92`) is dead config, because no run includes `tests/`.
+
+  Options:
+  - (a) Fix the 13 errors and run `mypy src/ scripts/` in CI and the hook.
+  - (b) As (a), with a relaxed `scripts.*` override for the probe and CDP harnesses only.
+  - (c) Leave `scripts/` unchecked, and delete the dead `tests.*` override so the config claims no coverage it lacks.
+
+  Recommended: (b). [`pyproject.toml:81-92`; `.github/workflows/ci.yml:62-75`]
+- [ ] [Review][Decision] **No CI job runs the Python the maintainer, and possibly a plugin user, runs.**
+  - `requires-python = ">=3.12"` has no upper bound (`pyproject.toml:5`). No `.python-version` exists at the root or in `plugin/server/`, and CI tests 3.12 and 3.13 only (`ci.yml:41`).
+  - The working tree has `cpython-314` bytecode under `tests/integration/__pycache__/`, so 3.14 runs locally. The plugin's `uv run` picks whichever compatible interpreter uv finds.
+  - `uv.lock` has `cp314` onnxruntime wheels, so 3.14 resolves.
+
+  Options:
+  - (a) Add 3.14 to the matrix and the classifiers.
+  - (b) Commit a `.python-version` (3.12) that `build_plugin.py` copies into `plugin/server/`, so users run the tested floor.
+  - (c) Both.
+  - (d) Leave it.
+
+  Recommended: (b). It costs no CI minutes, and it makes "the version CI tested" the version users get. [`pyproject.toml:5`, `:15-20`; `.github/workflows/ci.yml:41`]
+- [ ] [Review][Decision] **The declared Node floor admits versions the lock cannot install, and the gated floor is end-of-life.**
+  - `engines.node` is `>=20.19.0` (`ui/package.json:6-8`). The lock needs more: vite 8.1.5, rolldown 1.1.5 and `@vitejs/plugin-react` 6.0.4 declare `^20.19.0 || >=22.12.0`, and jsdom 29.1.1 declares `^20.19.0 || ^22.13.0 || >=24.0.0`. With `engine-strict=true` (`ui/.npmrc`), `npm ci` on Node 22.0 to 22.12 fails with EBADENGINE, even though the documented requirement is met.
+  - CI gates Node 20 only (`ci.yml:153`), and Node 20 reached end of life in April 2026. The maintainer runs 24.20.0 (T1-0), which `ci.yml:134-135` calls "covered incidentally by local runs".
+
+  Options:
+  - (a) Raise the floor to `>=22.13.0`. Move `node-version`, `@types/node` and the jest-dom pin together, as the `//` block at `ui/package.json:96` and `:99` requires.
+  - (b) Keep 20 and write the real range, `^20.19.0 || >=22.13.0`.
+  - (c) Either one, plus a `[floor, 24]` node matrix on `frontend`.
+
+  Recommended: (a). It drops an unsupported runtime and lifts the jest-dom pin's exit condition in the same change. [`ui/package.json:6-8`, `:96`, `:99`; `.github/workflows/ci.yml:132-153`]
+- [ ] [Review][Patch] **The live-contract canary goes green when Scryfall answers 4xx, 5xx or a non-JSON body.**
+  - The `live_entries` fixture catches `Exception` and calls `pytest.skip` (`test_scryfall_live_contract.py:44-50`).
+  - `fetch_bulk_data_list` turns `raise_for_status()` failures into `ScryfallAPIError` (`scryfall_api.py:47`, `:55`, `:63`). A JSON decode error at `:49` is never caught there, so it also reaches the catch-all.
+  - So a retired or moved `/bulk-data`, or a User-Agent rejection (B3's downloader finding), skips all 10 tests. pytest then exits 0, and the failure explainer at `live-contract.yml:56` never runs.
+  - The fix: skip only on transport errors (`ConnectError` or `TimeoutException` as `__cause__`), and fail on an HTTP status or a decode error. Add an offline test that feeds the fixture a 404-caused error. [`tests/integration/data/test_scryfall_live_contract.py:44-50`; `.github/workflows/live-contract.yml:53-54`]
+- [ ] [Review][Patch] **GitHub disables the canary's schedule after 60 days without repository activity.**
+  - In a quiet stretch, which is the case `live-contract.yml:11-14` exists for, the schedule turns itself off, and only the last editor of the cron line is told.
+  - This nearly happened: no commit on any local branch is dated between 2026-09-08 and 2026-11-06, and the canary's last run before the 2026-11-07 push was 2026-11-02, about four days before the cut-off. Whether pushes to other branches reset the clock was not checked.
+  - The fix: add a keepalive step (or a step that re-runs `gh workflow enable`), and have a failed run open an issue (`issues: write` on that job only) instead of relying on the default email. [`.github/workflows/live-contract.yml:20-32`]
+- [ ] [Review][Patch] **`quality` and `frontend` have no `timeout-minutes`.**
+  - Only `companion-integration` sets one (`ci.yml:325`), and its own comment explains the hazard: a hang burns the 6-hour default. Because `cancel-in-progress` is false on `master`, the hung run then holds the `ci-refs/heads/master` group, and every later `master` run queues behind it.
+  - `quality` runs about 2,770 tests with no per-test timeout. `frontend`'s `test:gates` boots a real Vite dev server under a 180 s per-test timeout (`vitest.gates.config.ts:18`).
+  - The fix: set `timeout-minutes: 15` on both jobs, about five times the measured run. Optionally, add `pytest-timeout` with a generous `timeout` so a hung test fails by name. [`.github/workflows/ci.yml:35-37`, `:136-138`]
+- [ ] [Review][Patch] **The 3.13 leg repeats the 3.12 leg's version-independent steps.**
+  - `pyproject.toml:82` pins mypy's `python_version = "3.12"`, so the 3.13 leg's two mypy runs (about 27 s) check the same thing. No run type-checks against 3.13 stubs, which the `ci.yml:5-6` header implies.
+  - Ruff, the format check and the plugin rebuild are also version-independent.
+  - The fix: run those steps on the 3.12 leg only (`if: matrix.python-version == '3.12'`), and keep pytest in the matrix. Alternatively, have the 3.13 leg run mypy with `--python-version 3.13`, so it checks something new. [`.github/workflows/ci.yml:38-75`, `:83`; `pyproject.toml:82`]
+- [ ] [Review][Patch] **The uv version is unpinned.** `setup-uv` is SHA-pinned, but it installs the latest uv on every run (no `version:` input at `ci.yml:48-51`, `:332-335` or `live-contract.yml:45-48`, and no `[tool.uv] required-version`). It then runs `uv sync --locked` against a `revision = 3` lock. A uv release that changes how `--locked` validates the lock can turn every PR red, or let a stale lock through, with no change to the repo. The fix: set `required-version` in `pyproject.toml`, which setup-uv reads, or pass `version:` to each step. [`.github/workflows/ci.yml:47-51`; `pyproject.toml`]
+- [ ] [Review][Patch] **Docs-only pushes to `master` run the full CI, including the Windows job.**
+  - AGENTS.md sends planning artifacts straight to `master`, so this is the common push: this plan's last 30 commits are all docs. The `push` trigger has no paths filter (`ci.yml:20-23`).
+  - The fix: add `paths-ignore: ['_bmad-output/**', 'docs/**']` to the `push` trigger only. Leave `pull_request` unfiltered, so required checks still report on PRs.
+  - Do not ignore `**/*.md`: `README.md` and the five `SKILL.md` files feed `plugin/`, which the drift check guards. [`.github/workflows/ci.yml:20-23`]
+- [ ] [Review][Patch] **No ruff rule enforces the lazy `%`-args logging rule, and `src/` has 29 eager f-string log calls.**
+  - The calls are in `src/data/database.py` (3), `importers/importer.py` (3), `parser.py` (6), `scryfall.py` (3), `scryfall_api.py` (12) and `transformers.py` (2).
+  - B1, B3 and B13 each raised their own sites. What is new here is the missing gate: `select` (`pyproject.toml:71-78`) lacks `G`, whose rule G004 rejects f-strings in log calls. `test_deps.py:627-628` checks a single companion log record.
+  - The fix: add `"G"` to `select`, and convert every site in `src/` and `scripts/` in the same PR. That PR closes the B1, B3 and B13 patches too. [`pyproject.toml:70-78`; `src/data/importers/scryfall_api.py:45`]
+- [ ] [Review][Patch] **The `build-plugin-sync` hook skips a commit that only deletes a source file.** pre-commit selects staged files with `--diff-filter=ACMRTUXB`, which leaves out deletions. A commit that deletes a file under `src/` or a shipped skill therefore matches no `files` entry (`.pre-commit-config.yaml:60`). The hook never runs, `plugin/` keeps the stale copy, and the push fails CI's drift check (`ci.yml:125-130`). That costs a round, not a bad merge. The fix: set `always_run: true` on the hook, which costs one rebuild per commit. Measure that cost first. [`.pre-commit-config.yaml:55-60`]
+- [ ] [Review][Patch] **A `.tsx` test under `ui/tests/` is collected by vitest but belongs to no tsconfig.** `vite.config.ts:61` widened the node project to `tests/**/*.test.{ts,tsx}`, and its comment says this means "no test file can fall between" projects. But `tsconfig.node.json:28` still includes only `tests/**/*.ts`, and `tsconfig.app.json:44` covers only the two fixture directories. Such a file would run but never be type-checked by `tsc -b`, and ESLint's `projectService` would reject it with a parse error that hides the cause. The fix: add `"tests/**/*.tsx"` to `tsconfig.node.json` with `tests/fixtures/**` excluded, or narrow the vitest glob back to `.ts`. [`ui/tsconfig.node.json:28`; `ui/vite.config.ts:56-61`]
+- [ ] [Review][Patch] **Two CI comments give a reason that `.gitignore` no longer supports.** `ci.yml:89-91` and `:206-208` justify the non-vacuity guards by "the root .gitignore has unanchored dist/, build/ and lib/ patterns". `.gitignore:33-41` now anchors all three (`/build/`, `/dist/`, `/lib/`), with a comment that explains why. A maintainer who checks the claim finds it false and may delete the guards. The fix: keep the guards, and reword both comments to the general hazard, "any future ignore rule that matches the bundle tree". [`.github/workflows/ci.yml:89-91`, `:206-208`]
+- [ ] [Review][Patch] **CONTRIBUTING's gate list and the `ci.yml` header describe a weaker gate than CI runs.**
+  - `CONTRIBUTING.md:28-36` lists the mutating `ruff check --fix` and `ruff format .` rather than `ruff format --check .`, and only one mypy platform. It has no UI block at all, although `CONTRIBUTING.md` is the outside contributor's entry point.
+  - The `ci.yml:5-6` header calls `quality` "the local pre-commit / CONTRIBUTING checks (… mypy --strict on both platforms, pytest)". Pre-commit runs neither pytest nor a second platform.
+  - An outside contributor who follows CONTRIBUTING exactly fails CI on the `win32` pass or a UI gate. That is the PR #105 round AGENTS.md records.
+  - The fix: make the CONTRIBUTING list match AGENTS.md "Running and verifying", and correct the header. If the first decision lands as (a), the header's pre-commit wording changes again. [`CONTRIBUTING.md:28-36`; `.github/workflows/ci.yml:3-8`]
+- [ ] [Review][Patch] **`pytest-cov` is a dev dependency that nothing uses.** No CI step, script or doc passes `--cov` (`pyproject.toml:58`; `.coverage` is gitignored at `.gitignore:70`). The fix: drop it from the dev group, or add one `--cov=src --cov-fail-under=<measured baseline>` run on the 3.12 leg. Dropping it is the cheaper choice: coverage was never a gate, and no finding in this plan needed it. [`pyproject.toml:58`]
+
+**Rejected**
+
+- `ci.yml:28-32`: a burst of three `master` pushes cancels the pending middle run, even with `cancel-in-progress: false`. That is true, but the tip run includes the middle commit, and the comment's stated goal ("the default branch always ends on a completed check") holds.
+- `vite.config.ts:61`, `:82`: a `*.spec.ts` file, or a test under `config/`, is collected by neither project. No such file exists, the repo's convention is `*.test.*`, and `config/devProxy.ts` is tested from `ui/tests/devProxy.test.ts`. The `.tsx` gap above is the real one.
+- `eslint.config.js:113-119`: a `.jsx` component would skip every lint rule. Under `strict` with no `allowJs`, importing an untyped `.jsx` module from `.tsx` fails `tsc -b`, so the file cannot reach `master` unnoticed, and none exists.
+- Adding ruff's `ASYNC` rules, raised alongside the `G` patch. Nothing showed a blocking call inside an `async def` that the rules would catch, and the sqlite-vec `to_thread` rule is checked by review (B6). Without evidence of a hit, this is a preference.
 
 ## Summary
 
