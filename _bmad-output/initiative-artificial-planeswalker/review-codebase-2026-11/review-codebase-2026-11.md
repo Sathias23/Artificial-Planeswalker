@@ -101,8 +101,8 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - [x] Group the survivors into themes (for example: repository consistency, tool status vocabulary, companion image path, UI request patterns, test suite cost).
 - [x] For each theme: what it costs today, what fixing it buys, and how wide it is. Drop themes whose fix adds more complexity than it removes.
 - [x] Mark each finding **fix**, **defer** (real, not worth it now; goes to `deferred-work.md`) or **decide** (depends on what Brad wants).
-- [ ] Walk the **decide** items with Brad and record each answer as a dated Decision in `## Summary`.
-- [ ] Write `## Summary`: themes, counts per theme, and the ordered fix list.
+- [x] Walk the **decide** items with Brad and record each answer as a dated Decision in `## Summary`.
+- [x] Write `## Summary`: themes, counts per theme, and the ordered fix list.
 
 ### 5. Turn the fix list into tickets (Sofia, `bmad-agent-po`)
 
@@ -137,7 +137,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - **Overlap with the architecture report:** F6 is research §7; F8, F10 and F12 are research F10 (F10 also F9); F7 touches the `oracle_id` index point in research F10. Recorded here with the repository-level evidence; merge them in step 4.
 - **What holds:** every public method returns Pydantic schemas or plain values (only private helpers return `DeckModel`); every writer rolls back on `IntegrityError` / `DatabaseError` before re-raising and follows the snapshot-first `_reload_committed` discipline; `_UNSET` is used for the nullable `strategy` and `tags` (`name` is NOT NULL, so `None` as "omitted" is right); identity is WUBRG-ordered from `color_identity` on every card mutation; timestamps are aware UTC; imports are SQLAlchemy and `src.data` only. `deck.py`'s 1,184 lines: about 120 are `merge_decks` and the merge strategy, which have no caller (F8, F12); the rest is cohesive writer code.
 
-- [ ] [Review][Decision] (`B2-D1` · **decide** → D2 · Q11) `at_most` promises colour identity but filters `colors` — `search_advanced`'s docstring says "Only these colors or fewer (color identity/subset)" and its example says "fit in white-blue color identity", but the predicate tests `CardModel.colors`, so Golgari Signet (`colors=[]`, identity B/G) passes `at_most=["W"]`; a Commander search silently returns off-identity cards. The tool docstrings (`server.py:248`, `:1056`, `:1123`) say only "a subset". [`src/data/repositories/card.py:435`, `:463`, `:517-524`] Options: (a) filter `at_most` on `color_identity` (a tool behaviour change; check the semantic tools' `at_most` matches); (b) keep `colors` and correct the repository docstring and example to say "card colours, not identity". Recommended: (b) now, (a) as its own story if Commander searches need it — (a) changes a tool contract and needs the skills and the semantic tools to agree.
+- [ ] [Review][Decision] (`B2-D1` · **fix** (D2: b) · Q11) · Q11) `at_most` promises colour identity but filters `colors` — `search_advanced`'s docstring says "Only these colors or fewer (color identity/subset)" and its example says "fit in white-blue color identity", but the predicate tests `CardModel.colors`, so Golgari Signet (`colors=[]`, identity B/G) passes `at_most=["W"]`; a Commander search silently returns off-identity cards. The tool docstrings (`server.py:248`, `:1056`, `:1123`) say only "a subset". [`src/data/repositories/card.py:435`, `:463`, `:517-524`] Options: (a) filter `at_most` on `color_identity` (a tool behaviour change; check the semantic tools' `at_most` matches); (b) keep `colors` and correct the repository docstring and example to say "card colours, not identity". Recommended: (b) now, (a) as its own story if Commander searches need it — (a) changes a tool contract and needs the skills and the semantic tools to agree.
 - [ ] [Review][Decision] (`B2-D2` · **fix** · Q9 · M4) `find_by_name_partial` is unbounded — no `LIMIT`; `lookup_card` and `_resolve_card` validate every match into `Card` and then slice to `_MAX_MATCHES`, so a two-letter query materialises thousands of rows; `lookup_card`'s message reports the full count. [`src/data/repositories/card.py:246-255`] Options: (a) add a bounded fetch plus a separate count (new parameter, one more query); (b) cap the fetch at `_MAX_MATCHES + 1` and change the message to "more than N"; (c) leave it. Recommended: (b) — one-line bound, and the exact count adds nothing for the caller deciding to refine.
 - [ ] [Review][Decision] (`B2-D3` · **defer** · Q12 · M15) `search_advanced` evaluates the filter set several times — `_apply_unique_oracle_filter` repeats every predicate in the CTE and the outer query, and the count wraps the whole statement again, over unindexable `%…%` LIKEs and an unindexed `GROUP BY oracle_id`. [`src/data/repositories/card.py:115-124`, `:577`] Options: (a) measure with EXPLAIN QUERY PLAN and timings on the real `cards.db` first, then rewrite (one `ROW_NUMBER() OVER (PARTITION BY oracle_id)` pass, or an `oracle_id` index); (b) leave it. Recommended: (a) — research F10 already says any index needs a measured case.
 - [ ] [Review][Decision] (`B2-D4` · **fix** · Q5 · M13) `merge_decks` is not atomic — each source row goes through the committing `update_card_quantity` / `add_card_to_deck`, so a failure on row k leaves rows 1..k-1 committed and the outer rollback undoes nothing, despite the docstring. No caller in `src/`. [`src/data/repositories/deck.py:1099-1116`] Options: (a) delete `merge_decks` and `MergeStrategy` with their tests; (b) rewrite it to stage every row and commit once, like `add_cards_to_deck`. Recommended: (a) — no caller, and a future merge tool would be designed against the tool contract anyway.
@@ -184,7 +184,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - **What holds:** the four modules import only `dataclasses`, `typing`, `logging`, `re`, `pydantic` and `src.data.schemas` (framework-free); every function is pure, and `deck_analysis.py` and the companion `format_check` route only read, so analysis stays observational; `format_check` reimplements no rule and `CHECK_FOR_RULE` is total; the tools pass the mainboard only to the curve and synergy logic (`deck_analysis.py:173`, `:248`); copy limits counted per `card_id` are correct, because the database holds one printing per oracle card.
 
 - [ ] [Review][Decision] (`B4-D1` · **fix** · Q15) Restricted cards are reported as not legal — a card whose legality is `restricted` gets the `format_legality` violation "'X' is not legal in vintage", so one Black Lotus makes a legal Vintage deck read illegal in the tool and on the companion panel. The docstring records this as unmodelled, but the sentence is false. [`src/logic/deck_validator.py:447-453`] Options: (a) model it: a restricted card is legal at 1 copy, and above 1 it is a violation (new wording, perhaps a new rule token, which ripples into `CHECK_FOR_RULE`, the OpenAPI contract and the skills); (b) keep the verdict but say "is restricted in vintage (1 copy allowed); this validator does not count restricted copies"; (c) leave it. Recommended: (a) — `combined_counts` already has the total, so the rule is about five lines; the token decision is the only real cost.
-- [ ] [Review][Decision] (`B4-D2` · **decide** → D1 · Q16 · M1) `analyze_mana_curve` counts an MDFC "Sorcery // Land" as a land — `"Land" in c.type_line` matches either face, so spell-lands lower the spell count and raise the land ratio, and the agent's curve disagrees with the companion's (which reads the front face). [`src/logic/mana_curve.py:74`] Options: (a) front face only, matching the UI now; (b) settle research F1 first (one land definition in `src/logic`, shipped in the deck-detail payload) and fix this as part of it; (c) leave it. Recommended: (b) — fixing one of five land rules in isolation moves the disagreement, it does not remove it.
+- [ ] [Review][Decision] (`B4-D2` · **fix** (D1: a) · Q16 · M1) · Q16 · M1) `analyze_mana_curve` counts an MDFC "Sorcery // Land" as a land — `"Land" in c.type_line` matches either face, so spell-lands lower the spell count and raise the land ratio, and the agent's curve disagrees with the companion's (which reads the front face). [`src/logic/mana_curve.py:74`] Options: (a) front face only, matching the UI now; (b) settle research F1 first (one land definition in `src/logic`, shipped in the deck-detail payload) and fix this as part of it; (c) leave it. Recommended: (b) — fixing one of five land rules in isolation moves the disagreement, it does not remove it.
 - [ ] [Review][Decision] (`B4-D3` · **fix** · Q15) Tribal type parsing is ad hoc — payoff patterns are `{type}s?`, so "Other Elves you control" (Imperious Perfect) and Dwarves or Wolves are missed; the type check knows `Tribal` but not `Kindred`, Scryfall's name since 2024; the outer `"Creature" in card.type_line` gate means the `Tribal` branch is dead; `re.split(r"[—-]")` turns "Assembly-Worker" into the tribe "Assembly". [`src/logic/synergy.py:135`, `:150-154`, `:569-573`] Options: (a) narrow fixes: split on the dash with spaces around it, add an irregular-plural map, accept `Kindred` beside `Tribal`, keep the creature gate (and drop the dead branch); (b) as (a), and also let Kindred non-creature spells count as tribe members. Recommended: (a) — (b) changes what "tribal density" means, a call for Brad.
 - [ ] [Review][Decision] (`B4-D4` · **fix** · Q15) Deck cohesion is not monotonic in coverage — one non-strong synergy covering more than 40% of the deck, or one strong synergy covering 40-50%, is rated `low`, while the same synergy at 30% is `moderate`. [`src/logic/synergy.py:615-630`] Options: (a) drop the upper bound on the moderate band (`coverage >= 0.2`), so more coverage never rates lower; (b) redesign the thresholds. Recommended: (a) — one-line fix, no new tiers.
 - [ ] [Review][Decision] (`B4-D5` · **fix** · Q5 · M14) Dead single-card validator surface — `validate_card_addition`, `get_current_card_count` and `ValidationResult` have no `src/` caller, yet they are all `src/logic/__init__.py` exports; the second copy-limit rule counts the mainboard only, hardcodes 4, ignores singleton formats and accepts `quantity <= 0`. [`src/logic/deck_validator.py:28-160`, `src/logic/__init__.py:7-19`] Options: (a) delete them and their tests; make `__init__` export the live API (`validate_deck`, `format_check`, `analyze_mana_curve`, `detect_synergies`) or nothing; (b) rebuild `validate_card_addition` on `validate_deck`'s rule; (c) keep. Recommended: (a) — no caller, and it disagrees with the rule the tools use.
@@ -609,7 +609,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 
 - [ ] [Review][Decision] (`B8-D1` · **fix** · Q10) Two printings of one card in one Arena export import only the first line — card rows are oracle identities, so `2 Island (ELD) 250` and `2 Island (THB) 251` resolve to the same `card_id`. The second line answers `exists` ("use set_card_quantity"), and the deck comes back short with status `partial`. Arena lists each printing separately, so a deck with mixed-art basics hits this on an ordinary export. The docstring states the rule ("A card named twice for the same board within one export is `exists` on its second line"). [`src/mcp_server/tools/deck_import.py:354-356`, `:480-486`] Options: (a) sum the quantities of lines that resolve to the same `(card_id, sideboard)` within one export, check the sum against `MAX_CARD_QUANTITY`, and keep `exists` only for rows already in the deck (a tool behaviour change: docstrings, skills); (b) keep the rule, but say in the line message that this is a second printing and that its copies were not added; (c) leave it. Recommended: (a) — the export is one deck, and the agent cannot tell from `exists` that copies are missing.
 - [ ] [Review][Decision] (`B8-D2` · **fix** · Q10 · M52) `set_card_quantity` answers `card_not_found` for a known card that is not in the requested board — `remove_card_from_deck` answers `not_in_deck` for the same situation, and `DeckCardResult` already carries that token. An agent reading `card_not_found` may retry with another name, when the fix is `add_card_to_deck` or the other board. This is the spec's wording; the quick-wins work flagged the difference and got no ruling. [`src/mcp_server/tools/deck_management.py:718-720`, `:795-801`, `:825-833`] Options: (a) answer `not_in_deck` there too (a tool-contract change: `server.py` docstring, skills, tests); (b) keep `card_not_found` and leave the docstring note as the record. Recommended: (a) — one fact, one token, and the message already says "not in the {board}".
-- [ ] [Review][Decision] (`B8-D3` · **decide** → D3 · Q10) The deck tools spell the same fact with different tokens — a missing deck is `not_found` on `DeckResult` / `DeckDeleteResult` but `deck_not_found` on the card, import and companion results. A missing card is `card_not_found` on `DeckCardResult` but `not_found` on an import line. Each tool is internally consistent, and the messages say what is missing. [`src/mcp_server/tools/deck_management.py:91`, `:105`, `:138-139`; `src/mcp_server/tools/deck_import.py:31`, `:311-312`; `src/mcp_server/tools/companion.py:115`] Options: (a) unify on `deck_not_found` / `card_not_found` everywhere (a tool-contract change across five tools, their docstrings, the skills and the tests); (b) leave the tokens and list them side by side in the magic-deckbuilding skill; (c) leave it. Recommended: (c) — renaming tokens the agent already handles buys little, and the messages disambiguate; revisit if the `set_card_quantity` decision above opens a tool-contract story anyway.
+- [ ] [Review][Decision] (`B8-D3` · **fix** (D3: b) · Q10) · Q10) The deck tools spell the same fact with different tokens — a missing deck is `not_found` on `DeckResult` / `DeckDeleteResult` but `deck_not_found` on the card, import and companion results. A missing card is `card_not_found` on `DeckCardResult` but `not_found` on an import line. Each tool is internally consistent, and the messages say what is missing. [`src/mcp_server/tools/deck_management.py:91`, `:105`, `:138-139`; `src/mcp_server/tools/deck_import.py:31`, `:311-312`; `src/mcp_server/tools/companion.py:115`] Options: (a) unify on `deck_not_found` / `card_not_found` everywhere (a tool-contract change across five tools, their docstrings, the skills and the tests); (b) leave the tokens and list them side by side in the magic-deckbuilding skill; (c) leave it. Recommended: (c) — renaming tokens the agent already handles buys little, and the messages disambiguate; revisit if the `set_card_quantity` decision above opens a tool-contract story anyway.
 - [ ] [Review][Patch] (`B8-P1` · **fix** · Q8) `load_deck`, `delete_deck` and `set_active_deck` do not strip `deck_id` — `update_deck`, `clone_deck`, the three card tools and `import_decklist` do. So `" <uuid> "` works for add and update but answers `not_found` / `deck_not_found` here, and `set_active_deck` echoes the padded id. Strip at entry in all three, and grep every helper for the pattern [`src/mcp_server/tools/deck_management.py:399`, `:550`; `src/mcp_server/tools/companion.py:149`]
 - [ ] [Review][Patch] (`B8-P2` · **fix** · Q7 · M19) The card tools' pre-reads sit outside any `DatabaseError` guard — `get_deck` / `get_deck_with_cards` and `resolve_card` run unguarded in `add_card_to_deck`, `set_card_quantity` and `remove_card_from_deck`, so a lock or I/O error reaches the client as an MCP `isError` instead of `status="error"`. `load_deck`, `update_deck`, `clone_deck` and `import_decklist` guard their reads. Fix together with B1's probe decision [`src/mcp_server/tools/deck_management.py:649`, `:657`, `:766`, `:774`, `:890`, `:898`]
 - [ ] [Review][Patch] (`B8-P3` · **fix** · Q8) `create_deck` stores `format` as sent — no case folding and no length cap, while `list_decks(format=…)` filters with an exact `DeckModel.format == format_filter`. A deck created as `"Commander"` never appears under `list_decks(format="commander")`, which answers `empty`; `validate_deck` and the assessment normalise it, so nothing else notices. Normalise (strip, casefold) and cap `format` on create, and fold the filter the same way [`src/mcp_server/tools/deck_management.py:383`, `:294`; `src/data/repositories/deck.py:364-365`, `:411-412`]
@@ -931,7 +931,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
     - `'live'` re-drives the deck boot (CAP-2), and `deck_changed` restarts the poll only if it has stopped.
   - **Boundaries:** `client.ts` validates every body before it reaches a store. The socket dispatch over the six event kinds fails to compile on a seventh. `connection.ts` composes the three slices without a cycle.
 
-- [ ] [Review][Decision] (`F1-D1` · **decide** → D4 · Q22 · M25) The source comments cite UI gate suites that no longer exist, and nothing else enforces the rules they describe. Commit `e584980` (2026-09-04, audit story 2) deleted 26 source-reading `ui/tests` files, among them `store-writes.test.ts`, `posture.test.ts`, `copy-tails.test.ts` and `wire-contract.test.ts`. About twenty comments still name them as the enforcement, and some justify a module's shape by them:
+- [ ] [Review][Decision] (`F1-D1` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) The source comments cite UI gate suites that no longer exist, and nothing else enforces the rules they describe. Commit `e584980` (2026-09-04, audit story 2) deleted 26 source-reading `ui/tests` files, among them `store-writes.test.ts`, `posture.test.ts`, `copy-tails.test.ts` and `wire-contract.test.ts`. About twenty comments still name them as the enforcement, and some justify a module's shape by them:
   - `connection.ts` is said to exist so that `deck.ts` never names `useSystemStore`, because `store-writes.test.ts:112-113` would flag it [`ui/src/state/connection.ts:15`].
   - `faces.ts` has no `readFaceIndex` because "the scan" would see it [`ui/src/state/faces.ts:26`, `:81`, `:161`].
   - `client.ts` is "the one door", and `posture.test.ts` is said to assert it [`ui/src/api/client.ts:3`, `:30`, `:223`].
@@ -1047,7 +1047,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - **Emptiness:** `filled()` is the one answer for node slots. The overlay and the analysis row both close the "a child returned null" gap with `:empty`.
   - **Exhaustiveness:** `states.ts` and `CardPlaceholder` make a new wire token or variant a type error.
 
-- [ ] [Review][Decision] (`F3-D1` · **decide** → D4 · Q22 · M25) **Component comments cite deleted gates.** About 45 comments in this folder name 10 `ui/tests` files that commit `e584980` deleted: `shell.test.ts` (21), `token-usage.test.ts` (17), `copy.test.ts` (6), `copy-rules.test.ts` (4), `unknown-card-copy.test.ts` (3), `attribution.test.ts` (3), and one each for `posture`, `gate-geometry`, `fonts` and `copy-tails`. They describe as gated a set of rules that no gate now holds:
+- [ ] [Review][Decision] (`F3-D1` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Component comments cite deleted gates.** About 45 comments in this folder name 10 `ui/tests` files that commit `e584980` deleted: `shell.test.ts` (21), `token-usage.test.ts` (17), `copy.test.ts` (6), `copy-rules.test.ts` (4), `unknown-card-copy.test.ts` (3), `attribution.test.ts` (3), and one each for `posture`, `gate-geometry`, `fonts` and `copy-tails`. They describe as gated a set of rules that no gate now holds:
   - the bare-`fr` grid-track ban (`AppShell.css:162`);
   - no `hidden`/`clip` on the root elements and the scroller (`AppShell.css:175`);
   - the one full-window fixed layer (`AppShell.css:268`);
@@ -1061,7 +1061,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (c) Delete the citations.
 
   Recommended: the same ruling as F1's decision. For this folder that is (a), plus the attribution literal test (patch below). The layout rules here have no cheap lint form, except possibly the overflow ban.
-- [ ] [Review][Decision] (`F3-D2` · **decide** → D5 · Q21) **The footer attribution omits part of the Fan Content notice.** `Footer/copy.ts` renders DESIGN.md's sentence verbatim, ending "Not approved/endorsed by Wizards.". The repository's own `NOTICE:29-30` adds "Portions of the materials used are property of Wizards of the Coast. (c) Wizards of the Coast LLC.", which is the Policy's standard notice. The component calls itself a condition of public release [`ui/src/components/Footer/copy.ts:64-73`]. Options:
+- [ ] [Review][Decision] (`F3-D2` · **fix** (D5: a) · Q21) · Q21) **The footer attribution omits part of the Fan Content notice.** `Footer/copy.ts` renders DESIGN.md's sentence verbatim, ending "Not approved/endorsed by Wizards.". The repository's own `NOTICE:29-30` adds "Portions of the materials used are property of Wizards of the Coast. (c) Wizards of the Coast LLC.", which is the Policy's standard notice. The component calls itself a condition of public release [`ui/src/components/Footer/copy.ts:64-73`]. Options:
   - (a) Add the clause to DESIGN.md and `ATTRIBUTION`. Check that it still fits one line at 1100px, because `ConnectionPill.css`'s footer clearance assumes a 37px single-line footer (`AppShell.css:51-56`).
   - (b) Keep the short line, since the footer links the Policy and `NOTICE` carries the full text, and say so in `copy.ts`.
 
@@ -1151,7 +1151,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (d) Leave it, since AD-11 fetches only what the tab asks for and the pacer bounds the CDN rate.
 
   Recommended: (a). It removes the sweep storm with no new request, and the panel never shows an empty well because the `normal` render is warm. (c) trades the warm flip for a cold fetch at the rotation midpoint, which the tile rejected for the same reason.
-- [ ] [Review][Decision] (`F4-D2` · **decide** → D4 · Q22 · M25) **Comments cite deleted gates.** 41 citations in this group name 9 `ui/tests` files that commit `e584980` deleted: `shell.test.ts` (13), `token-usage.test.ts` (9), `posture.test.ts` (5), `store-writes.test.ts` (3), `wire-contract.test.ts` (3), `empty-deck-copy.test.ts` (3), `copy-rules.test.ts` (2), `pin-announcement-copy.test.ts` (2) and `quantity-glow.test.ts` (1). Only `no-scryfall-hosts.test.ts` (2) survives. They describe as gated:
+- [ ] [Review][Decision] (`F4-D2` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Comments cite deleted gates.** 41 citations in this group name 9 `ui/tests` files that commit `e584980` deleted: `shell.test.ts` (13), `token-usage.test.ts` (9), `posture.test.ts` (5), `store-writes.test.ts` (3), `wire-contract.test.ts` (3), `empty-deck-copy.test.ts` (3), `copy-rules.test.ts` (2), `pin-announcement-copy.test.ts` (2) and `quantity-glow.test.ts` (1). Only `no-scryfall-hosts.test.ts` (2) survives. They describe as gated:
   - the `CARD_SHAPED` split behind the three paired stylesheets (`CardTile.css`/`QuantityBadge.css`, `CardDetail.css`/`CardDetailChrome.css`, `FlipControl.css`);
   - the one-door fetch posture (`useCardArt.ts`'s "`posture.test.ts`'s one-door list");
   - the store-write ban (`CardTile.tsx:298`, `CardDetail.tsx:350`);
@@ -1245,14 +1245,14 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (c) Keep the small trap, correct the nav's claim, and make the History pill's click a no-op while a view is open.
 
   Recommended: (a). It removes the escape routes and the History residue with one platform attribute instead of a listener. The shell's "could strand focus" worry does not apply to `inert`, which never moves focus.
-- [ ] [Review][Decision] (`F5-D2` · **decide** → D6 · Q21) **A truncated reason cannot be read.** The reason is ellipsized to one line, and the stylesheet says the truncation is final on purpose (`SuggestionsView.css:276-296`). `contracts.py` allows 200 characters, which is longer than most rows are wide. `CardDetail` shows the card's fields, never the suggestion's `reason`. So a sighted user loses the end of the row's most important text with no way to recover it. Screen readers get the full text, since the ellipsis is visual only. Options:
+- [ ] [Review][Decision] (`F5-D2` · **fix** (D6: a) · Q21) · Q21) **A truncated reason cannot be read.** The reason is ellipsized to one line, and the stylesheet says the truncation is final on purpose (`SuggestionsView.css:276-296`). `contracts.py` allows 200 characters, which is longer than most rows are wide. `CardDetail` shows the card's fields, never the suggestion's `reason`. So a sighted user loses the end of the row's most important text with no way to recover it. Screen readers get the full text, since the ellipsis is visual only. Options:
   - (a) Put the full reason in the row's `title`. Pointer only, but one attribute.
   - (b) Let the reason wrap to two lines with `line-clamp: 2`. The row height and the thumbnail width then vary per row.
   - (c) Show the targeted suggestion's reason in the detail panel, which needs a new inspection-to-push link.
   - (d) Leave it, and tell agents to keep reasons short in the `companion_show_suggestions` docstring and the companion skill.
 
   Recommended: (d) plus (a). The tool docstring is where an agent learns the budget. `title` recovers the text for pointer users without changing the row layout the design fixed.
-- [ ] [Review][Decision] (`F5-D3` · **decide** → D4 · Q22 · M25) **Comments cite deleted gates.** 37 citations in this group name 8 `ui/tests` files that no longer exist:
+- [ ] [Review][Decision] (`F5-D3` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Comments cite deleted gates.** 37 citations in this group name 8 `ui/tests` files that no longer exist:
   - `token-usage.test.ts` (13), `keyboard-floor.test.ts` (8), `shell.test.ts` (8), `empty-push-copy.test.ts` (4)
   - `copy-rules.test.ts`, `agent-views-nav-copy.test.ts`, `wire-contract.test.ts` and `posture.test.ts` (1 each)
 
@@ -1327,7 +1327,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - **Format check:** it renders rows in the payload's `CHECK_ORDER`, binds nothing to `is_legal`, and adds no Tab stop. The empty-deck hide is at `App.tsx:213`.
   - **Empty states:** the curve hides when its total is zero, and the colour bar hides when its pip total is zero. Both divisions are guarded (`total === 0`, and segments are filtered before the percentage is taken).
 
-- [ ] [Review][Decision] (`F6-D1` · **decide** → D4 · Q22 · M25) **Comments cite deleted gates.** 11 citations in this group name 4 `ui/tests` files that no longer exist:
+- [ ] [Review][Decision] (`F6-D1` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Comments cite deleted gates.** 11 citations in this group name 4 `ui/tests` files that no longer exist:
   - `tests/token-usage.test.ts` (7): `ColourDistribution.css:5`, `ColourDistribution.tsx:165`, `DeckList.css:6`, `FormatCheck.css:10`, `:21`, `:132`, `ManaCurve.css:18`
   - `shell.test.ts` (2): `DeckList.css:53`, `FormatCheck.css:52`
   - `copy-rules.test.ts` (1): `ManaCurve/copy.ts:17`
@@ -1339,7 +1339,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - the rule that `is_legal` appears nowhere in `src/`, which `FormatCheck.tsx:61-79` calls "a machine-checkable fact". The rule still holds today (no non-test `src/` file reads `is_legal`), but nothing checks it. The formatless-report case in `FormatCheck.test.tsx` is the behavioural pin that remains.
 
   The four `copy.ts` headers also say "NO IMPORTS, load-bearing", so that `ui/tests/` can import them. For the same reason, the label couplings are split out into `DeckList.tsx:89-118`, `ColourDistribution.tsx:100-130` and `FormatCheck.tsx:157-179`. No `ui/tests` file imports any of the four. Options: the same as F4's. Recommended: the F1/F3/F4/F5 ruling. In this group, the `is_legal` guard is the one most worth restoring as a real check: the trap it closes has zero live exposure, so a regression would ship green.
-- [ ] [Review][Decision] (`F6-D2` · **decide** → D7 · Q21) **Under forced colours (Windows High Contrast), the data marks and the live marker in this group disappear.** No stylesheet in `ui/src` has a `@media (forced-colors: active)` rule:
+- [ ] [Review][Decision] (`F6-D2` · **fix** (D7: a) · Q21) · Q21) **Under forced colours (Windows High Contrast), the data marks and the live marker in this group disappear.** No stylesheet in `ui/src` has a `@media (forced-colors: active)` rule:
   - The live deck row is marked only by `background-color` and an inset `box-shadow` (`DeckList.css`, `.deck-row.is-live`). Forced colours replace the first and drop the second, so the live row looks like every other row.
   - The curve bars and the colour segments are painted only with `background` (`ManaCurve.css`, `ColourDistribution.css`), so they merge into the track.
 
@@ -1366,7 +1366,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
 - [ ] [Review][Patch] (`F6-P4` · **fix** · Q23) **The test for the table's hiding cannot fail, and three comments still describe the old local rules.** `ManaCurve.test.tsx:244-253` checks only that the table has no `aria-hidden` and no `hidden`. Dropping `visually-hidden` from the class list would paint a duplicate table in every curve panel and still pass. The test's own comment, `ManaCurve.tsx:50-51` and `:179-181` all say the clip-rect is in `ManaCurve.css`. `:182-183` says it is the shared `src/styles/` utility, which is what ships. Assert the class, as `SkipLink.test.tsx:87` and `DeckAnnouncer.test.tsx:221` do, and correct the three comments [`ui/src/containers/ManaCurve/ManaCurve.tsx:179-184`]
 - [ ] [Review][Patch] (`F6-P5` · **fix** · Q23) **`ColourDistribution`'s "no visually-hidden block" test cannot see what it guards.** `ColourDistribution.test.tsx:246-255` checks that there is no `<table>`, no `clip-path` in `innerHTML` and no `[hidden]`. A `<span className="visually-hidden">` added to the legend hides by class, puts no `clip-path` in the markup, and would pass. The reason the test gives (the third-instance trigger) no longer applies either, because the utility is already shared. Assert that `container.querySelectorAll('.visually-hidden')` is empty, and update the comment [`ui/src/containers/ColourDistribution/ColourDistribution.tsx:65`]
 - [ ] [Review][Patch] (`F6-P6` · **fix** · Q22) **A card in both boards appears twice in the list, though the comment says it cannot.** The primary key of `deck_cards` is `(deck_id, card_id, sideboard)` (`src/data/models/deck_card.py:20`), and `seedDeckCards` notes that "a card in both boards lands twice". The key comment says the table is keyed on `(deck_id, card_id)`, so "no id appears twice across the whole list". React keys are scoped to each `<ul>`, so nothing collides. But `useIsLiveTarget` is keyed by id, so hovering or pinning either row lights both. Correct the comment and state the shared highlight as accepted behaviour [`ui/src/containers/DeckList/DeckList.tsx:294-297`]
-- [ ] [Review][Patch] (`F6-P7` · **decide** → D1 · Q16 · M1) **Two parity claims are contradicted a few lines later.** `curve.ts:48-51` and `colours.ts:112-113` say the panel and the MCP tool "cannot answer the same question differently". But `curve.ts:89-95` then says `analyze_mana_curve` reports a different non-land count, and `colours.ts:128-134` lists five ways in which `compute_pip_signals` differs. The parity holds only for the board partition. Narrow both sentences to "the same boards", and point to the divergence notes (this is the UI half of the architecture report's F1) [`ui/src/containers/ManaCurve/curve.ts:48-51`, `ui/src/containers/ColourDistribution/colours.ts:112-113`]
+- [ ] [Review][Patch] (`F6-P7` · **fix** (D1: a) · Q16 · M1) · Q16 · M1) **Two parity claims are contradicted a few lines later.** `curve.ts:48-51` and `colours.ts:112-113` say the panel and the MCP tool "cannot answer the same question differently". But `curve.ts:89-95` then says `analyze_mana_curve` reports a different non-land count, and `colours.ts:128-134` lists five ways in which `compute_pip_signals` differs. The parity holds only for the board partition. Narrow both sentences to "the same boards", and point to the divergence notes (this is the UI half of the architecture report's F1) [`ui/src/containers/ManaCurve/curve.ts:48-51`, `ui/src/containers/ColourDistribution/colours.ts:112-113`]
 - [ ] [Review][Patch] (`F6-P8` · **fix** · Q16) **Nothing checks the seven-bucket tuple against `BUCKETS`.** `curve.ts:60-62` says `CurveBuckets` "is coupled to it in the type, so a change that wanted an eighth bucket would have to say so in the open". But `curveOf` ends with `as unknown as CurveBuckets['buckets']` (`:250`), which accepts an array of any length, so an eighth entry in `BUCKETS` would compile. Either correct the comment, or derive the tuple type from `typeof BUCKETS` so that the claim holds [`ui/src/containers/ManaCurve/curve.ts:60-62`, `:250`]
 - [ ] [Review][Patch] (`F6-P9` · **fix** · Q22) **Some comments still describe the build order rather than the code.**
   - `ManaCurve.tsx:110` calls the curve "the second of an eventual three panels in a fluid column". It is one of two panels in `AnalysisRow`, and the format check sits in the right column.
@@ -1435,7 +1435,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (c) Fix groups alone now, and size the swap tile only if its label ever stops setting the width.
 
   Recommended: (a). It is the fix already proved on the tier strip, it needs one DESIGN.md line per block, and it removes the coincidence the swap tile depends on. Check it in a real browser, since jsdom resolves no layout. [`ui/src/containers/GroupsView/GroupsView.css:176-181`, `ui/src/containers/SwapsView/SwapsView.css:137-142`]
-- [ ] [Review][Decision] (`F7-D2` · **decide** → D8 · Q21) **In the groups and swaps views, hover and focus target a panel nobody can see.** `TierPreview` exists because "the persistent `CardDetail` panel sits BEHIND the agent view's scrim, so inside this view the target was invisible" (`TierListView.tsx:261-264`). `GroupTile` and `SwapTile` set the same inspection target but have no preview. So a hover or focus in those views shows nothing, and a click pins a card whose detail stays hidden until the view closes. Options:
+- [ ] [Review][Decision] (`F7-D2` · **fix** (D8: a) · Q21) · Q21) **In the groups and swaps views, hover and focus target a panel nobody can see.** `TierPreview` exists because "the persistent `CardDetail` panel sits BEHIND the agent view's scrim, so inside this view the target was invisible" (`TierListView.tsx:261-264`). `GroupTile` and `SwapTile` set the same inspection target but have no preview. So a hover or focus in those views shows nothing, and a click pins a card whose detail stays hidden until the view closes. Options:
   - (a) Lift `TierPreview` into a shared in-view preview and mount it in the groups and swaps bodies too, with a DESIGN.md `components.*-preview` line for each layout.
   - (b) Leave groups and swaps without a preview, and write in EXPERIENCE.md that only the tier list previews in place.
 
@@ -1457,7 +1457,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (c) Keep the copies, and make each header name its siblings so a fix reaches all of them.
 
   Recommended: (b). It removes the copies whose behaviour has drifted (the gates and the release valve) without folding three different tile layouts into one component with slots. [`ui/src/containers/TierListView/TierListView.tsx:86`, `:146-161`, `:195-200`; `ui/src/containers/SwapsView/SwapsView.tsx:80`, `:128-135`, `:175-180`; `ui/src/containers/GroupsView/GroupsView.tsx:92`, `:136-151`, `:196-201`]
-- [ ] [Review][Decision] (`F7-D4` · **decide** → D9 · Q21) **The pill's announcement policy leaves two cases unruled.** The announcement is keyed on the connection status and nothing else (`ConnectionPill.tsx:164-171`):
+- [ ] [Review][Decision] (`F7-D4` · **fix** (D9: b) · Q21) · Q21) **The pill's announcement policy leaves two cases unruled.** The announcement is keyed on the connection status and nothing else (`ConnectionPill.tsx:164-171`):
   - **Behind an open agent view:** UX-DR45 lists the pill as a live region, and EXPERIENCE.md's deck-refetch row rules that "no announcement fires from behind a modal". `DeckAnnouncer` follows that rule by gating on `useAgentViewIsOpen()`. The pill has no such gate, so a reconnect or a disconnect speaks while a view is open. Neither file says whether connection status is exempt.
   - **The first connect on every cold load:** the `seen: null` sentinel silences only the first render, whose status is `'reconnecting'`. The first `reconnecting → live` change then announces "Connected" on every page load, usually before the deck name has arrived. The header's own reason for the sentinel (not to announce "before it has failed at anything") argues against this too. `ConnectionPill.test.tsx:512-517` pins it as an ordinary transition.
 
@@ -1472,7 +1472,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (b) Keep the literal, and record in `SwapsView.tsx` why the swap label does not follow the announcer's precedent.
 
   Recommended: (a). It fixes the grammar of the common case, and zero still reads "0 copies" either way. [`ui/src/containers/SwapsView/SwapsView.tsx:182-186`]
-- [ ] [Review][Decision] (`F7-D6` · **decide** → D4 · Q22 · M25) **Comments cite deleted gates.** 32 citations in this group name 10 `ui/tests` files that commit `e584980` removed:
+- [ ] [Review][Decision] (`F7-D6` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Comments cite deleted gates.** 32 citations in this group name 10 `ui/tests` files that commit `e584980` removed:
   - `token-usage.test.ts` (9), `shell.test.ts` (5), `keyboard-floor.test.ts` (4)
   - `wire-contract.test.ts` (3), `empty-push-copy.test.ts` (3)
   - `deck-announcement-copy.test.ts`, `copy-rules.test.ts` and `connection-pill-copy.test.ts` (2 each)
@@ -1563,7 +1563,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - (c) Reword both comments to say the guarantee is held by review only.
 
   Recommended: (a). It is one config line, it fails at the source rather than after a build, and it covers every stylesheet. [`ui/src/styles/fonts.css:13-15`, `ui/src/styles/tokens.css:62-64`]
-- [ ] [Review][Decision] (`F8-D3` · **decide** → D4 · Q22 · M25) **The rest of this group's comments cite deleted gates.** The citations:
+- [ ] [Review][Decision] (`F8-D3` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **The rest of this group's comments cite deleted gates.** The citations:
   - `App.tsx:24-26` cites `keyboard-floor.test.ts` for "one module writes `.tabIndex`". It holds today (`focusHome.ts` only).
   - `App.tsx:81-82` and `visually-hidden.css:10-12` cite `shell.test.ts` and `posture.test.ts` for "a container may not reach the network". `eslint.config.js` has no import restriction that replaces them.
   - `tokens.css:25-27`: no other stylesheet may declare a custom property. It holds today.
@@ -1948,7 +1948,7 @@ These three do not change the result, but the `test_` prefix is what made the sc
   - `deck.test.ts:1253-1264` asserts that `kind` is one of the three union members, which the return type already guarantees. Delete it.
 
   [`ui/src/state/agentView.test.ts:110`, `ui/src/state/faces.test.ts:113`, `ui/src/state/deck.test.ts:1253`]
-- [ ] [Review][Patch] (`T1-4-P12` · **decide** → D4 · Q22 · M25) **Test comments cite deleted suites and drifted lines.** This extends the F1/F3-F8 dead-gate decision, which counted source files only, to the test files. Apply the same ruling.
+- [ ] [Review][Patch] (`T1-4-P12` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Test comments cite deleted suites and drifted lines.** This extends the F1/F3-F8 dead-gate decision, which counted source files only, to the test files. Apply the same ruling.
   - **Coverage handed to deleted suites:**
     - `SwapsView.test.tsx:13-14` says the tints, arrow colour and micro role are "read as SOURCE by `token-usage.test.ts`".
     - `faces.test.ts:19-21` leaves the per-tab, no-persistence claim to `store-writes.test.ts`.
@@ -2020,7 +2020,7 @@ These three do not change the result, but the `test_` prefix is what made the sc
 - [ ] [Review][Patch] (`T1-5-P6` · **fix** · Q19 · M11) **No test counts `App` renders.** This is F8's `App` half, which T1-4 handed to T1-5. Nothing in the file counts commits, so F8's `useSystemState()` patch has no test that fails today. Wrap the mount in React's `<Profiler onRender>` (a public API, no module mocking). After a settled, connected deck, deliver an instance-id answer through the routed `/health` (blocked by the router patch above) and expect zero `App` commits. Today it gives one per write. The same counter across a refetch with an unchanged payload measures research F8's composed cost (two seeds per cold open, about four tree renders per `deck_changed`) at the root, where the cold-open budget is measured [`ui/src/App.test.tsx`; `ui/src/App.tsx:57`]
 - [ ] [Review][Patch] (`T1-5-P7` · **fix** · Q19) **The connected cold open's request count is unpinned, and the comment on the five-request pin is stale.** `:1224-1235` pins five requests for a whole mount. It says "the socket's contribution to a cold open is that ONE mint, and then nothing", which holds only because that test never connects. Since CAP-2, `'live'` adds `/health` plus a re-boot (active deck, deck, format check): research §10's nine-request cold open, the cost #113 accepted. `:3090` and `:3126` count only the requests after a marker. Once the router routes `/health`, pin the connected total, and reword the comment to say it is the unconnected total. This is the release-gating path [`ui/src/App.test.tsx:1224-1235`, `:3090`, `:3126`]
 - [ ] [Review][Patch] (`T1-5-P8` · **fix** · Q22 · M31) **Several tests wait for a hydration sweep that no longer exists.** `:1222-1223` asserts that a boot makes no `/api/cards/` request, because `seedDeckCards` seeds every row with its faces. But `:2203-2205`, `:2266`, `:3657`, `:4372-4374`, `:5084-5100` and `:6053` still `advance(10_000)` or `advance(20)` before counting flip controls, and `:6348` names a `hydrateDeckCards` that is not in `ui/src`. The waits hide the regression the seeding prevents: flip controls that appear only after a later hydration. Assert them right after `settle()`, drop the waits, and fix the `:6348` comment [`ui/src/App.test.tsx:2203`, `:2266`, `:4372`, `:5084`, `:6348`]
-- [ ] [Review][Patch] (`T1-5-P9` · **decide** → D4 · Q22 · M25) **Comments cite drifted lines and deleted suites.** This is T1-4's citation patch for the file T1-4 left out. Apply the same F1/F3-F8 dead-gate ruling.
+- [ ] [Review][Patch] (`T1-5-P9` · **fix** (D4: b) · Q22 · M25) · Q22 · M25) **Comments cite drifted lines and deleted suites.** This is T1-4's citation patch for the file T1-4 left out. Apply the same F1/F3-F8 dead-gate ruling.
   - **The file's own line numbers have drifted by about 600 lines.** `:4832` cites `:3379` (now `:3991`), `:4977` cites `:3454` (now `:4060`), `:5005` cites `:4426`/`:4450` (now `:5926`/`:5950`), `:5203` cites `:1815-1830` (now `:2194-2319`), `:5258` and `:5276` cite `:3223` (now `:3842`), `:5293` and `:5595` cite `:4043` (now `:4645`), and `:4587` cites `:2540`.
   - **Production citations point at unrelated code:** `:604` (`App.tsx:101-119`), `:1011` (`AppShell.tsx:200`), `:1044` (`AppShell.tsx:127`), `:5671` (`AppShell.tsx:134-139`), `:2936` (`deck.ts:339`), `:1972` (`CardGrid.tsx:76`), `:4882` (`StatePanel.tsx:133`), `:3531` (`connection.ts:96-108`) and `:5357` (`CardTile` `:295-299`).
   - **Coverage handed to deleted suites:** `:503-505` (`token-usage.test.ts`, the no-error-styling rule), `:1077` and `:1092` (`shell.test.ts`, `AnalysisRow`'s `flex: 1 1 0` and `.analysis-row:empty`), `:1178` (`posture.test.ts`) and `:2031` (`tests/attribution.test.ts`). None of them is in `ui/tests/` now. The tests at `:1081-1114` and `:2441-2457` assert only the DOM half and say the CSS half is covered elsewhere. Nothing covers it.
@@ -2061,7 +2061,7 @@ These three do not change the result, but the `test_` prefix is what made the sc
   - Every action is SHA-pinned. `permissions: contents: read` is set on both workflows. `npm ci` runs with `engine-strict=true`. `--strict-markers` is in `addopts`.
   - The `ruff` and `mypy` hook revisions match `uv.lock` today (0.14.0, 1.18.2), but nothing ties them together (first decision).
 
-- [ ] [Review][Decision] (`T2-D1` · **decide** → D10 · Q24) **The pre-commit hooks run their own toolchain, which `uv.lock` does not pin, so the hooks and CI can disagree.**
+- [ ] [Review][Decision] (`T2-D1` · **fix** (D10: a) · Q24) · Q24) **The pre-commit hooks run their own toolchain, which `uv.lock` does not pin, so the hooks and CI can disagree.**
   - `ruff-pre-commit` `v0.14.0` and `mirrors-mypy` `v1.18.2` (`.pre-commit-config.yaml:3`, `:12`) match the lock only because they were set by hand. `pyproject.toml:54` and `:59` give mypy and ruff open floors, so a `uv lock --upgrade` moves CI's ruff and mypy and leaves the hooks behind.
   - The mypy hook's `additional_dependencies` (`:17-27`) are open floors. They resolve to whatever PyPI serves on the day the hook env is built, not to the lock (fastapi 0.140.0, numpy 2.4.6, mcp 1.28.0).
   - fastembed is missing from the list, even though it ships `py.typed` and `src/search/embedder.py:29` imports it. `embedder.py:31-33` already works around the hook seeing `TextEmbedding` as `Any`. The AGENTS.md rule ("a new runtime dependency that mypy must resolve also goes into `additional_dependencies`") is unenforced, and fastembed shows it has already been missed.
@@ -2074,7 +2074,7 @@ These three do not change the result, but the `test_` prefix is what made the sc
   - (c) Leave the hooks as they are, and let CI be the only authority.
 
   For any option, add a `dependabot.yml` for `github-actions` at least. Recommended: (a). It deletes a hand-kept list instead of guarding it, and it makes the hook as strong as the claim in CONTRIBUTING. The cost is that a commit needs a synced `.venv`, which `setup.py` already creates. AGENTS.md's `additional_dependencies` sentence changes in the same PR. [`.pre-commit-config.yaml:2-28`; `pyproject.toml:54`, `:59`; `src/search/embedder.py:29-33`]
-- [ ] [Review][Decision] (`T2-D2` · **decide** → D11 · Q24) **The leak guard watches only the old username, matches case-sensitively, and has no CI counterpart.**
+- [ ] [Review][Decision] (`T2-D2` · **fix** (D11: a) · Q24) · Q24) **The leak guard watches only the old username, matches case-sensitively, and has no CI counterpart.**
   - `no-local-machine-paths` (`.pre-commit-config.yaml:36-40`) matches `C:[\\/]+Users[\\/]+brads|c-{2}Users-brads`. The maintainer's Windows username is now `Sathias`, and three tracked files already carry the `C:/Users/<that name>/` path: `research-codebase-architecture.md:14` (its `repository:` frontmatter, written by `bmad-deep-recon`), `archive-v6/spec-deck-workflow-reliability/SPEC.md:6` and `tickets/epic-reliable-deck-workflows/.memlog.md:6`.
   - pygrep is case-sensitive, and the Claude project-slug form is `C--Users-<name>` with a capital C, so the second pattern misses the slug form it was written for.
   - No CI job runs the hook (`grep pre-commit .github/workflows/*` finds only the `ci.yml:5` comment). A GitHub web edit, a suggestion commit or a clone without hooks therefore merges a leak green.
@@ -2178,7 +2178,7 @@ These three do not change the result, but the `test_` prefix is what made the sc
 
 <!-- Written in step 4 (2026-11-09). Ids, stamps and counts were produced from the `## Code Review` blocks above; edit the stamps and this section together. -->
 
-Step 4 read every `## Code Review` block (27 runs: the architecture report's F1-F10, 21 group reviews, the T1-0 sweep, five targeted test runs and the T2 configuration review). They hold **450 findings** (369 `patch`, 81 `decision-needed`). Five research findings that no group review carried as its own item were added as `R-F5`, `R-F6`, `R-F6b`, `R-F9` and `R-F10`, for **455** in all. Merging the ones that several runs raised (52 merge groups covering 120 findings) leaves **387 distinct findings** in **25 themes**: 374 fix, 2 defer, 11 decide (11 decide items open; see Decisions).
+Step 4 read every `## Code Review` block (27 runs: the architecture report's F1-F10, 21 group reviews, the T1-0 sweep, five targeted test runs and the T2 configuration review). They hold **450 findings** (369 `patch`, 81 `decision-needed`). Five research findings that no group review carried as its own item were added as `R-F5`, `R-F6`, `R-F6b`, `R-F9` and `R-F10`, for **455** in all. Merging the ones that several runs raised (52 merge groups covering 120 findings) leaves **387 distinct findings** in **25 themes**: 385 fix, 2 defer, 0 decide (all decide items resolved; see Decisions).
 
 **How to read it.**
 
@@ -2190,19 +2190,19 @@ Step 4 read every `## Code Review` block (27 runs: the architecture report's F1-
 
 ### Decisions
 
-Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11.
+Walked with Brad on 2026-11-09 in four rounds grouped by theme: D1-D3 (Q16, Q11, Q10), D4, D10 and D11 (Q22, Q24), D5-D7 (Q21), then D8 and D9 (Q21). Every answer took the recommended option. Each answer turns its findings into **fix**. The parts it set aside are under Deferred or Dropped.
 
-- **D1 (open, Q16; M1 (B4-D2, F6-P7)).** Where should each card statistic (land count, mana-value buckets, colour counts) be defined, so the agent and the companion stop disagreeing? Options: (a) `src/logic` owns each statistic and the deck-detail payload carries the computed figures. The UI draws them and drops its own `isLand`, `bucketOf` and `coloursOf`. One definition. An OpenAPI change plus UI rework, about eight functions. (b) Keep a Python and a TypeScript copy, align their rules by hand, and pin both to one shared fixture. Cheaper, but two copies that can drift again. (c) Keep the documented divergences. Correct the two false parity claims and label the UI figures so they do not read as the agent's numbers. Recommended: (a).
-- **D2 (open, Q11; B2-D1).** `at_most` promises colour identity but filters card colours, so a Commander search can return off-identity cards (Golgari Signet under mono-white). What should it mean? Options: (a) Colour identity on both search paths. This is a tool-contract change, and the semantic index stores card colours, so it also needs new vec0 columns and a `--rebuild`. (b) Card colours, as today. Correct the repository docstring, the tool docstrings and the skills' "pass the deck's colors" advice so they say so, and defer an identity filter as a feature. Recommended: (b).
-- **D3 (open, Q10; B8-D3).** Q10 already changes the tool contract (`not_in_deck`, `invalid`, `error` tokens). While that is open, should the deck tools' differing not-found tokens (`not_found` vs `deck_not_found`, `card_not_found` vs `not_found`) be unified too? Options: (a) Unify on `deck_not_found` / `card_not_found` across the five tools, their docstrings, the skills and the tests. (b) Keep the tokens and list them side by side in the magic-deckbuilding skill. Documentation only. (c) Leave them. The messages already say what is missing. Recommended: (b).
-- **D4 (open, Q22; M25 (F1-D1, F3-D1, F4-D2, F5-D3, F6-D1, F7-D6, F8-D3, T1-4-P12, T1-5-P9)).** About 200 UI comments cite suites deleted in `e584980` as the gate for rules nothing now enforces. What should replace them? Options: (a) Reword every citation as a stated convention, naming what enforces it today, if anything. (b) Do (a), and restore the two architecture invariants as ESLint rules: `fetch` and `WebSocket` only in `src/api/client.ts` (AD-4's one network door), and no `localStorage` or `document.cookie` in `src/state/` (UX-DR15). Two config entries. They are linters, not source-scanning tests, so they fit the 2026-09-04 ruling. (c) Delete the citations and replace them with nothing. Recommended: (b).
-- **D5 (open, Q21; F3-D2).** The footer's Fan Content line stops at "Not approved/endorsed by Wizards.". The repository's `NOTICE` adds "Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC." Should the footer carry the full notice? Options: (a) Add the clause to DESIGN.md and the footer copy, and check that it still fits one line at 1100px (the pill's clearance assumes a 37px footer). (b) Keep the short line, since the footer links the Policy and `NOTICE` carries the full text, and say so in `Footer/copy.ts`. Recommended: (a).
-- **D6 (open, Q21; F5-D2).** A suggestion's reason is cut to one line with an ellipsis, and a sighted user has no way to read the rest (up to 200 characters). How should it be recovered? Options: (a) Put the full reason in the row's `title` (pointer only, one attribute), and tell agents in the `companion_show_suggestions` docstring and the companion skill to keep reasons short. (b) Let it wrap to two lines (`line-clamp: 2`). Row heights and thumbnail widths then vary. (c) Show the targeted suggestion's reason in the detail panel. This needs a new inspection-to-push link. Recommended: (a).
-- **D7 (open, Q21; F6-D2).** Under Windows forced colours (High Contrast), the live deck row, the curve bars and the colour segments disappear. How far should support go? Options: (a) Three small rules in the analysis panels now (a `Highlight` outline on the live row, `forced-color-adjust` on the bars and segments), and a line in DESIGN.md calling forced colours best-effort. (b) An app-wide forced-colours policy: decide it in DESIGN.md, then apply it to tiles, pills, badges and the panels. (c) Leave forced colours unsupported, and say so in DESIGN.md. Recommended: (a).
-- **D8 (open, Q21; F7-D2).** In the groups and swaps views, hover and focus target the detail panel hidden behind the scrim, so nothing shows. Only the tier list has an in-view preview. Should the other two get one? Options: (a) Lift `TierPreview` into a shared in-view preview and mount it in the groups and swaps bodies, with a DESIGN.md line for each layout. (b) Leave them without a preview, and write in EXPERIENCE.md that only the tier list previews in place. Recommended: (a).
-- **D9 (open, Q21; F7-D4).** The connection pill announces changes behind an open agent view (DeckAnnouncer stays silent there), and it announces "Connected" on every page load. What should the policy be? Options: (a) Silence it behind the modal, as DeckAnnouncer is, and silence the first connect. (b) Keep it speaking behind the modal, since a lost connection matters inside a dialog too, and write that exemption into EXPERIENCE.md. Silence the first connect. (c) Keep both behaviours, and write both into EXPERIENCE.md. Recommended: (b).
-- **D10 (open, Q24; T2-D1).** The pre-commit ruff and mypy hooks run their own toolchain, which `uv.lock` does not pin (fastembed is already missing from the hook list). What should they run? Options: (a) `language: system` hooks running `uv run ruff …` and `uv run mypy src/` against the locked venv, with `pass_filenames: false`. The `additional_dependencies` list and its AGENTS.md rule go away. A commit needs a synced `.venv`, which `setup.py` already creates. (b) Keep the mirror repos, pin every entry to its `uv.lock` version, add fastembed, and add a test that fails when a pin drifts. (c) Leave the hooks, and let CI be the only authority. Recommended: (a).
-- **D11 (open, Q24; T2-D2).** The `no-local-machine-paths` hook matches only the old Windows username's paths, case-sensitively, and no CI job runs it. Three tracked files already carry a user-profile path under the current username. What is the guard for? Options: (a) No machine paths in the public tree: match any Windows user-profile path or project slug, case-insensitively, clean or exclude the three files, and run the hook in CI. (b) Add `Sathias` to the current pattern and run the hook in CI. (c) Retire it: `Sathias` is the public GitHub handle, so these paths disclose nothing new. Say so in the hook's comment. Recommended: (a).
+- **D1 (2026-11-09, Q16; M1 (B4-D2, F6-P7)).** Where should each card statistic (land count, mana-value buckets, colour counts) be defined, so the agent and the companion stop disagreeing? **Decision: (a).** `src/logic` owns land detection, mana-value bucketing and the colour counts. The deck-detail payload carries the computed figures, and the UI draws them and deletes `isLand`, `bucketOf` and `coloursOf`. B4-D2's MDFC rule is settled inside this one definition. It changes the OpenAPI contract (`plan_checkpoint`). The frozen viewer is left as it is.
+- **D2 (2026-11-09, Q11; B2-D1).** `at_most` promises colour identity but filters card colours, so a Commander search can return off-identity cards (Golgari Signet under mono-white). What should it mean? **Decision: (b).** `at_most` keeps filtering card colours. Q11 corrects the repository and tool docstrings and the skills' "pass the deck's colors" advice so they say card colours, not identity. A colour-identity filter is deferred as a feature (`deferred-work.md`).
+- **D3 (2026-11-09, Q10; B8-D3).** Q10 already changes the tool contract (`not_in_deck`, `invalid`, `error` tokens). While that is open, should the deck tools' differing not-found tokens (`not_found` vs `deck_not_found`, `card_not_found` vs `not_found`) be unified too? **Decision: (b).** The tokens stay as they are, and Q10 lists them side by side in the magic-deckbuilding skill. Unifying them is dropped.
+- **D4 (2026-11-09, Q22; M25 (F1-D1, F3-D1, F4-D2, F5-D3, F6-D1, F7-D6, F8-D3, T1-4-P12, T1-5-P9)).** About 200 UI comments cite suites deleted in `e584980` as the gate for rules nothing now enforces. What should replace them? **Decision: (b).** Q22 rewords every citation as a stated convention that names what enforces it today. Two ESLint rules come back: `fetch` and `WebSocket` only in `src/api/client.ts` (AD-4), and no `localStorage` or `document.cookie` in `src/state/` (UX-DR15). They land at the start of Q19, as a guard ahead of the UI refactors. The other checks the runs listed (custom properties outside `tokens.css`, numeric iteration counts, the `is_legal` ban, the wire-alias ban) become stated conventions only.
+- **D5 (2026-11-09, Q21; F3-D2).** The footer's Fan Content line stops at "Not approved/endorsed by Wizards.". The repository's `NOTICE` adds "Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC." Should the footer carry the full notice? **Decision: (a).** The footer carries the full Fan Content notice. DESIGN.md and `Footer/copy.ts` change together, a test pins the literal (F3-P2), and the one-line fit at 1100px is checked in a real browser.
+- **D6 (2026-11-09, Q21; F5-D2).** A suggestion's reason is cut to one line with an ellipsis, and a sighted user has no way to read the rest (up to 200 characters). How should it be recovered? **Decision: (a).** The row's `title` carries the full reason. The `companion_show_suggestions` docstring and the companion skill ask agents to keep reasons short, which is a docstring edit, so the plugin is rebuilt.
+- **D7 (2026-11-09, Q21; F6-D2).** Under Windows forced colours (High Contrast), the live deck row, the curve bars and the colour segments disappear. How far should support go? **Decision: (a).** Three forced-colours rules go in the analysis panels: a `Highlight` outline on the live row, and `forced-color-adjust` on the curve bars and colour segments. DESIGN.md calls forced colours best-effort. There is no app-wide pass.
+- **D8 (2026-11-09, Q21; F7-D2).** In the groups and swaps views, hover and focus target the detail panel hidden behind the scrim, so nothing shows. Only the tier list has an in-view preview. Should the other two get one? **Decision: (a).** `TierPreview` becomes a shared in-view preview, mounted in the groups and swaps bodies, with a DESIGN.md line for each layout.
+- **D9 (2026-11-09, Q21; F7-D4).** The connection pill announces changes behind an open agent view (DeckAnnouncer stays silent there), and it announces "Connected" on every page load. What should the policy be? **Decision: (b).** The pill keeps speaking behind an open view, and EXPERIENCE.md records that exemption. The first `reconnecting → live` change on each page load is silent, and `ConnectionPill.test.tsx:512-517` changes with it.
+- **D10 (2026-11-09, Q24; T2-D1).** The pre-commit ruff and mypy hooks run their own toolchain, which `uv.lock` does not pin (fastembed is already missing from the hook list). What should they run? **Decision: (a).** The ruff and mypy hooks become `language: system` hooks running `uv run ruff check --fix`, `uv run ruff format` and `uv run mypy src/`, with `pass_filenames: false`. `additional_dependencies` and its AGENTS.md sentence go away. A `dependabot.yml` for `github-actions` is added, as T2-D1 asked under every option.
+- **D11 (2026-11-09, Q24; T2-D2).** The `no-local-machine-paths` hook matches only the old Windows username's paths, case-sensitively, and no CI job runs it. Three tracked files already carry a user-profile path under the current username. What is the guard for? **Decision: (a).** The hook matches any Windows user-profile path or project slug, case-insensitively. The three files are cleaned or excluded, and `quality` runs the hook on every push.
 
 ### Themes, in fix order
 
@@ -2217,23 +2217,23 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 | Q7 | Tool failure paths: never raise | 12 | 10 | 10 | 0 | 0 | yes |
 | Q8 | Tool inputs normalised once | 14 | 13 | 13 | 0 | 0 | yes |
 | Q9 | Card name resolution: one resolver | 8 | 7 | 7 | 0 | 0 |  |
-| Q10 | Tool contract and vocabulary | 24 | 19 | 18 | 0 | 1 | yes |
-| Q11 | Relational and semantic search filters | 7 | 6 | 5 | 0 | 1 | yes |
+| Q10 | Tool contract and vocabulary | 24 | 19 | 19 | 0 | 0 | yes |
+| Q11 | Relational and semantic search filters | 7 | 6 | 6 | 0 | 0 | yes |
 | Q12 | Repository and data-model conventions | 22 | 19 | 18 | 1 | 0 | yes |
 | Q13 | Setup tools and the import pipeline | 26 | 24 | 24 | 0 | 0 |  |
 | Q14 | Semantic index lifecycle and recall | 19 | 15 | 15 | 0 | 0 | yes |
 | Q15 | Format rules and analysis correctness | 18 | 18 | 18 | 0 | 0 | yes |
-| Q16 | Card statistics agree everywhere | 3 | 2 | 1 | 0 | 1 | yes |
+| Q16 | Card statistics agree everywhere | 3 | 2 | 2 | 0 | 0 | yes |
 | Q17 | Power assessment accuracy | 22 | 22 | 22 | 0 | 0 | yes |
 | Q18 | Companion backend hardening | 42 | 34 | 34 | 0 | 0 | yes |
 | Q19 | UI data flow: renders, requests and recovery | 21 | 14 | 14 | 0 | 0 |  |
 | Q20 | UI untrusted input and shared helpers | 12 | 11 | 11 | 0 | 0 |  |
-| Q21 | UI accessibility and interaction | 44 | 44 | 39 | 0 | 5 | yes |
-| Q22 | Deleted UI gates and comment drift | 38 | 21 | 20 | 0 | 1 |  |
+| Q21 | UI accessibility and interaction | 44 | 44 | 44 | 0 | 0 | yes |
+| Q22 | Deleted UI gates and comment drift | 38 | 21 | 21 | 0 | 0 |  |
 | Q23 | Test-design cleanup | 23 | 19 | 18 | 1 | 0 |  |
-| Q24 | CI and toolchain, the rest | 17 | 13 | 11 | 0 | 2 |  |
+| Q24 | CI and toolchain, the rest | 17 | 13 | 13 | 0 | 0 |  |
 | Q25 | Maintenance scripts and migrations | 6 | 6 | 6 | 0 | 0 |  |
-| | **Total** | **455** | **387** | **374** | **2** | **11** | |
+| | **Total** | **455** | **387** | **385** | **2** | **0** | |
 
 "Findings" counts every finding stamped with the theme. "Distinct" counts a merge group once. "Contract" marks a theme that changes a tool contract, the OpenAPI contract or a schema, so its stories need `plan_checkpoint = true`.
 
@@ -2248,7 +2248,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 - **Q7** comes before Q8 and Q10, which build their status work on its shared guard.
 - **Q15**'s tests come before Q16, which changes `mana_curve.py`'s land rule.
 - **Q19** comes before Q20 and Q21, because the render work changes the components those themes edit.
-- **Q22** comes after Q19-Q21, so the comment sweep meets settled code. If D4 restores lint rules, those land at the start of Q19 as a guard.
+- **Q22** comes after Q19-Q21, so the comment sweep meets settled code. Its two ESLint rules (D4) land at the start of Q19 instead, as a guard ahead of the UI refactors.
 
 #### Q1. Data-loss and wrong-target traps
 
@@ -2434,7 +2434,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 - **Costs today:** The LLM-facing descriptions and the skills leave out statuses the tools return. They also say `page_size` is clamped when it is rejected, document neither power tool, and name a bug-report tool that does not exist. `set_card_quantity` says `card_not_found` where its sibling says `not_in_deck`. An Arena export with mixed-art basics imports short with `exists`, and `validate_deck` checks a Commander deck as Standard unless it is told otherwise. Read-only tools carry no `readOnlyHint`, and `MCP_TRANSPORT` still opens unsupported HTTP transports.
 - **Fixing buys:** An agent that can trust what the tools tell it. The tools are the product's interface.
 - **How wide:** The `server.py` wrappers, the result models in `tools/*.py`, the five shipped skills, `docs/architecture.md` §5, `__main__.py`, `SECURITY.md` and `.env.example`, then a plugin rebuild.
-- **Counts:** 24 findings, 19 distinct: 18 fix, 0 defer, 1 decide.
+- **Counts:** 24 findings, 19 distinct: 19 fix, 0 defer, 0 decide.
 - **Contract:** Changes tool contracts (tokens, defaults, import behaviour, transport): `plan_checkpoint`.
 - **Tests first:**
   - `B7-P4` `update_deck`'s `deck_id.strip()` emit is untested. **fix**.
@@ -2448,6 +2448,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
   - `B7-P9` `_run_mcp_server`'s "five stderr diagnostics" is wrong. **fix**.
   - `B7-P10` The package docstring names a tool that does not exist. **fix**.
   - `B8-D1` Two printings of one card in one Arena export import only the first line. **fix**.
+  - `B8-D3` · Q10) The deck tools spell the same fact with different tokens. **fix** (D3: b).
   - `B8-P8` `clone_deck` without a name can exceed the 100-character name cap. **fix**.
   - `B8-P14` `_line_result` hides unexpected statuses. **fix**.
   - `B8-P15` `_ECHO_LIMIT` and `SetActiveDeckResult.deck_name` justify the bound with a stale fact. **fix**.
@@ -2456,23 +2457,22 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
   - `B9-P2` No shipped skill documents `assess_deck_power` or `compare_deck_power`. **fix**.
   - `B9-P5` A page past the last page reads as "No cards matched". **fix**.
   - `B9-P6` `compare_deck_power` drops each failed side's explanation. **fix**.
-  - `B8-D3` The deck tools spell the same fact with different tokens. **decide** → D3.
 
 #### Q11. Relational and semantic search filters
 
 - **Costs today:** `at_most` with `colors=[]` returns every card. `exact` with `["W","W"]` returns two-colour cards. `rarity=[]` silently drops the filter. Pagination can repeat or skip tied rows. `colors=[]` means opposite things on the relational and semantic paths, and `at_most` promises colour identity while it filters card colours.
 - **Fixing buys:** Filters that do what their docstrings say, the same way on both search paths.
 - **How wide:** `search_advanced` in `card.py` and the filter builder in `query.py`.
-- **Counts:** 7 findings, 6 distinct: 5 fix, 0 defer, 1 decide.
-- **Contract:** Changes a tool contract if `at_most` moves to colour identity (decision D2): `plan_checkpoint`.
+- **Counts:** 7 findings, 6 distinct: 6 fix, 0 defer, 0 decide.
+- **Contract:** Changes tool behaviour (`colors=[]` on the semantic path; docstrings and skills per D2): `plan_checkpoint`.
 - **Tests first:**
   - `B6-P9` `exact` and `at_most` are untested on the semantic path. **fix**.
 - **Then:**
   - `M17` (B2-P1, B6-P4) `colors=[]` means "every card" on `at_most` and the semantic path but "colourless" on `exact`. **fix**.
+  - `B2-D1` · Q11) `at_most` promises colour identity but filters `colors`. **fix** (D2: b).
   - `B2-P2` `exact` mode miscounts duplicate colours. **fix**.
   - `B2-P11` `rarity=[]` builds an empty `or_()` (SQLAlchemy 2 deprecation warning; filter silently dropped). **fix**.
   - `B2-P12` Pagination order has no unique tie-break. **fix**.
-  - `B2-D1` `at_most` promises colour identity but filters `colors`. **decide** → D2.
 
 #### Q12. Repository and data-model conventions
 
@@ -2594,10 +2594,10 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 - **Costs today:** The agent reports one land count and curve in chat, and the companion beside it shows another for the same deck (MDFC lands, mana value 0 and 7+, pip counts). Two UI headers claim the two cannot disagree.
 - **Fixing buys:** One definition per statistic. The product's premise is that the agent drives and the app shows.
 - **How wide:** About eight functions: `mana_curve.py`, `assessment/mana_base.py`, `classifiers.py`, `curve.ts`, `colours.ts` and `deckGroups.ts`. The frozen viewer is left to diverge until it is removed (AD-15).
-- **Counts:** 3 findings, 2 distinct: 1 fix, 0 defer, 1 decide.
-- **Contract:** Changes the OpenAPI contract if the figures ship in the deck payload (decision D1): `plan_checkpoint`.
+- **Counts:** 3 findings, 2 distinct: 2 fix, 0 defer, 0 decide.
+- **Contract:** Changes the OpenAPI contract (the deck-detail payload carries the figures, per D1): `plan_checkpoint`.
 - **Findings:**
-  - `M1` (B4-D2, F6-P7) The same card statistic disagrees between the agent, the companion and the viewer (land rule, mana-value buckets, colour counts), and two UI headers claim it cannot. **decide** → D1.
+  - `M1` (B4-D2, F6-P7) The same card statistic disagrees between the agent, the companion and the viewer (land rule, mana-value buckets, colour counts), and two UI headers claim it cannot. **fix** (D1: a).
   - `F6-P8` Nothing checks the seven-bucket tuple against `BUCKETS`. **fix**.
 
 #### Q17. Power assessment accuracy
@@ -2724,7 +2724,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 - **Costs today:** The modal's focus trap leaks to the background, and the History popover then opens uninvited. Group tiles collapse to slivers. Swap tiles read "Out · 2 copies" with no card name, and every flip control has the same name. Esc on Unpin drops focus to `<body>`. The reduced-motion overrides and the offline-font guarantee rest on deleted checks, there is no default focus ring, and several visual glitches remain.
 - **Fixing buys:** The DESIGN.md, EXPERIENCE.md and NFR-06 requirements actually hold. Every layout fix needs a real-browser check, because jsdom resolves no layout.
 - **How wide:** `ui/src/components/`, `ui/src/containers/`, `ui/src/styles/`, `index.css`, `.stylelintrc.json`, and lines in DESIGN.md and EXPERIENCE.md.
-- **Counts:** 44 findings, 44 distinct: 39 fix, 0 defer, 5 decide.
+- **Counts:** 44 findings, 44 distinct: 44 fix, 0 defer, 0 decide.
 - **Contract:** Changes a wire docstring (`SwapItem`, "1 copy"): `npm run gen:api`.
 - **Tests first:**
   - `F3-P2` The attribution sentence is pinned only against itself. **fix**.
@@ -2738,6 +2738,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
   - `F6-P2` `DeckRow`'s reactive cache subscription is untested. **fix**.
   - `F6-P3` No test checks the table's row headers, including `7+`. **fix**.
 - **Then:**
+  - `F3-D2` · Q21) **The footer attribution omits part of the Fan Content notice.** `Footer/copy.ts` renders DESIGN.md's sentence verbatim, ending "Not … **fix** (D5: a).
   - `F3-P1` The state panel renders guidance before the action, so two states read out of order. **fix**.
   - `F3-P3` The size badge's text has no space between the count and the label. **fix**.
   - `F3-P4` Snow mana is announced as a bare "S". **fix**.
@@ -2749,14 +2750,18 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
   - `F4-P11` Moving the target between two DFCs in different face states plays the flip rotation in the panel. **fix**.
   - `F4-P12` The panel paints one frame without its art box on cold open. **fix**.
   - `F5-D1` The focus trap does not keep focus inside the modal. **fix**.
+  - `F5-D2` · Q21) **A truncated reason cannot be read.** The reason is ellipsized to one line, and the stylesheet says the truncation is final on purpose … **fix** (D6: a).
   - `F5-P5` The push-replace crossfade does not play. **fix**.
   - `F5-P6` Under StrictMode, a closed view returns focus to the wrong place. **fix**.
   - `F5-P8` The kicker's casing rationale contradicts itself and the nav. **fix**.
   - `F5-P13` The header count is a bare number, and a comment says otherwise. **fix**.
   - `F5-P14` History entries have no hover state. **fix**.
   - `F5-P15` The popover's anchor is measured only on resize. **fix**.
+  - `F6-D2` · Q21) **Under forced colours (Windows High Contrast), the data marks and the live marker in this group disappear.** No stylesheet in `ui/src` has a … **fix** (D7: a).
   - `F6-D3` No control exposes the pin state. **fix**.
   - `F7-D1` Group tiles have no width, so they collapse to slivers. **fix**.
+  - `F7-D2` · Q21) **In the groups and swaps views, hover and focus target a panel nobody can see.** `TierPreview` exists because "the persistent `CardDetail` … **fix** (D8: a).
+  - `F7-D4` · Q21) **The pill's announcement policy leaves two cases unruled.** The announcement is keyed on the connection status and nothing else … **fix** (D9: b).
   - `F7-D5` A one-copy swap reads "1 copies". **fix**.
   - `F7-P1` A swap tile's accessible name leaves out the card. **fix**.
   - `F7-P11` The revealed tooltip covers the top of the pill's focus ring. **fix**.
@@ -2767,23 +2772,18 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
   - `F8-D2` The offline guarantee for fonts and assets is no longer enforced, but the comments say it is. **fix**.
   - `F8-D4` The focus ring is written out 15 times, and `index.css` has no default. **fix**.
   - `F8-P6` The left slot's comment sits inside the ternary's condition. **fix**.
-  - `F3-D2` The footer attribution omits part of the Fan Content notice. **decide** → D5.
-  - `F5-D2` A truncated reason cannot be read. **decide** → D6.
-  - `F6-D2` Under forced colours (Windows High Contrast), the data marks and the live marker in this group disappear. **decide** → D7.
-  - `F7-D2` In the groups and swaps views, hover and focus target a panel nobody can see. **decide** → D8.
-  - `F7-D4` The pill's announcement policy leaves two cases unruled. **decide** → D9.
 
 #### Q22. Deleted UI gates and comment drift
 
 - **Costs today:** About 200 comments in `ui/src` name suites deleted in `e584980` as the enforcement of rules that nothing now enforces: one network door, no persisted UI state, the `is_legal` ban, the wire-alias ban. Dozens of line citations and counts have drifted too. An editor who trusts such a comment expects a gate that will not fire.
-- **Fixing buys:** Comments that can be trusted, and, depending on decision D4, cheap lint rules for the rules that are architecture invariants.
-- **How wide:** Most of `ui/src`, and `eslint.config.js` / `.stylelintrc.json` if lint rules return.
-- **Counts:** 38 findings, 21 distinct: 20 fix, 0 defer, 1 decide.
+- **Fixing buys:** Comments that can be trusted, and two ESLint rules (D4) for the two rules that are architecture invariants: the one network door and no persisted UI state.
+- **How wide:** Most of `ui/src`, and `eslint.config.js`.
+- **Counts:** 38 findings, 21 distinct: 21 fix, 0 defer, 0 decide.
 - **Findings:**
+  - `M25` (F1-D1, F3-D1, F4-D2, F5-D3, F6-D1, F7-D6, F8-D3, T1-4-P12, T1-5-P9) About 200 UI comments name suites deleted in `e584980` as the enforcement of rules nothing now enforces. **fix** (D4: b).
   - `M26` (F1-P7, F3-P7, F4-P13, F5-P12, F6-P10, F7-P10, F8-P5) UI comments hard-code line numbers and counts that have drifted. **fix**.
   - `M27` (F5-P9, F7-P7, T1-5-P11) Comments disagree on how many live regions the app has, and no test pins the census with a view open. **fix**.
   - `M31` (F6-P1, T1-5-P8) Headers and tests still describe a hydration sweep that no longer exists. **fix**.
-  - `M25` (F1-D1, F3-D1, F4-D2, F5-D3, F6-D1, F7-D6, F8-D3, T1-4-P12, T1-5-P9) About 200 UI comments name suites deleted in `e584980` as the enforcement of rules nothing now enforces. **decide** → D4.
   - `F2-P7` The `reopenPush` docstring says "The entry IS the retained reference", which holds only for the newest entry of each kind, while the `revisit` branch … **fix**.
   - `F2-P8` The `DeckBoot` docstring says "What one settled boot decided", but the interface is the boot's control handle. **fix**.
   - `F2-P9` `MAX_ATTEMPTS_PER_CARD` and the `attempts` map say "ever, for the life of the tab", but `resetCardAttempts` restores the budget on every reconnect … **fix**.
@@ -2834,9 +2834,11 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 - **Costs today:** The pre-commit hooks run a toolchain that `uv.lock` does not pin, and fastembed is already missing from `additional_dependencies`. The leak guard watches only the old username. `scripts/` is never type-checked (13 errors today). The Node floor admits versions the lock cannot install, and the gated floor is end-of-life. The live-contract canary goes green on 4xx, 5xx and non-JSON answers, and its schedule can switch itself off. Nothing lints the logging rule, and docs-only pushes run the full CI.
 - **Fixing buys:** Local and CI gates that agree, and a canary that can go red.
 - **How wide:** `ci.yml`, `live-contract.yml`, `.pre-commit-config.yaml`, `pyproject.toml`, `ui/package.json`, the tsconfigs, `CONTRIBUTING.md` and `AGENTS.md`.
-- **Counts:** 17 findings, 13 distinct: 11 fix, 0 defer, 2 decide.
+- **Counts:** 17 findings, 13 distinct: 13 fix, 0 defer, 0 decide.
 - **Findings:**
   - `M22` (B6-P13, B1-P4, B3-P12, B13-P25, T2-P7) Eager f-string log calls (29 in `src/`, more in `scripts/`), with no lint rule to stop new ones. **fix**.
+  - `T2-D1` · Q24) **The pre-commit hooks run their own toolchain, which `uv.lock` does not pin, so the hooks and CI can disagree.**. **fix** (D10: a).
+  - `T2-D2` · Q24) **The leak guard watches only the old username, matches case-sensitively, and has no CI counterpart.**. **fix** (D11: a).
   - `T2-D4` `scripts/` is type-checked by nothing, and `uv run mypy scripts/` reports 13 errors in 4 files today. **fix**.
   - `T2-D5` No CI job runs the Python the maintainer, and possibly a plugin user, runs. **fix**.
   - `T2-D6` The declared Node floor admits versions the lock cannot install, and the gated floor is end-of-life. **fix**.
@@ -2847,8 +2849,6 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
   - `T2-P9` A `.tsx` test under `ui/tests/` is collected by vitest but belongs to no tsconfig. **fix**.
   - `T2-P10` Two CI comments give a reason that `.gitignore` no longer supports. **fix**.
   - `T2-P11` CONTRIBUTING's gate list and the `ci.yml` header describe a weaker gate than CI runs. **fix**.
-  - `T2-D1` The pre-commit hooks run their own toolchain, which `uv.lock` does not pin, so the hooks and CI can disagree. **decide** → D10.
-  - `T2-D2` The leak guard watches only the old username, matches case-sensitively, and has no CI counterpart. **decide** → D11.
 
 #### Q25. Maintenance scripts and migrations
 
@@ -2869,7 +2869,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 
 | Group | Finding | Strongest evidence | Also raised by | Theme | Disposition |
 |---|---|---|---|---|---|
-| M1 | The same card statistic disagrees between the agent, the companion and the viewer (land rule, mana-value buckets, colour counts), and two UI headers claim it cannot | research F1 (§6 table) | B4-D2, F6-P7; B5 and F6 overlap notes | Q16 | **decide** → D1 |
+| M1 | The same card statistic disagrees between the agent, the companion and the viewer (land rule, mana-value buckets, colour counts), and two UI headers claim it cannot | research F1 (§6 table) | B4-D2, F6-P7; B5 and F6 overlap notes | Q16 | **fix** (D1: a) |
 | M2 | Snow basics are held to the copy limit | B4-P1 (6 `Basic Snow Land` rows in `cards.db`) | research F2 | Q15 | **fix** |
 | M3 | `find_similar`'s exact seed match is a full table scan (#108's NOCASE fix never reached it) | B9-P7 | research F3, §5 | Q9 | **fix** |
 | M4 | The partial-name read is unbounded, and callers report the capped count as exact | B2-D2 | B8-P9; B8 and B9 overlap notes (`find_similar._resolve_seed` repeats it in raw SQL); research §7 | Q9 | **fix** |
@@ -2893,7 +2893,7 @@ Walked with Brad on 2026-11-09, a few at a time and grouped by theme. **Open:** 
 | M22 | Eager f-string log calls (29 in `src/`, more in `scripts/`), with no lint rule to stop new ones | T2-P7 (ruff `G` rule) | B1-P4, B3-P12, B6-P13, B13-P25 | Q24 | **fix** |
 | M23 | Multi-face cards are invisible to every synergy detector (their text lives in `card_faces`) | B4-P5 (verified in `cards.db`) | B5 overlap note (`_match_text` is the fix) | Q15 | **fix** |
 | M24 | No test drives either rebuild entry point or the embeddings CLI `main()` | B7-P3 | B6-P7, T1-1-P6 | Q14 | **fix** |
-| M25 | About 200 UI comments name suites deleted in `e584980` as the enforcement of rules nothing now enforces | F1-D1 (with the lint-rule options) | F3-D1, F4-D2, F5-D3, F6-D1, F7-D6, F8-D3, T1-4-P12, T1-5-P9 | Q22 | **decide** → D4 |
+| M25 | About 200 UI comments name suites deleted in `e584980` as the enforcement of rules nothing now enforces | F1-D1 (with the lint-rule options) | F3-D1, F4-D2, F5-D3, F6-D1, F7-D6, F8-D3, T1-4-P12, T1-5-P9 | Q22 | **fix** (D4: b) |
 | M26 | UI comments hard-code line numbers and counts that have drifted | F1-P7 | F3-P7, F4-P13, F5-P12, F6-P10, F7-P10, F8-P5 | Q22 | **fix** |
 | M27 | Comments disagree on how many live regions the app has, and no test pins the census with a view open | F5-P9 | F7-P7, T1-5-P11 | Q22 | **fix** |
 | M28 | Id-indexed plain-object stores read inherited keys (`"constructor"`) as entries | F2-P1 | F1-P2 | Q20 | **fix** |
@@ -2931,6 +2931,7 @@ Each is recorded in `_bmad-output/initiative-artificial-planeswalker/deferred-wo
 - **`B4-D3` option (b)**: count Kindred non-creature spells as tribe members. It changes what "tribal density" means, so it is Brad's call the next time synergy detection is extended. Option (a), the narrow parsing fixes, is in Q15.
 - **`B5-D5` option (b)**: replace the provisional Commander pip anchors with Karsten's published Commander tables. It waits for a benchmark case, because the dimension weighs 0.05 in Commander. Option (a) is in Q17.
 - **`B5-D3` option (b)**: also drop superset variants from the returned `combos` list. That is a tool-output change and a separate call. Option (a), fixing the score, is in Q17.
+- **A colour-identity search filter** (follows D2). `search_cards` and the semantic tools filter card colours only, so a Commander search has to check identity afterwards. An identity filter is a new tool parameter, and on the semantic path it also needs new vec0 metadata columns and a `--rebuild`. Add it as a feature when Commander searches need it.
 
 ### Dropped
 
@@ -2942,3 +2943,5 @@ Options and whole directions that were considered and dropped, because the fix a
 - **Legality as vec0 metadata columns** (`B6-D1` option (c)). A schema change and a full re-embed, for what an adaptive `k` solves inside one function.
 - **A full canonical-printing preference order** (`B3-D1` option (b)). It would move many canonical ids for a preference nobody asked for. Q13 prefers English, which fixes the visible defect.
 - **Unindexed-column tuning without a measurement** (`M15`). Deferred, not fixed, until the EXPLAIN above exists.
+- **Unifying the deck tools' not-found tokens** (`B8-D3` option (a), decision D3). Renaming tokens that the agent already handles buys little, because each tool's messages say what is missing. The skill lists them side by side instead.
+- **An app-wide forced-colours pass** (`F6-D2` option (b), decision D7). Three rules close the visible gaps, and DESIGN.md records forced colours as best-effort.

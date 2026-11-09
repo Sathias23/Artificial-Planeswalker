@@ -25,3 +25,7 @@ Ids are those stamped in `review-codebase-2026-11/review-codebase-2026-11.md` (s
 - source_plan: `_bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md`
   summary: "`B5-D3` option (b): also drop Spellbook superset variants from the `combos` list that `assess_deck_power` returns. That is a tool-output change and a separate call. Skipping them in scoring, option (a), is in the fix list (Q17)."
   evidence: 'B5 code review, 2026-11-08, `src/logic/assessment/combos.py:181-198`; `src/logic/assessment/dimensions.py:594-621` (205 two-card pairs have supersets, up to 237 for one pair).'
+
+- source_plan: `_bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md`
+  summary: "A colour-identity search filter (follows decision D2, 2026-11-09): `search_cards`' `at_most` and the semantic tools filter card colours, so a Commander search returns off-identity cards (Golgari Signet under mono-white) unless the agent checks identity itself. D2 kept the colour semantics and corrects the docstrings and skills. An identity filter is a new tool parameter, and on the semantic path it also needs new vec0 metadata columns and a `--rebuild`."
+  evidence: 'B2 code review (`B2-D1`), 2026-11-08, `src/data/repositories/card.py:435`, `:463`, `:517-524`; `src/search/index_builder.py:372-375` stores `cards.colors`, deliberately not `color_identity`.'
