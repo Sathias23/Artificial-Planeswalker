@@ -1707,7 +1707,10 @@ def operator_data_dirs() -> list[Path]:
         candidates.append(Path(override).expanduser())
     url = (os.getenv("CARDS_DATABASE_URL") or "").strip()
     if url:
-        candidates.append(Path(paths.sqlite_file_from_url(url)).expanduser().parent)
+        db_file = Path(paths.sqlite_file_from_url(url)).expanduser()
+        # Both the directory the URL names and the one the file really lives in: resolving the
+        # FILE before taking its parent follows a file symlink, which `.parent.resolve()` misses.
+        candidates.extend([db_file.parent, db_file.resolve().parent])
     return [candidate.resolve() for candidate in candidates]
 
 

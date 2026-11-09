@@ -355,6 +355,28 @@ class TestTheDatabaseUrlIsOperatorData:
 
         cdp.refuse_the_operators_data_dir((tmp_path / "ap-copy").resolve(), command="refetch")
 
+    def test_a_symlinked_database_files_real_directory_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        actual = tmp_path / "actual"
+        actual.mkdir()
+        (actual / "cards.db").write_bytes(b"")
+        alias = tmp_path / "alias"
+        alias.mkdir()
+        try:
+            (alias / "cards.db").symlink_to(actual / "cards.db")
+        except OSError:
+            pytest.skip("creating a file symlink needs privileges this machine lacks")
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        monkeypatch.setenv(
+            "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(alias / 'cards.db').as_posix()}"
+        )
+
+        for target in (actual, alias):
+            with pytest.raises(SystemExit) as refused:
+                cdp.refuse_the_operators_data_dir(target.resolve(), command="refetch")
+            assert "refuses to touch your real data dir" in str(refused.value)
+
     def test_resolving_the_url_creates_nothing(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ):
