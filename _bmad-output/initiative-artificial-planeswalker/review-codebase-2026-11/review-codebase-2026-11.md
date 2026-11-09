@@ -91,7 +91,7 @@ Split `ui/src/containers/` into F4–F7 and `ui/src/state/` into F1/F2 by folder
   - [x] **T1-1 data, logic, search (B1-B6):** `tests/unit/{data,logic,search,viewer}/`, `tests/integration/{data,logic,search}/`.
   - [x] **T1-2 MCP tools and scripts (B7-B9, B13):** `tests/integration/mcp_server/`, `tests/integration/test_mcp_tools.py`, `tests/integration/test_build_plugin.py`, `tests/test_setup.py`.
   - [x] **T1-3 companion backend (B10-B12):** `tests/unit/companion/`, `tests/integration/companion/`.
-  - [ ] **T1-4 UI (F1-F8):** `ui/src/**/*.test.*` except `App.test.tsx`, and `ui/tests/`.
+  - [x] **T1-4 UI (F1-F8):** `ui/src/**/*.test.*` except `App.test.tsx`, and `ui/tests/`.
   - [ ] **T1-5 `ui/src/App.test.tsx`** on its own.
 - [ ] **T2, `bmad-review` on the configuration:** `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/`, `ui/package.json`, `ui/vite.config.*`, `ui/tsconfig*.json`. Look for gate gaps between local and CI, slow CI steps, pinned versions that are stale.
 
@@ -1880,6 +1880,92 @@ These three do not change the result, but the `test_` prefix is what made the sc
 **Rejected**
 
 - None. All 20 raw findings were verified as real. Two of them, the SPA-shadowing classes and the committed-schema classes, share one root cause and were merged, which leaves 19. One sub-claim was dropped: the reviewer also asked the autouse client fixture to fail or warn when it finds another loop's unclosed client. That adds fixture logic for a leak the new `run()` test already catches.
+
+### 2026-11-09 — T1-4 tests: UI (F1-F8)
+
+**Code review complete.** 1 `decision-needed`, 12 `patch`, 0 `defer`, 0 rejected.
+
+- **Area:** T1-4, test design only. **Revision:** `54fa37a7db81838ab091a4cb9c7b38108ad960b0`. No file under `ui/` has changed since the reviewed revision `ee0263d`.
+- **Mode:** no-code, quick. One context-free reviewer, which did not fail. Triage: leave as action items.
+- **Files (6 files, 3,322 lines).** Each was picked for the F1-F8 risk it covers:
+  - `ui/src/test-setup.ts` (12): the `dom` project's only setup. It decides whether a React warning (duplicate keys, `act`) can fail a test, which is what T1-0's `AppShell` stderr line asked about.
+  - `ui/src/state/deck.test.ts` (1,399): T1-0's slowest UI file (6,319 ms), and F2's CAP-3 probe, `driveDeckChanged` supersession and refetch paths.
+  - `ui/src/state/agentView.test.ts` (1,192): F2's `HISTORY_CAP` retention, revisit and unread bookkeeping, and the four `*ViewOf` builders.
+  - `ui/src/state/faces.test.ts` (145): F1's inherited-key face store, and the primitive-selector re-render claim.
+  - `ui/src/containers/useCardArt.test.ts` (107): F4's `settleIfCached` and the art state behind the cold-open panel.
+  - `ui/src/containers/SwapsView/SwapsView.test.tsx` (467): one of the four agent-view body suites. It stands in for the duplicated tile harness F5 and F7 describe, the per-view request pattern and the `cardId === ''` guard F7 found live in swaps. It is the smallest of the four, and it calls itself "`SuggestionsView.test.tsx`'s harness".
+- **Read as evidence only (cited ranges, not whole files):** `cards.test.ts` (the `seedDeckCards` cases, `:230-291`), `inspection.test.ts:452-480`, the drain helpers in `poller.test.ts` and `socket.test.ts`, `AgentViewsNav.test.tsx:49` and `:330`, `tests/lint-gates.test.ts:538-548`, vitest's `waitFor` source, `state/deck.ts` (`runSequence`), `state/agentView.ts` (`historyWith`, `openAgentView`) and `SwapsView.tsx`.
+- **Left out on purpose:**
+  - `client.test.ts` (1,307): F1's `client.ts` items are docstring citations, and the request dedupe it names lives in `cards.ts`.
+  - `socket.test.ts` (903) and `poller.test.ts` (637): F1 already recorded their test patches (accept-then-drop, the throwing `onStatus`, `unreachable` inside a stalled run).
+  - `cards.test.ts` (907): read by range for the `seedDeckCards` cases.
+  - `CardTile.test.tsx` and `CardDetail.test.tsx`: F4 recorded six test patches against them.
+  - The other three agent-view body suites: their duplication was checked by grep (below).
+  - `ui/tests/`: `lint-gates.test.ts` and `devProxyRoundTrip.test.ts` are gate harnesses under `npm run test:gates`. F8 recorded the stale citation in `lint-gates.test.ts`. `tokens.test.ts` and the build and proxy config tests belong to T2's configuration pass. `surfaces.test.ts` goes with F8's deletion patch.
+- **Not repeated:** the test patches the F1-F8 blocks already record. From F1: the accept-then-drop socket, the faces `"constructor"`, the `'Card // Card'` grouping, the throwing `onStatus`, the `unreachable` stall reset and the unknown-pin release. From F2: the revisit-unread cases, the `'none'`-settle probe case and the cards `"constructor"`. From F3: the attribution and state-panel order. From F4: the six `CardTile`/`CardDetail`/`CardGrid`/`useCardArt` cases. From F5: the `null` element, the `''` first paint in suggestions and the two History-pill cases. From F6: the `DeckRow` subscription and the curve and colour pins. From F7: the failed-image, flipped-face and preview-hydration tile tests. From F8: the format-check panel across a refetch. A finding below that extends one of them says what is new.
+- **Cross-scope checks (by grep over `ui/src`, excluding `App.test.tsx`):**
+  - `vi.waitFor` appears only in `deck.test.ts` (59 calls). The other suites drain with `vi.advanceTimersByTimeAsync(0)`.
+  - No test module imports another test module, and no test reads source or documentation text.
+  - No test spies on `console`.
+  - About 20 suites define their own `CardSummary` builder (`summary`, `row` or `card`). `seedHydrated` is defined in 6 suites, `seedUnknown` and `cardCalls` in 4 each, and `seedAll` in 2.
+- **Why `deck.test.ts` is slow (T1-0's open question, now verified by reading the code):** the time is `vi.waitFor` polling. vitest 4.1.10 runs the callback once synchronously, then only on a 50 ms `setInterval`. Every boot reader settles on microtasks alone (`deck.ts:244`, `:262`), so a `waitFor` entered right after `start()` or a resolve always fails its first check and waits a full interval. On Windows that interval lands at about 62.5 ms, because timer granularity is 15.625 ms. `settled()` costs two failed checks, and a test's own after-resolve wait adds a third: 3 × 62.5 ≈ 187 ms, which is T1-0's "exactly 186 ms" plateau. The 310 ms CAP-3 test (`:782`) has five failed first checks, about 312 ms.
+- **What holds:**
+  - `deck.test.ts` drives the real `createDeckBoot` with injected readers, and `SwapsView.test.tsx` renders the real component against the real stores, with only `fetch` stubbed.
+  - `test-setup.ts` registers `cleanup`, so renders do not leak between tests.
+  - F2's retention pins exist: a push older than all twenty (`agentView.test.ts:1040-1051`), and the same-reference re-opens (`:1066-1081`, `:1120-1132`).
+  - `schema.test.ts`'s `expectTypeOf`-only blocks are held by `npm run typecheck` (T1-0). Not a defect.
+
+- [ ] [Review][Decision] **The duplicate-key test cannot fail, because no test fails on a React warning.** `SwapsView.test.tsx:220-228` ("no key collision") counts two rows. On a first render, React renders both children of a duplicate key and only logs a `console.error`. `test-setup.ts` installs no console trap, and no `ui/src` test spies on the console. So dropping `index` from the row key (`SwapsView.tsx:299`) passes. The same holds for every warning-only failure React reports: keys, `act`, and controlled/uncontrolled switches. This also answers T1-0's open question about the `AppShell.test.tsx` iterator warning. T1-0's whole run printed that one line and no other stderr, so a global trap fails one test today. [`ui/src/test-setup.ts`, `ui/src/containers/SwapsView/SwapsView.test.tsx:220`] Options:
+  - (a) In `test-setup.ts`, fail any test that logs `console.error` unless the test spies on it. `AppShell.test.tsx`'s iterator case then asserts its deliberate warning instead of printing it.
+  - (b) Spy on `console.error` in the duplicate-key test only, and leave the `AppShell` line as known noise.
+  - (c) Leave it, and delete or rename the duplicate-key test.
+
+  Recommended: (a). It is a few lines, its blast radius is the one test T1-0 already saw, and it makes every warning-only React failure in the suite visible.
+- [ ] [Review][Patch] **`deck.test.ts` spends about 5 of its 6.3 s polling.** The polling is explained in the note above. Replace each `vi.waitFor` that follows a `start()` or a resolve with one shared drain, either the siblings' `vi.advanceTimersByTimeAsync(0)` or a single real macrotask. Keep `waitFor` only where a real timer is involved, if anywhere. Re-run the per-file timings afterwards, and expect the file to drop well under 1 s [`ui/src/state/deck.test.ts:529-534`, `:782-812`]
+- [ ] [Review][Patch] **The "nothing happened" assertions sit behind fixed-depth microtask drains.** `flush` is 8 ticks (`:524-526`, `:1023-1025`), there is an inline 8-tick loop at `:963`, and `:198-199`, `:232-233` and `:946` drain 1-2 ticks. The checks behind them all say nothing settled or the deck is untouched (`:201`, `:576-578`, `:650`, `:702-703`, `:807-808`, `:947`, `:964`, `:1099`, `:1151`). If the refetch chain gains an await, as the open P3 abort-signal threading or F2's `driveDeckChanged` deferral would add, the drain ends before the response is processed. These checks then pass because nothing ran. The only positive controls for chain depth are in other tests (`:543`, `:551`). Use a drain that empties the whole queue, whatever the chain depth. This is the same helper as the patch above: do not swap `waitFor` for the 8-tick `flush` [`ui/src/state/deck.test.ts:524`, `:963`, `:198`]
+- [ ] [Review][Patch] **No test counts renders on the paths named as re-render storms.** The only render-count test in `ui/src` is `inspection.test.ts:452-480`. F2's `seedDeckCards` patch, F4's `CardTile` memo patch and F8's `useSystemState` patch record production fixes only. The refetch suites in `deck.test.ts` assert store state, never that card-cache subscribers stay quiet. `cards.test.ts:288-291` checks an empty seed with `toEqual({})`, not reference stability. `faces.ts:140-144` and `agentView.test.ts:926-945` claim that primitive selectors prevent re-renders, but assert only `typeof`. Add these with the `inspection.test.ts` counter idiom:
+  - a `useCardEntry` subscriber across a refetch with an unchanged payload re-renders 0 times (this fails today and guards F2's patch);
+  - an empty or unchanged seed returns the same `cards` reference (`toBe`);
+  - a `CardGrid` tile render count across a new `boards` reference with unchanged rows (F4's patch);
+  - a `useAgentViewIsOpen` subscriber across a second push re-renders 0 times.
+
+  F8's `App` half belongs to T1-5 [`ui/src/state/cards.test.ts:288`, `ui/src/state/deck.test.ts`, `ui/src/state/agentView.test.ts:926`]
+- [ ] [Review][Patch] **Card builders and seed helpers are copied across the UI suites.** About 20 suites define their own `CardSummary` builder, and about 9 build their own `DeckDetail`. The four agent-view body suites (swaps, suggestions, tier list, groups) each copy the same harness: `summary`, `card`, `seedHydrated`, `seedUnknown`, the row and tile queries, the never-settling `fetch` stub and `cardCalls`. `seedUnknown` hand-types production's refusal entry (`cards.ts:221-227`) in all four, so a change to that entry leaves four stale copies. `agentView.test.ts`'s `viewOf` (`:640`) and `pushAt` (`:953`) repeat `AgentViewsNav.test.tsx`'s `contentOf` (`:49`) and `historyPush` (`:330`) with the same id, ts and title scheme. Move them into one non-test support module under `src/` (`state/formatCheck.fixtures.ts` is the precedent). Build `seedUnknown` from the store's own refusal path. Do this before F7's tile-dedup decision lands, so that change edits one harness, not four [`ui/src/containers/SwapsView/SwapsView.test.tsx:35-90`, `SuggestionsView.test.tsx:33-70`, `TierListView.test.tsx:37-90`, `GroupsView.test.tsx:39-100`, `ui/src/state/agentView.test.ts:640`, `:953`]
+- [ ] [Review][Patch] **`deck.test.ts:706-751` pins the restart that F2's `driveDeckChanged` patch removes.** It fires `driveDeckChanged` during an unsettled re-drive, asserts `readActive` ×3, and calls that "the supersession race the fold exists to win". F2's patch defers through `redriveOnSettle` while `!boot.settled()`, so this test turns red, and F2 does not mention it. Rewrite it in the same change: the in-flight re-drive settles, then exactly one deferred re-drive runs. This is new against F2, which records the production change only [`ui/src/state/deck.test.ts:706-751`]
+- [ ] [Review][Patch] **`useDeckState`'s composition layer is tested only through `App.test.tsx`.** Every `buildBoot` replaces the production `onUpdate`. So the probe and re-drive `onUpdate`, `reconcileDeckBoot`'s deferral and `refetchOnDeckChanged` (the CAP-2/CAP-3 wiring) run only in `App.test.tsx`, where F2 found the `'none'`-settle gap. Probe (d) at `:284-316` writes through its own `onUpdate`, and its comment concedes that such a test "would prove nothing" about the wiring: it pins zustand's key merge, not `applyDeckState`. Add a `renderHook(useDeckState)` harness with stubbed `fetch` and real system-store writes. Move F2's `'none'` case there, and delete probe (d) [`ui/src/state/deck.test.ts:284-316`, `ui/src/state/deck.ts`]
+- [ ] [Review][Patch] **Three swaps test names claim more than their assertions check.**
+  - `:446` "asks for nothing on an empty push" renders a malformed item, not an empty push, so the empty-push hydration arm is untested here.
+  - `:344` "no tabindex and no keydown handler" checks the tag, `type` and `tabindex`, but nothing about a keydown handler.
+  - `:245-276` and `:459-466` see only `fetch`. Image requests bypass `fetch`, and the end-state checks run after the mount effect's synchronous `hydrateCard('')` write. So deleting `|| cardId === ''` (`SwapsView.tsx:169`) would commit one `<img src="/api/card-image/">` and still pass, although `:460-462`'s comment says the image is prevented.
+
+  Add an empty-push case and the first-paint image check, and rename the keydown test. The image check is F5's `MutationObserver` mechanism; what is new is the swaps suite, where F7 found the guard live [`ui/src/containers/SwapsView/SwapsView.test.tsx:344`, `:446`, `:459`]
+- [ ] [Review][Patch] **No test covers `HISTORY_CAP` eviction of a retained kind, and that path re-mints two references for an unchanged result.** Take one swaps push, then twenty suggestions pushes, then `reopenAgentView('swaps')`. `revisit` is false because `history.includes` misses, so `retained` is rebuilt. `historyWith` inserts the view at index 20 and slices it straight back off, so `history` is a new array with the same entries. The History pill, the popover and every `retained` subscriber then see new references, which `:1066-1081` and `:1120-1132` guard against for the in-history case. F2 rejected the "evicts a real push" variant by reasoning alone, and no test holds that reasoning. Add the case. Have `historyWith` return `history` itself when the insert falls past the cap, and keep `retained` when its entry for the kind is the same object [`ui/src/state/agentView.ts:178-200`, `:213-226`; `ui/src/state/agentView.test.ts`]
+- [ ] [Review][Patch] **`agentView.test.ts` has four near-copy builder suites.** `:145-270`, `:288-362`, `:379-463` and `:479-564` each repeat the same tests: empty payload, the 4-row title fallback, trimmed title, explicit 0 count, OPENS and DISPLACES. The frame factories at `:83`, `:285`, `:376` and `:476` are near-copies too. Fold them into one `describe.each` over the kinds, in the same change as F2's generic-builder patch. Also, the `TIERS` fixture (`:65-72`) is a `suggestions` push titled "Card tiers", in a file that also tests the real `tier_list` kind; rename it [`ui/src/state/agentView.test.ts:145-564`, `:65`]
+- [ ] [Review][Patch] **`deck.test.ts` copies its own harness three times.** `DetailCall`, `buildBoot` and `settled` appear at `:492-534`, `:827-857` and `:999-1032`, and `flush` twice. The broken-row literal appears four times (`:429`, `:681`, `:908`, `:1083`), and the empty `boards` literal twice (`:294-301`, `:1182-1189`). Each `buildBoot` re-types the production writer (`useDeckStore.setState({ deck: state })`). Hoist one parameterised harness to file scope, with the drain from the first patch [`ui/src/state/deck.test.ts:492`, `:827`, `:999`]
+- [ ] [Review][Patch] **Three assertions cannot fail for the claim the test makes.**
+  - `agentView.test.ts:110-124`'s title says the slice is written "in one go", but it asserts the end state, which two sequential `setState` calls would also produce. Count the notifications through `useAgentViewStore.subscribe` and expect one.
+  - `faces.test.ts:113-122` reads the same value twice, after `:52-53` already proved it. Its title claims the value survives `deck_changed`, but nothing deck-related runs. Delete it, or drive a deck write between the reads.
+  - `deck.test.ts:1253-1264` asserts that `kind` is one of the three union members, which the return type already guarantees. Delete it.
+
+  [`ui/src/state/agentView.test.ts:110`, `ui/src/state/faces.test.ts:113`, `ui/src/state/deck.test.ts:1253`]
+- [ ] [Review][Patch] **Test comments cite deleted suites and drifted lines.** This extends the F1/F3-F8 dead-gate decision, which counted source files only, to the test files. Apply the same ruling.
+  - **Coverage handed to deleted suites:**
+    - `SwapsView.test.tsx:13-14` says the tints, arrow colour and micro role are "read as SOURCE by `token-usage.test.ts`".
+    - `faces.test.ts:19-21` leaves the per-tab, no-persistence claim to `store-writes.test.ts`.
+    - `agentView.test.ts:676-677` relies on `empty-push-copy.test.ts`.
+    - `tests/lint-gates.test.ts:546-548` says the iteration-count blocks are "provably caught in `tests/token-usage.test.ts`" (F8).
+  - **Drifted citations:**
+    - `agentView.test.ts:172` cites `client.ts:701-716`; `client.ts` has 556 lines.
+    - `:186` cites `types.d.ts:1108-1111`, now a `SwapItem` docstring.
+    - `:103` cites `AppShell.tsx:134-139`.
+    - `deck.test.ts:1112` cites `:594-598`; the pin is at `:604-608`.
+  - **Across the UI test files (excluding `App.test.tsx`):** about 60 citations name 15 deleted suites, led by `token-usage` (22), `shell` (about 15), `wire-contract` (5), `store-writes` (4) and `keyboard-floor` (4). Each one hands coverage to a gate that no longer exists.
+
+  Cite symbols, not lines (F1's patch) [`ui/src/containers/SwapsView/SwapsView.test.tsx:13`, `ui/src/state/faces.test.ts:19`, `ui/src/state/agentView.test.ts:172`, `ui/tests/lint-gates.test.ts:546`]
+
+**Rejected**
+
+- None. All 13 raw findings were verified as real. The reviewer's last item held two root causes, so it was split: the test that pins the restart F2 removes, and the untested `useDeckState` layer.
 
 ## Summary
 
