@@ -16,194 +16,30 @@ project's Python dependencies and no Node, while the ``frontend`` job has Node a
 never runs ``uv sync``. Splitting on that boundary adds no toolchain to either job and lets each
 half fail in the gate that owns it (story c2-3, Decide-once #1).
 
-**Adding an endpoint or a model needs no work here** — with one exception, added by c3-5 and
-stated below. Declare the route with a ``response_model`` and ``error_responses(...)``, run
-``npm run gen:api``, and commit both generated files — new paths and components appear in them
-automatically. Story **c3-1** (``/api/decks`` and ``/api/deck/{deck_id}``) was the first to do it,
-taking the schema from two components to six; story **c3-2** (``/api/cards/{card_id}``) followed,
-taking it to seven and the paths to four; story **c3-3** (``/api/deck/{deck_id}/format-check``)
-took it to nine components and five paths, adding the first wire shapes described by ``src/logic``
-rather than ``src/data``; story **c3-4** (``/api/active-deck``) took it to eleven components and
-six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
-(``/api/card-image/{scryfall_id}``) took it to **twelve components and seven paths**, adding
-``CardFace``; and story **c5-2** (``/api/session``) took it to **thirteen components and eight
-paths**, adding ``SessionTicket`` — the first addition since c3-5, and the first from Epic C5.
-The cold-open request diet then moved the component count DOWN for the first time (31 -> 30, paths
-unchanged at 9): ``GET /api/deck/{deck_id}`` now answers with ``DeckDetailFull``/``DeckCardFull``,
-which embed the whole ``Card``. Two components in, three out — ``DeckDetail``, ``DeckCardSummary``
-and ``CardSummary`` become unreachable from any route the moment the deck detail stops nesting
-them, and the MCP tools that still use all three put nothing on this wire. Reachability from a
-route is the rule, in both directions.
+**Adding an endpoint or a model needs no work here**, with one exception, stated below. Declare
+the route with a ``response_model`` and ``error_responses(...)``, run ``npm run gen:api``, and
+commit both generated files; new paths and components appear in them automatically. What lands in
+``components.schemas`` is what a route reaches, not what exists in ``contracts.py``: a model no
+route references never appears. Prose is part of the contract too: everything above a docstring's
+first Google section (``Args:``, ``Attributes:``…) ships, on models and routes alike, while a
+``#`` comment never crosses the wire. The component-name set pinned in
+``tests/unit/companion/test_committed_schema.py`` is the one hand-synchronised pin a new component
+must update; it goes red naming the addition.
 
-That last one is worth a sentence because it is the **inverse of the story immediately before it**.
-c5-1 defined sixteen models and moved neither count, since a model no route references never
-reaches ``components.schemas``; c5-2 defines *one* and moves both, because it puts that one on a
-route. Same rule, opposite headline — and the pair is the cleanest demonstration in this ledger
-that what lands here is *reachability from a route*, not *existence in* ``contracts.py``. Measured
-2026-08-08: 7 paths / 12 components before, 8 / 13 after, both generated files committed.
+**The exception, and it is c3-5's.** ``GET /api/card-image/{scryfall_id}`` has **no**
+``response_model``, because its success body is image bytes: a model would emit a JSON ``$ref``
+for a body that is binary. A non-JSON success case needs four things declared at the route
+instead (no ``response_model``, an explicit ``response_class=Response``, a hand-written
+``responses={200: {"content": …}}`` block, and a ``-> Response`` return annotation), and it still
+needs nothing here, because this script only serialises whatever ``app.openapi()`` produces.
+``openapi-typescript`` renders that 200 as ``content: { "image/*": string }``: the body is typed
+``string``, not ``Blob``, so fetch handling must not be derived from the generated type.
 
-**c5-2 falsified a claim this ledger has carried since c3-8, and measured the correction
-(2026-08-08).** The bullet below says *"a Pydantic model's* ``description`` *is the whole
-docstring"* and that the Google-section truncation *"applies to* **route** *docstrings"*. It does
-not: ``_CompanionFastAPI.openapi()``'s normaliser walks **every** description in the document, so a
-model's docstring is cut at its first Google section exactly as a route's is. Measured across all
-four wire models that have one — ``HealthResponse``, ``ErrorResponse``, ``ActiveDeck`` and
-``SessionTicket`` all carry ``Attributes:`` and ``Example:`` in source, and **none** of the four
-ships either on the wire.
-
-What c3-8 actually observed remains true and is the useful half: its ``ErrorResponse`` edit landed
-*above* that model's ``Attributes:`` header, which is why it crossed in full, bullet list and all.
-The corrected rule is therefore one rule rather than two: **everything above the first Google
-section ships, on models and on routes alike.** c5-2 relied on it deliberately in both places — the
-handler's ``Args:`` (which names the injected ``Response``) and ``SessionTicket``'s ``Attributes:``
-(which carries the Q4 reasoning for *not* publishing the TTL) were both cut, while the single-use
-and 30-second semantics a client author genuinely needs shipped in full.
-
-Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
-paragraph predicted — the prediction was settled by *running* ``npm run gen:api`` and pasting
-``git status --porcelain``, not by argument: seven paths and twelve components, both generated
-files byte-identical. Story **c3-7**'s disk cache **shipped and needed nothing here either**,
-settled the same way and with the same result: a cache changes where bytes come from, not what the
-operation promises.
-
-So there are now **two measured instances** of what a story that adds behaviour to an existing
-route — rather than a route — looks like on the wire, which is enough to state the rule rather
-than the observation: **the wire describes the promise, and a change to how the promise is kept
-does not touch it.**
-
-**Story c3-8 was predicted to be the third, and the measurement says it is not — which is exactly
-why the prediction was written to be run rather than argued** (2026-08-02). Its negative cache
-added **no path, no component and no reason token**: seven paths and twelve components before and
-after, so the *structural* half of the rule held perfectly. But ``npm run gen:api`` produced a real
-diff in both generated files, because the story edited
-:class:`~src.companion.contracts.ErrorResponse`'s class docstring to say what
-``image_fetch_failed`` now means — and **that docstring is published in full**.
-
-Two things were learned by measuring rather than reasoning, and both are worth keeping:
-
-* **A class docstring on a wire model is wire-visible well past its leading paragraph**, bullet
-  list and all. *(Second clause CORRECTED at c5-2, 2026-08-08 — it read "the truncation rule that
-  trims Google sections applies to route docstrings; a Pydantic model's* ``description`` *is the
-  whole docstring", and that is false: the normaliser walks every description in the document, so a
-  model is cut at its first Google section too. c3-8's edit crossed because it sat above
-  ``ErrorResponse``'s* ``Attributes:`` *header, not because models are exempt. See the c5-2
-  paragraph above for the measurement across all four models.)*
-* **An attribute docstring on a** ``Literal`` **type alias is NOT.** The same commit edited
-  ``ErrorReason``'s docstring and that edit did not cross the wire at all. Two docstrings, twelve
-  lines apart in one file, on opposite sides of the boundary — which is the kind of thing nobody
-  gets right from first principles.
-
-So the rule survives with its scope corrected: *a change to how a promise is kept does not touch
-the wire's **shape** — but a change to how the promise is **described** does, and prose on a
-wire model is part of the contract.* That was a deliberate choice here rather than an accident:
-c4-4's tile author reads the 300-second recovery window in the generated JSDoc, which is the
-same reasoning c3-2 used to promote its 503-retry trap and c3-3 its ``is_legal`` caveat.
-
-**Story c3-9 was the first DELIBERATE wire change since c3-5, and it is neither of the two shapes
-above** (2026-08-02). It was predicted not to be behaviour-only, and the generator confirmed which
-half moved:
-
-* **Structural: unchanged.** Seven paths, twelve components, ten reason tokens — before and after.
-  c3-9 added no route and no token; it is a UI story that happened to owe the wire a correction.
-* **Declarative: five operations changed.** ``build_app()`` now declares
-  ``database_not_initialized`` on the database-backed includes (Q4), a token every one of those
-  routes has answered since c1-6 and none had ever documented — on a fresh install it is the most
-  common ``503`` the SPA sees, and it is the state c3-9 exists to render. The five diffs are the
-  ``503`` descriptions on ``/api/decks``, ``/api/deck/{deck_id}``,
-  ``/api/deck/{deck_id}/format-check``, ``/api/cards/{card_id}`` and
-  ``/api/card-image/{scryfall_id}``:
-  ``"reason: database_unavailable"`` becomes
-  ``"reason: database_not_initialized | database_unavailable"``.
-  ``/health`` and both active-deck operations are byte-identical, deliberately — neither can answer
-  the token, and widening a declaration a route cannot honour turns an inherited wart into a fresh
-  lie.
-* **THE COLLAPSE FIRED FOR THE FIRST TIME.** :func:`~src.companion.app.errors.error_responses` has
-  advertised since c1-4 that *"tokens sharing a status collapse into a single entry whose
-  description names each of them"*, and until now no caller had ever declared two tokens under one
-  status by inheritance. The one ``503`` entry naming both is that behaviour, in production, seven
-  stories after it was written.
-* **A third shape, and it is the useful one: a comment above a wire model costs NOTHING.** c3-9
-  added the wire-visibility markers c3-8 declined (Q9) as ``#`` comments immediately above
-  ``ErrorReason``'s assignment and ``ErrorResponse``'s ``class`` statement. Neither is a docstring,
-  so neither crossed the wire — confirmed by running the generator, not by argument. **That is the
-  safe way to annotate a wire module**: c3-8's objection was that *"even a comment edit is a wire
-  decision that would want its own regeneration"*, and the measurement says a ``#`` comment is not
-  one. A docstring still is.
-
-**THE 413 WART IS CLOSED AS OF c5-5 (Q4, Brad 2026-08-08).** For the record, because the fix is
-only legible next to what it fixed: six body-less ``GET`` operations used to publish
-``413 payload_too_large`` in their client contract, because the declaration was made per *include*
-rather than per *method* and the shared set carried the 413 for the ``POST`` c5-5 would add. The
-generated types told a fetch author to handle a response the same document elsewhere describes as
-*"surfaced to the agent… The glass never sees it"*. It was pre-existing, inherited, and doubled by
-every new ``GET``. c3-9 declined to fix it — curating ``error_responses`` per method is a real
-change to a shared declaration site with six routes of blast radius, and Q4 touched the *caller*
-rather than the helper — and re-homed it on c5-5 by name, as the story that adds the cap, makes
-the 413 real, and must decide which operations can actually answer it.
-
-c5-5 did exactly that, in **two call-site edits and no helper change**: ``payload_too_large`` was
-removed from both shared include sets in ``build_app()`` and declared per-route on the two
-operations that can answer it — ``POST /agent/events`` (via its own include, which carries no
-other route) and ``PUT /api/active-deck`` (beside its existing ``forbidden``). Its sibling
-``GET /api/active-deck`` carries a body-less read and declares nothing, which is the distinction
-the whole exercise was about. The shape is exactly the one this paragraph specified, which is worth
-noting: the fix a deferral describes is sometimes the fix that lands.
-
-**What made it safe to do now and not before** is that the token stopped being a fiction. Until
-c5-5, ``payload_too_large`` had no producer anywhere in the app, so *every* declaration of it was
-unreachable and "which operations can answer it" had the empty set as its honest answer.
-``BodyCapMiddleware`` is the producer, and because it is middleware rather than a per-route
-dependency it bounds both body endpoints with one mechanism — so the declaration set and the
-enforcement set are the same two operations by construction, not by hand-synchronisation.
-
-**The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
-success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A
-non-JSON success case needs four things declared at the route instead — no ``response_model``, an
-explicit ``response_class=Response``, a hand-written ``responses={200: {"content": …}}`` block, and
-a ``-> Response`` return annotation — and it still needs nothing here, because this script only
-serialises whatever ``app.openapi()`` produces. Recorded so the paragraph above is not read as
-"every route has a ``response_model``", which it no longer means. Measured for the record:
-``openapi-typescript`` renders that 200 as ``content: { "image/*": string }`` — the body is typed
-``string``, not ``Blob``, so **c4-4 must not derive its fetch handling from the generated type**.
-
-c3-4 was also the first story to add anything but a ``GET``, and therefore the first to put a
-``requestBody`` in the document at all — which likewise needed no change here. Its ``PUT`` is
-credential-gated, and that too is invisible to this script **by design**: the credential is read
-from ``request.headers`` inside a dependency rather than declared through a FastAPI security class,
-so no ``securitySchemes`` component and no per-operation ``security`` block reach the artifact
-(c3-4, Q4). A later story that reaches for ``HTTPBearer`` will change that, and should expect to
-justify it.
-
-One hand-synchronised pin has to be edited by a story that adds a component, and it is not here:
-the component-name set in ``tests/unit/companion/test_committed_schema.py``. It goes red naming the
-addition, which is the pin working — but the count above is *not* what enforces it, so do not read
-this paragraph as the gate. (Until c3-4 there were **two** such pins, in the decks and cards route
-tests; Q5 consolidated them into that one file, so c3-5 edits one place rather than discovering the
-second by running the suite as c3-2 and c3-3 each did.)
-
-**There was no dummy endpoint, and none was needed — c5-5 has now proved it.** Story **c5-5**'s
-``POST /agent/events`` declares the WebSocket event-envelope union as its *request body*, so every
-per-kind payload landed in ``components.schemas`` from the route itself — one generator covering
-both the REST and the WebSocket halves of the contract (AD-12). The models themselves are
-**c5-1**'s, and that story shipped them with the schema unchanged at twelve components: a model no
-route references never lands in ``components.schemas`` at all, so declaring the union bought no
-TypeScript until the route existed. That is the sequencing this paragraph originally
-mis-attributed to a single story (corrected at c5-1, 2026-08-07), and it is why the shape at c5-1
-was a *confirmed negative* — c5-1 proved the generated pair byte-identical rather than proving a
-union appeared.
-
-**Measured at c5-5**: one route declaration moved the component count from thirteen to **thirty**,
-collecting seventeen models in a single step — six envelopes, six payloads, four item models and
-this story's ``EventIngestReceipt``. That is the AD-12 mechanism paying out the whole debt c5-1
-took on, and it is the strongest evidence in the feature for the "declare the models early, let the
-route collect them" sequencing.
-
-One measurement worth keeping, because a story predicted otherwise: ``TierLetter`` and
-``Confidence`` did **not** become named components. Both are ``Literal`` aliases rather than
-``Enum`` classes, so pydantic inlines each as an ``enum`` on the field that uses it. The generated
-TypeScript still gets a closed union at every use site; what it does not get is a reusable named
-type. Left alone — promoting them would mean reshaping two contract aliases to satisfy a schema
-preference.
+**Credentials stay out of the schema by design.** The credential-gated ``PUT /api/active-deck``
+reads its credential from ``request.headers`` inside a dependency rather than through a FastAPI
+security class, so no ``securitySchemes`` component and no per-operation ``security`` block reach
+the artifact (c3-4, Q4). A later story that reaches for ``HTTPBearer`` will change that, and should
+expect to justify it.
 
 Usage:
     uv run python -m scripts.dump_openapi     # -> ui/src/api/openapi.json (committed)

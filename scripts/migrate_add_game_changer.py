@@ -34,7 +34,6 @@ from sqlalchemy import text
 
 from src.data.database import create_engine, create_session_factory
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _NEW_COLUMN = "game_changer"
@@ -45,35 +44,37 @@ async def migrate() -> None:
     engine = create_engine()
     session_factory = create_session_factory(engine)
 
-    async with session_factory() as session:
-        try:
-            result = await session.execute(text("PRAGMA table_info(cards)"))
-            existing = {col[1] for col in result.fetchall()}
+    try:
+        async with session_factory() as session:
+            try:
+                result = await session.execute(text("PRAGMA table_info(cards)"))
+                existing = {col[1] for col in result.fetchall()}
 
-            if _NEW_COLUMN in existing:
-                logger.info("✓ %s column already exists in cards table", _NEW_COLUMN)
-            else:
-                logger.info("Adding %s column to cards table...", _NEW_COLUMN)
-                await session.execute(
-                    text(f"ALTER TABLE cards ADD COLUMN {_NEW_COLUMN} BOOLEAN NULL")
-                )
-                await session.commit()
-                logger.info("✓ %s column added successfully", _NEW_COLUMN)
+                if _NEW_COLUMN in existing:
+                    logger.info("✓ %s column already exists in cards table", _NEW_COLUMN)
+                else:
+                    logger.info("Adding %s column to cards table...", _NEW_COLUMN)
+                    await session.execute(
+                        text(f"ALTER TABLE cards ADD COLUMN {_NEW_COLUMN} BOOLEAN NULL")
+                    )
+                    await session.commit()
+                    logger.info("✓ %s column added successfully", _NEW_COLUMN)
 
-            result = await session.execute(text("PRAGMA table_info(cards)"))
-            logger.info("\nCurrent cards table schema:")
-            for col in result.fetchall():
-                logger.info("  - %s (%s)", col[1], col[2])
+                result = await session.execute(text("PRAGMA table_info(cards)"))
+                logger.info("\nCurrent cards table schema:")
+                for col in result.fetchall():
+                    logger.info("  - %s (%s)", col[1], col[2])
 
-            logger.info("\n✅ Migration completed successfully!")
+                logger.info("\n✅ Migration completed successfully!")
 
-        except Exception as e:
-            logger.error("❌ Migration failed: %s", e)
-            await session.rollback()
-            sys.exit(1)
-        finally:
-            await engine.dispose()
+            except Exception as e:
+                logger.error("❌ Migration failed: %s", e)
+                await session.rollback()
+                sys.exit(1)
+    finally:
+        await engine.dispose()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(migrate())
