@@ -3,7 +3,7 @@ title: 'Python tests are hermetic and share one fixture set'
 type: 'refactor'
 ticket: 2
 created: '2026-11-10'
-status: 'built'
+status: done
 baseline_revision: '9ce18db27d31a6d9d767a6ccdcb4d4f8205e9430'
 route: 'full'
 route_source: 'auto'
