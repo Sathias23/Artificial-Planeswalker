@@ -3,7 +3,7 @@ title: 'Imported cards store their English printing and WUBRG colours'
 type: 'bugfix'
 ticket: '5'
 created: '2026-11-10'
-status: 'review'
+status: done
 baseline_revision: 'ef32f517be5c45109e2460fe5d39c01476b2a4ee'
 route: 'full'
 route_source: 'auto'
