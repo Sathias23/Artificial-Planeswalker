@@ -12,7 +12,7 @@ def test_stream_cards_success(sample_json_file):
     """Test streaming valid JSON file yields card objects."""
     cards = list(stream_cards(sample_json_file))
 
-    assert len(cards) == 6  # 5 valid + 1 invalid from fixture
+    assert len(cards) == 9  # 8 valid printings + 1 invalid from fixture
     assert cards[0]["name"] == "Lightning Bolt"
     assert cards[1]["name"] == "Black Lotus"
     assert cards[2]["name"] == "Forest"

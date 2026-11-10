@@ -46,6 +46,29 @@ def _reject_identity(card_json: dict[str, Any]) -> str:
 #: Canonical WUBRG color ordering used across the codebase.
 _WUBRG: tuple[str, ...] = ("W", "U", "B", "R", "G")
 
+#: Each WUBRG letter's sort rank; any other letter ranks after all five.
+_WUBRG_RANK: dict[str, int] = {color: rank for rank, color in enumerate(_WUBRG)}
+
+
+def _wubrg_ordered(colors: Any) -> Any:
+    """Return a colour list in canonical WUBRG order, dropping nothing.
+
+    Scryfall publishes ``colors``, ``color_identity`` and ``color_indicator`` alphabetically
+    (``["B", "G", "R", "U", "W"]``); the codebase's convention is WUBRG. The sort is stable, so
+    a letter outside WUBRG is kept, after the five and in its original order, and a duplicate
+    survives as-is. Anything that is not a list (``None`` for an absent ``color_indicator``) is
+    returned unchanged.
+
+    Args:
+        colors: A raw colour value from the bulk file.
+
+    Returns:
+        A new WUBRG-ordered list, or *colors* itself when it is not a list.
+    """
+    if not isinstance(colors, list):
+        return colors
+    return sorted(colors, key=lambda color: _WUBRG_RANK.get(color, len(_WUBRG)))
+
 
 def _decimals_to_floats(value: Any) -> Any:
     """Recursively replace ``decimal.Decimal`` values with ``float`` in a JSON-shaped value.
@@ -138,16 +161,21 @@ def _face_shared(faces: list[dict[str, Any]], key: str) -> str | None:
 def _face_color_union(faces: list[dict[str, Any]]) -> list[str]:
     """Union of face ``colors`` values, sorted in canonical WUBRG order.
 
+    A letter outside WUBRG is kept, after the five (see :func:`_wubrg_ordered`).
+
     Args:
         faces: The card's ``card_faces`` objects.
 
     Returns:
         The color union as a list ordered ``["W", "U", "B", "R", "G"]``-wise.
     """
-    union: set[str] = set()
+    union: list[str] = []
     for face in faces:
-        union.update(face.get("colors") or [])
-    return [color for color in _WUBRG if color in union]
+        for color in face.get("colors") or []:
+            if color not in union:
+                union.append(color)
+    ordered: list[str] = _wubrg_ordered(union)
+    return ordered
 
 
 def transform_scryfall_card(
@@ -294,14 +322,15 @@ def transform_scryfall_card(
         set_name = card_json.get("set_name") or "Unknown Set"
         collector_number = card_json.get("collector_number") or "0"
 
-        # Handle color arrays (default to empty lists). Gated cards union face colors
-        # in canonical WUBRG order; color_identity is top-level on reversibles — untouched.
+        # Handle color arrays (default to empty lists), all three stored in canonical WUBRG
+        # order (Scryfall publishes them alphabetically). Gated cards union face colors;
+        # color_identity is top-level on reversibles. ``card_faces`` stays verbatim.
         if derive_from_faces and "colors" not in card_json:
             colors = _face_color_union(faces)
         else:
-            colors = card_json.get("colors") or []
-        color_identity = card_json.get("color_identity") or []
-        color_indicator = card_json.get("color_indicator")  # Optional, can be None
+            colors = _wubrg_ordered(card_json.get("colors") or [])
+        color_identity = _wubrg_ordered(card_json.get("color_identity") or [])
+        color_indicator = _wubrg_ordered(card_json.get("color_indicator"))  # Optional, can be None
 
         # Handle keywords (optional, nullable column — preserve None)
         keywords = card_json.get("keywords")  # Can be None or missing

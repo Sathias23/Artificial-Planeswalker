@@ -8,11 +8,15 @@ because they pin its batching, which the orchestrator's fixed batch size cannot 
 """
 
 import json
+import logging
+from functools import partial
 from typing import Any
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.data.database import create_engine, create_session_factory
 from src.data.import_state import is_import_in_progress, mark_import_started
 from src.data.importers import scryfall
 from src.data.importers.importer import import_cards
@@ -22,12 +26,32 @@ from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
 from src.data.repositories.card import CardRepository
+from src.data.schemas.deck import MAX_CARD_QUANTITY
+from src.mcp_server.tools.initialize_database import initialize_database
 from tests.fixtures.card_data import create_om1_spm_cards
-from tests.fixtures.scryfall_bulk import import_through_orchestrator
+from tests.fixtures.scryfall_bulk import import_through_orchestrator, serve_bulk_file
+
+#: The sample file's Counterspell printings: a same-day ``ja`` printing with the smaller id is
+#: listed before the ``en`` one, so only the English-first rank picks the ``en`` printing.
+_SAMPLE_COUNTERSPELL_JA_ID = "0c1d2e3f-4a5b-4c6d-8e7f-901a2b3c4d5e"
+_SAMPLE_COUNTERSPELL_EN_ID = "8a9b0c1d-2e3f-4a5b-8c6d-7e8f9a0b1c2d"
+
+
+def _wubrg_ordered(colours: list[str] | None) -> bool:
+    """Whether *colours* (``None`` included) lists its WUBRG letters in WUBRG order."""
+    if colours is None:
+        return True
+    ranks = ["WUBRG".index(colour) for colour in colours]
+    return ranks == sorted(ranks)
 
 
 async def test_end_to_end_import(empty_card_db, sample_json_file, monkeypatch, tmp_path):
-    """The sample bulk file imports through the orchestrator: five cards in, one rejected."""
+    """The sample bulk file imports through the orchestrator: seven cards in, one rejected.
+
+    Its Counterspell pair imports as the ``en`` printing (the ``ja`` one is skipped as
+    non-canonical), and every stored colour list is WUBRG-ordered although the Transguild
+    Courier printing carries Scryfall's alphabetical lists.
+    """
     printings = json.loads(sample_json_file.read_text(encoding="utf-8"))
 
     async with empty_card_db() as session:
@@ -35,19 +59,35 @@ async def test_end_to_end_import(empty_card_db, sample_json_file, monkeypatch, t
             session, monkeypatch, printings, temp_dir=tmp_path
         )
 
-        assert stats.total_processed == 6
-        assert stats.total_inserted == 5  # 5 valid cards
+        assert stats.total_processed == 8  # the non-canonical ja printing is skipped, not counted
+        assert stats.total_inserted == 7  # 7 valid cards
         assert stats.total_errors == 1  # 1 invalid card
 
         result = await session.execute(select(CardModel))
-        card_names = {card.name for card in result.scalars().all()}
-        assert card_names == {
+        cards = result.scalars().all()
+        assert {card.name for card in cards} == {
             "Lightning Bolt",
             "Black Lotus",
             "Forest",
             "Delver of Secrets // Insectile Aberration",
             "Pact of Negation",
+            "Transguild Courier",
+            "Counterspell",
         }
+
+        unordered = {
+            card.name: (card.colors, card.color_identity, card.color_indicator)
+            for card in cards
+            if not all(
+                _wubrg_ordered(colours)
+                for colours in (card.colors, card.color_identity, card.color_indicator)
+            )
+        }
+        assert unordered == {}
+
+        counterspell = next(card for card in cards if card.name == "Counterspell")
+        assert counterspell.id == _SAMPLE_COUNTERSPELL_EN_ID
+        assert counterspell.printed_name is None
 
 
 def _printing_v1() -> dict[str, Any]:
@@ -467,6 +507,172 @@ async def test_reconcile_merges_deck_quantities_when_deck_holds_both_printings(
         assert len(deck_cards) == 1  # the stale association row is gone
         assert deck_cards[0].card_id == "spm-276"
         assert deck_cards[0].quantity == 5  # 2 + 3 summed onto the canonical row
+
+
+async def test_reconcile_merge_keeps_the_stale_rows_commander_flag(
+    empty_card_db, monkeypatch, tmp_path
+):
+    """A merged-away stale row that was the deck's commander leaves the flag on the survivor."""
+    async with empty_card_db() as session:
+        session.add_all(create_om1_spm_cards()[:2])
+        deck = DeckModel(name="Stale Commander", format="commander")
+        session.add(deck)
+        await session.flush()
+        session.add(DeckCardModel(deck_id=deck.id, card_id="om1-153", quantity=1, commander=True))
+        session.add(DeckCardModel(deck_id=deck.id, card_id="spm-276", quantity=1))
+        await session.commit()
+        deck_id = deck.id
+
+    async with empty_card_db() as session:
+        stats = await import_through_orchestrator(
+            session, monkeypatch, _snapshot_b(), temp_dir=tmp_path
+        )
+        assert stats.reconcile.deck_cards_merged == 1
+
+    async with empty_card_db() as session:
+        result = await session.execute(
+            select(DeckCardModel.card_id, DeckCardModel.quantity, DeckCardModel.commander).where(
+                DeckCardModel.deck_id == deck_id
+            )
+        )
+        assert result.tuples().all() == [("spm-276", 2, True)]
+
+
+@pytest.mark.parametrize(
+    ("held_ids", "stale_ids"),
+    [
+        pytest.param(("om1-153", "spm-276"), (), id="stale-onto-canonical"),
+        pytest.param(("old-a", "old-b"), ("old-a", "old-b"), id="two-stale-printings"),
+    ],
+)
+async def test_reconcile_merge_caps_the_summed_quantity(
+    empty_card_db, monkeypatch, tmp_path, caplog, held_ids, stale_ids
+):
+    """A merge that would pass ``MAX_CARD_QUANTITY`` stores the cap and warns, naming the row.
+
+    Every tool write path holds a deck row at 250 copies, and a reconcile is no user intent to
+    exceed it. Two stale printings merging into one row need the running sum across both, not
+    the canonical row's stored quantity alone.
+    """
+    async with empty_card_db() as session:
+        if stale_ids:
+            session.add_all([_stale_printing(card_id) for card_id in stale_ids])
+        else:
+            session.add_all(create_om1_spm_cards()[:2])
+        deck = DeckModel(name="Over The Cap", format="modern")
+        session.add(deck)
+        await session.flush()
+        for card_id, quantity in zip(held_ids, (200, 100), strict=True):
+            session.add(DeckCardModel(deck_id=deck.id, card_id=card_id, quantity=quantity))
+        await session.commit()
+        deck_id = deck.id
+
+    with caplog.at_level(logging.WARNING, logger="src.data.importers.scryfall"):
+        async with empty_card_db() as session:
+            stats = await import_through_orchestrator(
+                session, monkeypatch, _snapshot_b(), temp_dir=tmp_path
+            )
+    assert stats.reconcile.failed is False
+    assert stats.reconcile.deck_cards_merged == 1
+
+    async with empty_card_db() as session:
+        result = await session.execute(
+            select(DeckCardModel.card_id, DeckCardModel.quantity).where(
+                DeckCardModel.deck_id == deck_id
+            )
+        )
+        assert result.tuples().all() == [("spm-276", MAX_CARD_QUANTITY)]
+
+    warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno == logging.WARNING and record.name == "src.data.importers.scryfall"
+    ]
+    assert len(warnings) == 1, warnings
+    assert deck_id in warnings[0] and "spm-276" in warnings[0]
+    assert "50" in warnings[0]  # the copies dropped over the cap
+
+
+async def _stored_cards(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, dict]:
+    """Every ``cards`` row in the database, keyed by id, as a column-name-to-value map."""
+    columns = [attr.key for attr in CardModel.__mapper__.column_attrs]
+    async with session_factory() as session:
+        cards = (await session.execute(select(CardModel))).scalars().all()
+    return {card.id: {key: getattr(card, key) for key in columns} for card in cards}
+
+
+async def test_update_repairs_a_database_imported_before_the_english_first_rank(
+    empty_card_db, card_db_path, sample_json_file, monkeypatch, tmp_path
+):
+    """``initialize_database(update=true)`` repairs a database the old importer built.
+
+    The old state is what the date-only rank and the verbatim colour copy stored for the sample
+    file: the ``ja`` Counterspell as the canonical row, Scryfall's alphabetical colour lists, and
+    a deck whose commander is that ``ja`` row. After an update its ``cards`` rows equal a fresh
+    import's, and the deck row points at the ``en`` printing with its commander flag kept, with
+    no connect hook and no migration involved.
+    """
+    printings = json.loads(sample_json_file.read_text(encoding="utf-8"))
+    old_rows = []
+    for printing in printings:
+        if printing["id"] == _SAMPLE_COUNTERSPELL_EN_ID:
+            continue  # the old rank picked the ja printing instead
+        card = transform_scryfall_card(printing)
+        if card is None:
+            continue
+        card.colors = printing.get("colors") or []
+        card.color_identity = printing.get("color_identity") or []
+        card.color_indicator = printing.get("color_indicator")
+        old_rows.append(card)
+
+    async with empty_card_db() as session:
+        session.add_all(old_rows)
+        deck = DeckModel(name="Counterspell Commander", format="commander")
+        session.add(deck)
+        await session.flush()
+        session.add(
+            DeckCardModel(
+                deck_id=deck.id, card_id=_SAMPLE_COUNTERSPELL_JA_ID, quantity=1, commander=True
+            )
+        )
+        await session.commit()
+        deck_id = deck.id
+
+    serve_bulk_file(monkeypatch, printings)
+    import_fn = partial(scryfall.import_scryfall_bulk_data, temp_dir=tmp_path)
+
+    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{card_db_path.as_posix()}")
+    updated = await initialize_database(import_fn=import_fn, update=True)
+    assert updated.status == "updated", updated.message
+
+    fresh_path = tmp_path / "fresh.db"
+    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{fresh_path.as_posix()}")
+    fresh = await initialize_database(import_fn=import_fn)
+    assert fresh.status == "ok", fresh.message
+
+    fresh_engine = create_engine(f"sqlite+aiosqlite:///{fresh_path.as_posix()}")
+    try:
+        fresh_cards = await _stored_cards(create_session_factory(fresh_engine))
+    finally:
+        await fresh_engine.dispose()
+    repaired_cards = await _stored_cards(empty_card_db)
+    assert repaired_cards == fresh_cards
+    # Not only equal to a fresh import: the seeded alphabetical lists were rewritten.
+    courier = next(row for row in repaired_cards.values() if row["name"] == "Transguild Courier")
+    wubrg = ["W", "U", "B", "R", "G"]
+    assert (courier["colors"], courier["color_identity"], courier["color_indicator"]) == (
+        wubrg,
+        wubrg,
+        wubrg,
+    )
+
+    async with empty_card_db() as session:
+        result = await session.execute(
+            select(DeckCardModel.card_id, DeckCardModel.quantity, DeckCardModel.commander).where(
+                DeckCardModel.deck_id == deck_id
+            )
+        )
+        assert result.tuples().all() == [(_SAMPLE_COUNTERSPELL_EN_ID, 1, True)]
 
 
 async def test_reconcile_keeps_mainboard_and_sideboard_copies_apart(

@@ -117,6 +117,64 @@ class TestBuildOracleAggregates:
 
         assert aggregates["oid-1"].canonical_id == "p-aaa"
 
+    def test_english_printing_beats_a_same_day_non_english_one(self, tmp_path: Path) -> None:
+        """A same-day ``ja`` printing with the smaller id loses to the ``en`` printing."""
+        file_path = _write_cards(
+            tmp_path,
+            [
+                _printing("p-aaa-ja", released_at="2021-03-19", lang="ja"),
+                _printing("p-zzz-en", released_at="2021-03-19", lang="en"),
+            ],
+        )
+
+        aggregates = build_oracle_aggregates(file_path)
+
+        assert aggregates["oid-1"].canonical_id == "p-zzz-en"
+
+    def test_english_printing_beats_a_newer_non_english_one(self, tmp_path: Path) -> None:
+        """An English printing outranks a later non-English one, whatever the file order."""
+        file_path = _write_cards(
+            tmp_path,
+            [
+                _printing("p-en", released_at="2020-01-01", lang="en"),
+                _printing("p-ja", released_at="2025-01-01", lang="ja"),
+            ],
+        )
+
+        aggregates = build_oracle_aggregates(file_path)
+
+        assert aggregates["oid-1"].canonical_id == "p-en"
+        assert aggregates["oid-1"].canonical_released_at == "2020-01-01"
+
+    def test_missing_lang_counts_as_english(self, tmp_path: Path) -> None:
+        """A printing without ``lang`` ranks as English, so it beats a newer ``ja`` printing."""
+        file_path = _write_cards(
+            tmp_path,
+            [
+                _printing("p-no-lang", released_at="2020-01-01"),
+                _printing("p-ja", released_at="2025-01-01", lang="ja"),
+            ],
+        )
+
+        aggregates = build_oracle_aggregates(file_path)
+
+        assert aggregates["oid-1"].canonical_id == "p-no-lang"
+
+    def test_without_an_english_printing_the_date_then_id_rule_holds(self, tmp_path: Path) -> None:
+        """Two ``ja`` printings rank by the latest date, then the smallest id, as before."""
+        file_path = _write_cards(
+            tmp_path,
+            [
+                _printing("p-old-ja", released_at="2020-01-01", lang="ja"),
+                _printing("p-bbb-ja", released_at="2025-01-01", lang="ja"),
+                _printing("p-aaa-ja", released_at="2025-01-01", lang="ja"),
+            ],
+        )
+
+        aggregates = build_oracle_aggregates(file_path)
+
+        assert aggregates["oid-1"].canonical_id == "p-aaa-ja"
+
     def test_missing_top_level_oracle_id_groups_by_first_face(self, tmp_path: Path) -> None:
         """Reversible/odd layouts group by card_faces[0].oracle_id."""
         file_path = _write_cards(

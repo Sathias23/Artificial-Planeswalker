@@ -79,6 +79,74 @@ def test_transform_card_with_color_indicator(sample_cards):
     assert card.color_identity == ["U"]
 
 
+def _coloured_card(**colours: Any) -> dict[str, Any]:
+    """A minimal valid printing carrying the given colour fields."""
+    return {
+        "id": "colour-order-1",
+        "name": "Colour Order",
+        "oracle_id": "colour-order-oracle",
+        "type_line": "Artifact Creature — Golem",
+        **colours,
+    }
+
+
+def test_transform_stores_colour_lists_in_wubrg_order():
+    """Scryfall's alphabetical colour lists are stored WUBRG-ordered, all three of them."""
+    card = transform_scryfall_card(
+        _coloured_card(
+            colors=["G", "U"],
+            color_identity=["B", "G", "R", "U", "W"],
+            color_indicator=["G", "U"],
+        )
+    )
+
+    assert card is not None
+    assert card.colors == ["U", "G"]
+    assert card.color_identity == ["W", "U", "B", "R", "G"]
+    assert card.color_indicator == ["U", "G"]
+
+
+def test_transform_keeps_an_unknown_colour_letter_after_wubrg():
+    """A letter outside WUBRG is kept, after the five, so the transformer drops nothing."""
+    card = transform_scryfall_card(
+        _coloured_card(colors=["X", "G", "W"], color_identity=["G", "Y", "W", "X"])
+    )
+
+    assert card is not None
+    assert card.colors == ["W", "G", "X"]
+    assert card.color_identity == ["W", "G", "Y", "X"]
+
+
+def test_transform_leaves_an_absent_colour_indicator_none():
+    """No ``color_indicator`` stays ``None``; ordering never invents an empty list."""
+    card = transform_scryfall_card(_coloured_card(colors=["G", "U"], color_identity=["G", "U"]))
+
+    assert card is not None
+    assert card.color_indicator is None
+    assert card.colors == ["U", "G"]
+
+
+def test_transform_face_colour_union_keeps_an_unknown_letter():
+    """The face-derived ``colors`` union is WUBRG-ordered and keeps a letter outside WUBRG."""
+    reversible = {
+        "id": "printing-rev-colours",
+        "name": "Odd Colours // Odd Colours",
+        "color_identity": ["R", "B"],
+        "card_faces": [
+            _reversible_face(oracle_id="odd-colours-oracle", colors=["X", "R"]),
+            _reversible_face(colors=["B"]),
+        ],
+    }
+
+    card = transform_scryfall_card(reversible)
+
+    assert card is not None
+    assert card.colors == ["B", "R", "X"]
+    assert card.color_identity == ["B", "R"]
+    assert card.card_faces is not None
+    assert card.card_faces[0]["colors"] == ["X", "R"]  # faces stay exactly as Scryfall sent them
+
+
 def test_transform_card_missing_required_field(sample_cards):
     """Test transforming a card missing required field returns None."""
     invalid_card = sample_cards[5]

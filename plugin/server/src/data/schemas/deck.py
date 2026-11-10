@@ -11,6 +11,11 @@ from src.data.schemas.card import Card, CardSummary
 # Common MTG formats: standard, modern, commander, legacy, vintage, pioneer, pauper, all
 FormatType = str | None
 
+#: The single copy cap on one deck row, shared by every write path: ``add_card_to_deck``,
+#: ``set_card_quantity``, ``import_decklist`` and the importer's reconcile merge. No real deck
+#: holds more than 250 of one card, and an unbounded integer would be stored as-is.
+MAX_CARD_QUANTITY = 250
+
 
 class DeckCard(BaseModel):
     """Pydantic schema for deck-card associations.
