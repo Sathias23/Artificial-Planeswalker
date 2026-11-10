@@ -674,14 +674,22 @@ async def add_card_to_deck(
     try:
         await deck_repo.add_card_to_deck(deck_id, card.id, quantity, sideboard, commander=commander)
     except IntegrityError:
-        # Two constraints can refuse the row: the (deck, card, board) key — a true duplicate — and
-        # the deck foreign key, when another writer deleted the deck after the pre-check above.
-        # The repository has rolled back, so re-read the deck to tell them apart.
+        # Three constraints can refuse the row: the (deck, card, board) key — a true duplicate —
+        # the deck foreign key (another writer deleted the deck after the pre-check above) and the
+        # card foreign key (an update's reconcile removed the card after it was resolved). The
+        # repository has rolled back, so re-read the deck and the card to tell them apart.
         if await deck_repo.get_deck(deck_id) is None:
             return DeckCardResult(
                 status="deck_not_found",
                 deck_id=deck_id,
                 message=f"No deck found with id '{deck_id}'.",
+            )
+        if await card_repo.get_by_id(card.id) is None:
+            return DeckCardResult(
+                status="card_not_found",
+                deck_id=deck_id,
+                card_id=card_id,
+                message=card_not_found_message(card_id=card_id, name=name),
             )
         return DeckCardResult(
             status="exists",

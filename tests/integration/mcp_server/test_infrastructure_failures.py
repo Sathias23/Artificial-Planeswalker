@@ -50,7 +50,9 @@ import src.search.embedder as embedder_module
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers.scryfall import ScryfallImportError
 from src.data.importers.scryfall_api import ScryfallAPIError
+from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
+from src.data.repositories.card import CardRepository
 from src.data.repositories.deck import DeckRepository
 from src.mcp_server.tools import assess_deck_power as assess_module
 from src.mcp_server.tools import initialize_database as initialize_database_module
@@ -393,6 +395,29 @@ async def test_an_offline_first_model_load_answers_error_from_the_two_embedding_
     assert offline.imports == []
 
 
+async def test_a_failed_fastembed_import_answers_error_naming_the_model(
+    seeded_vec_db: SeededVecDB, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fastembed / ONNX Runtime import itself fails (a Windows "DLL load failed"): the
+    semantic tool on a built index answers ``error`` naming the model, not an ``isError``."""
+
+    def broken_import() -> type:
+        raise ImportError("DLL load failed while importing onnxruntime_pybind11_state")
+
+    monkeypatch.setattr(embedder_module, "_load_text_embedding", broken_import)
+    server = server_module.build_server(
+        session_factory=seeded_vec_db.session_factory,
+        connection_factory=ConnectionFactory(db_path=seeded_vec_db.connection_factory.db_path),
+    )
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("semantic_search_cards", {"query": "flying red dragon"})
+
+    assert result.isError is False
+    assert result.structuredContent["status"] == "error"
+    assert MODEL_NAME in result.structuredContent["message"]
+    assert "DLL load failed" in result.structuredContent["message"]
+
+
 async def test_an_offline_model_with_an_unbuilt_index_is_index_unavailable_without_a_load(
     seeded_card_db: async_sessionmaker[AsyncSession], card_db_path: Path, offline: OfflineStubs
 ) -> None:
@@ -565,6 +590,38 @@ async def test_a_deck_deleted_between_the_check_and_the_write_is_deck_not_found(
     assert reads == [deck_id, deck_id], "the integrity failure re-read the deck"
 
 
+async def test_a_card_removed_between_resolution_and_the_write_is_card_not_found(
+    seeded_card_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The card resolves, then an update's reconcile removes it before the insert: the card
+    foreign key refuses the row, and the answer is ``card_not_found``, not ``exists``."""
+    async with seeded_card_db() as session:
+        deck_id = (await DeckRepository(session).create_deck(name="Kept", format="standard")).id
+
+    real_get_by_id = CardRepository.get_by_id
+    reads: list[str] = []
+
+    async def vanish_after_first_read(self: CardRepository, wanted: str) -> object:
+        found = await real_get_by_id(self, wanted)
+        reads.append(wanted)
+        if len(reads) == 1:
+            await self.session.execute(delete(CardModel).where(CardModel.id == wanted))
+            await self.session.commit()
+        return found
+
+    monkeypatch.setattr(CardRepository, "get_by_id", vanish_after_first_read)
+    server = server_module.build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-lightning-bolt"}
+        )
+
+    assert result.isError is False
+    assert result.structuredContent["status"] == "card_not_found"
+    assert "card-lightning-bolt" in result.structuredContent["message"]
+    assert reads == ["card-lightning-bolt", "card-lightning-bolt"], "the card was re-read"
+
+
 async def test_a_true_duplicate_add_still_answers_exists(seeded_card_db) -> None:
     """The twin of the vanished-deck row: the same integrity failure on a live deck is a dup."""
     async with seeded_card_db() as session:
@@ -629,3 +686,34 @@ async def test_a_network_import_failure_keeps_the_network_hint(
     assert result.status == "error"
     assert str(failure) in result.message
     assert "network" in result.message.lower()
+    assert ".." not in result.message
+
+
+async def test_a_database_error_cleaning_up_after_a_network_failure_blames_the_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A first-run download fails, then the cleanup's ``DELETE`` meets a lock: the raised error is
+    the database's (the network failure is only its context), so the message says so."""
+    _point_initialize_database_at(monkeypatch, tmp_path / "init.db")
+
+    async def importer(session: AsyncSession, *, bulk_type: str = "default_cards") -> None:
+        try:
+            raise ScryfallAPIError("Failed to download bulk data after 3 attempts")
+        except ScryfallAPIError as exc:
+            raise ScryfallImportError(f"Scryfall import failed: {exc}") from exc
+
+    async def locked_cleanup(session: AsyncSession) -> None:
+        raise OperationalError(
+            "DELETE FROM cards", {}, sqlite3.OperationalError("database is locked")
+        )
+
+    monkeypatch.setattr(initialize_database_module, "_clear_cards", locked_cleanup)
+
+    result = await initialize_database(import_fn=importer)
+
+    assert result.status == "error"
+    assert "database is locked" in result.message
+    assert "try again" in result.message
+    assert "network" not in result.message.lower()
+    assert "Failed to download" not in result.message
+    assert "DELETE FROM" not in result.message

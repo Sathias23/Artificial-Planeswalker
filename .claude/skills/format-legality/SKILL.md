@@ -453,7 +453,7 @@ The tools return structured statuses, not raw exceptions — handle each:
 - **`invalid`** (search tools): a bad parameter — read the message and fix. Common causes: `limit > 50`, or
   a `games` value outside `paper`/`arena`/`mtgo`.
 - **`error`** (any tool, lookup and search included): the local card database could not be used, and the
-  `message` says why. Report it honestly and never present a legality verdict you could not check.
+  `message` describes the failure. Report it honestly and never present a legality verdict you could not check.
   An `error` from `semantic_search_cards` whose `message` names sqlite-vec or the embedding model degrades
   like `index_unavailable` (fall back to `search_cards`); one that says the database is locked can be
   retried once after a moment.

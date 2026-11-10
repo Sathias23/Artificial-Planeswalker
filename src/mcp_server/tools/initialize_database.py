@@ -135,15 +135,15 @@ def _failure_message(exc: BaseException) -> str:
     The real importer wraps every failure in ``ScryfallImportError``, so the cause chain is what
     tells a download problem (``ScryfallAPIError`` / ``httpx.HTTPError``) from a database one or a
     bad bulk file. A database cause is described by the driver's own text, never SQLAlchemy's
-    statement echo.
+    statement echo. The first such link, outermost first, decides: a database error raised while
+    cleaning up after a download failure (its ``__context__``) is the database's fault to report.
     """
-    chain = _cause_chain(exc)
-    if any(isinstance(link, (ScryfallAPIError, httpx.HTTPError)) for link in chain):
-        return (
-            f"Database initialization failed: {failure_detail(exc)}. Check the network "
-            "connection and try again."
-        )
-    for link in chain:
+    for link in _cause_chain(exc):
+        if isinstance(link, (ScryfallAPIError, httpx.HTTPError)):
+            return (
+                f"Database initialization failed: {failure_detail(link).rstrip('.')}. Check the "
+                "network connection and try again."
+            )
         if isinstance(link, INFRASTRUCTURE_ERRORS):
             return f"Database initialization failed. {infrastructure_error_message(link)}"
     return f"Database initialization failed: {failure_detail(exc).rstrip('.')}."

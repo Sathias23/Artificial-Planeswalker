@@ -25,8 +25,10 @@ What a helper cannot guard is the work before its own ``try``, so every database
 own failures, nor the companion push tools and ``companion_status``, which read no database) runs
 under one edge guard (``tools/failures.py``): a corrupt, unreadable or locked ``cards.db``, a
 missing sqlite-vec extension or an embedding model that cannot load answers the tool's own
-``status="error"`` with a message naming the cause. Only those failures: a ``ProgrammingError`` or
-any other exception is a bug and still surfaces as an MCP error.
+``status="error"``. A failure the edge catches carries the driver's or loader's own reason in its
+message; one a helper's own ``DatabaseError`` arm catches (the analysis tools, the deck writes,
+assess/compare) carries that helper's generic database-error message. Only those failures: a
+``ProgrammingError`` or any other exception is a bug and still surfaces as an MCP error.
 
 ``view_deck`` renders a saved deck to a self-contained HTML page and best-effort opens it in the
 host's browser (the file path is always returned, so a headless host degrades gracefully). **It is
@@ -247,7 +249,7 @@ def build_server(
         Returns:
             A result whose ``status`` is ``found`` (single ``card``),
             ``ambiguous`` (multiple ``matches`` to choose from), ``not_found``, or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         return await _in_session(
             "lookup_card_by_name",
@@ -297,7 +299,7 @@ def build_server(
             A result whose ``status`` is ``ok`` (``cards`` plus pagination
             metadata), ``empty`` (no matches — a graceful hint), ``invalid``
             (a filter value failed validation, with a message naming it), or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         return await _in_session(
             "search_cards",
@@ -334,7 +336,7 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (``decks`` populated), ``empty``, or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         return await _in_session(
             "list_decks",
@@ -363,7 +365,7 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (``deck`` populated), ``invalid``, or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         result = await _in_session(
             "create_deck",
@@ -407,7 +409,7 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (``deck`` populated), ``not_found``, or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         return await _in_session(
             "load_deck",
@@ -437,7 +439,7 @@ def build_server(
             A result whose ``status`` is ``ok`` (``deck`` populated, or ``None`` if the
             committed change could not be reloaded — call ``load_deck``), ``not_found``,
             ``invalid`` (empty ``changes``, blank ``name``, or a value over its cap), or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         result = await _in_session(
             "update_deck",
@@ -462,7 +464,7 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (deleted), ``not_found``, or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         result = await _in_session(
             "delete_deck",
@@ -503,7 +505,7 @@ def build_server(
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``exists``/
             ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``), or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         result = await _in_session(
             "add_card_to_deck",
@@ -557,7 +559,7 @@ def build_server(
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``unchanged``/
             ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``, or ``error``
-            — the local card database could not be read or written, ``message`` says why);
+            — the local card database could not be read or written, ``message`` describes it);
             on ``ok`` and ``unchanged`` its ``quantity`` is the stored count.
         """
         result = await _in_session(
@@ -595,7 +597,7 @@ def build_server(
         transaction: a line that fails to resolve never blocks the others, but
         if that single write fails nothing is added and the status is ``error``
         (as it is when the local card database cannot be read at all — ``message``
-        says why).
+        describes the failure).
 
         Args:
             deck_id: Existing saved deck id from ``create_deck`` or ``list_decks``.
@@ -641,7 +643,7 @@ def build_server(
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``not_in_deck``/
             ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``), or
-            ``error`` (the local card database could not be read or written — ``message`` says why).
+            ``error`` (the local card database could not be read or written — see ``message``).
         """
         result = await _in_session(
             "remove_card_from_deck",
