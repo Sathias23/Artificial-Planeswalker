@@ -139,6 +139,38 @@ async def test_import_downloads_into_fresh_private_dir_and_cleans_up(monkeypatch
     assert not downloaded.parent.exists(), "the per-run temp directory must be cleaned up"
 
 
+@pytest.mark.parametrize("import_fails", [False, True], ids=["import-succeeds", "import-fails"])
+async def test_a_caller_supplied_temp_dir_keeps_the_directory_and_drops_the_download(
+    monkeypatch, tmp_path, import_fails
+):
+    """M1, the other branch: a caller-owned directory stays, with only our download removed.
+
+    The Spellbook importer's twin of this test is in ``test_spellbook_import_e2e.py``. The
+    cleanup runs in a ``finally``, so a failed import must clean up the same way.
+    """
+    seen: dict = {}
+    _wire_import(monkeypatch, "https://data.scryfall.io/oracle.json", seen)
+    if import_fails:
+
+        async def failing_import(session, cards_iterator, **kwargs):
+            raise RuntimeError("batch insert failed")
+
+        monkeypatch.setattr(scryfall, "import_cards", failing_import)
+    temp_dir = tmp_path / "operator-scratch"
+    temp_dir.mkdir()
+    (temp_dir / "keep.txt").write_text("the operator's own file", encoding="utf-8")
+
+    if import_fails:
+        with pytest.raises(ScryfallImportError, match="batch insert failed"):
+            await import_scryfall_bulk_data(session=_NullSession(), temp_dir=temp_dir)
+    else:
+        await import_scryfall_bulk_data(session=_NullSession(), temp_dir=temp_dir)
+
+    assert seen["path"].parent == temp_dir, "the download lands in the caller's directory"
+    assert not seen["path"].exists(), "only our download is removed"
+    assert (temp_dir / "keep.txt").exists(), "the operator's directory is left in place"
+
+
 async def test_import_passes_size_derived_byte_ceiling(monkeypatch):
     """M2 wiring: the orchestrator caps the download relative to the advertised size."""
     seen: dict = {}
