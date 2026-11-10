@@ -24,6 +24,7 @@ import pytest
 from src.mcp_server.tools.semantic_search import semantic_search_cards
 from src.search import ConnectionFactory, build_card_embeddings, get_embedder
 from src.search.embedder import reset_embedder
+from tests.fixtures.real_data import MODEL_CACHE_DIR
 
 # --- The single tunable knob (AC3) ----------------------------------------------------------
 # Calibrated in Task 0 against the real quantized model on this exact fixture: observed 12/12 = 1.0
@@ -317,7 +318,11 @@ def rag_eval_index(tmp_path_factory):
         )
     conn.commit()
 
-    embedder = get_embedder()
+    # Module scope sets up before the root ``isolated_data_dir`` fixture pins the model cache, so
+    # pin it here too: the production singleton resolves its cache dir once, at construction.
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("FASTEMBED_CACHE_DIR", str(MODEL_CACHE_DIR))
+        embedder = get_embedder()
     build_card_embeddings(conn, embedder)
     yield factory, embedder
 

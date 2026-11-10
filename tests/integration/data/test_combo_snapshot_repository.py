@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.database import create_engine, create_session_factory, init_database
+from src.data.database import create_engine, create_session_factory
 from src.data.models.combo import (
     ComboSnapshotMetaModel,
     ComboVariantModel,
@@ -18,23 +18,6 @@ from src.data.models.combo import (
 )
 from src.data.repositories.combo_snapshot import ComboSnapshotRepository
 from src.data.schemas.combo import name_keys
-
-
-@pytest.fixture
-async def in_memory_engine():
-    """Create an in-memory SQLite engine for testing."""
-    engine = create_engine("sqlite+aiosqlite:///:memory:")
-    await init_database(engine)
-    yield engine
-    await engine.dispose()
-
-
-@pytest.fixture
-async def session(in_memory_engine):
-    """Create a test session."""
-    session_factory = create_session_factory(in_memory_engine)
-    async with session_factory() as session:
-        yield session
 
 
 @pytest.fixture

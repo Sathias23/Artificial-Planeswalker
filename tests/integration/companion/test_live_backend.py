@@ -269,24 +269,19 @@ async def _await_record(
 
 
 @pytest.fixture
-def live_data_dir(tmp_path, monkeypatch):
-    """An isolated data directory, pointed at from **both** processes.
+def live_data_dir(tmp_path):
+    """The isolated data directory, pointed at from **both** processes.
 
     The child gets it through its environment (see :meth:`_Backend.start`); this process gets it
-    through ``monkeypatch`` so that ``src.paths.data_dir()`` — and therefore
-    ``discovery.read_discovery()`` and ``client.live_instance()`` — resolve the same directory the
-    backend is writing to. Both halves are required: the test reads the file the child writes.
-
-    **This isolation is owned here rather than inherited.** ``tests/unit/companion/conftest.py``
-    has an autouse fixture doing the same job, but it is scoped to that package and does not reach
-    this one; ``tests/integration/conftest.py`` holds database fixtures and nothing else needs a
-    data dir. Widening either would give a shared conftest a companion-shaped dependency for one
-    caller.
+    from the root ``isolated_data_dir`` fixture (``tests/conftest.py``), which points
+    ``PLANESWALKER_DATA_DIR`` at ``tmp_path`` for every test, so ``src.paths.data_dir()`` — and
+    therefore ``discovery.read_discovery()`` and ``client.live_instance()`` — resolve the same
+    directory the backend is writing to. Both halves are required: the test reads the file the
+    child writes.
 
     The isolation also means the singleton lock is per-test: this backend can never contend with a
     companion the developer actually has running, and vice versa.
     """
-    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
     return tmp_path
 
 

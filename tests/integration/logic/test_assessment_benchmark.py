@@ -43,6 +43,7 @@ from src.logic.assessment import (
 )
 from tests.fixtures.assessment import make_combo_record, make_deck_card
 from tests.fixtures.benchmark_decks import BenchmarkEntry, load_benchmark
+from tests.fixtures.real_data import REAL_DATABASE_FILE, read_only_url
 
 pytestmark = pytest.mark.integration
 
@@ -100,8 +101,19 @@ class _ResolvedEntry:
 
 
 async def _resolve_all() -> dict[str, _ResolvedEntry] | None:
-    """Resolve every benchmark entry via the central DB; ``None`` if uninitialized."""
-    engine = create_engine()
+    """Resolve every benchmark entry via the operator's real DB; ``None`` if absent or empty.
+
+    The one sanctioned reader of operator data in the suite. It names
+    :data:`~tests.fixtures.real_data.REAL_DATABASE_FILE` explicitly rather than resolving a
+    default path, because the module-scoped fixture that calls it sets up before the root
+    ``isolated_data_dir`` fixture has repointed the environment. Opened read-only and immutable,
+    with ``ensure_indexes=False`` so no repair hook issues DDL or a ``DELETE``; see
+    :func:`~tests.fixtures.real_data.read_only_url` for what an immutable open cannot see
+    (un-checkpointed WAL commits) and why a concurrent writer can corrupt the read.
+    """
+    if not REAL_DATABASE_FILE.is_file():
+        return None
+    engine = create_engine(read_only_url(REAL_DATABASE_FILE), ensure_indexes=False)
     try:
         session_factory = create_session_factory(engine)
         async with session_factory() as session:

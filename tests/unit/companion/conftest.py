@@ -96,29 +96,6 @@ def keep_spa_mount_last(app: FastAPI) -> FastAPI:
     )
 
 
-@pytest.fixture(autouse=True)
-def isolated_data_dir(tmp_path, monkeypatch):
-    """Point ``PLANESWALKER_DATA_DIR`` at this test's own ``tmp_path``, for every test here.
-
-    **Why this is autouse, and why it is a deliverable rather than hygiene (c1-7 AC 12).** From
-    c1-7 onward the lifespan writes a real ``companion.json`` into ``src.paths.data_dir()``, so
-    every one of the ~94 ``lifespan_client`` / ``async with lifespan(app)`` entries already in this
-    package acquires a filesystem effect on the *developer's* machine. Unisolated, they would race
-    each other over one path in ``%LOCALAPPDATA%\\artificial-planeswalker`` and — the damage that
-    matters — clobber the discovery file of a companion the user actually has running. The
-    ownership guard in ``remove_discovery`` saves the deletion but not the overwrite.
-
-    Only ``PLANESWALKER_DATA_DIR`` is set. Deliberately **not** ``CARDS_DATABASE_URL``: discovery
-    never reads it, and c1-6's tests manage that variable per-test. A test that sets
-    ``PLANESWALKER_DATA_DIR`` itself still wins, because its ``monkeypatch.setenv`` runs after
-    fixture setup.
-
-    ``test_discovery.py::test_the_isolation_fixture_is_active`` pins this, so deleting the fixture
-    turns a test red rather than quietly polluting a machine.
-    """
-    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
-
-
 @asynccontextmanager
 async def _lifespan_client(
     app: FastAPI,
@@ -431,6 +408,25 @@ async def drive_handshake(
     return sent
 
 
+def bearer(token: str) -> dict[str, str]:
+    """Return the ``Authorization`` header presenting *token*."""
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def mint_ticket(client: httpx.AsyncClient) -> str:
+    """Mint one WebSocket ticket through the shipped ``GET /api/session``, and return it.
+
+    Deliberately over the wire rather than by calling ``store.mint()``: the sequence under test is
+    "browser reads a ticket from same-origin ``GET /api/session``, then upgrades", and a test that
+    reached into the store would skip the half c5-2 shipped.
+    """
+    response = await client.get("/api/session")
+    assert response.status_code == 200, (
+        f"the mint must work, or every test relying on it is vacuous: {response.text}"
+    )
+    return response.json()["ticket"]
+
+
 @pytest.fixture
 def lifespan_client():
     """Return the :func:`_lifespan_client` context manager.
@@ -458,8 +454,8 @@ def lifespan_client():
 def _uuid(suffix: str) -> str:
     """Mint a canonical lowercase hyphenated uuid ending in *suffix*.
 
-    Canonical because the card routes' shape constraint refuses anything else — ``_card()``-style
-    ids like ``"card-anchor"`` (which ``test_routes_decks.py`` mints) are rejected with ``400``
+    Canonical because the card routes' shape constraint refuses anything else — free-form ids like
+    ``"card-a"`` (which the deck-route suites pass to ``_card()``) are rejected with ``400``
     before the handler runs. ``suffix`` must be hex; it is what makes each seeded card
     individually addressable and each id readable in a failure message.
 
@@ -538,10 +534,11 @@ def _card(card_id: str, name: str, **overrides: object) -> CardModel:
 
 
 def _point_at(monkeypatch, path: Path) -> Path:
-    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``.
+    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``, and return *path*.
 
-    The ``test_routes_decks.py`` pattern: an explicit ``CARDS_DATABASE_URL`` wins over everything,
-    so resolution cannot be hijacked by a developer's own environment.
+    An explicit ``CARDS_DATABASE_URL`` outranks the data dir, which the root ``isolated_data_dir``
+    fixture has already pointed at ``tmp_path``; the database is *not* resolved from that. The one
+    definition every companion suite imports, whether or not *path* exists yet.
     """
     monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{path.as_posix()}")
     return path

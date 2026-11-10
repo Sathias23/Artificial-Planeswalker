@@ -6,6 +6,8 @@ copies that previously lived in ``test_query.py``, ``test_index_builder.py``,
 (Pre-Epic-3 Targeted Gate G1). Each *distinct* composite text maps to a distinct one-hot 384-dim
 ``float32`` vector (stable per instance), so KNN nearest-neighbour assertions are exact and a
 changed text yields a different vector — all without loading the ~80 MB ONNX model or any network.
+One instance holds at most 384 distinct texts; the 385th raises ``ValueError`` rather than
+silently reusing a vector.
 """
 
 import numpy as np
@@ -31,7 +33,14 @@ class FakeEmbedder:
 
     def _vector_for(self, text: str) -> NDArray[np.float32]:
         if text not in self._assigned:
-            self._assigned[text] = len(self._assigned) % EMBEDDING_DIM
+            if len(self._assigned) == EMBEDDING_DIM:
+                # A wrapped index would hand this text another text's vector, and every KNN
+                # assertion past that point would be measuring a collision instead of a ranking.
+                raise ValueError(
+                    f"FakeEmbedder has only {EMBEDDING_DIM} one-hot vectors and all are assigned; "
+                    "a further distinct text would reuse one. Use a fresh instance or fewer texts."
+                )
+            self._assigned[text] = len(self._assigned)
         vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
         vec[self._assigned[text]] = 1.0
         return vec

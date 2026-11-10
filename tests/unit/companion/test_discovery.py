@@ -74,10 +74,11 @@ def _temp_leftovers(directory):
 
 
 def test_the_isolation_fixture_is_active(tmp_path):
-    """The autouse conftest fixture points discovery at this test's tmp_path, not the real dir.
+    """The root autouse ``isolated_data_dir`` fixture (``tests/conftest.py``) points discovery at
+    this test's tmp_path, not the real dir.
 
     Deleting that fixture must turn a test red rather than quietly writing into the developer's
-    ``%LOCALAPPDATA%``.
+    ``%LOCALAPPDATA%``; ``tests/unit/test_isolation.py`` pins the fixture's other effects.
     """
     assert discovery_path().parent == tmp_path
 

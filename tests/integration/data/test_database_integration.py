@@ -1,29 +1,11 @@
 """Integration tests for database operations."""
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.database import create_engine, create_session_factory, health_check, init_database
+from src.data.database import create_session_factory, health_check, init_database
 from src.data.models.card import CardModel
 from src.data.schemas.card import Card
-
-
-@pytest.fixture
-async def in_memory_engine():
-    """Create an in-memory SQLite engine for testing."""
-    engine = create_engine("sqlite+aiosqlite:///:memory:")
-    await init_database(engine)
-    yield engine
-    await engine.dispose()
-
-
-@pytest.fixture
-async def session(in_memory_engine):
-    """Create a test session."""
-    session_factory = create_session_factory(in_memory_engine)
-    async with session_factory() as session:
-        yield session
 
 
 async def test_init_database_creates_tables(in_memory_engine) -> None:

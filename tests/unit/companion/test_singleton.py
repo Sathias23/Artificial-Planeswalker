@@ -3,8 +3,9 @@
 No mocks. Mocking ``msvcrt``/``fcntl`` would prove only that a mock was called, while the failure
 this module exists to prevent — a second process getting the lock — lives in the kernel. Every test
 here opens real descriptors against a real file under this test's own ``PLANESWALKER_DATA_DIR``
-(the autouse ``isolated_data_dir`` fixture in ``conftest.py``), which is also what keeps them
-contention-free against each other and against a companion the developer may actually be running.
+(the root autouse ``isolated_data_dir`` fixture in ``tests/conftest.py``), which is also what
+keeps them contention-free against each other and against a companion the developer may actually
+be running.
 
 The same-process contention case is only meaningful because of AC 9's primitive choice: ``flock``
 is per open-file-description and Windows' ``msvcrt.locking`` denies a second descriptor outright,
@@ -16,6 +17,7 @@ second acquire a silent success. Swap the primitive and
 import errno
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -37,6 +39,49 @@ def held_lock():
         yield fd
     finally:
         singleton.release_instance_lock(fd)
+
+
+_CONTENTION_BOUND_SECONDS = 2.0
+"""How long a contended acquire may take before the test calls it blocking."""
+
+
+def _bounded_acquire() -> int | None:
+    """Run :func:`~src.companion.app.singleton.acquire_instance_lock` with a hard deadline.
+
+    The acquire runs in a daemon thread joined for :data:`_CONTENTION_BOUND_SECONDS`. A
+    non-blocking refusal returns in microseconds; a blocking primitive (``LK_LOCK`` retries for ten
+    seconds, a blocking POSIX ``flock`` waits forever) fails the test at the bound instead of
+    hanging the suite. The abandoned daemon thread dies with the process.
+
+    Returns:
+        Whatever the acquire returned (``None`` under contention).
+
+    Raises:
+        Whatever the acquire raised, re-raised on the test's thread.
+    """
+    outcome: list[int | None] = []
+    errors: list[BaseException] = []
+
+    def attempt() -> None:
+        try:
+            outcome.append(singleton.acquire_instance_lock())
+        except BaseException as exc:  # re-raised below, on the test's own thread
+            errors.append(exc)
+
+    worker = threading.Thread(target=attempt, daemon=True)
+    started = time.monotonic()
+    worker.start()
+    worker.join(timeout=_CONTENTION_BOUND_SECONDS)
+    if worker.is_alive():
+        pytest.fail(
+            f"a contended acquire was still blocked after {_CONTENTION_BOUND_SECONDS}s — it must "
+            "never block and retry (LK_NBLCK, not LK_LOCK; LOCK_EX | LOCK_NB, not a blocking flock)"
+        )
+    elapsed = time.monotonic() - started
+    assert elapsed < _CONTENTION_BOUND_SECONDS, f"a contended acquire took {elapsed:.1f}s"
+    if errors:
+        raise errors[0]
+    return outcome[0]
 
 
 class TestLockPath:
@@ -72,7 +117,7 @@ class TestAcquireAndRelease:
     def test_a_second_descriptor_in_this_process_is_refused(self, held_lock: int):
         """The non-vacuity anchor: ``flock``/``LK_NBLCK`` deny a second *descriptor*, not merely a
         second process — which is what makes this cheap test meaningful (AC 9, AC 15)."""
-        assert singleton.acquire_instance_lock() is None
+        assert _bounded_acquire() is None
 
     def test_a_refused_acquire_returns_immediately(self, held_lock: int):
         """AC 9: non-blocking, and this is what makes that testable rather than merely intended.
@@ -82,18 +127,12 @@ class TestAcquireAndRelease:
         :func:`acquire_instance_lock` would report as ordinary contention — so every assertion
         about refusal still passes, ten seconds later each. Swapping ``LK_NBLCK`` for ``LK_LOCK``
         was measured at 591 s for this file against a 0.06 s baseline; this bound turns that hang
-        into a failure. The threshold is deliberately loose: the real refusal takes microseconds,
-        and the mutation takes ten seconds, so nothing lives near two.
+        into a failure. A blocking ``flock`` on POSIX never returns at all, which is why the
+        acquire runs in :func:`_bounded_acquire`'s thread rather than on the test's own. The
+        threshold is deliberately loose: the real refusal takes microseconds, and the mutation
+        takes ten seconds (or forever), so nothing lives near two.
         """
-        started = time.monotonic()
-
-        assert singleton.acquire_instance_lock() is None
-
-        elapsed = time.monotonic() - started
-        assert elapsed < 2.0, (
-            f"a contended acquire took {elapsed:.1f}s — it must never block and retry "
-            "(LK_NBLCK, not LK_LOCK; LOCK_EX | LOCK_NB, not a blocking flock)"
-        )
+        assert _bounded_acquire() is None
 
     def test_release_then_acquire_succeeds(self):
         first = singleton.acquire_instance_lock()
@@ -131,7 +170,7 @@ class TestAcquireAndRelease:
 
         before = next_fd_number()
         for _ in range(64):
-            assert singleton.acquire_instance_lock() is None
+            assert _bounded_acquire() is None
 
         assert next_fd_number() == before, "the refusal path leaked its file descriptor"
 

@@ -21,7 +21,6 @@ from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
-from src.data.models.card import CardModel
 from src.data.repositories.deck import DeckRepository
 from src.mcp_server.tools.assess_deck_power import (
     AssessDeckPowerResult,
@@ -38,6 +37,7 @@ from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power,
 )
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
+from tests.fixtures.assessment_db import assessment_core_cards, make_deck
 from tests.fixtures.combo_snapshot import (
     seed_snapshot as _seed_snapshot,
 )
@@ -243,126 +243,25 @@ class TestCompareResultModels:
         assert build().model_dump_json() == build().model_dump_json()
 
 
-# --- helper-level fixtures (mirroring test_assess_deck_power_tool.py) ---
-
-
-def _card(
-    card_id: str,
-    name: str,
-    *,
-    type_line: str,
-    cmc: float = 2.0,
-    oracle_text: str = "Does a thing.",
-    colors: list[str] | None = None,
-    game_changer: bool | None = False,
-) -> CardModel:
-    """Build a CardModel with a unique oracle_id (commander+standard legal).
-
-    ``game_changer`` defaults to ``False`` (confirmed not) so the seed never
-    trips ``game_changer_data_unavailable`` — compare tests want clean
-    high-confidence sides unless a scenario opts in.
-    """
-    return CardModel(
-        id=card_id,
-        name=name,
-        printed_name=None,
-        oracle_id=f"oracle-{card_id}",
-        mana_cost="{R}",
-        cmc=cmc,
-        type_line=type_line,
-        oracle_text=oracle_text,
-        rarity="common",
-        set_code="TST",
-        set_name="Test Set",
-        collector_number="1",
-        colors=colors if colors is not None else ["R"],
-        color_identity=colors if colors is not None else ["R"],
-        legalities={"standard": "legal", "commander": "legal"},
-        games=["paper", "arena", "mtgo"],
-        game_changer=game_changer,
-    )
-
-
-def _seed_cards() -> list[CardModel]:
-    """Compare-grade seed: commander candidates, combo partners, reverse-order GCs."""
-    return [
-        _card(
-            "card-mountain",
-            "Mountain",
-            type_line="Basic Land — Mountain",
-            cmc=0.0,
-            oracle_text="{T}: Add {R}.",
-            colors=[],
-        ),
-        _card("card-krenko", "Krenko, Mob Boss", type_line="Legendary Creature — Goblin", cmc=4.0),
-        _card(
-            "card-zada",
-            "Zada, Hedron Grinder",
-            type_line="Legendary Creature — Goblin Ally",
-            cmc=3.0,
-        ),
-        _card("card-goblin-guide", "Goblin Guide", type_line="Creature — Goblin Scout", cmc=1.0),
-        _card("card-shock", "Shock", type_line="Instant", cmc=1.0),
-        # Two confirmed Game Changers seeded in reverse bytewise name order
-        # ("Bolas's Citadel" enters decks before "Aura Shards") so sorted-emission
-        # assertions on game_changers_added cannot pass by insert-order accident.
-        _card(
-            "card-gc-bolas",
-            "Bolas's Citadel",
-            type_line="Legendary Artifact",
-            cmc=6.0,
-            game_changer=True,
-        ),
-        _card(
-            "card-gc-aura",
-            "Aura Shards",
-            type_line="Enchantment",
-            cmc=3.0,
-            colors=["G", "W"],
-            game_changer=True,
-        ),
-    ]
+# --- helper-level fixtures (shared builders in tests/fixtures/assessment_db.py) ---
 
 
 @pytest.fixture
 async def session(tmp_path: Path):
-    """File-backed engine + a single shared session, seeded with cards (no decks)."""
+    """File-backed engine + a single shared session, seeded with the core cards (no decks).
+
+    Compare-grade: commander candidates, combo partners and the two reverse-order Game Changers,
+    with no NULL Game Changer, so both sides stay high-confidence unless a scenario opts in.
+    """
     db_path = tmp_path / "compare.db"
     engine = create_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")
     await init_database(engine)
     session_factory = create_session_factory(engine)
     async with session_factory() as session:
-        for card in _seed_cards():
-            session.add(card)
+        session.add_all(assessment_core_cards("card-"))
         await session.commit()
         yield session
     await engine.dispose()
-
-
-@pytest.fixture
-async def uninitialized_session(tmp_path: Path):
-    """A session against a DB where init_database has never run (no tables at all)."""
-    db_path = tmp_path / "uninitialized.db"
-    engine = create_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")
-    session_factory = create_session_factory(engine)
-    async with session_factory() as session:
-        yield session
-    await engine.dispose()
-
-
-async def _make_deck(
-    session: AsyncSession,
-    rows: list[tuple[str, int, bool, bool]],
-    *,
-    name: str = "Deck",
-    format: str = "commander",
-) -> str:
-    """Create a deck and add (card_id, quantity, sideboard, commander) rows. Returns id."""
-    repo = DeckRepository(session)
-    deck = await repo.create_deck(name=name, format=format)
-    for card_id, quantity, sideboard, commander in rows:
-        await repo.add_card_to_deck(deck.id, card_id, quantity, sideboard, commander)
-    return deck.id
 
 
 _BASE_ROWS: list[tuple[str, int, bool, bool]] = [
@@ -387,8 +286,8 @@ async def test_ok_deltas_equal_direct_subtraction(session: AsyncSession) -> None
     await _seed_snapshot(
         session, [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])]
     )
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Baseline")
-    deck_b = await _make_deck(
+    deck_a = await make_deck(session, _BASE_ROWS, name="Baseline")
+    deck_b = await make_deck(
         session,
         [*_BASE_ROWS, ("card-zada", 1, False, False), ("card-gc-bolas", 1, False, False)],
         name="Candidate",
@@ -458,7 +357,7 @@ async def test_self_compare_all_zero(session: AsyncSession) -> None:
     await _seed_snapshot(
         session, [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])]
     )
-    deck_id = await _make_deck(session, _BASE_ROWS, name="Selfsame")
+    deck_id = await make_deck(session, _BASE_ROWS, name="Selfsame")
 
     result = await compare_deck_power(session, deck_id_a=f"  {deck_id} ", deck_id_b=deck_id)
 
@@ -496,7 +395,7 @@ async def test_self_compare_all_zero(session: AsyncSession) -> None:
 
 async def test_deck_a_failed_names_side_and_token(session: AsyncSession) -> None:
     """A bogus deck_id_a yields deck_a_failed naming the id and the assess token."""
-    deck_b = await _make_deck(session, _BASE_ROWS, name="Healthy B")
+    deck_b = await make_deck(session, _BASE_ROWS, name="Healthy B")
 
     result = await compare_deck_power(session, deck_id_a="bogus-a", deck_id_b=deck_b)
 
@@ -508,7 +407,7 @@ async def test_deck_a_failed_names_side_and_token(session: AsyncSession) -> None
 
 async def test_deck_b_failed_names_side_and_token(session: AsyncSession) -> None:
     """A bogus deck_id_b yields deck_b_failed naming the id and the assess token."""
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Healthy A")
+    deck_a = await make_deck(session, _BASE_ROWS, name="Healthy A")
 
     result = await compare_deck_power(session, deck_id_a=deck_a, deck_id_b="bogus-b")
 
@@ -544,7 +443,7 @@ async def test_both_decks_failed_names_distinct_tokens(session: AsyncSession) ->
         ("card-shock", 4, False, False),
         ("card-mountain", 20, False, False),
     ]
-    deck_b = await _make_deck(session, no_commander_rows, name="Modern B", format="modern")
+    deck_b = await make_deck(session, no_commander_rows, name="Modern B", format="modern")
 
     result = await compare_deck_power(session, deck_id_a="bogus-a", deck_id_b=deck_b)
 
@@ -569,8 +468,8 @@ async def test_deck_a_database_error_does_not_poison_session_for_deck_b(
     surfacing as a tool-level crash instead of ``deck_a_failed``. Only a rollback
     in assess's DatabaseError handler restores the session for side B.
     """
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Poisoned A")
-    deck_b = await _make_deck(session, _BASE_ROWS, name="Healthy B")
+    deck_a = await make_deck(session, _BASE_ROWS, name="Poisoned A")
+    deck_b = await make_deck(session, _BASE_ROWS, name="Healthy B")
 
     original = DeckRepository.get_deck_with_cards
 
@@ -595,8 +494,8 @@ async def test_deck_a_database_error_does_not_poison_session_for_deck_b(
 
 async def test_explicit_unsupported_format_fails_both_sides(session: AsyncSession) -> None:
     """An unsupported explicit format surfaces via the underlying assess status (AC 5)."""
-    deck_a = await _make_deck(session, _BASE_ROWS, name="A")
-    deck_b = await _make_deck(session, _BASE_ROWS, name="B")
+    deck_a = await make_deck(session, _BASE_ROWS, name="A")
+    deck_b = await make_deck(session, _BASE_ROWS, name="B")
 
     result = await compare_deck_power(session, deck_id_a=deck_a, deck_id_b=deck_b, format="modern")
 
@@ -643,8 +542,8 @@ async def test_defensive_error_when_ok_result_lacks_assessment(
 
 async def test_format_mismatch_names_both_formats_and_hint(session: AsyncSession) -> None:
     """Different resolved formats with format omitted yield format_mismatch (AC 5)."""
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Commander A", format="commander")
-    deck_b = await _make_deck(
+    deck_a = await make_deck(session, _BASE_ROWS, name="Commander A", format="commander")
+    deck_b = await make_deck(
         session,
         [("card-shock", 4, False, False), ("card-mountain", 20, False, False)],
         name="Standard B",
@@ -662,8 +561,8 @@ async def test_format_mismatch_names_both_formats_and_hint(session: AsyncSession
 
 async def test_explicit_format_forces_both_sides(session: AsyncSession) -> None:
     """An explicit format is passed verbatim to both assess calls (AC 5)."""
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Commander A", format="commander")
-    deck_b = await _make_deck(
+    deck_a = await make_deck(session, _BASE_ROWS, name="Commander A", format="commander")
+    deck_b = await make_deck(
         session,
         [("card-shock", 4, False, False), ("card-mountain", 20, False, False)],
         name="Standard B",
@@ -698,12 +597,12 @@ async def test_diff_lists_sorted_bytewise(session: AsyncSession) -> None:
         ],
     )
     # Deck_a holds no variant piece at all → zero matched combos.
-    deck_a = await _make_deck(
+    deck_a = await make_deck(
         session,
         [("card-shock", 4, False, False), ("card-mountain", 20, False, False)],
         name="Pieceless A",
     )
-    deck_b = await _make_deck(
+    deck_b = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -740,8 +639,8 @@ async def test_compare_model_dump_json_deterministic(session: AsyncSession) -> N
     await _seed_snapshot(
         session, [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])]
     )
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Det A")
-    deck_b = await _make_deck(
+    deck_a = await make_deck(session, _BASE_ROWS, name="Det A")
+    deck_b = await make_deck(
         session,
         [*_BASE_ROWS, ("card-zada", 1, False, False), ("card-gc-bolas", 1, False, False)],
         name="Det B",
@@ -762,8 +661,8 @@ async def test_ok_summary_is_deterministic_projection(session: AsyncSession) -> 
     await _seed_snapshot(
         session, [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])]
     )
-    deck_a = await _make_deck(session, _BASE_ROWS, name="Sum A")
-    deck_b = await _make_deck(
+    deck_a = await make_deck(session, _BASE_ROWS, name="Sum A")
+    deck_b = await make_deck(
         session,
         [*_BASE_ROWS, ("card-zada", 1, False, False), ("card-gc-bolas", 1, False, False)],
         name="Sum B",

@@ -28,7 +28,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.data.models.combo import ComboSnapshotMetaModel
-from src.data.repositories.deck import DeckRepository
 from src.logic.assessment import (
     CARDS_UNRESOLVED,
     COMBO_DATA_UNAVAILABLE,
@@ -54,6 +53,12 @@ from src.mcp_server.tools.assess_deck_power import (
     assess_deck_power,
 )
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
+from tests.fixtures.assessment_db import (
+    assessment_card,
+    assessment_core_cards,
+    make_deck,
+    null_game_changer_card,
+)
 from tests.fixtures.combo_snapshot import (
     seed_snapshot as _seed_snapshot,
 )
@@ -62,120 +67,33 @@ from tests.fixtures.combo_snapshot import (
 )
 
 
-def _card(
-    card_id: str,
-    name: str,
-    *,
-    type_line: str,
-    cmc: float = 2.0,
-    oracle_text: str = "Does a thing.",
-    colors: list[str] | None = None,
-    game_changer: bool | None = False,
-) -> CardModel:
-    """Build a CardModel with a unique oracle_id (standard-legal, all platforms).
-
-    ``game_changer`` defaults to ``False`` (confirmed not) so the shared seed never
-    trips ``game_changer_data_unavailable``; the NULL fixture opts in explicitly.
-    """
-    return CardModel(
-        id=card_id,
-        name=name,
-        printed_name=None,
-        oracle_id=f"oracle-{card_id}",
-        mana_cost="{R}",
-        cmc=cmc,
-        type_line=type_line,
-        oracle_text=oracle_text,
-        rarity="common",
-        set_code="TST",
-        set_name="Test Set",
-        collector_number="1",
-        colors=colors if colors is not None else ["R"],
-        color_identity=colors if colors is not None else ["R"],
-        legalities={"standard": "legal", "commander": "legal"},
-        games=["paper", "arena", "mtgo"],
-        game_changer=game_changer,
-    )
-
-
 def _seed_cards() -> list[CardModel]:
-    """Cards exercising every commander-resolution branch."""
+    """Cards exercising every commander-resolution branch.
+
+    The shared core (``card-`` ids), then this suite's own DFC and planeswalker commanders, then
+    the NULL Game Changer (the AD-4 ``unknown_count`` fixture).
+    """
     return [
-        _card(
-            "card-mountain",
-            "Mountain",
-            type_line="Basic Land — Mountain",
-            cmc=0.0,
-            oracle_text="{T}: Add {R}.",
-            colors=[],
-        ),
-        _card(
-            "card-krenko",
-            "Krenko, Mob Boss",
-            type_line="Legendary Creature — Goblin",
-            cmc=4.0,
-        ),
-        _card(
-            "card-zada",
-            "Zada, Hedron Grinder",
-            type_line="Legendary Creature — Goblin Ally",
-            cmc=3.0,
-        ),
-        _card(
-            "card-goblin-guide",
-            "Goblin Guide",
-            type_line="Creature — Goblin Scout",
-            cmc=1.0,
-        ),
-        _card(
-            "card-shock",
-            "Shock",
-            type_line="Instant",
-            cmc=1.0,
-        ),
-        _card(
+        *assessment_core_cards("card-"),
+        assessment_card(
             "card-dfc-front-legend",
             "Hero of the Hunt // Rampage",
             type_line="Legendary Creature — Human // Instant",
             cmc=3.0,
         ),
-        _card(
+        assessment_card(
             "card-dfc-back-legend",
             "Quiet Study // Ancient Spirit",
             type_line="Instant // Legendary Creature — Spirit",
             cmc=2.0,
         ),
-        _card(
+        assessment_card(
             "card-chandra",
             "Chandra, Torch of Defiance",
             type_line="Legendary Planeswalker — Chandra",
             cmc=4.0,
         ),
-        _card(
-            "card-gc-null",
-            "Mystery Relic",
-            type_line="Artifact",
-            cmc=2.0,
-            game_changer=None,  # unknown state — the AD-4 unknown_count fixture
-        ),
-        # Two confirmed Game Changers whose names are deliberately out of seed order
-        # bytewise ("Aura Shards" < "Bolas's Citadel") — the flags.game_changers
-        # sorted-emission fixtures (Story 7.3).
-        _card(
-            "card-gc-bolas",
-            "Bolas's Citadel",
-            type_line="Legendary Artifact",
-            cmc=6.0,
-            game_changer=True,
-        ),
-        _card(
-            "card-gc-aura",
-            "Aura Shards",
-            type_line="Enchantment",
-            cmc=3.0,
-            colors=["G", "W"],
-            game_changer=True,
-        ),
+        null_game_changer_card("card-"),
     ]
 
 
@@ -187,37 +105,10 @@ async def session(tmp_path: Path):
     await init_database(engine)
     session_factory = create_session_factory(engine)
     async with session_factory() as session:
-        for card in _seed_cards():
-            session.add(card)
+        session.add_all(_seed_cards())
         await session.commit()
         yield session
     await engine.dispose()
-
-
-@pytest.fixture
-async def uninitialized_session(tmp_path: Path):
-    """A session against a DB where init_database has never run (no tables at all)."""
-    db_path = tmp_path / "uninitialized.db"
-    engine = create_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")
-    session_factory = create_session_factory(engine)
-    async with session_factory() as session:
-        yield session
-    await engine.dispose()
-
-
-async def _make_deck(
-    session: AsyncSession,
-    rows: list[tuple[str, int, bool, bool]],
-    *,
-    name: str = "Deck",
-    format: str = "commander",
-) -> str:
-    """Create a deck and add (card_id, quantity, sideboard, commander) rows. Returns id."""
-    repo = DeckRepository(session)
-    deck = await repo.create_deck(name=name, format=format)
-    for card_id, quantity, sideboard, commander in rows:
-        await repo.add_card_to_deck(deck.id, card_id, quantity, sideboard, commander)
-    return deck.id
 
 
 # --- format-resolution ladder (AC 3) ---
@@ -225,7 +116,7 @@ async def _make_deck(
 
 async def test_explicit_format_beats_stored(session: AsyncSession) -> None:
     """An explicit format param overrides the stored Deck.format."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)], format="standard")
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)], format="standard")
 
     result = await assess_deck_power(session, deck_id=deck_id, format="commander")
 
@@ -235,7 +126,7 @@ async def test_explicit_format_beats_stored(session: AsyncSession) -> None:
 
 async def test_explicit_format_is_normalized(session: AsyncSession) -> None:
     """The explicit param is stripped and lowercased before the map lookup."""
-    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format="commander")
+    deck_id = await make_deck(session, [("card-shock", 4, False, False)], format="commander")
 
     result = await assess_deck_power(session, deck_id=deck_id, format="  Standard \n")
 
@@ -257,7 +148,7 @@ async def test_explicit_unsupported_format_short_circuits_before_db(
 
 async def test_stored_commander_format_resolves(session: AsyncSession) -> None:
     """Stored Deck.format='commander' selects the Commander profile."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, False)], format="commander")
+    deck_id = await make_deck(session, [("card-krenko", 1, False, False)], format="commander")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -267,7 +158,7 @@ async def test_stored_commander_format_resolves(session: AsyncSession) -> None:
 
 async def test_stored_format_is_normalized(session: AsyncSession) -> None:
     """The stored free-text format is stripped/lowercased before the map lookup."""
-    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format=" COMMANDER ")
+    deck_id = await make_deck(session, [("card-shock", 4, False, False)], format=" COMMANDER ")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -278,7 +169,7 @@ async def test_stored_format_is_normalized(session: AsyncSession) -> None:
 @pytest.mark.parametrize("stored", ["brawl", "standardbrawl", "historic", "no-such-format"])
 async def test_stored_unsupported_format_is_graceful(session: AsyncSession, stored: str) -> None:
     """Brawl-family and unknown stored formats return unsupported_format, never a crash."""
-    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format=stored)
+    deck_id = await make_deck(session, [("card-shock", 4, False, False)], format=stored)
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -291,7 +182,7 @@ async def test_stored_unsupported_format_is_graceful(session: AsyncSession, stor
 
 async def test_commander_flag_signal_resolves_brawl_deck(session: AsyncSession) -> None:
     """A flagged mainboard commander resolves an otherwise-unsupported stored format."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)], format="brawl")
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)], format="brawl")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -301,7 +192,7 @@ async def test_commander_flag_signal_resolves_brawl_deck(session: AsyncSession) 
 
 async def test_stored_standard_beats_flag_signal(session: AsyncSession) -> None:
     """The stored format outranks the structural commander-flag signal in the ladder."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)], format="standard")
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)], format="standard")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -328,7 +219,7 @@ def test_resolve_format_ladder_pure() -> None:
 
 async def test_flagged_single_commander(session: AsyncSession) -> None:
     """One flagged mainboard row resolves as the commander, name verbatim."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-shock", 4, False, False)],
     )
@@ -342,7 +233,7 @@ async def test_flagged_single_commander(session: AsyncSession) -> None:
 
 async def test_flagged_partner_commanders(session: AsyncSession) -> None:
     """Two flagged mainboard rows resolve as partner commanders."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-zada", 1, False, True)],
     )
@@ -359,7 +250,7 @@ async def test_more_than_two_flagged_is_unidentified(
     session: AsyncSession, caplog: pytest.LogCaptureFixture
 ) -> None:
     """>2 flagged rows resolve honestly to unidentified with a warning, never a subset."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -379,7 +270,7 @@ async def test_more_than_two_flagged_is_unidentified(
 
 async def test_sideboard_flag_ignored_when_mainboard_flagged(session: AsyncSession) -> None:
     """Sideboard-flagged rows are never commanders; the mainboard flag stands alone."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-zada", 1, True, True)],
     )
@@ -395,7 +286,7 @@ async def test_sideboard_only_flags_are_unidentified(
     session: AsyncSession, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Flags only in the sideboard resolve to unidentified (no inference), with a warning."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, False), ("card-zada", 1, True, True)],
     )
@@ -412,7 +303,7 @@ async def test_sideboard_only_flags_are_unidentified(
 
 async def test_sole_legendary_is_inferred(session: AsyncSession) -> None:
     """With no flags in a commander deck, a sole legendary creature is inferred, no penalty."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, False),
@@ -430,7 +321,7 @@ async def test_sole_legendary_is_inferred(session: AsyncSession) -> None:
 
 async def test_sole_legendary_multiple_copies_still_infers(session: AsyncSession) -> None:
     """Distinctness is by name: multiple copies of one legendary still infer."""
-    deck_id = await _make_deck(session, [("card-krenko", 2, False, False)])
+    deck_id = await make_deck(session, [("card-krenko", 2, False, False)])
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -441,7 +332,7 @@ async def test_sole_legendary_multiple_copies_still_infers(session: AsyncSession
 
 async def test_multiple_distinct_legendaries_unidentified(session: AsyncSession) -> None:
     """Two distinct unflagged legendary creatures cannot be disambiguated — unidentified."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, False), ("card-zada", 1, False, False)],
     )
@@ -454,7 +345,7 @@ async def test_multiple_distinct_legendaries_unidentified(session: AsyncSession)
 
 async def test_no_legendary_unidentified(session: AsyncSession) -> None:
     """No flags and no legendary creature resolves to unidentified."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-goblin-guide", 4, False, False), ("card-shock", 4, False, False)],
     )
@@ -467,7 +358,7 @@ async def test_no_legendary_unidentified(session: AsyncSession) -> None:
 
 async def test_standard_format_never_infers(session: AsyncSession) -> None:
     """Sole-legendary inference is Commander-only: a standard deck never infers."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, False)], format="standard")
+    deck_id = await make_deck(session, [("card-krenko", 1, False, False)], format="standard")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -478,7 +369,7 @@ async def test_standard_format_never_infers(session: AsyncSession) -> None:
 
 async def test_dfc_front_face_legendary_is_inferred(session: AsyncSession) -> None:
     """A DFC whose FRONT face is a legendary creature infers with the full stored name."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-dfc-front-legend", 1, False, False), ("card-shock", 4, False, False)],
     )
@@ -492,7 +383,7 @@ async def test_dfc_front_face_legendary_is_inferred(session: AsyncSession) -> No
 
 async def test_dfc_back_face_legendary_not_inferred(session: AsyncSession) -> None:
     """A back-face-only legendary creature is not castable from the command zone — no inference."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-dfc-back-legend", 1, False, False), ("card-shock", 4, False, False)],
     )
@@ -505,7 +396,7 @@ async def test_dfc_back_face_legendary_not_inferred(session: AsyncSession) -> No
 
 async def test_legendary_planeswalker_not_inferred(session: AsyncSession) -> None:
     """FR25 scopes inference to legendary creatures — planeswalkers degrade honestly."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-chandra", 1, False, False), ("card-shock", 4, False, False)],
     )
@@ -533,7 +424,7 @@ def test_is_legendary_creature_pure() -> None:
 
 async def test_summary_counts_mainboard_only(session: AsyncSession) -> None:
     """The ok summary reports quantity-expanded mainboard cards and 0 unresolved."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -580,7 +471,7 @@ async def test_ok_result_carries_schema_version_and_assessment(
     session: AsyncSession,
 ) -> None:
     """AD-7: schema_version is always present; the ok path populates the assessment block."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)])
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)])
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -667,7 +558,7 @@ def test_derive_confidence_counts_never_embed_in_tokens() -> None:
 
 async def test_absent_snapshot_degrades_and_still_scores(session: AsyncSession) -> None:
     """Empty snapshot tables → combo_data_unavailable + medium confidence, scored ok (AC 2)."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
     )
@@ -686,7 +577,7 @@ async def test_seeded_snapshot_matched_combo_no_token(session: AsyncSession) -> 
         session,
         [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -710,7 +601,7 @@ async def test_zero_overlap_healthy_snapshot_no_token(session: AsyncSession) -> 
         session,
         [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
     )
@@ -732,7 +623,7 @@ async def test_provisioning_database_error_returns_error_status(
     only OperationalError, so a sibling DatabaseError would otherwise escape to the
     client — 7.1's DB-failure contract (AC 6 / NFR3) must hold on the new path too.
     """
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
     )
@@ -760,7 +651,7 @@ async def test_combos_disabled_profile_skips_repo_and_token(
     """
     disabled = dataclasses.replace(STANDARD_PROFILE, combos_enabled=False)
     monkeypatch.setitem(_FORMAT_PROFILES, "standard", disabled)
-    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format="standard")
+    deck_id = await make_deck(session, [("card-shock", 4, False, False)], format="standard")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -796,7 +687,7 @@ async def test_commander_unidentified_token_fires_for_commander_format(
         [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
     )
     # Two distinct unflagged legendaries → unidentified.
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, False), ("card-zada", 1, False, False)],
     )
@@ -816,7 +707,7 @@ async def test_standard_deck_never_carries_commander_unidentified(
         session,
         [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
     )
-    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format="standard")
+    deck_id = await make_deck(session, [("card-shock", 4, False, False)], format="standard")
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -832,7 +723,7 @@ async def test_null_game_changer_card_degrades(session: AsyncSession) -> None:
         session,
         [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-gc-null", 1, False, False)],
     )
@@ -847,7 +738,7 @@ async def test_null_game_changer_card_degrades(session: AsyncSession) -> None:
 async def test_multi_degradation_is_low_with_sorted_reasons(session: AsyncSession) -> None:
     """Absent snapshot + unidentified commander + NULL gc → low, sorted reasons (AC 4/5)."""
     # No snapshot seeded; commander deck with no flags and no sole legendary.
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, False),
@@ -869,7 +760,7 @@ async def test_multi_degradation_is_low_with_sorted_reasons(session: AsyncSessio
 
 async def test_empty_mainboard_deck_scores_without_crash(session: AsyncSession) -> None:
     """An all-sideboard deck still returns a scored ok result — score() is zero-safe (AC 3/6)."""
-    deck_id = await _make_deck(session, [("card-shock", 4, True, False)])
+    deck_id = await make_deck(session, [("card-shock", 4, True, False)])
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -921,7 +812,7 @@ async def test_ok_assessment_populated_with_full_shape(session: AsyncSession) ->
         session,
         [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -976,7 +867,7 @@ async def test_every_non_ok_status_keeps_assessment_none(
     assert uninitialized.status == "database_not_initialized"
     assert uninitialized.assessment is None
 
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)])
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)])
 
     async def _boom(*_args: object, **_kwargs: object) -> object:
         raise DatabaseError("SELECT combo", None, Exception("database is locked"))
@@ -993,11 +884,11 @@ async def test_shape_parity_commander_vs_standard(session: AsyncSession) -> None
         session,
         [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
     )
-    commander_id = await _make_deck(
+    commander_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
     )
-    standard_id = await _make_deck(
+    standard_id = await make_deck(
         session,
         [("card-shock", 4, False, False), ("card-mountain", 20, False, False)],
         format="standard",
@@ -1024,7 +915,7 @@ async def test_shape_parity_commander_vs_standard(session: AsyncSession) -> None
 
 async def test_data_vintage_null_keys_when_snapshot_absent(session: AsyncSession) -> None:
     """Absent snapshot → both combo vintage keys present with None values (decide-once #2)."""
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)])
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)])
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -1055,7 +946,7 @@ async def test_data_vintage_survives_meta_without_variants(session: AsyncSession
         )
     )
     await session.commit()
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)])
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)])
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -1076,7 +967,7 @@ async def test_two_calls_serialize_byte_identically(session: AsyncSession) -> No
             _snapshot_variant("1-1", ["Zada, Hedron Grinder", "Goblin Guide"]),
         ],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -1108,7 +999,7 @@ async def test_lists_are_emitted_sorted(session: AsyncSession) -> None:
     )
     # Unidentified commander (two unflagged legendaries) + a NULL-GC card → two
     # degradation reasons; GC cards seeded in reverse-sorted deck order.
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, False),
@@ -1141,7 +1032,7 @@ async def test_serialized_result_embeds_no_clock(session: AsyncSession) -> None:
         session,
         [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])],
     )
-    deck_id = await _make_deck(session, [("card-krenko", 1, False, True)])
+    deck_id = await make_deck(session, [("card-krenko", 1, False, True)])
 
     result = await assess_deck_power(session, deck_id=deck_id)
 
@@ -1160,7 +1051,7 @@ async def test_summary_projects_commander_facts_and_caveat(session: AsyncSession
             _snapshot_variant("7-7", ["Zada, Hedron Grinder", "Chandra, Torch of Defiance"]),
         ],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [
             ("card-krenko", 1, False, True),
@@ -1191,7 +1082,7 @@ async def test_summary_projects_commander_facts_and_caveat(session: AsyncSession
 
 async def test_summary_standard_omits_bracket_and_caveat(session: AsyncSession) -> None:
     """Standard summary: no Bracket sentence, no multiplayer caveat (AC 4/6)."""
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-shock", 4, False, False), ("card-mountain", 20, False, False)],
         format="standard",
@@ -1215,7 +1106,7 @@ async def test_almost_included_never_reads_as_matched(session: AsyncSession) -> 
         session,
         [_snapshot_variant("7-7", ["Zada, Hedron Grinder", "Chandra, Torch of Defiance"])],
     )
-    deck_id = await _make_deck(
+    deck_id = await make_deck(
         session,
         [("card-krenko", 1, False, True), ("card-zada", 1, False, False)],
     )

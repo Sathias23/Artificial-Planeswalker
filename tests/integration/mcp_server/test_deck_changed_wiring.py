@@ -90,18 +90,11 @@ from src.data.schemas.deck import DeckDetail
 from src.mcp_server import server as server_module
 from src.mcp_server.server import build_server
 
-# The loopback toolkit, imported rather than rebuilt (c7-7). `test_client.py` owns the only real
-# HTTP stubs in the repo — an ephemeral-port server with per-verb answer scripts and a request log,
-# and a bare listening socket that never answers — and rebuilding either here would be a second
-# implementation of a thing whose whole value is that it is the real transport. The cross-test
-# import precedent is this file's own: `_REPO_WRITE_METHODS` below comes from
-# `test_import_boundary.py` on exactly the same terms.
-from tests.unit.companion.test_client import (
-    StubFleet,
-    _Sockets,
-    health_bytes,
-    plant_discovery,
-)
+# The loopback toolkit (c7-7): the real HTTP stub and raw sockets every companion-facing suite
+# shares, from ``tests/fixtures/companion_stubs.py`` (``stub_server`` and ``loopback`` are root
+# fixtures).
+from tests.fixtures.companion_stubs import health_bytes, plant_discovery
+from tests.fixtures.server_seams import RecordingNotifier
 
 # ---------------------------------------------------------------------------------------------
 # Repository layout — resolved from __file__, never from the runner's working directory.
@@ -159,37 +152,9 @@ async def uninitialized_db(
     await engine.dispose()
 
 
-class _RecordingNotifier:
-    """Stands in for c7-1's notifier at server.py's import seam, recording every emit.
-
-    Recording the deck ids rather than a call count is deliberate: "nothing was emitted" and "the
-    wrong deck was announced" are different failures, and only a recorded argument list tells them
-    apart. The optional ``observer`` runs *at notify time* — the after-commit proofs use it to
-    read the database through their own session while the emit is in flight.
-    """
-
-    def __init__(
-        self,
-        outcome: PushOutcome | None = None,
-        observer: Callable[[str | None], Awaitable[object]] | None = None,
-    ) -> None:
-        if outcome is None:
-            outcome = PushOutcome(outcome="displayed", clients=1)
-        self.outcome = outcome
-        self.observer = observer
-        self.deck_ids: list[str | None] = []
-        self.observations: list[object] = []
-
-    async def __call__(self, deck_id: str | None = None, *, timeout: object = None) -> PushOutcome:
-        self.deck_ids.append(deck_id)
-        if self.observer is not None:
-            self.observations.append(await self.observer(deck_id))
-        return self.outcome
-
-
 @pytest.fixture
 def notifier(monkeypatch: pytest.MonkeyPatch):
-    """Yield a factory installing a :class:`_RecordingNotifier` as ``server._notify_deck_changed``.
+    """Yield a factory installing a :class:`RecordingNotifier` as ``server._notify_deck_changed``.
 
     The wrappers close over the module-level ``_emit_deck_changed``, which resolves
     ``_notify_deck_changed`` as a module global at call time — so patching the server module's
@@ -199,8 +164,8 @@ def notifier(monkeypatch: pytest.MonkeyPatch):
     def install(
         outcome: PushOutcome | None = None,
         observer: Callable[[str | None], Awaitable[object]] | None = None,
-    ) -> _RecordingNotifier:
-        stub = _RecordingNotifier(outcome=outcome, observer=observer)
+    ) -> RecordingNotifier:
+        stub = RecordingNotifier(outcome=outcome, observer=observer)
         monkeypatch.setattr(server_module, "_notify_deck_changed", stub)
         return stub
 
@@ -888,16 +853,11 @@ class TestANotifyOutcomeNeverTouchesTheResult:
 class TestAClosedCompanionCostsTheMutationNothing:
     """The degradation row, with the real client on the path and no companion anywhere."""
 
-    async def test_a_mutation_still_persists_and_reports_ok(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, deck_db
-    ):
+    async def test_a_mutation_still_persists_and_reports_ok(self, isolated_data_dir: Path, deck_db):
         """No stub: the emit reaches the real ``notify_deck_changed``, which finds no discovery
         file and returns ``app_not_running`` cheaply. The tool result neither fails nor mentions
         the companion — SC-3's promise carried into the mutation tools."""
-        data_dir = tmp_path / "no-companion-here"
-        data_dir.mkdir()
-        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
-        assert not (data_dir / COMPANION_FILENAME).exists()
+        assert not (isolated_data_dir / COMPANION_FILENAME).exists()
         assert read_discovery() is None, (
             "something published a discovery record into the isolated data dir — this would be "
             "measuring a live companion instead of a closed one"
@@ -922,32 +882,6 @@ class TestAClosedCompanionCostsTheMutationNothing:
         )
 
 
-@pytest.fixture
-def stub_server():
-    """Yield :meth:`StubFleet.start` and tear down every loopback stub it handed out.
-
-    A four-line fixture over an imported helper, exactly as ``test_client.py`` and
-    ``test_server.py`` each keep their own: the fixture cannot simply be imported, because a
-    module-level ``stub_server`` binding and a test parameter of the same name are a redefinition
-    (ruff F811). One implementation, one more fixture.
-    """
-    fleet = StubFleet()
-    yield fleet.start
-    fleet.close_all()
-
-
-@pytest.fixture
-def sockets():
-    """Yield the raw-socket helper (a port that accepts and never answers) and close what it opens.
-
-    A leaked listener on Windows surfaces as a failure in some *later* test, which is why teardown
-    is the fixture's job rather than each test's.
-    """
-    helper = _Sockets()
-    yield helper
-    helper.close_all()
-
-
 async def _add_twice_across_a_planted_failure(session, plant) -> tuple[object, object, str, float]:
     """Add the same card to the same deck twice: once with no companion, once against *plant*'s.
 
@@ -967,6 +901,10 @@ async def _add_twice_across_a_planted_failure(session, plant) -> tuple[object, o
     Returns:
         ``(baseline_result, failing_result, deck_id, failing_elapsed_seconds)``.
     """
+    assert read_discovery() is None, (
+        "a discovery record exists before the plant — the baseline leg would be talking to a "
+        "real companion instead of no companion"
+    )
     created = await session.call_tool("create_deck", {"name": "Half A Loop"})
     assert created.structuredContent["status"] == "ok"
     deck_id = created.structuredContent["deck"]["id"]
@@ -999,24 +937,6 @@ class TestARealHttpFailureCostsTheMutationNothing:
     rows are that case: a live loopback listener, a real POST over a real socket, and a mutation
     that must come back byte-identical to the baseline anyway.
     """
-
-    @pytest.fixture(autouse=True)
-    def isolated_data_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        """Point the real client at an empty data dir, and prove it starts empty.
-
-        The proof matters as much as the isolation: a discovery record left by a companion the
-        developer actually has running would make the baseline leg talk to it, and both rows would
-        then be measuring a live backend instead of the failure they name.
-        """
-        data_dir = tmp_path / "companion-data"
-        data_dir.mkdir()
-        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
-        assert not (data_dir / COMPANION_FILENAME).exists()
-        assert read_discovery() is None, (
-            "something published a discovery record into the isolated data dir — the baseline leg "
-            "would be talking to a real companion"
-        )
-        return data_dir
 
     async def test_a_real_500_after_the_commit_leaves_the_result_byte_identical(
         self, deck_db, stub_server
@@ -1072,7 +992,7 @@ class TestARealHttpFailureCostsTheMutationNothing:
         assert [r.request_line.split(" ", 1)[0] for r in stub.requests] == ["POST"]
 
     async def test_a_wedged_backend_pays_the_bound_and_the_mutation_still_returns_ok(
-        self, deck_db, sockets
+        self, deck_db, loopback
     ):
         """A listener that answers and then never finishes: the mutation waits ~1 s, then shrugs.
 
@@ -1091,7 +1011,7 @@ class TestARealHttpFailureCostsTheMutationNothing:
         (``client._PUSH_TOTAL_SECONDS``) without. A ten-fold separation instead of a two-fold
         one, which is what makes the ceiling below both safe and meaningful.
         """
-        port = sockets.drip()
+        port = loopback.drip()
 
         server = build_server(session_factory=deck_db)
         async with create_connected_server_and_client_session(server) as session:

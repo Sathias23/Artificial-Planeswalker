@@ -8,12 +8,6 @@ import pytest
 from src.data.importers.parser import JSONParseError, stream_cards
 
 
-@pytest.fixture
-def sample_json_file():
-    """Return path to sample Scryfall JSON fixture."""
-    return Path(__file__).parent.parent.parent.parent / "fixtures" / "scryfall_sample.json"
-
-
 def test_stream_cards_success(sample_json_file):
     """Test streaming valid JSON file yields card objects."""
     cards = list(stream_cards(sample_json_file))

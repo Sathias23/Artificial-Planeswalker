@@ -15,7 +15,6 @@ import math
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.data.schemas.card import CardSummary
 from src.mcp_server.tools.card_search import CardSearchResult, search_cards
@@ -157,23 +156,11 @@ def _seed_cards() -> list[CardModel]:
 
 
 @pytest.fixture
-async def in_memory_engine():
-    """Create an in-memory SQLite engine for testing."""
-    engine = create_engine("sqlite+aiosqlite:///:memory:")
-    await init_database(engine)
-    yield engine
-    await engine.dispose()
-
-
-@pytest.fixture
-async def session(in_memory_engine):
-    """Create a test session and seed cards (same session seeds and queries)."""
-    session_factory = create_session_factory(in_memory_engine)
-    async with session_factory() as session:
-        for card in _seed_cards():
-            session.add(card)
-        await session.commit()
-        yield session
+async def session(session: AsyncSession) -> AsyncSession:
+    """The shared in-memory ``session``, seeded with cards (same session seeds and queries)."""
+    session.add_all(_seed_cards())
+    await session.commit()
+    return session
 
 
 # --- Single + multi-filter (AC1) ---

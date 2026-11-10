@@ -22,10 +22,11 @@ from pathlib import Path
 import pytest
 
 from src.companion.app.main import build_app
-from src.data.database import create_engine, create_session_factory, init_database
+from src.data.database import create_engine, init_database
 from src.data.models.card import CardModel
 from src.data.repositories.deck import DeckRepository
 from src.logic.deck_validator import CHECK_ORDER
+from tests.unit.companion.conftest import _card, _point_at, _seed
 
 # --------------------------------------------------------------------------------------------
 # Paths under test. Literals, not built from the router — a test that imported the prefix would
@@ -38,83 +39,33 @@ _DETAIL_PATH = "/api/deck/{deck_id}"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _point_at(monkeypatch, path: Path) -> Path:
-    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``."""
-    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{path.as_posix()}")
-    return path
-
-
-def _card(
+def _legal_card(
     card_id: str,
     name: str,
     *,
     legalities: dict[str, str] | None = None,
     type_line: str | None = None,
 ) -> CardModel:
-    """Build a complete card row whose legalities are the fixture's whole point.
+    """The package's ``_card`` with this suite's defaults: legalities are the fixture's whole point.
 
-    Every field an assertion might read is derived from *card_id*, so no two cards in one deck
-    are interchangeable — c3-1's review R3 found a projection nesting the wrong card entirely
-    while every test stayed green, because the seeds were identical on the asserted fields.
+    Standard-legal only unless *legalities* says otherwise, and an instant whose ``type_line``
+    ends in *card_id* unless *type_line* names something else (a basic land, at ``cmc`` 0). Every
+    field an assertion might read stays derived from *card_id*, so no two cards in one deck are
+    interchangeable — c3-1's review R3 found a projection nesting the wrong card entirely while
+    every test stayed green, because the seeds were identical on the asserted fields.
     """
-    return CardModel(
-        id=card_id,
-        name=name,
-        printed_name=None,
-        oracle_id=f"oracle-{card_id}",
-        mana_cost=f"{{{card_id[-1].upper()}}}",
+    return _card(
+        card_id,
+        name,
         cmc=0.0 if type_line else 1.0,
         type_line=type_line or f"Instant — {card_id}",
-        oracle_text=f"{name} does something.",
-        rarity="common",
-        set_code="TST",
-        set_name="Test Set",
-        collector_number="1",
-        colors=["R"],
-        color_identity=["R"],
         legalities=legalities if legalities is not None else {"standard": "legal"},
-        games=["paper", "arena", "mtgo"],
     )
 
 
 def _basic(card_id: str, name: str, *, legalities: dict[str, str] | None = None) -> CardModel:
     """A basic land: copy-limit exempt, so a deck can reach 60 cards on one entry."""
-    return _card(card_id, name, legalities=legalities, type_line="Basic Land — Mountain")
-
-
-async def _ready_database(path: Path) -> None:
-    """Create the full schema at *path* and seed one card row.
-
-    ``is_database_initialized`` wants a *populated* ``cards`` table, not merely the file.
-    """
-    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
-    try:
-        await init_database(engine)
-        factory = create_session_factory(engine)
-        async with factory() as session:
-            session.add(_card("card-anchor", "Anchor Card"))
-            await session.commit()
-    finally:
-        await engine.dispose()
-
-
-async def _seed(path: Path, seeder) -> None:
-    """Open a session against *path*, hand it to *seeder*, then dispose the engine."""
-    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
-    try:
-        factory = create_session_factory(engine)
-        async with factory() as session:
-            await seeder(session)
-    finally:
-        await engine.dispose()
-
-
-@pytest.fixture
-async def ready_db(tmp_path, monkeypatch):
-    """A real database file with the full schema and one card row, already pointed at."""
-    path = _point_at(monkeypatch, tmp_path / "cards.db")
-    await _ready_database(path)
-    return path
+    return _legal_card(card_id, name, legalities=legalities, type_line="Basic Land — Mountain")
 
 
 def _deck_seeder(cards, entries, *, name="Checked", format="standard"):
@@ -305,10 +256,10 @@ class TestViolationFamilies:
         """
         seeder, holder = _deck_seeder(
             [
-                _card("card-greedy", "Greedy Spell"),
-                _card("card-banned", "Banned Bomb", legalities={"standard": "banned"}),
-                _card("card-outside", "Modern Staple", legalities={"modern": "legal"}),
-                _card("card-fine", "Perfectly Fine"),
+                _legal_card("card-greedy", "Greedy Spell"),
+                _legal_card("card-banned", "Banned Bomb", legalities={"standard": "banned"}),
+                _legal_card("card-outside", "Modern Staple", legalities={"modern": "legal"}),
+                _legal_card("card-fine", "Perfectly Fine"),
                 _basic("card-mountain", "Mountain"),
             ],
             [
@@ -369,7 +320,7 @@ class TestViolationFamilies:
         seeder, holder = _deck_seeder(
             [
                 _basic("card-mountain", "Mountain"),
-                _card("card-banned", "Banned Bomb", legalities={"standard": "banned"}),
+                _legal_card("card-banned", "Banned Bomb", legalities={"standard": "banned"}),
             ],
             [("card-mountain", 59), ("card-banned", 1)],
         )

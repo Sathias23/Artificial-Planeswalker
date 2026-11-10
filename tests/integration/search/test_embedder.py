@@ -8,13 +8,14 @@ the persistent cache dir; subsequent runs load from cache and are fully offline.
 import numpy as np
 import pytest
 
-from src.paths import fastembed_cache_dir
 from src.search import EMBEDDING_DIM, Embedder
 from src.search.embedder import reset_embedder
+from tests.fixtures.real_data import MODEL_CACHE_DIR
 
-# Persistent central cache (src.paths.fastembed_cache_dir()) so the ~80 MB model is downloaded
-# once and shared with the running server, rather than re-fetched into a throwaway tmp_path.
-_CACHE_DIR = fastembed_cache_dir()
+# The persistent model cache (snapshotted at import, before the root fixture repoints the data
+# dir) so the ~80 MB model is downloaded once and shared with the running server, rather than
+# re-fetched into a throwaway tmp_path.
+_CACHE_DIR = MODEL_CACHE_DIR
 
 
 @pytest.fixture

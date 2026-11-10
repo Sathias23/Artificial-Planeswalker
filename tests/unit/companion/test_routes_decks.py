@@ -24,11 +24,11 @@ import pytest
 from sqlalchemy import update
 
 from src.companion.app.main import build_app
-from src.data.database import create_engine, create_session_factory, init_database
-from src.data.models.card import CardModel
+from src.data.database import create_engine, init_database
 from src.data.models.deck import DeckModel
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.deck import DeckSummary
+from tests.unit.companion.conftest import _card, _point_at, _seed
 
 # --------------------------------------------------------------------------------------------
 # Paths under test. Literals, not built from the router — a test that imported the prefix would
@@ -37,80 +37,6 @@ from src.data.schemas.deck import DeckSummary
 
 _LIST_PATH = "/api/decks"
 _DETAIL_PATH = "/api/deck/{deck_id}"
-
-
-def _point_at(monkeypatch, path: Path) -> Path:
-    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``.
-
-    The ``test_deps.py`` pattern: an explicit ``CARDS_DATABASE_URL`` wins over everything, so the
-    resolution cannot be hijacked by a developer's own environment. Note the autouse
-    ``isolated_data_dir`` fixture steers ``PLANESWALKER_DATA_DIR`` separately — the database is
-    *not* resolved from it.
-    """
-    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{path.as_posix()}")
-    return path
-
-
-def _card(card_id: str, name: str, *, mana_cost: str | None = None, cmc: float = 1.0) -> CardModel:
-    """Build a complete card row. Every non-nullable column, so the insert is realistic.
-
-    **Every card is deliberately distinguishable from every other.** ``mana_cost`` defaults to a
-    value derived from ``card_id`` rather than a shared ``"{R}"``: the review of 2026-07-31
-    mutation-tested this file with every entry nesting the *same* card and all 28 tests stayed
-    green, because the seeded cards were identical on every field the assertions read. Identical
-    fixtures cannot catch a mis-paired projection.
-    """
-    return CardModel(
-        id=card_id,
-        name=name,
-        printed_name=None,
-        oracle_id=f"oracle-{card_id}",
-        mana_cost=mana_cost if mana_cost is not None else f"{{{card_id[-1].upper()}}}",
-        cmc=cmc,
-        type_line=f"Instant — {card_id}",
-        oracle_text=f"{name} does something.",
-        rarity="common",
-        set_code="TST",
-        set_name="Test Set",
-        collector_number="1",
-        colors=["R"],
-        color_identity=["R"],
-        legalities={"standard": "legal", "commander": "legal"},
-        games=["paper", "arena", "mtgo"],
-    )
-
-
-async def _ready_database(path: Path) -> None:
-    """Create the full schema at *path* and seed one card row.
-
-    ``is_database_initialized`` requires a **populated** ``cards`` table, not merely the file, so a
-    schema-only database still reads as ``database_not_initialized``. One row is the minimum that
-    makes the routes reachable at all; tests that need decks seed them on top.
-    """
-    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
-    try:
-        await init_database(engine)
-        factory = create_session_factory(engine)
-        async with factory() as session:
-            session.add(_card("card-anchor", "Anchor Card"))
-            await session.commit()
-    finally:
-        await engine.dispose()
-
-
-async def _seed(path: Path, seeder) -> None:
-    """Open a session against *path* and hand it to *seeder*, then dispose the engine.
-
-    The engine is disposed before the app is built so the fixture never holds a connection the
-    routes then contend with.
-    """
-    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
-    try:
-        factory = create_session_factory(engine)
-        async with factory() as session:
-            await seeder(session)
-    finally:
-        await engine.dispose()
 
 
 async def _stamp_created_at(path: Path, when: dict[str, datetime]) -> None:
@@ -129,24 +55,6 @@ async def _stamp_created_at(path: Path, when: dict[str, datetime]) -> None:
         await session.commit()
 
     await _seed(path, seeder)
-
-
-@pytest.fixture
-async def ready_db(tmp_path, monkeypatch):
-    """A real database file with the full schema and one card row, already pointed at.
-
-    The fixture **actually builds the database**, rather than only setting the environment
-    variable and trusting each test to remember ``await _ready_database(...)``. A test that forgot
-    used to get ``503 database_not_initialized`` — which, for the several tests here that assert
-    on 503 or 404 bodies, is a plausible false green rather than a loud failure (review,
-    2026-07-31).
-
-    Returns:
-        The path, so a test can seed decks into it before building the app.
-    """
-    path = _point_at(monkeypatch, tmp_path / "cards.db")
-    await _ready_database(path)
-    return path
 
 
 # --------------------------------------------------------------------------------------------
@@ -356,7 +264,14 @@ class TestDeckDetail:
         async def seeder(session):
             repo = DeckRepository(session)
             for suffix in ("a", "b", "c", "d"):
-                session.add(_card(f"card-{suffix}", f"Card {suffix.upper()}"))
+                # type_line ends in the card id: test_each_entry_nests_its_own_card's second link.
+                session.add(
+                    _card(
+                        f"card-{suffix}",
+                        f"Card {suffix.upper()}",
+                        type_line=f"Instant — card-{suffix}",
+                    )
+                )
             await session.commit()
 
             deck = await repo.create_deck(

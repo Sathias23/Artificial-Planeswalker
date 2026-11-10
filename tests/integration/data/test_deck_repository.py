@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.data.database import create_engine, create_session_factory, init_database
+from src.data.database import create_session_factory
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
@@ -51,25 +51,9 @@ async def _set_updated_at(session: AsyncSession, deck_id: str, value: datetime) 
 
 
 @pytest.fixture
-async def in_memory_engine():
-    """Create an in-memory SQLite engine for testing."""
-    engine = create_engine("sqlite+aiosqlite:///:memory:")
-    await init_database(engine)
-    yield engine
-    await engine.dispose()
-
-
-@pytest.fixture
 async def session_factory(in_memory_engine) -> async_sessionmaker[AsyncSession]:
     """The session factory over the test engine (a second session from it reads the same DB)."""
     return create_session_factory(in_memory_engine)
-
-
-@pytest.fixture
-async def session(session_factory: async_sessionmaker[AsyncSession]):
-    """Create a test session."""
-    async with session_factory() as session:
-        yield session
 
 
 @pytest.fixture
@@ -79,7 +63,7 @@ async def deck_repo(session: AsyncSession):
 
 
 @pytest.fixture
-async def test_cards(session: AsyncSession):
+async def seeded_cards(session: AsyncSession):
     """Create test cards in the database."""
     cards = [
         CardModel(
@@ -419,7 +403,7 @@ async def test_list_deck_summaries_is_empty_when_no_decks_exist(
 
 
 async def test_list_deck_summaries_equals_the_python_projection(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """THE EQUIVALENCE THE COMPANION'S LIST ROUTE RESTS ON, over the awkward deck shapes.
 
@@ -480,7 +464,7 @@ async def test_list_deck_summaries_breaks_a_created_at_tie_by_id(
 
 
 async def test_list_deck_summaries_honours_the_format_filter(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """The filter narrows the rows and does not disturb the counts of the ones it keeps."""
     kept = await deck_repo.create_deck(name="Standard Deck", format="standard")
@@ -537,7 +521,7 @@ async def test_list_decks_with_strategy_field(deck_repo: DeckRepository) -> None
 
 
 async def test_add_card_to_deck_mainboard(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test adding a card to deck mainboard."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -556,7 +540,7 @@ async def test_add_card_to_deck_mainboard(
 
 async def test_add_cards_to_deck_commits_once_and_reloads_every_row(
     deck_repo: DeckRepository,
-    test_cards: list[CardModel],
+    seeded_cards: list[CardModel],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The bulk add: one commit for the whole batch, rows back in entry order with their cards."""
@@ -606,7 +590,7 @@ async def test_add_cards_to_deck_with_no_entries_commits_nothing(
 
 
 async def test_add_cards_to_deck_duplicate_rolls_back_the_whole_batch(
-    deck_repo: DeckRepository, test_cards: list[CardModel], session: AsyncSession
+    deck_repo: DeckRepository, seeded_cards: list[CardModel], session: AsyncSession
 ) -> None:
     """One conflicting entry means nothing from the batch lands, and the session stays usable."""
     deck = await deck_repo.create_deck(name="Conflict", format="standard")
@@ -637,7 +621,7 @@ def test_deck_card_entry_rejects_quantity_below_one() -> None:
 
 @pytest.mark.parametrize("bad_quantity", [0, -1, -5])
 async def test_add_card_to_deck_rejects_quantity_below_one(
-    deck_repo: DeckRepository, test_cards: list[CardModel], bad_quantity: int
+    deck_repo: DeckRepository, seeded_cards: list[CardModel], bad_quantity: int
 ) -> None:
     """add_card_to_deck must reject quantity < 1 and persist nothing (data-integrity guard)."""
     deck = await deck_repo.create_deck(name="Guard Test", format="standard")
@@ -655,7 +639,7 @@ async def test_add_card_to_deck_rejects_quantity_below_one(
 
 @pytest.mark.parametrize("bad_quantity", [0, -1])
 async def test_update_card_quantity_rejects_quantity_below_one(
-    deck_repo: DeckRepository, test_cards: list[CardModel], bad_quantity: int
+    deck_repo: DeckRepository, seeded_cards: list[CardModel], bad_quantity: int
 ) -> None:
     """update_card_quantity must reject quantity < 1 and leave the existing quantity intact."""
     deck = await deck_repo.create_deck(name="Guard Test", format="standard")
@@ -674,7 +658,7 @@ async def test_update_card_quantity_rejects_quantity_below_one(
 
 
 async def test_add_card_to_deck_sideboard(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test adding a card to deck sideboard."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -688,7 +672,7 @@ async def test_add_card_to_deck_sideboard(
 
 
 async def test_add_card_to_deck_commander_round_trip(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """A commander=True write survives the round-trip back as a Pydantic DeckCard."""
     deck = await deck_repo.create_deck(name="Commander Deck", format="commander")
@@ -709,7 +693,7 @@ async def test_add_card_to_deck_commander_round_trip(
 
 
 async def test_add_card_to_deck_commander_defaults_false(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Omitting commander keeps the existing call shape and persists False."""
     deck = await deck_repo.create_deck(name="Plain Deck", format="standard")
@@ -726,7 +710,7 @@ async def test_add_card_to_deck_commander_defaults_false(
 
 
 async def test_add_two_commanders_partners_round_trip(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Two flagged mainboard rows (partners) both persist as commander=True."""
     deck = await deck_repo.create_deck(name="Partners Deck", format="commander")
@@ -745,7 +729,7 @@ async def test_add_two_commanders_partners_round_trip(
 
 
 async def test_add_duplicate_card_raises_error(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test adding the same card twice to mainboard raises IntegrityError."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -761,7 +745,7 @@ async def test_add_duplicate_card_raises_error(
 
 
 async def test_add_same_card_to_mainboard_and_sideboard(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test same card can be in both mainboard and sideboard."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -778,7 +762,7 @@ async def test_add_same_card_to_mainboard_and_sideboard(
 
 
 async def test_remove_card_from_deck(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test removing a card from deck."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -804,7 +788,9 @@ async def test_remove_card_nonexistent(deck_repo: DeckRepository) -> None:
     assert success is False
 
 
-async def test_update_card_quantity(deck_repo: DeckRepository, test_cards: list[CardModel]) -> None:
+async def test_update_card_quantity(
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
+) -> None:
     """Test updating card quantity in deck."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(
@@ -830,7 +816,9 @@ async def test_update_card_quantity_nonexistent(deck_repo: DeckRepository) -> No
     assert result is None
 
 
-async def test_get_deck_with_cards(deck_repo: DeckRepository, test_cards: list[CardModel]) -> None:
+async def test_get_deck_with_cards(
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
+) -> None:
     """Test get_deck_with_cards returns deck with all cards loaded."""
     deck = await deck_repo.create_deck(name="Full Deck", format="standard")
     await deck_repo.add_card_to_deck(
@@ -864,7 +852,7 @@ async def test_get_deck_with_cards_nonexistent(deck_repo: DeckRepository) -> Non
 
 
 async def test_delete_deck_cascades_to_cards(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """Deleting a deck removes every association row, mainboard and sideboard alike.
 
@@ -890,7 +878,7 @@ async def test_delete_deck_cascades_to_cards(
 
 
 async def test_adding_a_card_to_a_missing_deck_is_rejected(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """A dangling deck id raises ``IntegrityError`` and leaves the session usable."""
     with pytest.raises(IntegrityError):
@@ -903,7 +891,7 @@ async def test_adding_a_card_to_a_missing_deck_is_rejected(
 
 
 async def test_adding_a_missing_card_to_a_deck_is_rejected(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """Both foreign keys are enforced: a card absent from ``cards`` is rejected like a deck."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -917,7 +905,7 @@ async def test_adding_a_missing_card_to_a_deck_is_rejected(
 
 
 async def test_bulk_add_with_a_missing_card_adds_nothing(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
@@ -956,7 +944,7 @@ async def _metadata(deck_repo: DeckRepository, deck_id: str) -> tuple[list[str],
 
 
 async def test_add_card_updates_identity_and_timestamp(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await _pinned_deck(deck_repo, session)
 
@@ -968,7 +956,7 @@ async def test_add_card_updates_identity_and_timestamp(
 
 
 async def test_identity_derives_from_color_identity_not_colors(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """A card with ``colors=[]`` and ``color_identity=["U"]`` makes the deck blue."""
     deck = await _pinned_deck(deck_repo, session)
@@ -980,7 +968,7 @@ async def test_identity_derives_from_color_identity_not_colors(
 
 
 async def test_sideboard_cards_count_toward_identity(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await _pinned_deck(deck_repo, session)
 
@@ -994,7 +982,7 @@ async def test_sideboard_cards_count_toward_identity(
 
 
 async def test_bulk_add_updates_identity_and_timestamp(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await _pinned_deck(deck_repo, session)
 
@@ -1012,7 +1000,7 @@ async def test_bulk_add_updates_identity_and_timestamp(
 
 
 async def test_removing_the_last_card_clears_identity_and_advances_timestamp(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
@@ -1026,7 +1014,7 @@ async def test_removing_the_last_card_clears_identity_and_advances_timestamp(
 
 
 async def test_removing_one_of_two_colours_narrows_identity(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
@@ -1039,7 +1027,7 @@ async def test_removing_one_of_two_colours_narrows_identity(
 
 
 async def test_removing_a_missing_row_leaves_metadata_alone(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
@@ -1055,7 +1043,7 @@ async def test_removing_a_missing_row_leaves_metadata_alone(
 
 
 async def test_quantity_update_advances_timestamp_and_keeps_identity(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
@@ -1071,7 +1059,7 @@ async def test_quantity_update_advances_timestamp_and_keeps_identity(
 
 
 async def test_quantity_update_to_the_same_value_is_a_no_op(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """Re-stating the stored quantity returns the row and leaves the deck untouched."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -1088,7 +1076,7 @@ async def test_quantity_update_to_the_same_value_is_a_no_op(
 
 
 async def test_quantity_update_of_a_missing_row_leaves_metadata_alone(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
     await deck_repo.add_card_to_deck(deck_id=deck.id, card_id="card-bolt", quantity=4)
@@ -1105,7 +1093,7 @@ async def test_quantity_update_of_a_missing_row_leaves_metadata_alone(
 
 
 async def test_update_deck_color_identity_repairs_a_stale_row(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """The public wrapper recomputes from ``color_identity`` and commits on its own."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard")
@@ -1126,7 +1114,7 @@ async def test_update_deck_color_identity_repairs_a_stale_row(
 
 
 async def test_merge_with_empty_source_still_stamps_the_target(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     target = await _pinned_deck(deck_repo, session, name="Target")
     source = await deck_repo.create_deck(name="Empty Source", format="standard")
@@ -1141,7 +1129,7 @@ async def test_merge_with_empty_source_still_stamps_the_target(
 
 
 async def test_integrity_error_rollback_allows_subsequent_operation(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test that IntegrityError rollback doesn't prevent subsequent operations.
 
@@ -1172,7 +1160,7 @@ async def test_integrity_error_rollback_allows_subsequent_operation(
 
 
 async def test_sequential_write_operations_after_rollback(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test multiple sequential write operations after IntegrityError rollback.
 
@@ -1209,7 +1197,7 @@ async def test_sequential_write_operations_after_rollback(
 
 
 async def test_read_operation_after_write_rollback(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test that read operations work correctly after a write operation rollback."""
     deck = await deck_repo.create_deck(name="Read After Rollback", format="standard")
@@ -1233,7 +1221,7 @@ async def test_read_operation_after_write_rollback(
 
 
 async def test_multiple_integrity_errors_in_sequence(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test that multiple IntegrityErrors in sequence are handled correctly.
 
@@ -1276,7 +1264,7 @@ async def test_multiple_integrity_errors_in_sequence(
 
 
 async def test_update_after_integrity_error(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test that update operations work after IntegrityError rollback."""
     deck = await deck_repo.create_deck(name="Update Test", format="standard")
@@ -1302,7 +1290,7 @@ async def test_update_after_integrity_error(
 
 
 async def test_delete_after_integrity_error(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test that delete operations work after IntegrityError rollback."""
     deck = await deck_repo.create_deck(name="Delete Test", format="standard")
@@ -1335,7 +1323,7 @@ async def test_delete_after_integrity_error(
 
 
 async def test_merge_decks_combine_strategy(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge with COMBINE strategy sums quantities."""
     # Create target deck with 2 Lightning Bolts
@@ -1368,7 +1356,7 @@ async def test_merge_decks_combine_strategy(
 
 
 async def test_merge_decks_propagates_commander_flag(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """A flagged source card lands in the target still flagged as commander."""
     target = await deck_repo.create_deck(name="Target Deck", format="commander")
@@ -1389,7 +1377,7 @@ async def test_merge_decks_propagates_commander_flag(
 
 
 async def test_merge_decks_existing_card_keeps_target_flag(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """When the card already exists in the target, the merge keeps the target's flag."""
     target = await deck_repo.create_deck(name="Target Deck", format="commander")
@@ -1410,7 +1398,7 @@ async def test_merge_decks_existing_card_keeps_target_flag(
 
 
 async def test_merge_decks_maximum_strategy(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge with MAXIMUM strategy takes higher quantity."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1432,7 +1420,7 @@ async def test_merge_decks_maximum_strategy(
 
 
 async def test_merge_decks_replace_strategy(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge with REPLACE strategy uses source quantity."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1454,7 +1442,7 @@ async def test_merge_decks_replace_strategy(
 
 
 async def test_merge_decks_disjoint_cards(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge with no overlapping cards adds all cards."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1485,7 +1473,7 @@ async def test_merge_decks_disjoint_cards(
 
 
 async def test_merge_decks_respects_sideboard_separation(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge keeps mainboard and sideboard separate."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1515,7 +1503,7 @@ async def test_merge_decks_respects_sideboard_separation(
 
 
 async def test_merge_updates_color_identity(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge updates deck color identity."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1538,7 +1526,7 @@ async def test_merge_updates_color_identity(
 
 
 async def test_merge_with_nonexistent_target(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge returns None when target deck doesn't exist."""
     source = await deck_repo.create_deck(name="Source Deck", format="standard")
@@ -1554,7 +1542,7 @@ async def test_merge_with_nonexistent_target(
 
 
 async def test_merge_with_nonexistent_source(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge returns None when source deck doesn't exist."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1575,7 +1563,7 @@ async def test_merge_with_nonexistent_source(
 
 
 async def test_merge_with_empty_source(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge with empty source deck (no-op)."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1595,7 +1583,7 @@ async def test_merge_with_empty_source(
 
 
 async def test_merge_with_empty_target(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge into empty target deck copies all cards."""
     target = await deck_repo.create_deck(name="Empty Target", format="standard")
@@ -1615,7 +1603,7 @@ async def test_merge_with_empty_target(
 
 
 async def test_merge_updates_timestamp(
-    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge updates target deck's updated_at timestamp."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1635,7 +1623,7 @@ async def test_merge_updates_timestamp(
 
 
 async def test_merge_string_strategy(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, seeded_cards: list[CardModel]
 ) -> None:
     """Test merge accepts string strategy and converts to enum."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
@@ -1866,7 +1854,7 @@ async def test_a_failed_post_commit_reread_is_not_a_failed_write(
     deck_repo: DeckRepository,
     session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
-    test_cards: list[CardModel],
+    seeded_cards: list[CardModel],
     monkeypatch: pytest.MonkeyPatch,
     act,
     fail: str,
