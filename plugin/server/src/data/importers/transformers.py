@@ -50,23 +50,20 @@ _WUBRG: tuple[str, ...] = ("W", "U", "B", "R", "G")
 _WUBRG_RANK: dict[str, int] = {color: rank for rank, color in enumerate(_WUBRG)}
 
 
-def _wubrg_ordered(colors: Any) -> Any:
+def _wubrg_ordered(colors: list[str]) -> list[str]:
     """Return a colour list in canonical WUBRG order, dropping nothing.
 
     Scryfall publishes ``colors``, ``color_identity`` and ``color_indicator`` alphabetically
     (``["B", "G", "R", "U", "W"]``); the codebase's convention is WUBRG. The sort is stable, so
     a letter outside WUBRG is kept, after the five and in its original order, and a duplicate
-    survives as-is. Anything that is not a list (``None`` for an absent ``color_indicator``) is
-    returned unchanged.
+    survives as-is.
 
     Args:
-        colors: A raw colour value from the bulk file.
+        colors: A colour list from the bulk file.
 
     Returns:
-        A new WUBRG-ordered list, or *colors* itself when it is not a list.
+        A new, WUBRG-ordered list.
     """
-    if not isinstance(colors, list):
-        return colors
     return sorted(colors, key=lambda color: _WUBRG_RANK.get(color, len(_WUBRG)))
 
 
@@ -174,8 +171,7 @@ def _face_color_union(faces: list[dict[str, Any]]) -> list[str]:
         for color in face.get("colors") or []:
             if color not in union:
                 union.append(color)
-    ordered: list[str] = _wubrg_ordered(union)
-    return ordered
+    return _wubrg_ordered(union)
 
 
 def transform_scryfall_card(
@@ -330,7 +326,9 @@ def transform_scryfall_card(
         else:
             colors = _wubrg_ordered(card_json.get("colors") or [])
         color_identity = _wubrg_ordered(card_json.get("color_identity") or [])
-        color_indicator = _wubrg_ordered(card_json.get("color_indicator"))  # Optional, can be None
+        color_indicator = card_json.get("color_indicator")  # Optional, can be None
+        if color_indicator is not None:
+            color_indicator = _wubrg_ordered(color_indicator)
 
         # Handle keywords (optional, nullable column — preserve None)
         keywords = card_json.get("keywords")  # Can be None or missing

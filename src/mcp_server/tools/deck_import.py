@@ -13,9 +13,8 @@ from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import CardSummary
-from src.data.schemas.deck import DeckCardEntry
+from src.data.schemas.deck import MAX_CARD_QUANTITY, DeckCardEntry
 from src.mcp_server.tools.deck_management import (
-    MAX_CARD_QUANTITY,
     DeckCardResult,
     ambiguous_message,
     card_added_message,

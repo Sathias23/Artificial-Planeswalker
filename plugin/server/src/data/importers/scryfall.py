@@ -262,8 +262,8 @@ async def reconcile_oracle_identities(
     repoints: list[tuple[str, str, bool, str]] = []  # (deck_id, stale_id, sideboard, canonical)
     # ... + quantity to sum and the stale row's commander flag
     merges: list[tuple[str, str, bool, str, int, bool]] = []
-    # Uncapped planned sum per capped target key, for the post-commit warning.
-    capped: dict[tuple[str, str, bool], int] = {}
+    # Target keys that received a merge, for the post-commit cap warning.
+    merged_targets: set[tuple[str, str, bool]] = set()
     if remap:
         deck_rows = await session.execute(
             select(
@@ -275,9 +275,10 @@ async def reconcile_oracle_identities(
             )
         )
         all_deck_cards = deck_rows.all()
-        # Planned quantity per (deck_id, card_id, sideboard) key. Several stale printings can
-        # merge into one row, so the cap check runs against the running sum, not the stored
-        # quantity of the canonical row alone.
+        # Uncapped planned quantity per (deck_id, card_id, sideboard) key. Several stale
+        # printings can merge into one row, so the cap check runs against the running sum, not
+        # the stored quantity of the canonical row alone (the SQL ``min`` caps each step, which
+        # composes to the same capped total).
         planned = {
             (deck_id, card_id, sideboard): quantity
             for deck_id, card_id, sideboard, quantity, _ in all_deck_cards
@@ -291,10 +292,8 @@ async def reconcile_oracle_identities(
             if target_key in occupied:
                 # Composite-PK collision: the deck holds both printings — merge quantities.
                 merges.append((deck_id, card_id, sideboard, canonical, quantity, commander))
-                total = planned[target_key] + quantity
-                if total > MAX_CARD_QUANTITY:
-                    capped[target_key] = total
-                planned[target_key] = min(total, MAX_CARD_QUANTITY)
+                planned[target_key] += quantity
+                merged_targets.add(target_key)
             else:
                 repoints.append((deck_id, card_id, sideboard, canonical))
                 occupied.add(target_key)  # later stale printings of the same identity merge
@@ -349,7 +348,11 @@ async def reconcile_oracle_identities(
         await session.rollback()
         raise
 
-    for (deck_id, card_id, sideboard), total in capped.items():
+    for target_key in sorted(merged_targets):
+        total = planned[target_key]
+        if total <= MAX_CARD_QUANTITY:
+            continue
+        deck_id, card_id, sideboard = target_key
         logger.warning(
             "Oracle-identity reconcile capped deck %s card %s (sideboard=%s) at %d copies: "
             "the merged printings held %d, so %d copies were dropped",

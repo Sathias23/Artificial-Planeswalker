@@ -539,30 +539,38 @@ async def test_reconcile_merge_keeps_the_stale_rows_commander_flag(
 
 
 @pytest.mark.parametrize(
-    ("held_ids", "stale_ids"),
+    ("held", "merges", "dropped"),
     [
-        pytest.param(("om1-153", "spm-276"), (), id="stale-onto-canonical"),
-        pytest.param(("old-a", "old-b"), ("old-a", "old-b"), id="two-stale-printings"),
+        pytest.param(
+            (("om1-153", 200), ("spm-276", 100)), 1, "held 300, so 50", id="stale-onto-canonical"
+        ),
+        pytest.param(
+            (("old-a", 200), ("old-b", 100)), 1, "held 300, so 50", id="two-stale-printings"
+        ),
+        pytest.param(
+            (("spm-276", 200), ("old-a", 100), ("old-b", 50)),
+            2,
+            "held 350, so 100",
+            id="canonical-and-two-stale",
+        ),
     ],
 )
 async def test_reconcile_merge_caps_the_summed_quantity(
-    empty_card_db, monkeypatch, tmp_path, caplog, held_ids, stale_ids
+    empty_card_db, monkeypatch, tmp_path, caplog, held, merges, dropped
 ):
     """A merge that would pass ``MAX_CARD_QUANTITY`` stores the cap and warns, naming the row.
 
     Every tool write path holds a deck row at 250 copies, and a reconcile is no user intent to
-    exceed it. Two stale printings merging into one row need the running sum across both, not
-    the canonical row's stored quantity alone.
+    exceed it. Several printings merging into one row need the running sum across all of them,
+    both for the stored cap and for the copies the warning says were dropped.
     """
+    known = {card.id: card for card in create_om1_spm_cards()[:2]}
     async with empty_card_db() as session:
-        if stale_ids:
-            session.add_all([_stale_printing(card_id) for card_id in stale_ids])
-        else:
-            session.add_all(create_om1_spm_cards()[:2])
+        session.add_all([known.get(card_id) or _stale_printing(card_id) for card_id, _ in held])
         deck = DeckModel(name="Over The Cap", format="modern")
         session.add(deck)
         await session.flush()
-        for card_id, quantity in zip(held_ids, (200, 100), strict=True):
+        for card_id, quantity in held:
             session.add(DeckCardModel(deck_id=deck.id, card_id=card_id, quantity=quantity))
         await session.commit()
         deck_id = deck.id
@@ -573,7 +581,7 @@ async def test_reconcile_merge_caps_the_summed_quantity(
                 session, monkeypatch, _snapshot_b(), temp_dir=tmp_path
             )
     assert stats.reconcile.failed is False
-    assert stats.reconcile.deck_cards_merged == 1
+    assert stats.reconcile.deck_cards_merged == merges
 
     async with empty_card_db() as session:
         result = await session.execute(
@@ -590,7 +598,7 @@ async def test_reconcile_merge_caps_the_summed_quantity(
     ]
     assert len(warnings) == 1, warnings
     assert deck_id in warnings[0] and "spm-276" in warnings[0]
-    assert "50" in warnings[0]  # the copies dropped over the cap
+    assert f"{dropped} copies were dropped" in warnings[0]
 
 
 async def _stored_cards(session_factory: async_sessionmaker[AsyncSession]) -> dict[str, dict]:
