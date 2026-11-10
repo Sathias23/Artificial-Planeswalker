@@ -3,7 +3,7 @@ title: 'Visible legality coverage'
 type: 'feature'
 ticket: '4'
 created: '2026-11-10'
-status: 'review'
+status: done
 baseline_revision: 'bee2c3256a8ef4016b973aa3d4f345710a57d782'
 route: 'full'
 route_source: 'auto'
