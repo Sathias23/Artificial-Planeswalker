@@ -33,14 +33,16 @@ def make_wire_variant(
     must_be_commander: bool = False,
     requires: list[dict[str, Any]] | None = None,
     popularity: int | None = 10,
+    quantities: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    """A variant as the export carries it; *quantities* overrides a piece's default of 1."""
     return {
         "id": variant_id,
         "status": status,
         "uses": [
             {
                 "card": {"name": name},
-                "quantity": 1,
+                "quantity": (quantities or {}).get(name, 1),
                 "mustBeCommander": must_be_commander,
                 "zoneLocations": ["H"],
             }
@@ -230,6 +232,38 @@ async def test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact(
         assert len(pieces) == 7
         assert meta is not None
         assert meta.export_version == "5.6.0", "meta must still describe the first import"
+
+
+async def test_a_quantity_two_piece_writes_one_piece_row(empty_card_db, monkeypatch):
+    """A piece the combo needs twice is one ``(spellbook_id, name_key)`` row, not two.
+
+    The normalized record lists the name once per copy, so the piece rows are deduplicated per
+    variant before the insert; without that, the second copy collides on the piece table's
+    primary key and the whole snapshot rolls back.
+    """
+    variants = [
+        make_wire_variant(
+            "q-2",
+            ["Rings of Brighthearth", "Basalt Monolith"],
+            quantities={"Basalt Monolith": 2},
+        )
+    ]
+    patch_download(monkeypatch, gzipped_payload(variants))
+
+    async with empty_card_db() as session:
+        stats = await import_spellbook_snapshot(session)
+        variant_ids, pieces, _ = await _snapshot_state(session)
+        variant = (
+            await session.execute(
+                select(ComboVariantModel).where(ComboVariantModel.spellbook_id == "q-2")
+            )
+        ).scalar_one()
+
+    assert stats.imported == 1
+    assert variant_ids == {"q-2"}
+    assert pieces == {("q-2", "basalt monolith"), ("q-2", "rings of brighthearth")}
+    assert stats.piece_rows == 2
+    assert variant.cards_list.count("Basalt Monolith") == 2, "the stored variant keeps both copies"
 
 
 async def test_skip_counters_reported(empty_card_db, monkeypatch):
