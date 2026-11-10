@@ -3,7 +3,7 @@ title: 'CI runs the recall eval, the Windows halves and bounded jobs'
 type: 'chore'
 ticket: 4
 created: '2026-11-10'
-status: 'built'
+status: done
 baseline_revision: 'de2da8c4a698eb08b447ccac6319fb710c10ff3f'
 route: 'oneshot'
 route_source: 'auto'
