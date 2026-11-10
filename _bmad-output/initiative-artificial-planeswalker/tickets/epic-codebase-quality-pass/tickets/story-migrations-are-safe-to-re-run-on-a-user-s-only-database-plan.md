@@ -3,7 +3,7 @@ title: "Migrations are safe to re-run on a user's only database"
 type: 'bugfix'
 ticket: 68
 created: '2026-11-10'
-status: 'built'
+status: done
 baseline_revision: 'b8be29bd968ba06d10d7716878f80d05bed01d65'
 route: 'full'
 route_source: 'auto'
