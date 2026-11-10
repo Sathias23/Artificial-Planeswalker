@@ -300,6 +300,7 @@ class DeckViolation(BaseModel):
 
 UncheckedRuleName = Literal[
     "deck_size",
+    "sideboard_size",
     "commander_eligibility",
     "color_identity",
     "rotation",
@@ -313,6 +314,7 @@ vocabulary when a check for it is written, in the same change that writes the ch
 
 UNCHECKED_ORDER: tuple[UncheckedRuleName, ...] = (
     "deck_size",
+    "sideboard_size",
     "commander_eligibility",
     "color_identity",
     "rotation",
@@ -326,6 +328,7 @@ every recognised format lists and which therefore always come last.
 
 _COMMANDER_STYLE: tuple[UncheckedRuleName, ...] = (
     "deck_size",
+    "sideboard_size",
     "commander_eligibility",
     "color_identity",
 )
@@ -337,8 +340,9 @@ UNCHECKED_RULES: dict[str, tuple[UncheckedRuleName, ...]] = {
     "competitivebrawl": (*_COMMANDER_STYLE, "copy_exceptions"),
     "duel": (*_COMMANDER_STYLE, "copy_exceptions"),
     "future": ("rotation", "copy_exceptions"),
-    # Singleton with no commander: its own deck size, but no commander or color-identity rule.
-    "gladiator": ("deck_size", "copy_exceptions"),
+    # Singleton with no commander: its own deck and sideboard size, but no commander or
+    # color-identity rule.
+    "gladiator": ("deck_size", "sideboard_size", "copy_exceptions"),
     "historic": ("copy_exceptions",),
     "legacy": ("copy_exceptions",),
     "modern": ("copy_exceptions",),
@@ -375,6 +379,10 @@ _UNCHECKED_DETAIL: dict[UncheckedRuleName, str] = {
         "Deck size was not checked against {format}'s own rule; "
         "only the {minimum}-card minimum was applied."
     ),
+    "sideboard_size": (
+        "Sideboard size was not checked against {format}'s own rule; "
+        "only the general {sideboard_maximum}-card maximum was applied."
+    ),
     "commander_eligibility": (
         "Commander eligibility was not checked for {format}; nothing confirmed the deck has an "
         "eligible commander."
@@ -396,6 +404,7 @@ _UNCHECKED_DETAIL: dict[UncheckedRuleName, str] = {
 
 UNCHECKED_PHRASES: dict[UncheckedRuleName, str] = {
     "deck_size": "deck size",
+    "sideboard_size": "sideboard size",
     "commander_eligibility": "commander eligibility",
     "color_identity": "color identity",
     "rotation": "rotation exposure",
@@ -421,7 +430,9 @@ def _unchecked_for(format: str) -> list[UncheckedRule]:
     return [
         UncheckedRule(
             rule=rule,
-            detail=_UNCHECKED_DETAIL[rule].format(format=format, minimum=_MIN_MAINBOARD),
+            detail=_UNCHECKED_DETAIL[rule].format(
+                format=format, minimum=_MIN_MAINBOARD, sideboard_maximum=_MAX_SIDEBOARD
+            ),
         )
         for rule in UNCHECKED_RULES.get(format, ())
     ]

@@ -51,12 +51,19 @@ const copyExceptions = (format: string): UncheckedRule => ({
 
 /**
  * What a commander-style format (`brawl`, `commander`, …) lists as unchecked, rotation aside:
- * its own deck size, commander eligibility, color identity, then copy exceptions.
+ * its own deck size and sideboard size, commander eligibility, color identity, then copy
+ * exceptions.
  */
 const commanderStyleUnchecked = (format: string): UncheckedRule[] => [
   {
     rule: 'deck_size',
     detail: `Deck size was not checked against ${format}'s own rule; only the 60-card minimum was applied.`,
+  },
+  {
+    rule: 'sideboard_size',
+    detail:
+      `Sideboard size was not checked against ${format}'s own rule; ` +
+      'only the general 15-card maximum was applied.',
   },
   {
     rule: 'commander_eligibility',

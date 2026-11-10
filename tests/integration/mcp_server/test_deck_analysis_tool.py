@@ -532,6 +532,7 @@ async def test_validate_deck_commander_lists_the_unchecked_rules(session: AsyncS
     assert result.report.violations == []
     assert [rule.rule for rule in result.report.unchecked] == [
         "deck_size",
+        "sideboard_size",
         "commander_eligibility",
         "color_identity",
         "copy_exceptions",
@@ -539,7 +540,7 @@ async def test_validate_deck_commander_lists_the_unchecked_rules(session: AsyncS
     assert all("commander" in rule.detail for rule in result.report.unchecked)
     assert result.message == (
         "Deck is legal in commander (100-card mainboard). Not checked: deck size, "
-        "commander eligibility, color identity, copy exceptions."
+        "sideboard size, commander eligibility, color identity, copy exceptions."
     )
 
 
@@ -566,7 +567,7 @@ async def test_validate_deck_commander_violations_are_unchanged(session: AsyncSe
     ]
     assert result.message == (
         "Deck has 2 issues for commander legality. Not checked: deck size, "
-        "commander eligibility, color identity, copy exceptions."
+        "sideboard size, commander eligibility, color identity, copy exceptions."
     )
 
 

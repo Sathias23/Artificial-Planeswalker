@@ -450,6 +450,7 @@ class TestUncheckedRules:
 
         assert [entry["rule"] for entry in body["unchecked"]] == [
             "deck_size",
+            "sideboard_size",
             "commander_eligibility",
             "color_identity",
             "copy_exceptions",

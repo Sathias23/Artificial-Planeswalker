@@ -105,6 +105,8 @@ context: []
 
 Pass 1 outcome: all three patches applied by the implementer (rows 1 and 3 in code, row 2 as harness proofs in Implementation Notes); nothing deferred, no loopback. Full Python gate (3441 passed, 2 skipped), full UI gate (1810 + 39 tests), `build_plugin` and `gen:types` re-run clean on the patched tree.
 
+**Pass 2 (Greptile on PR #126, P2 "Sideboard gaps stay unnamed"):** patched at Brad's call (2026-11-10). The singleton formats (the commander-style seven, `standardbrawl` and `gladiator`) got only the general 15-card sideboard maximum, but `unchecked` never said their own sideboard rule went unchecked. Added `sideboard_size` to the vocabulary after `deck_size` and to every singleton entry; no verdict changes. Skills, both tool descriptions, `openapi.json`/`types.d.ts` (`gen:api`), UI fixtures and `plugin/` updated; the static bundle is unchanged. Gate: Python 3443 passed, 2 skipped; UI 1810 + 39 tests. Probe (plant: `sideboard_size` dropped from `_COMMANDER_STYLE`, reverted clean via `git diff --exit-code`): `full suite (-m 'not integration'): 3418 collected, 6 failed, 0 errored, exit 1`, red on both new pins (`test_own_sideboard_size_is_listed_for_exactly_the_singleton_formats`, `test_the_sideboard_sentence_names_the_general_maximum_applied`) and the four updated commander lists.
+
 ## Design Notes
 
 Rotation is in the `validate_deck` list but filtered from `format_check`'s, because the panel already has a permanent rotation row; listing it twice would say the same thing twice. 5.2 edits these files next, so the shape is one flat list of `{rule, detail}` on each report, with no nesting and no per-row attachment.

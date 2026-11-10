@@ -796,8 +796,23 @@ class TestUncheckedRules:
 
         assert sized == _SINGLETON_FORMATS
 
+    def test_own_sideboard_size_is_listed_for_exactly_the_singleton_formats(self) -> None:
+        """The 100-card formats have their own sideboard rule; only the general 15 ran."""
+        sided = {format for format, entry in UNCHECKED_RULES.items() if "sideboard_size" in entry}
+
+        assert sided == _SINGLETON_FORMATS
+
+    def test_the_sideboard_sentence_names_the_general_maximum_applied(self) -> None:
+        report = validate_deck(_deck([_mountain(60)], format="commander"), format="commander")
+
+        sideboard = next(rule for rule in report.unchecked if rule.rule == "sideboard_size")
+        assert sideboard.detail == (
+            "Sideboard size was not checked against commander's own rule; "
+            "only the general 15-card maximum was applied."
+        )
+
     def test_gladiator_has_no_commander(self) -> None:
-        assert UNCHECKED_RULES["gladiator"] == ("deck_size", "copy_exceptions")
+        assert UNCHECKED_RULES["gladiator"] == ("deck_size", "sideboard_size", "copy_exceptions")
 
     def test_vintage_lists_no_restricted_rule(self) -> None:
         """``restricted_card`` checks restricted cards, so nothing about them is unchecked."""
@@ -818,6 +833,7 @@ class TestUncheckedRules:
 
         assert [rule.rule for rule in validate_deck(deck, format="standardbrawl").unchecked] == [
             "deck_size",
+            "sideboard_size",
             "commander_eligibility",
             "color_identity",
             "rotation",
@@ -825,6 +841,7 @@ class TestUncheckedRules:
         ]
         assert [rule.rule for rule in format_check(deck).unchecked] == [
             "deck_size",
+            "sideboard_size",
             "commander_eligibility",
             "color_identity",
             "copy_exceptions",

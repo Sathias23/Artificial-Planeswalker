@@ -1283,7 +1283,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "deck_size" | "commander_eligibility" | "color_identity" | "rotation" | "copy_exceptions";
+            rule: "deck_size" | "sideboard_size" | "commander_eligibility" | "color_identity" | "rotation" | "copy_exceptions";
             /** Detail */
             detail: string;
         };

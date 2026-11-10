@@ -121,22 +121,24 @@ violation. **For any non-60 format, lead with your own reinterpreted verdict —
 `is_legal` as the answer.** That remaining gap is what this skill fills.
 
 **The report now names its own gaps: `report.unchecked`.** Each entry is `{rule, detail}`, `rule` one of
-`deck_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions` (in that order), and
+`deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions`
+(in that order), and
 `detail` a sentence naming the format. It is **reporting only** — nothing listed there is enforced and the
 list never changes `is_legal` or `violations` — and the tool's `message` repeats it after `Not checked:`.
 Per recognised format:
 
 | Formats | `unchecked` |
 |---|---|
-| `commander`, `duel`, `predh`, `paupercommander`, `brawl`, `competitivebrawl`, `oathbreaker` | `deck_size`, `commander_eligibility`, `color_identity`, `copy_exceptions` |
-| `standardbrawl` | the four above plus `rotation` (before `copy_exceptions`) |
-| `gladiator` (singleton, no commander) | `deck_size`, `copy_exceptions` |
+| `commander`, `duel`, `predh`, `paupercommander`, `brawl`, `competitivebrawl`, `oathbreaker` | `deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `copy_exceptions` |
+| `standardbrawl` | the five above plus `rotation` (before `copy_exceptions`) |
+| `gladiator` (singleton, no commander) | `deck_size`, `sideboard_size`, `copy_exceptions` |
 | `standard`, `future`, `alchemy`, `penny` (rotating) | `rotation`, `copy_exceptions` |
 | every other recognised key (`modern`, `vintage`, `legacy`, `pioneer`, …) | `copy_exceptions` |
 
 An unknown or empty format gets `[]`: its `unknown_format` violation already says what was skipped.
 Restricted cards never appear (`restricted_card` checks them). `deck_size` means the format's **own**
-size rule was not checked and only the 60-card minimum ran. Treat every listed rule as **yours to check**
+size rule was not checked and only the 60-card minimum ran; `sideboard_size` likewise means the format's
+own sideboard rule was not checked and only the general 15-card maximum ran. Treat every listed rule as **yours to check**
 and say so: a `legal` verdict covers only the rules that ran, never the ones in `unchecked`. The companion's
 format panel shows the same list under "Not checked", minus `rotation`, which its rotation row already says.
 
@@ -350,7 +352,8 @@ against `src/mcp_server/` ground truth and a live dry-run.)
   ("Basic Creature") does not. Singleton formats: `brawl`, `standardbrawl`, `commander`, `gladiator`,
   `competitivebrawl`, `duel`, `oathbreaker`, `paupercommander`, `predh`.
 - **`report.unchecked`** lists the format's known rules the tool did **not** check, each `{rule, detail}`:
-  `deck_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions` (declared order;
+  `deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions`
+  (declared order;
   per-format table in "What `validate_deck` can and cannot see"). `[]` for an unknown or empty format.
   Reporting only: it never changes `is_legal` or `violations`. `message` ends `Not checked: …` naming them.
 - **`games` on `validate_deck`** produces `game_availability` violations per card; a `games` value outside

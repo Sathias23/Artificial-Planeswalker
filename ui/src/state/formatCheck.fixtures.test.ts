@@ -179,12 +179,13 @@ describe('the fixtures carry `unchecked` the way the real route does (quick wins
     expect(NO_FORMAT_REPORT.unchecked).toEqual([])
   })
 
-  it('lists size, commander and color identity for the commander deck, whose rows all pass', () => {
+  it('lists size, sideboard, commander and color identity for the commander deck, whose rows all pass', () => {
     expect(
       COMMANDER_REPORT.rows.every((row) => row.check === 'rotation' || row.status === 'pass'),
     ).toBe(true)
     expect(COMMANDER_REPORT.unchecked.map((entry) => entry.rule)).toEqual([
       'deck_size',
+      'sideboard_size',
       'commander_eligibility',
       'color_identity',
       'copy_exceptions',

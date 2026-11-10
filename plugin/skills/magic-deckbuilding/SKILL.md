@@ -81,8 +81,8 @@ only** — they never modify the deck.
    availability; the `format` key is case-insensitive). Any illegal/over-limit card is a **mandatory cut**
    candidate. Note the size rules are still constructed-60 (no 100-card Commander/Brawl minima).
    Read `report.unchecked` too: each `{rule, detail}` names a rule the tool did **not** check for this
-   format (`deck_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions`; a
-   Commander deck lists the first three plus copy exceptions). Those are yours to check, and a `legal`
+   format (`deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `rotation`,
+   `copy_exceptions`; a Commander deck lists the first four plus copy exceptions). Those are yours to check, and a `legal`
    verdict never covers them.
 
 Hold these findings — every swap you propose in Step 3 must trace back to one of them.

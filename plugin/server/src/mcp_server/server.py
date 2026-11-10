@@ -927,8 +927,8 @@ def build_server(
         state). Returns a report listing every violation; ``report.is_legal`` is
         the overall verdict. ``report.unchecked`` lists the format's known rules
         that were NOT checked (each ``{rule, detail}``: ``deck_size``,
-        ``commander_eligibility``, ``color_identity``, ``rotation``,
-        ``copy_exceptions``), and ``message`` names them after "Not checked:" — a
+        ``sideboard_size``, ``commander_eligibility``, ``color_identity``,
+        ``rotation``, ``copy_exceptions``), and ``message`` names them after "Not checked:" — a
         legal verdict covers only the rules checked, never the ones listed there.
 
         Args:
