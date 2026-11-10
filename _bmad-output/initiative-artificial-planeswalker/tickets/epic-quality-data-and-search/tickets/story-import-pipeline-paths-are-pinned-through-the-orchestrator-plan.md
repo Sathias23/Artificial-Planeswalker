@@ -130,3 +130,7 @@ Mutations were planted by a scratch script (exact-string replacement, each asser
 - `uv run pytest tests/integration/data/test_scryfall_import_e2e.py tests/integration/data/test_spellbook_import_e2e.py tests/unit/data/importers/test_download_hardening.py -q` -- expected: pass
 - `uv run python -m scripts.probe_harness --expect-red '<node id>'` once per planted mutation, `src/` restored and checked with `git diff --exit-code` after each -- expected: the named test red, harness exit 0
 - `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src/`, `uv run mypy src/ --platform win32`, `uv run pytest` -- expected: all pass
+
+### Post-merge review (Greptile, PR #122)
+
+- **P2, patched in a follow-up PR:** the first-run marker test read the flag only at the reconcile stage, after every batch had committed, so moving `mark_import_started` after `import_cards` still passed while a crash between batches would leave a partial database unmarked. A pass-through spy on `import_cards` now also reads the flag before the first batch, through a second session so only a committed marker counts. Proof, with the marker planted after `import_cards`: `full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1`, `RED ...test_the_first_run_marker_spans_the_import_and_is_cleared_after[first-run]`, harness exit 0. The `resume` case stays green under that mutation by design: its marker is already set by the killed run.
