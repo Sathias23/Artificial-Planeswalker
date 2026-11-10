@@ -913,13 +913,16 @@ def build_server(
         """Validate a deck's construction legality (size, copy limits, format legality).
 
         Loads the deck and checks the constructed rules: mainboard size, sideboard
-        size, the copy limit (combined across both boards, basics exempt — 4
-        copies normally, 1 copy in the singleton formats brawl / standardbrawl /
-        commander / gladiator / competitivebrawl / duel / oathbreaker /
-        paupercommander / predh, reported as a
+        size, the copy limit (combined across both boards, basics exempt, snow
+        basics and Wastes included — 4 copies normally, 1 copy in the singleton
+        formats brawl / standardbrawl / commander / gladiator / competitivebrawl /
+        duel / oathbreaker / paupercommander / predh, reported as a
         ``singleton`` violation), per-card legality in ``format``, and — when
         ``games`` is given — card availability on those platforms (union of games
-        across all printings). ``format`` is case-insensitive (lowercased before
+        across all printings). A restricted card is legal at 1 copy; more than one
+        is a ``restricted_card`` violation (``singleton`` in a singleton format). A
+        banned card is a ``banned_card`` violation and a card not in the format a
+        ``format_legality`` one. ``format`` is case-insensitive (lowercased before
         use); ``format``/``games`` are per-call parameters (no server-side
         state). Returns a report listing every violation; ``report.is_legal`` is
         the overall verdict.

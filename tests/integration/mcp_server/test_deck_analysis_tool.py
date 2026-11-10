@@ -130,6 +130,24 @@ def _seed_cards() -> list[CardModel]:
             oracle_text="Haste",
             legalities={"brawl": "legal", "standardbrawl": "legal", "standard": "legal"},
         ),
+        _card(
+            "card-snow-forest",
+            "Snow-Covered Forest",
+            type_line="Basic Snow Land — Forest",
+            cmc=0.0,
+            oracle_text="({T}: Add {G}.)",
+            colors=[],
+            legalities={"standard": "legal", "vintage": "legal"},
+        ),
+        _card(
+            "card-black-lotus",
+            "Black Lotus",
+            type_line="Artifact",
+            cmc=0.0,
+            oracle_text="{T}, Sacrifice Black Lotus: Add three mana of any one color.",
+            colors=[],
+            legalities={"vintage": "restricted", "legacy": "banned", "standard": "not_legal"},
+        ),
     ]
 
 
@@ -423,3 +441,65 @@ async def test_validate_deck_format_is_case_insensitive(session: AsyncSession) -
     )
     # No spurious all-cards format_legality flags from a wrong-case key.
     assert not any(v.rule == "format_legality" for v in result.report.violations)
+
+
+# --- snow basics and restricted cards (quality story 7.1: M2 / B4-P1 / B4-D1) ---
+
+
+async def test_validate_deck_ten_snow_basics_are_legal(session: AsyncSession) -> None:
+    """Ten Snow-Covered Forests in a 60-card Standard deck break no copy limit."""
+    deck_id = await _make_deck(
+        session, [("card-mountain", 50, False), ("card-snow-forest", 10, False)]
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format="standard")
+
+    assert result.status == "ok"
+    assert result.report is not None
+    assert result.report.violations == []
+    assert result.report.is_legal is True
+
+
+async def test_validate_deck_one_restricted_copy_is_legal_in_vintage(
+    session: AsyncSession,
+) -> None:
+    """One Black Lotus in Vintage is legal: restricted means one copy, not "not legal"."""
+    deck_id = await _make_deck(
+        session,
+        [("card-snow-forest", 59, False), ("card-black-lotus", 1, False)],
+        format="vintage",
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format="vintage")
+
+    assert result.status == "ok"
+    assert result.report is not None
+    assert result.report.violations == []
+    assert result.report.is_legal is True
+
+
+async def test_validate_deck_two_restricted_copies_are_one_violation(
+    session: AsyncSession,
+) -> None:
+    """1 main + 1 side Black Lotus in Vintage is exactly one ``restricted_card`` violation."""
+    deck_id = await _make_deck(
+        session,
+        [
+            ("card-snow-forest", 59, False),
+            ("card-black-lotus", 1, False),
+            ("card-black-lotus", 1, True),
+        ],
+        format="vintage",
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format="vintage")
+
+    assert result.report is not None
+    assert result.report.is_legal is False
+    assert [(v.rule, v.card_name, v.detail) for v in result.report.violations] == [
+        (
+            "restricted_card",
+            "Black Lotus",
+            "2 copies of 'Black Lotus'; it is restricted in vintage (max 1 copy).",
+        )
+    ]

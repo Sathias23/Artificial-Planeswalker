@@ -115,9 +115,9 @@ describe('exactly six rows, in the payload’s order, never sorted', () => {
   it('does NOT ship the mock’s `Banned or restricted` label', async () => {
     await showing(ALL_PASS_REPORT)
 
-    // A false label: `deck_validator.py:433-452` reports a `restricted` card through the LEGALITY
-    // row, deliberately and pinned on the Python side, so a row labelled "Banned or restricted"
-    // could never fire for a restricted card in any format.
+    // A false label: `deck_validator.py` reports an over-limit `restricted` card on the COPY-LIMIT
+    // row (`restricted_card`, pinned by `TestRestrictedCard` on the Python side), so a row labelled
+    // "Banned or restricted" could never fire for a restricted card in any format.
     expect(panel().textContent).not.toContain('Banned or restricted')
     expect(within(panel()).getByText('Banned cards')).toBeVisible()
   })

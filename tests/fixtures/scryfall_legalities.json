@@ -1,0 +1,71 @@
+{
+  "_note": "Real Scryfall legalities, read with mode=ro from a cards.db built from Scryfall bulk data on 2026-11-10 (all 39,503 cards shared this one 23-key set). Each entry is a minimal raw Scryfall card object, fed through transform_scryfall_card by tests/unit/logic/test_format_check.py::TestKnownFormatsMatchScryfall, which pins _KNOWN_FORMATS in src/logic/deck_validator.py to these keys by equality. To refresh: rebuild the database (uv run python scripts/import_scryfall_data.py), open cards.db read-only (sqlite3 'file:<path>?mode=ro'), copy the legalities column of these two cards over the ones below, then reconcile _KNOWN_FORMATS (and _SINGLETON_FORMATS) with any key the pin reports as added or removed.",
+  "cards": [
+    {
+      "id": "f5d24a5b-c950-4fd9-99e6-a4b979d915b3",
+      "oracle_id": "5089ec1a-f881-4d55-af14-5d996171203b",
+      "name": "Black Lotus",
+      "type_line": "Artifact",
+      "set": "ovnt",
+      "collector_number": "2023NA",
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "not_legal",
+        "timeless": "not_legal",
+        "gladiator": "not_legal",
+        "pioneer": "not_legal",
+        "modern": "not_legal",
+        "legacy": "banned",
+        "pauper": "not_legal",
+        "vintage": "restricted",
+        "penny": "not_legal",
+        "commander": "banned",
+        "oathbreaker": "banned",
+        "standardbrawl": "not_legal",
+        "brawl": "not_legal",
+        "competitivebrawl": "not_legal",
+        "alchemy": "not_legal",
+        "paupercommander": "not_legal",
+        "duel": "banned",
+        "oldschool": "not_legal",
+        "premodern": "not_legal",
+        "predh": "banned",
+        "tlr": "banned"
+      }
+    },
+    {
+      "id": "ce561d66-bdfd-408f-bf5b-49b4a53d3807",
+      "oracle_id": "5f0d3be8-e63e-4ade-ae58-6b0c14f2ce6d",
+      "name": "Snow-Covered Forest",
+      "type_line": "Basic Snow Land — Forest",
+      "set": "mb2",
+      "collector_number": "120",
+      "legalities": {
+        "standard": "not_legal",
+        "future": "not_legal",
+        "historic": "legal",
+        "timeless": "legal",
+        "gladiator": "legal",
+        "pioneer": "legal",
+        "modern": "legal",
+        "legacy": "legal",
+        "pauper": "legal",
+        "vintage": "legal",
+        "penny": "legal",
+        "commander": "legal",
+        "oathbreaker": "legal",
+        "standardbrawl": "not_legal",
+        "brawl": "legal",
+        "competitivebrawl": "legal",
+        "alchemy": "not_legal",
+        "paupercommander": "legal",
+        "duel": "legal",
+        "oldschool": "not_legal",
+        "premodern": "legal",
+        "predh": "legal",
+        "tlr": "legal"
+      }
+    }
+  ]
+}

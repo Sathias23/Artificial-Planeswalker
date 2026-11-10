@@ -334,6 +334,93 @@ class TestViolationFamilies:
 
 
 # --------------------------------------------------------------------------------------------
+# Quality story 7.1: snow basics are basics, and a restricted card is legal at one copy
+# --------------------------------------------------------------------------------------------
+
+
+def _snow_forest() -> CardModel:
+    """A snow basic, Standard- and Vintage-legal: its real type line, which a substring missed."""
+    return _legal_card(
+        "card-snow-forest",
+        "Snow-Covered Forest",
+        legalities={"standard": "legal", "vintage": "legal"},
+        type_line="Basic Snow Land — Forest",
+    )
+
+
+def _black_lotus() -> CardModel:
+    return _legal_card(
+        "card-black-lotus",
+        "Black Lotus",
+        legalities={"vintage": "restricted", "legacy": "banned", "standard": "not_legal"},
+    )
+
+
+class TestSnowBasicsAndRestrictedCards:
+    """The verify line's three decks, read off the panel's rows."""
+
+    async def test_ten_snow_basics_pass_the_copy_limit(self, ready_db, lifespan_client):
+        seeder, holder = _deck_seeder(
+            [_basic("card-mountain", "Mountain"), _snow_forest()],
+            [("card-mountain", 50), ("card-snow-forest", 10)],
+        )
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_PATH.format(deck_id=holder["id"]))).json()
+
+        assert _rows(body)["copy_limit"] == "pass"
+        assert body["is_legal"] is True
+
+    async def test_one_black_lotus_in_vintage_is_legal(self, ready_db, lifespan_client):
+        seeder, holder = _deck_seeder(
+            [_snow_forest(), _black_lotus()],
+            [("card-snow-forest", 59), ("card-black-lotus", 1)],
+            format="vintage",
+        )
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_PATH.format(deck_id=holder["id"]))).json()
+
+        assert _rows(body) == {
+            "legality": "pass",
+            "size": "pass",
+            "copy_limit": "pass",
+            "sideboard": "pass",
+            "banned": "pass",
+            "rotation": "advisory",
+        }
+        assert body["is_legal"] is True
+
+    async def test_two_black_lotus_are_one_violation_on_the_copy_limit_row(
+        self, ready_db, lifespan_client
+    ):
+        seeder, holder = _deck_seeder(
+            [_snow_forest(), _black_lotus()],
+            [("card-snow-forest", 59), ("card-black-lotus", 1), ("card-black-lotus", 1, True)],
+            format="vintage",
+        )
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_PATH.format(deck_id=holder["id"]))).json()
+
+        assert _rows(body) == {
+            "legality": "pass",
+            "size": "pass",
+            "copy_limit": "violation",
+            "sideboard": "pass",
+            "banned": "pass",
+            "rotation": "advisory",
+        }
+        assert _detail(body, "copy_limit") == (
+            "2 copies of 'Black Lotus'; it is restricted in vintage (max 1 copy)."
+        )
+        assert body["is_legal"] is False
+
+
+# --------------------------------------------------------------------------------------------
 # AC 7: a deck whose format cannot be checked
 # --------------------------------------------------------------------------------------------
 

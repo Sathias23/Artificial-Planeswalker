@@ -15,16 +15,21 @@ code had one. Measured across the 40 real saved decks: **zero** banned and **zer
 cards, which is why every fixture below is synthetic. A test seeded from real data would pass by
 finding nothing.
 
-``restricted`` is deliberately **unchanged** by the split: a restricted card is legal in Vintage
-with a 1-copy limit, which this validator does not model, so it stays a ``format_legality``
-violation exactly as before. Ledgered, not fixed — see ``deferred-work.md``.
+``restricted`` was left unchanged by the split and fixed later (quality story 7.1, ``B4-D1``): a
+restricted card in a known format is legal at one copy, counted across both boards, and a second
+copy is a ``restricted_card`` violation on the **copy-limit** row, never the legality or banned
+row. ``_KNOWN_FORMATS`` is pinned by equality to the keys of real Scryfall legality dicts held in
+``tests/fixtures/scryfall_legalities.json``, so a Scryfall key rename fails by name.
 """
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import get_args
 
 import pytest
 
+from src.data.importers.transformers import transform_scryfall_card
 from src.data.schemas.card import Card
 from src.data.schemas.deck import Deck, DeckCard
 from src.logic.deck_validator import (
@@ -345,23 +350,58 @@ class TestBannedSplit:
         assert [v.card_name for v in banned] == ["Banned Bomb"]
         assert [v.card_name for v in legality] == ["Modern Staple"]
 
-    def test_a_restricted_card_is_still_a_plain_legality_violation(self) -> None:
-        """Deliberately unchanged by the split, and pinned so it cannot drift silently.
 
-        A restricted card is legal with a 1-copy limit, which this validator does not model. It
-        was reported as "not legal" before Q2 and still is — ledgered in ``deferred-work.md``,
-        not fixed here.
-        """
-        restricted = _card("restricted", "Restricted Relic", legalities={"vintage": "restricted"})
-        deck = _deck([_entry(restricted, 1)], format="vintage")
+# ------------------------------------------------------------------------------------------
+# Restricted cards: legal at one copy, over-limit on the copy-limit row (story 7.1, B4-D1)
+# ------------------------------------------------------------------------------------------
 
-        violations = validate_deck(deck, format="vintage").violations
 
-        assert any(
-            v.rule == "format_legality" and v.card_name == "Restricted Relic" for v in violations
+class TestRestrictedCard:
+    """A restricted card lands on the copy-limit row when over one copy, and nowhere otherwise."""
+
+    @staticmethod
+    def _vintage_deck(*entries: tuple[int, bool]) -> Deck:
+        """60 vintage-legal basics' worth of mainboard plus Black Lotus *entries*."""
+        lotus = _card(
+            "lotus",
+            "Black Lotus",
+            legalities={"vintage": "restricted", "legacy": "banned"},
         )
-        assert not any(v.rule == "banned_card" for v in violations)
-        assert _rows(format_check(deck))["banned"] == "pass"
+        island = _card("island", "Island", legalities={"vintage": "legal"}, basic=True)
+        mainboard_lotus = sum(quantity for quantity, sideboard in entries if not sideboard)
+        return _deck(
+            [_entry(island, 60 - mainboard_lotus)]
+            + [_entry(lotus, quantity, sideboard=sideboard) for quantity, sideboard in entries],
+            format="vintage",
+        )
+
+    def test_one_copy_passes_legality_banned_and_copy_limit(self) -> None:
+        report = format_check(self._vintage_deck((1, False)))
+
+        assert _rows(report) == {
+            "legality": "pass",
+            "size": "pass",
+            "copy_limit": "pass",
+            "sideboard": "pass",
+            "banned": "pass",
+            "rotation": "advisory",
+        }
+        assert report.is_legal is True
+
+    def test_a_second_copy_in_the_sideboard_is_one_copy_limit_violation(self) -> None:
+        report = format_check(self._vintage_deck((1, False), (1, True)))
+
+        assert _rows(report)["copy_limit"] == "violation"
+        assert _detail(report, "copy_limit") == (
+            "2 copies of 'Black Lotus'; it is restricted in vintage (max 1 copy)."
+        )
+        # Not the legality row and not the banned row: the card is legal, just over its limit.
+        assert _rows(report)["legality"] == "pass"
+        assert _rows(report)["banned"] == "pass"
+        assert report.is_legal is False
+
+    def test_the_rule_maps_to_the_copy_limit_row(self) -> None:
+        assert CHECK_FOR_RULE["restricted_card"] == "copy_limit"
 
 
 # ------------------------------------------------------------------------------------------
@@ -671,4 +711,45 @@ class TestFormatSetInvariant:
     def test_the_two_sets_are_both_populated(self) -> None:
         """Non-vacuity: an empty subset satisfies ``<=`` against anything."""
         assert len(_SINGLETON_FORMATS) >= 9
-        assert len(_KNOWN_FORMATS) == 23
+        assert len(_KNOWN_FORMATS) > len(_SINGLETON_FORMATS)
+
+
+_LEGALITIES_FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "scryfall_legalities.json"
+
+
+def _fixture_cards() -> list[dict[str, object]]:
+    cards: list[dict[str, object]] = json.loads(_LEGALITIES_FIXTURE.read_text(encoding="utf-8"))[
+        "cards"
+    ]
+    return cards
+
+
+class TestKnownFormatsMatchScryfall:
+    """``_KNOWN_FORMATS`` equals the legality keys Scryfall really publishes (``B4-P12``).
+
+    The fixture holds real ``legalities`` dicts, read read-only from a built ``cards.db`` (every
+    one of its 39,503 cards carried the same 23 keys), wrapped as raw Scryfall objects and run
+    through the importer's own transform. A key Scryfall adds or renames, refreshed into the
+    fixture, fails here naming the difference; so does a format dropped from or misspelled in
+    ``_KNOWN_FORMATS``, which would otherwise make that format silently unvalidatable.
+    """
+
+    @pytest.mark.parametrize("raw", _fixture_cards(), ids=lambda raw: str(raw["name"]))
+    def test_known_formats_equal_the_scryfall_keys(self, raw: dict[str, object]) -> None:
+        model = transform_scryfall_card(raw)
+        assert model is not None
+
+        keys = set(model.legalities)
+        missing = sorted(keys - _KNOWN_FORMATS)
+        stale = sorted(_KNOWN_FORMATS - keys)
+        assert not missing and not stale, (
+            f"Scryfall keys missing from _KNOWN_FORMATS: {missing}; "
+            f"_KNOWN_FORMATS entries Scryfall does not publish: {stale}"
+        )
+
+    def test_the_fixture_is_not_vacuous(self) -> None:
+        """Two real cards with a non-empty legality dict each, so the equality above has teeth."""
+        cards = _fixture_cards()
+
+        assert [card["name"] for card in cards] == ["Black Lotus", "Snow-Covered Forest"]
+        assert all(card["legalities"] for card in cards)

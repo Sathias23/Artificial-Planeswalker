@@ -67,12 +67,12 @@ export const FORMAT_CHECK_TITLE = 'Format check'
  * sideboard, banned, rotation exposure"* — and NOT spelled `'Format legality'`, because the panel
  * above it is already titled *Format check* and the word would be said twice.
  *
- * **`'Banned or restricted'` is a FALSE label and does not ship.** `deck_validator.py:433-452`
- * reports a `restricted` card through the **legality** row, deliberately and pinned
- * (`test_restricted_is_unchanged_by_the_banned_split`): `banned_card` splits off only for a
- * legality of exactly `'banned'`, and `restricted` falls through to the plain rule *"because a
- * restricted card is legal with a 1-copy limit, which this validator does not model"*. A row so
- * labelled could therefore never fire for a restricted card, in any format, ever. `'Banned cards'`
+ * **`'Banned or restricted'` is a FALSE label and does not ship.** `deck_validator.py` treats a
+ * `restricted` card as legal at one copy, and reports a second copy as a `restricted_card`
+ * violation that `CHECK_FOR_RULE` puts on the **copy-limit** row (pinned by
+ * `TestRestrictedCard` in `test_format_check.py`): `banned_card` is the only rule on the banned
+ * row, and it fires only for a legality of exactly `'banned'`. A row so labelled could therefore
+ * never fire for a restricted card, in any format, ever. `'Banned cards'`
  * is what the row actually reports, and it matches the backend's own `_unanswerable` subject —
  * *"so banned cards could not be checked"* — so the label and the sentence beneath it agree.
  * `EXPERIENCE.md:37` carries the matching correction.
