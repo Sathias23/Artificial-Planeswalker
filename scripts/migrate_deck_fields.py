@@ -19,7 +19,6 @@ from sqlalchemy.exc import OperationalError
 
 from src.data.database import create_engine, create_session_factory
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -75,12 +74,13 @@ async def migrate_deck_fields() -> bool:
             return True
 
     except Exception as e:
-        logger.error(f"Migration failed: {e}", exc_info=True)
+        logger.error("Migration failed: %s", e, exc_info=True)
         return False
     finally:
         await engine.dispose()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     success = asyncio.run(migrate_deck_fields())
     sys.exit(0 if success else 1)

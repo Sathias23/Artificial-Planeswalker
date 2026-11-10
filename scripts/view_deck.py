@@ -34,7 +34,6 @@ from src.data.repositories.deck import DeckRepository
 from src.data.schemas.deck import Deck
 from src.viewer import present_deck
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -103,6 +102,9 @@ async def _run(identifier: str, open_browser: bool) -> int:
 
 def main() -> int:
     """Parse arguments and run the viewer. Returns a process exit code."""
+    # Configured here, not at module level: importing this module must not install a root
+    # handler as a side effect.
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description="Open the read-only deck viewer for a deck.")
     parser.add_argument("--deck", required=True, help="Deck id (UUID) or (partial) name.")
     parser.add_argument(

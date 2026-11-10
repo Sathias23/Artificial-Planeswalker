@@ -12,15 +12,16 @@ assembled plugin must expose:
   ``test_server_registers_expected_tools`` below. Stating it twice is how this line came to say
   "17" while the set below held 19.
 * The Codex manifests (``.codex-plugin/plugin.json`` + ``codex-mcp.json``) keep their schema:
-  snake_case ``mcp_servers`` wrapper, ``cwd`` anchor, and no ``${CLAUDE_PLUGIN_ROOT}`` leakage
-  (Codex does no variable substitution — openai/codex#19372).
+  camelCase ``mcpServers`` wrapper (a snake_case ``mcp_servers`` one is silently ignored), ``cwd``
+  anchor, and no ``${CLAUDE_PLUGIN_ROOT}`` leakage (Codex does no variable substitution —
+  openai/codex#19372).
 * **Distribution parity for the companion (story 15-5).** The plugin is the install route that
   has to carry the companion's UI, and until this story nothing proved it did: the two abort
-  paths at ``build_plugin.py:194-216`` had never been fired, no assertion said the built tree
-  carried the bundle at all, the skills check was presence-only (a ``bmad-*`` entry added to
-  ``SKILLS`` would have shipped unnoticed), and nothing said the bytes a plugin user receives
-  are the bytes the app serves. Everything below :class:`TestTheBuiltTreeCarriesTheCompanion`
-  closes that.
+  paths in ``build()`` (the companion SPA index and its ``assets/``) had never been fired, no
+  assertion said the built tree carried the bundle at all, the skills check was presence-only
+  (a ``bmad-*`` entry added to ``SKILLS`` would have shipped unnoticed), and nothing said the
+  bytes a plugin user receives are the bytes the app serves. Everything below
+  :class:`TestTheBuiltTreeCarriesTheCompanion` closes that.
 
 **Why the built tree is built once.** A ``build()`` copies ~1.8 MB, so the read-only parity
 assertions share one module-scoped tree rather than paying for it per test. The fault-injection
@@ -637,7 +638,7 @@ class TestTheCommittedTreeIsExactlyWhatTheBuildEmits:
     """The gap ``git status --porcelain -- plugin/`` structurally cannot see (review, 2026-08-19).
 
     ``build()`` cleans only four managed paths — ``server/src``, ``skills/``, ``.claude-plugin/``
-    and ``.codex-plugin/`` — and deletes the two root manifests (``build_plugin.py:176-185``).
+    and ``.codex-plugin/`` — and deletes the two root manifests (step 1 of ``build()``).
     ``plugin/server/`` itself is never cleaned, deliberately: a blanket ``rmtree`` chokes on a
     locked ``.venv`` on Windows and leaves the committed tree half-built. The cost is that
     anything committed under ``plugin/server/`` outside ``src/`` **survives every rebuild

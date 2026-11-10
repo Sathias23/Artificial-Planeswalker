@@ -36,12 +36,6 @@ from src.search import (
     get_embedder,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +62,13 @@ def main() -> int:
     Returns:
         Process exit code: ``0`` on success, ``130`` on Ctrl-C, ``1`` on any other failure.
     """
+    # Configured here, not at module level: the tests import this module, and a module-level
+    # basicConfig would install a root stdout handler as an import side effect.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
     parser = argparse.ArgumentParser(
         description="Build the card_vec semantic index from the cards table (idempotent, "
         "incremental). Re-runs re-embed only new/changed cards via a per-card content hash.",
