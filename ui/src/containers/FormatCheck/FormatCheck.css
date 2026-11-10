@@ -162,3 +162,33 @@
   font: var(--type-body);
   overflow-wrap: anywhere;
 }
+
+/* WHAT WAS NOT CHECKED (quick wins ticket 4) — beneath the six rows, only when the server lists
+   something. The sub-heading is the label role with BOTH its companions in this block, the
+   `.group-header-label` idiom; `margin` replaces the `<h3>` UA margins with scale steps, the
+   top one separating the list from the last row (which carries no hairline). */
+.format-check-unchecked-heading {
+  margin: var(--space-3) var(--space-1) var(--space-1);
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* The list reset, for `.format-check-rows`' reason. */
+.format-check-unchecked {
+  padding: 0 var(--space-1);
+  margin: 0;
+  list-style: none;
+}
+
+/* Each entry is a server-authored sentence, so it wears `.format-check-detail`'s treatment:
+   `--type-body` at `--text-tertiary` (never `--type-micro`, whose uppercase companion would
+   flatten the sentence), and `overflow-wrap: anywhere` so a long format name cannot push the
+   column wider. */
+.format-check-unchecked-item {
+  padding: var(--space-1) 0;
+  color: var(--text-tertiary);
+  font: var(--type-body);
+  overflow-wrap: anywhere;
+}

@@ -42,6 +42,16 @@
 export const FORMAT_CHECK_TITLE = 'Format check'
 
 /**
+ * The sub-heading over the list of the format's known rules the check did NOT examine
+ * (`report.unchecked`, quick wins ticket 4).
+ *
+ * Only the heading is copy. The sentences beneath it are DATA for the same reason the row
+ * `detail` sentences are: `deck_validator.py` writes them and interpolates the format name.
+ * Sentence case with no period, in `FORMAT_CHECK_TITLE`'s voice; any uppercase is CSS.
+ */
+export const UNCHECKED_HEADING = 'Not checked'
+
+/**
  * The six row labels, keyed by the wire's `FormatCheckName`.
  *
  * ================= THE MOCK SUPPLIES FIVE OF THE SIX, AND ONE OF THOSE IS WRONG =========

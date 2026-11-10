@@ -239,6 +239,9 @@ class TestTheComponentSet:
         # and `CardSummary` are still defined in `src/data/schemas` and still ride on the MCP
         # `load_deck` payload, where every field is an LLM token — they are simply unreachable
         # from any route, and reachability is what puts a model in this document.
+        #
+        # THIRTY-ONE as of quick wins ticket 4: `UncheckedRule`, the `{rule, detail}` entries of
+        # `FormatCheckReport.unchecked` — the format's known rules the check did not examine.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
             "ActiveDeckChangedEvent",
@@ -270,6 +273,7 @@ class TestTheComponentSet:
             "TierItem",
             "TierListEvent",
             "TierListPayload",
+            "UncheckedRule",
         }
 
     def test_the_auto_generated_validation_shapes_are_absent(self, schema):

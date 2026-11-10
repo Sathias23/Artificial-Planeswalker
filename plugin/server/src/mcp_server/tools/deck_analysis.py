@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import Card
-from src.logic.deck_validator import DeckValidationReport
+from src.logic.deck_validator import UNCHECKED_PHRASES, DeckValidationReport
 from src.logic.deck_validator import validate_deck as _logic_validate_deck
 from src.logic.mana_curve import analyze_mana_curve as _logic_analyze_mana_curve
 from src.logic.synergy import SynergyPattern
@@ -292,7 +292,11 @@ async def validate_deck(
     format is reported as ``format_legality``. ``format`` is case-insensitive
     (lowercased here) and, like ``games``, a per-call parameter (no server-side
     state). Returns a structured report listing every violation;
-    ``report.is_legal`` is the overall verdict.
+    ``report.is_legal`` is the overall verdict. ``report.unchecked`` lists the
+    format's known rules that were **not** checked (each ``{rule, detail}``:
+    ``deck_size``, ``sideboard_size``, ``commander_eligibility``, ``color_identity``,
+    ``rotation``, ``copy_exceptions``), and ``message`` names them after "Not checked:" — a
+    legal verdict covers only the rules checked, never the ones listed there.
 
     Args:
         session: Async database session to load the deck from.
@@ -351,5 +355,8 @@ async def validate_deck(
         count = len(report.violations)
         noun = "issue" if count == 1 else "issues"
         message = f"Deck has {count} {noun} for {format} legality."
+    if report.unchecked:
+        phrases = ", ".join(UNCHECKED_PHRASES[rule.rule] for rule in report.unchecked)
+        message = f"{message} Not checked: {phrases}."
 
     return ValidateDeckResult(status="ok", deck_id=deck_id, report=report, message=message)

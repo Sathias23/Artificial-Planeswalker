@@ -14,6 +14,9 @@ row per check including the ones that passed. The projection lives here rather t
 in a shell so there is one implementation of it (AD-1) — the same reasoning that
 put the deck-count projection down in ``src/data/schemas``.
 
+Both reports also carry ``unchecked``: the format's known rules this module does not check
+(:data:`UNCHECKED_RULES`), so "legal" never reads as "fully checked". It is reporting only.
+
 All functions are pure business logic with no database or UI dependencies.
 """
 
@@ -293,10 +296,154 @@ class DeckViolation(BaseModel):
     detail: str
 
 
+# --- What is NOT checked ---
+
+UncheckedRuleName = Literal[
+    "deck_size",
+    "sideboard_size",
+    "commander_eligibility",
+    "color_identity",
+    "rotation",
+    "copy_exceptions",
+]
+"""The closed vocabulary of a format's known rules this module does **not** check.
+
+Reporting only: naming a rule here enforces nothing and changes no verdict. A rule leaves this
+vocabulary when a check for it is written, in the same change that writes the check.
+"""
+
+UNCHECKED_ORDER: tuple[UncheckedRuleName, ...] = (
+    "deck_size",
+    "sideboard_size",
+    "commander_eligibility",
+    "color_identity",
+    "rotation",
+    "copy_exceptions",
+)
+"""The order unchecked rules are listed in, declared like :data:`CHECK_ORDER`.
+
+Whole-deck construction rules first, then rotation, then the per-card copy exceptions, which
+every recognised format lists and which therefore always come last.
+"""
+
+_COMMANDER_STYLE: tuple[UncheckedRuleName, ...] = (
+    "deck_size",
+    "sideboard_size",
+    "commander_eligibility",
+    "color_identity",
+)
+
+UNCHECKED_RULES: dict[str, tuple[UncheckedRuleName, ...]] = {
+    "alchemy": ("rotation", "copy_exceptions"),
+    "brawl": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "commander": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "competitivebrawl": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "duel": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "future": ("rotation", "copy_exceptions"),
+    # Singleton with no commander: its own deck and sideboard size, but no commander or
+    # color-identity rule.
+    "gladiator": ("deck_size", "sideboard_size", "copy_exceptions"),
+    "historic": ("copy_exceptions",),
+    "legacy": ("copy_exceptions",),
+    "modern": ("copy_exceptions",),
+    "oathbreaker": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "oldschool": ("copy_exceptions",),
+    "pauper": ("copy_exceptions",),
+    "paupercommander": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "penny": ("rotation", "copy_exceptions"),
+    "pioneer": ("copy_exceptions",),
+    "predh": (*_COMMANDER_STYLE, "copy_exceptions"),
+    "premodern": ("copy_exceptions",),
+    "standard": ("rotation", "copy_exceptions"),
+    "standardbrawl": (*_COMMANDER_STYLE, "rotation", "copy_exceptions"),
+    "timeless": ("copy_exceptions",),
+    "tlr": ("copy_exceptions",),
+    "vintage": ("copy_exceptions",),
+}
+"""Which of a format's known rules go unchecked, for **every** member of ``_KNOWN_FORMATS``.
+
+Hand-maintained, and pinned total by ``test_format_check.py::TestUncheckedRules``: a Scryfall key
+added to ``_KNOWN_FORMATS`` without an entry here fails by name. Each value follows
+:data:`UNCHECKED_ORDER`. An unrecognised or empty format has no entry and gets an empty list,
+because its ``unknown_format`` violation and the advisory rows already say what was skipped.
+
+``copy_exceptions`` is listed for every format, Standard included (Brad, 2026-11-10): no format
+checks cards that allow more copies than the limit (Relentless Rats, Seven Dwarves). Restricted
+cards are absent on purpose, because ``restricted_card`` checks them.
+"""
+
+_UNCHECKED_DETAIL: dict[UncheckedRuleName, str] = {
+    # No size is named: the real sizes of competitivebrawl, tlr and gladiator are not verified
+    # here, and a sentence naming one would be a claim this module never checked.
+    "deck_size": (
+        "Deck size was not checked against {format}'s own rule; "
+        "only the {minimum}-card minimum was applied."
+    ),
+    "sideboard_size": (
+        "Sideboard size was not checked against {format}'s own rule; "
+        "only the general {sideboard_maximum}-card maximum was applied."
+    ),
+    "commander_eligibility": (
+        "Commander eligibility was not checked for {format}; nothing confirmed the deck has an "
+        "eligible commander."
+    ),
+    "color_identity": (
+        "Color identity was not checked for {format}; no card was compared with a commander's "
+        "color identity."
+    ),
+    "rotation": (
+        "Rotation exposure in {format} was not checked: the local card data carries no set "
+        "release dates."
+    ),
+    "copy_exceptions": (
+        "Cards that allow more copies than {format}'s copy limit (such as Relentless Rats) were "
+        "not recognized; the limit was applied to them like any other card."
+    ),
+}
+"""One sentence per unchecked rule, naming the format. Data on the wire, like a row's detail."""
+
+UNCHECKED_PHRASES: dict[UncheckedRuleName, str] = {
+    "deck_size": "deck size",
+    "sideboard_size": "sideboard size",
+    "commander_eligibility": "commander eligibility",
+    "color_identity": "color identity",
+    "rotation": "rotation exposure",
+    "copy_exceptions": "copy exceptions",
+}
+"""A short noun phrase per unchecked rule, for the ``validate_deck`` tool's one-line message."""
+
+
+class UncheckedRule(BaseModel):
+    """One of a format's known rules that was **not** checked.
+
+    Attributes:
+        rule: Which rule went unchecked.
+        detail: A human-readable sentence saying what was not checked, naming the format.
+    """
+
+    rule: UncheckedRuleName
+    detail: str
+
+
+def _unchecked_for(format: str) -> list[UncheckedRule]:
+    """The unchecked rules for a normalised *format*; empty when the format is not recognised."""
+    return [
+        UncheckedRule(
+            rule=rule,
+            detail=_UNCHECKED_DETAIL[rule].format(
+                format=format, minimum=_MIN_MAINBOARD, sideboard_maximum=_MAX_SIDEBOARD
+            ),
+        )
+        for rule in UNCHECKED_RULES.get(format, ())
+    ]
+
+
 class DeckValidationReport(BaseModel):
     """Whole-deck construction-legality report.
 
-    ``is_legal`` is ``True`` if and only if ``violations`` is empty.
+    ``is_legal`` is ``True`` if and only if ``violations`` is empty. ``unchecked`` does not
+    affect it: it names the format's known rules that were not examined, so a reader knows what
+    ``is_legal`` does not cover.
 
     Attributes:
         is_legal: Whether the deck passed every checked rule.
@@ -304,6 +451,8 @@ class DeckValidationReport(BaseModel):
         mainboard_count: Total mainboard cards (summed by quantity).
         sideboard_count: Total sideboard cards (summed by quantity).
         violations: Every rule violation found (empty when ``is_legal`` is True).
+        unchecked: The format's known rules that were not checked, in
+            :data:`UNCHECKED_ORDER`; empty for an unrecognised or empty format.
     """
 
     is_legal: bool
@@ -311,6 +460,7 @@ class DeckValidationReport(BaseModel):
     mainboard_count: int
     sideboard_count: int
     violations: list[DeckViolation] = []
+    unchecked: list[UncheckedRule]
 
 
 def validate_deck(
@@ -363,7 +513,8 @@ def validate_deck(
 
     Returns:
         A ``DeckValidationReport`` whose ``is_legal`` is ``True`` iff there are no
-        violations.
+        violations, and whose ``unchecked`` names the format's known rules left unexamined
+        (from :data:`UNCHECKED_RULES`) — the gaps above, reported rather than enforced.
     """
     # Defensive normalization: Scryfall legality keys and _SINGLETON_FORMATS are
     # lowercase, and direct library callers bypass the tool layer's lowercasing.
@@ -505,6 +656,7 @@ def validate_deck(
         mainboard_count=mainboard_count,
         sideboard_count=sideboard_count,
         violations=violations,
+        unchecked=_unchecked_for(format),
     )
 
 
@@ -617,6 +769,10 @@ class FormatCheckReport(BaseModel):
         mainboard_count: Total mainboard cards, summed by quantity.
         sideboard_count: Total sideboard cards, summed by quantity.
         rows: One row per check, in a fixed order.
+        unchecked: The format's known rules that were not checked, in
+            :data:`UNCHECKED_ORDER`, as :func:`validate_deck` reports them **minus** ``rotation``,
+            which the permanent rotation row already says. Empty for an unrecognised or empty
+            format, whose advisory rows already say what was skipped.
     """
 
     is_legal: bool
@@ -625,6 +781,7 @@ class FormatCheckReport(BaseModel):
     mainboard_count: int
     sideboard_count: int
     rows: list[FormatCheckRow]
+    unchecked: list[UncheckedRule]
 
 
 _ROTATION_DETAIL = (
@@ -775,4 +932,6 @@ def format_check(deck: Deck) -> FormatCheckReport:
         mainboard_count=report.mainboard_count,
         sideboard_count=report.sideboard_count,
         rows=rows,
+        # Rotation is dropped because the permanent rotation row already says it was not checked.
+        unchecked=[rule for rule in report.unchecked if rule.rule != "rotation"],
     )

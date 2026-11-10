@@ -120,6 +120,28 @@ deck short of 60-only checks can come back with false positives (Limited trips `
 violation. **For any non-60 format, lead with your own reinterpreted verdict — never echo the tool's
 `is_legal` as the answer.** That remaining gap is what this skill fills.
 
+**The report now names its own gaps: `report.unchecked`.** Each entry is `{rule, detail}`, `rule` one of
+`deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions`
+(in that order), and
+`detail` a sentence naming the format. It is **reporting only** — nothing listed there is enforced and the
+list never changes `is_legal` or `violations` — and the tool's `message` repeats it after `Not checked:`.
+Per recognised format:
+
+| Formats | `unchecked` |
+|---|---|
+| `commander`, `duel`, `predh`, `paupercommander`, `brawl`, `competitivebrawl`, `oathbreaker` | `deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `copy_exceptions` |
+| `standardbrawl` | the five above plus `rotation` (before `copy_exceptions`) |
+| `gladiator` (singleton, no commander) | `deck_size`, `sideboard_size`, `copy_exceptions` |
+| `standard`, `future`, `alchemy`, `penny` (rotating) | `rotation`, `copy_exceptions` |
+| every other recognised key (`modern`, `vintage`, `legacy`, `pioneer`, …) | `copy_exceptions` |
+
+An unknown or empty format gets `[]`: its `unknown_format` violation already says what was skipped.
+Restricted cards never appear (`restricted_card` checks them). `deck_size` means the format's **own**
+size rule was not checked and only the 60-card minimum ran; `sideboard_size` likewise means the format's
+own sideboard rule was not checked and only the general 15-card maximum ran. Treat every listed rule as **yours to check**
+and say so: a `legal` verdict covers only the rules that ran, never the ones in `unchecked`. The companion's
+format panel shows the same list under "Not checked", minus `rotation`, which its rotation row already says.
+
 **What the tool is blind to / gets wrong (your value-add must cover these):**
 
 - **Size rules are constructed-60, not format-aware.** The *per-card legality* lookup and the *copy
@@ -215,8 +237,8 @@ caveat).
    which deck → capture its `deck_id`. Track the `deck_id` yourself. Use `load_deck` when you need the actual
    card list (color identity, finding a replacement's role).
 3. **Validate.** `validate_deck(deck_id, format=<valid key>, games?)` → read **every** field of
-   `report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, and each `violation`
-   (`rule` / `card_name` / `detail`). Branch on `status` (`ok` / `deck_not_found` / `invalid` / `error`) —
+   `report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, each `violation`
+   (`rule` / `card_name` / `detail`), and `unchecked` (the format's rules the tool did not examine). Branch on `status` (`ok` / `deck_not_found` / `invalid` / `error`) —
    never assume `ok`. **Run the all-illegal tell** (above) before trusting an all-cards-flagged result.
 4. **Reinterpret for the real format.** Suppress constructed-60 false positives (Limited 40-card, no copy
    limit) and **add the violations the tool can't see** (100-card size; the single legendary commander;
@@ -304,7 +326,7 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 
 | Tool | Key params | `status` values (payload on success) |
 |------|-----------|--------------------------------------|
-| `validate_deck` | `deck_id`, `format` (default `"standard"` — **pass an explicit valid key**; case-insensitive), `games?` (`paper`/`arena`/`mtgo`) | `ok` (`report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, `violations[]` each `{rule, card_name?, detail}`) · `deck_not_found` · `invalid` (bad `games` value) · `error` |
+| `validate_deck` | `deck_id`, `format` (default `"standard"` — **pass an explicit valid key**; case-insensitive), `games?` (`paper`/`arena`/`mtgo`) | `ok` (`report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, `violations[]` each `{rule, card_name?, detail}`, `unchecked[]` each `{rule, detail}`) · `deck_not_found` · `invalid` (bad `games` value) · `error` |
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + card summaries) · `not_found` · `error` |
 | `lookup_card_by_name` | `card_name`, `format?` (a **legality filter** — omit it when investigating an illegal card), `games?` | **`found`** (`card` w/ full `legalities` dict + `type_line`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, NOT `ok` |
@@ -329,6 +351,11 @@ against `src/mcp_server/` ground truth and a live dry-run.)
   snow basics ("Basic Snow Land — Forest") and Wastes ("Basic Land") count, and Omnipresent Impostor
   ("Basic Creature") does not. Singleton formats: `brawl`, `standardbrawl`, `commander`, `gladiator`,
   `competitivebrawl`, `duel`, `oathbreaker`, `paupercommander`, `predh`.
+- **`report.unchecked`** lists the format's known rules the tool did **not** check, each `{rule, detail}`:
+  `deck_size`, `sideboard_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions`
+  (declared order;
+  per-format table in "What `validate_deck` can and cannot see"). `[]` for an unknown or empty format.
+  Reporting only: it never changes `is_legal` or `violations`. `message` ends `Not checked: …` naming them.
 - **`games` on `validate_deck`** produces `game_availability` violations per card; a `games` value outside
   `paper` / `arena` / `mtgo` returns `status="invalid"` (not a violation). Each card's `games` is the
   **union across all its printings** (import-time dedup), so a paper-only *printing* no longer masks a

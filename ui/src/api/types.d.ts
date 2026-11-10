@@ -849,6 +849,8 @@ export interface components {
             sideboard_count: number;
             /** Rows */
             rows: components["schemas"]["FormatCheckRow"][];
+            /** Unchecked */
+            unchecked: components["schemas"]["UncheckedRule"][];
         };
         /**
          * FormatCheckRow
@@ -1271,6 +1273,19 @@ export interface components {
             title?: string | null;
             /** Items */
             items?: components["schemas"]["TierItem"][];
+        };
+        /**
+         * UncheckedRule
+         * @description One of a format's known rules that was **not** checked.
+         */
+        UncheckedRule: {
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "deck_size" | "sideboard_size" | "commander_eligibility" | "color_identity" | "rotation" | "copy_exceptions";
+            /** Detail */
+            detail: string;
         };
     };
     responses: never;
