@@ -77,4 +77,8 @@ running, and confirm the browser tab opened.
   one status check. If it is not up after that, tell the user what the launch printed.
 - **Offer, don't nag.** When a push tool answers `app_not_running`, offer to open the companion
   once; the content is in chat regardless, and the visual channel never replaces the reply.
+- **Name the deck on every push.** Pass `payload.deck_id` on each `companion_show_*` call about a
+  saved deck; the companion labels the view and its history entry "For {deck name}" and marks
+  them stale once the deck is edited or another one is shown. Without it the view carries no
+  label, and old advice reads as if it were about whatever deck is on screen.
 - **Do not stop it** unless the user asks; they own the tab.

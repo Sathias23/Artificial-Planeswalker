@@ -50,6 +50,23 @@ export type DecksOutcome =
   | { readonly kind: 'unreachable' }
 
 /**
+ * One saved deck as a push's provenance line needs it: the id a push names, the name the line
+ * shows and the `updated_at` the staleness check compares against the push's own `ts`. A
+ * narrowing of {@link DeckSummary}, not a second declaration of it.
+ */
+export type DeckSummaryRow = Pick<DeckSummary, 'id' | 'name' | 'updated_at'>
+
+/**
+ * What one read of `GET /api/decks` for push provenance came back with. The same route the
+ * poller asks, read for three fields instead of one, so the poller's names-only outcome and its
+ * consumers stay exactly as they were.
+ */
+export type DeckSummariesOutcome =
+  | { readonly kind: 'summaries'; readonly decks: readonly DeckSummaryRow[] }
+  | { readonly kind: 'error'; readonly reason: string | null }
+  | { readonly kind: 'unreachable' }
+
+/**
  * Where `GET /api/cards/{card_id}` lives, minus the id. A PREFIX rather than a template so
  * `client.test.ts` can assert that {@link DECKS_PATH} carries no `{`, `}` or `:` (retry-safe)
  * while this one visibly takes an id (not retry-safe).
@@ -215,6 +232,34 @@ const namesOf = (body: unknown): readonly string[] | null => {
         : undefined,
     )
     .filter((name): name is string => typeof name === 'string' && name.trim() !== '')
+}
+
+/** A non-blank string field of an untyped row, or `null`. `in` rather than a cast: untyped JSON. */
+const textField = (row: object, key: keyof DeckSummaryRow): string | null => {
+  if (!(key in row)) return null
+  const value: unknown = (row as Partial<DeckSummaryRow>)[key]
+  return typeof value === 'string' && value.trim() !== '' ? value : null
+}
+
+/**
+ * The provenance rows out of a `200` body, or `null` if the body was not the promised array —
+ * {@link namesOf}'s stance, three fields wide: a row whose `id`, `name` or `updated_at` is
+ * missing, blank or not a string is DROPPED rather than failing the read (FR-13). Each kept row
+ * is rebuilt from the three fields, so nothing else the wire carried rides along.
+ */
+const summariesOf = (body: unknown): readonly DeckSummaryRow[] | null => {
+  if (!Array.isArray(body)) return null
+  const rows: readonly unknown[] = body
+  const kept: DeckSummaryRow[] = []
+  for (const row of rows) {
+    if (typeof row !== 'object' || row === null) continue
+    const id = textField(row, 'id')
+    const name = textField(row, 'name')
+    const updatedAt = textField(row, 'updated_at')
+    if (id === null || name === null || updatedAt === null) continue
+    kept.push({ id, name, updated_at: updatedAt })
+  }
+  return kept
 }
 
 /**
@@ -426,6 +471,22 @@ export const readDecks = async (): Promise<DecksOutcome> => {
   const decks = namesOf(received.body)
   // A contract violation has no token, so its reason is `null`.
   return decks === null ? { kind: 'error', reason: null } : { kind: 'decks', decks }
+}
+
+/**
+ * Read the saved decks' ids, names and edit times once, for push provenance, and report what
+ * happened without ever throwing. {@link DECKS_PATH} carries no path parameter, so asking again
+ * is safe, and the asking again lives one layer up (`src/state/deckProvenance.ts`), on a push, a
+ * `deck_changed` or a reconnect — never on a timer.
+ */
+export const readDeckSummaries = async (): Promise<DeckSummariesOutcome> => {
+  const received = await request(DECKS_PATH)
+  if (received === null) return { kind: 'unreachable' }
+
+  if (!received.ok) return { kind: 'error', reason: reasonOf(received.body) }
+
+  const decks = summariesOf(received.body)
+  return decks === null ? { kind: 'error', reason: null } : { kind: 'summaries', decks }
 }
 
 /**

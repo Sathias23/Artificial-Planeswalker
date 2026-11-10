@@ -256,8 +256,8 @@
    BOTH MICRO COMPANIONS IN THIS ONE BLOCK — `findRoleWithoutCompanions` fails a split by name,
    and the reason is real: `--type-micro` is a `font` shorthand, which resets nothing about
    letter-spacing or case, so the role alone renders 10px text that is neither tracked nor
-   uppercased. The uppercasing is what turns the wire's `high` into the chrome token the design
-   asks for, which is also why no copy module is owed for the word.
+   uppercased. The uppercasing is what turns "Agent confidence: high" into the chrome token the
+   design asks for; the words themselves live in `copy.ts`.
 
    `text-tertiary` on `surface-overlay` is 4.8:1 — passing, and the TIGHTEST pair in the system.
    Nothing here may darken it. `margin-inline-start: auto` is the right-alignment: it pushes the

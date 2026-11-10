@@ -1583,6 +1583,18 @@
             "type": "array",
             "maxItems": 12,
             "title": "Items"
+          },
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
           }
         },
         "additionalProperties": false,
@@ -1765,6 +1777,18 @@
             "type": "array",
             "maxItems": 60,
             "title": "Items"
+          },
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
           }
         },
         "additionalProperties": false,
@@ -1911,6 +1935,18 @@
             "type": "array",
             "maxItems": 60,
             "title": "Items"
+          },
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
           }
         },
         "additionalProperties": false,
@@ -2051,6 +2087,18 @@
             "type": "array",
             "maxItems": 12,
             "title": "Items"
+          },
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
           }
         },
         "additionalProperties": false,

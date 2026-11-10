@@ -23,6 +23,7 @@ import type {
   TierItem,
   TierListEvent,
 } from '../api/schema'
+import { refreshDeckProvenance } from './deckProvenance'
 
 /**
  * The app's word for each kind of agent view — the nav pill's label and the fallback view title.
@@ -60,6 +61,13 @@ interface AgentViewContentBase {
   readonly title: string
   /** The count beside the title, or `null` for a view that counts nothing. `0` is real and renders. */
   readonly count: number | null
+  /**
+   * The saved deck the agent said this push is about (`payload.deck_id`), or ABSENT when it did
+   * not say. Optional rather than `string | null` so a push without one is the very object it was
+   * before the field existed. The provenance line resolves the deck's name and staleness from
+   * this id live (`deckProvenance.ts`), never from the active deck, so it survives a deck switch.
+   */
+  readonly deckId?: string
 }
 
 /**
@@ -260,6 +268,28 @@ export const reopenPush = (id: string): void => {
 }
 
 /**
+ * The payload's `deck_id`, read TOTALLY: a trimmed non-blank string, else `undefined`. A missing
+ * payload, a missing key, `null`, a non-string and a blank all mean "the agent did not say".
+ * `agentEventOf` validates only `kind`, so every one of those can arrive.
+ */
+const deckIdOf = (payload: unknown): string | undefined => {
+  if (typeof payload !== 'object' || payload === null || !('deck_id' in payload)) return undefined
+  const raw: unknown = (payload as { deck_id?: unknown }).deck_id
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+/**
+ * The `deckId` field for a built view: `{ deckId }` when the payload names a deck, `{}` when it
+ * does not — so a push without one carries NO `deckId` key at all, not an own `undefined` one.
+ */
+const deckIdField = (payload: unknown): { readonly deckId?: string } => {
+  const deckId = deckIdOf(payload)
+  return deckId === undefined ? {} : { deckId }
+}
+
+/**
  * One `suggestions` envelope → one {@link AgentViewContent}. Total by construction: the payload's
  * `title` and `items` are optional for honest wires, and `agentEventOf` validates only `kind`, so a
  * payload-less frame arrives typed as a full event and a `TypeError` here would be an uncaught
@@ -278,6 +308,7 @@ export const suggestionsViewOf = (event: SuggestionsEvent): AgentViewContent => 
     title: title === undefined || title === '' ? SUGGESTIONS_VIEW_TITLE : title,
     count: items.length,
     items,
+    ...deckIdField(event.payload),
   }
 }
 
@@ -297,6 +328,7 @@ export const swapsViewOf = (event: SwapsEvent): AgentViewContent => {
     title: title === undefined || title === '' ? AGENT_VIEW_LABELS.swaps : title,
     count: items.length,
     items,
+    ...deckIdField(event.payload),
   }
 }
 
@@ -316,6 +348,7 @@ export const tierListViewOf = (event: TierListEvent): AgentViewContent => {
     title: title === undefined || title === '' ? AGENT_VIEW_LABELS.tier_list : title,
     count: items.length,
     items,
+    ...deckIdField(event.payload),
   }
 }
 
@@ -336,7 +369,17 @@ export const groupsViewOf = (event: GroupsEvent): AgentViewContent => {
     title: title === undefined || title === '' ? AGENT_VIEW_LABELS.groups : title,
     count: items.length,
     items,
+    ...deckIdField(event.payload),
   }
+}
+
+/**
+ * Show a push, then — only when it names a deck — re-read the deck list so its provenance line can
+ * say which deck and whether it is stale. After the open, so the view never waits on the read.
+ */
+const openPush = (content: AgentViewContent): void => {
+  openAgentView(content)
+  if (content.deckId !== undefined) void refreshDeckProvenance()
 }
 
 /**
@@ -345,22 +388,22 @@ export const groupsViewOf = (event: GroupsEvent): AgentViewContent => {
  * view opens automatically on arrival, so there is no branch on whether one is already open.
  */
 export const openSuggestionsPush = (event: SuggestionsEvent): void => {
-  openAgentView(suggestionsViewOf(event))
+  openPush(suggestionsViewOf(event))
 }
 
 /** A `swaps` push arrived: build the content and show it, in {@link openSuggestionsPush}'s shape. */
 export const openSwapsPush = (event: SwapsEvent): void => {
-  openAgentView(swapsViewOf(event))
+  openPush(swapsViewOf(event))
 }
 
 /** A `tier_list` push arrived: build the content and show it, in {@link openSuggestionsPush}'s shape. */
 export const openTierListPush = (event: TierListEvent): void => {
-  openAgentView(tierListViewOf(event))
+  openPush(tierListViewOf(event))
 }
 
 /** A `groups` push arrived: build the content and show it, in {@link openSuggestionsPush}'s shape. */
 export const openGroupsPush = (event: GroupsEvent): void => {
-  openAgentView(groupsViewOf(event))
+  openPush(groupsViewOf(event))
 }
 
 /**

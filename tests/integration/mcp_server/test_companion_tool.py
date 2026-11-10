@@ -733,6 +733,28 @@ class TestThePushIsDelegated:
 
         assert stub.events[0].payload.title is None
 
+    async def test_a_deck_id_reaches_the_envelope_unchecked(self, push_stub, push):
+        """Quick wins 1.5: the agent's ``deck_id`` crosses as sent, never looked up.
+
+        The id names no deck in any database — the push tools hold no session, so an id the
+        companion will report as "no longer saved" must still be delivered rather than refused.
+        """
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+        payload = push.payload().model_copy(update={"deck_id": "deck-that-was-never-saved"})
+
+        result = await push.tool(payload=payload)
+
+        assert result.status == "displayed"
+        assert stub.events[0].payload.deck_id == "deck-that-was-never-saved"
+
+    async def test_no_deck_id_is_injected_when_the_agent_did_not_name_one(self, push_stub, push):
+        """Absent stays absent: the tool never fills the field in from anywhere."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await push.tool(payload=push.payload())
+
+        assert stub.events[0].payload.deck_id is None
+
 
 @pytest.mark.parametrize("push", _PUSH_KINDS)
 class TestEveryPushOutcomeBecomesTheStatusOfTheSameName:

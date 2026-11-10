@@ -25,6 +25,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { DECKS_PATH } from './api/client'
 import { sentenceOf } from './components/Footer/copy'
 import { CLOSE_PILL_LABEL } from './containers/AgentView/copy'
 import { resetDeckMemory } from './containers/CardDetail/deckMemory'
@@ -48,6 +49,7 @@ import {
 } from './state/agentView'
 import { MAX_ATTEMPTS_PER_CARD, hydrateCard, resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
+import { resetDeckProvenance, useDeckProvenanceStore } from './state/deckProvenance'
 import { resetFaces } from './state/faces'
 import { resetFormatCheckState } from './state/formatCheck'
 import { resetInspection, useInspectionStore } from './state/inspection'
@@ -7241,5 +7243,142 @@ describe('the History pill puts any of the last twenty pushes one click away (FR
 
     expect(popover()).toBeNull()
     expect(pillTooltip().className).not.toContain('is-suppressed')
+  })
+})
+
+describe('a push says which saved deck it is about, and when it is stale (quick wins 1.5)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  /** `push()` stamps every frame with this `ts`. */
+  const SENT_BEFORE = '2025-08-01T00:00:00Z'
+  const EDITED_AFTER = '2025-08-09T00:00:00Z'
+
+  const line = () => document.querySelector('.agent-view .push-provenance')
+  const reasons = () =>
+    [...document.querySelectorAll('.agent-view .push-provenance-reason')].map((r) => r.textContent)
+
+  /** `GET /api/decks` as the backend answers it: names AND the edit times provenance reads. */
+  let decksNow: Response
+  const savedDecks = (atraxaUpdatedAt: string) =>
+    new Response(
+      JSON.stringify([
+        { id: ATRAXA_DECK_ID, name: ATRAXA_NAME, updated_at: atraxaUpdatedAt },
+        { id: 'deck-b', name: 'Dimir Mill', updated_at: SENT_BEFORE },
+      ]),
+      { status: 200 },
+    )
+
+  /**
+   * The Atraxa deck on the glass and the socket live. `/api/decks` answers `decksNow` on every
+   * read, so a test can move a deck's `updated_at` between two reads; every other route is the
+   * file's shared fixture.
+   */
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const base = answering(decksNow)
+    const fetchMock = vi.fn((input?: unknown) =>
+      String(input) === '/api/decks' ? Promise.resolve(decksNow.clone()) : base(input),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    return fetchMock
+  }
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+    resetDeckProvenance()
+    decksNow = savedDecks(SENT_BEFORE)
+  })
+
+  afterEach(() => {
+    // The provenance slice is module-level: a `wanted` left behind would add `/api/decks` reads
+    // to a later test's `deck_changed` and break its request counts.
+    resetDeckProvenance()
+  })
+
+  it('other deck: a push about deck B, with A on the glass, says "For B" and is stale', async () => {
+    await bootedDeck()
+
+    await push('suggestions', { items: [], deck_id: 'deck-b' })
+    await settle()
+
+    expect(line()).toHaveTextContent('For Dimir Mill')
+    expect(line()?.querySelector('.badge')).toHaveTextContent('Stale')
+    expect(reasons()).toEqual(['Not the deck on screen.'])
+    // The dialog's name is still the heading alone.
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(SUGGESTIONS_VIEW_TITLE)
+  })
+
+  it('fresh, same deck: "For A" with no stale marker', async () => {
+    await bootedDeck()
+
+    await push('swaps', { items: [], deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    expect(line()?.textContent).toBe(`For ${ATRAXA_NAME}`)
+    expect(line()?.querySelector('.badge')).toBeNull()
+  })
+
+  it('edited since: flips to stale live when deck_changed brings a later updated_at', async () => {
+    await bootedDeck()
+    await push('tier_list', { items: [], deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(line()?.querySelector('.badge')).toBeNull()
+
+    decksNow = savedDecks(EDITED_AFTER)
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    expect(line()?.querySelector('.badge')).toHaveTextContent('Stale')
+    expect(reasons()).toEqual(['The deck changed after this was sent.'])
+  })
+
+  it('edited during an outage: the return to live re-reads the deck list', async () => {
+    const fetchMock = await bootedDeck()
+    await push('groups', { items: [], deck_id: ATRAXA_DECK_ID })
+    await settle()
+    const before = callsTo(fetchMock, DECKS_PATH)
+
+    decksNow = savedDecks(EDITED_AFTER)
+    await drop()
+    await advance(SOCKET_BASE_MS)
+    await connect()
+    await settle()
+
+    expect(callsTo(fetchMock, DECKS_PATH)).toBeGreaterThan(before)
+    expect(reasons()).toEqual(['The deck changed after this was sent.'])
+  })
+
+  it('unknown id: a deck absent from the list reads as no longer saved, and stale', async () => {
+    await bootedDeck()
+
+    await push('suggestions', { items: [], deck_id: 'deck-deleted-long-ago' })
+    await settle()
+
+    expect(line()).toHaveTextContent('For a deck that is no longer saved')
+    expect(line()?.querySelector('.badge')).toHaveTextContent('Stale')
+  })
+
+  it('no deck_id: no line, no marker, and no provenance read on the push or after it', async () => {
+    const fetchMock = await bootedDeck()
+    const before = callsTo(fetchMock, DECKS_PATH)
+
+    await push('suggestions', { items: [] })
+    await settle()
+
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(document.querySelector('.push-provenance')).toBeNull()
+    expect(callsTo(fetchMock, DECKS_PATH)).toBe(before)
+
+    // A later `deck_changed` restarts a stopped poll (its own `/api/decks` read, unchanged by
+    // this story), but provenance was never armed, so it adds no read and claims nothing.
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(useDeckProvenanceStore.getState()).toMatchObject({ wanted: false, loaded: false })
+    expect(document.querySelector('.push-provenance')).toBeNull()
   })
 })

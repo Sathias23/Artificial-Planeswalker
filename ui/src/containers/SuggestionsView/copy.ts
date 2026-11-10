@@ -82,3 +82,14 @@ export const EMPTY_PUSH_NOUNS: Record<string, string> = {
  */
 export const emptyPushLine = (kind: string): string =>
   EMPTY_PUSH_TEMPLATE.replace(NOUN_PLACEHOLDER, EMPTY_PUSH_NOUNS[kind] ?? kind)
+
+/**
+ * Whose confidence a row's `low`/`medium`/`high` token is (quick wins 1.5, decision 2 of the
+ * story plan). Bare, the token read as the app's own judgement; it is the AGENT's, carried
+ * verbatim from the push. Shared by the suggestion row (as {@link agentConfidenceLine}) and the
+ * swap row's chip label, so the two views name the owner the same way.
+ */
+export const AGENT_CONFIDENCE_LABEL = 'Agent confidence'
+
+/** A suggestion row's confidence line: "Agent confidence: {token}", the token verbatim. */
+export const agentConfidenceLine = (token: string): string => `${AGENT_CONFIDENCE_LABEL}: ${token}`

@@ -89,6 +89,7 @@ import { useEffect } from 'react'
 import { openGroupsPush, openSuggestionsPush, openSwapsPush, openTierListPush } from './agentView'
 import { reconcileDeckBoot, redriveDeckBoot, refetchOnDeckChanged } from './deck'
 import { resetCardAttempts } from './cards'
+import { refreshDeckProvenanceIfWanted } from './deckProvenance'
 import { refreshInstanceId } from './identity'
 import { createAgentSocket } from './socket'
 import { applyConnection, restartPoll, restartPollIfStopped } from './systemState'
@@ -125,6 +126,10 @@ export const useAgentConnection = (): void => {
         if (status === 'live') {
           void refreshInstanceId()
           reconcileDeckBoot()
+          // Push provenance (quick wins 1.5): an edit made while the socket was down sent a
+          // `deck_changed` nobody heard, so a push's stale marker re-reads the deck list here.
+          // A no-op until some push has named a deck.
+          refreshDeckProvenanceIfWanted()
         }
       },
       onReconnected: () => {
@@ -164,6 +169,10 @@ export const useAgentConnection = (): void => {
           const raw: unknown = event.payload?.deck_id
           const deckId = typeof raw === 'string' ? raw.trim() : ''
           refetchOnDeckChanged(deckId === '' ? null : deckId)
+          // Whichever deck changed, a push about it may now be stale: re-read the list's
+          // `updated_at`s. Unconditional on the id for the poll-restart reason below — a push
+          // can be about a deck that is not the one displayed. A no-op until a push named a deck.
+          refreshDeckProvenanceIfWanted()
         } else {
           redriveDeckBoot()
         }

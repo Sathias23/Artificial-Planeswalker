@@ -27,6 +27,7 @@ import { SkipLink } from './containers/SkipLink/SkipLink'
 import { focusHome } from './containers/focusHome'
 import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { useAgentConnection } from './state/connection'
+import { usePushProvenance } from './state/deckProvenance'
 import { surfaceOf, useDeckState, useDeckUpdating } from './state/deck'
 import { deckIsEmpty } from './state/deckGroups'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
@@ -59,6 +60,9 @@ export default function App() {
   // A content object or `null`, never a boolean: the store's selector (`openViewOf`) resolves
   // "is one showing, and what is it" once, so this file cannot disagree with it.
   const agentView = useOpenAgentView()
+  // Which saved deck the open push is about, and whether it is stale (quick wins 1.5). Called
+  // unconditionally — a hook may not sit behind the overlay's ternary — and `null` for no view.
+  const provenance = usePushProvenance(agentView)
   // The socket, mounted once; `App` is its one consumer because a second mounted caller is a
   // second socket per tab. It produces `system.connection`, which `surfaceOf` already reads. Hooks
   // run their effects in declaration order, ahead of this component's own `useEffect` blocks, so
@@ -248,6 +252,7 @@ export default function App() {
             title={agentView.title}
             count={agentView.count}
             onClose={closeAgentView}
+            provenance={provenance}
           >
             {/* The shell takes `children` and asks nothing about them, so the kind-specific view
                 rides inside rather than being branched on in there. The ternary is total over

@@ -414,6 +414,42 @@ class TestTheAgentViewTitle:
         assert not {"deck_changed", "active_deck_changed"} & set(DEFAULT_TITLE_BY_KIND)
 
 
+class TestThePushDeckId:
+    """Quick wins 1.5: every view payload names, optionally, the saved deck it is about."""
+
+    @pytest.mark.parametrize("kind", _VIEW_KINDS)
+    def test_the_deck_id_is_optional_and_a_real_id_is_accepted(self, kind):
+        assert _AGENT_EVENT.validate_python(_envelope(kind)).payload.deck_id is None
+        assert (
+            _AGENT_EVENT.validate_python(_envelope(kind, {"deck_id": None})).payload.deck_id is None
+        )
+        assert (
+            _AGENT_EVENT.validate_python(_envelope(kind, {"deck_id": "076ac3ed"})).payload.deck_id
+            == "076ac3ed"
+        )
+
+    @pytest.mark.parametrize("kind", _VIEW_KINDS)
+    def test_a_blank_deck_id_is_refused(self, kind):
+        for blank in ("", "   "):
+            with pytest.raises(ValidationError):
+                _AGENT_EVENT.validate_python(_envelope(kind, {"deck_id": blank}))
+
+    @pytest.mark.parametrize("kind", _VIEW_KINDS)
+    def test_the_deck_id_reuses_the_existing_256_bound(self, kind):
+        assert _AGENT_EVENT.validate_python(_envelope(kind, {"deck_id": "x" * 256})).payload.deck_id
+
+        with pytest.raises(ValidationError):
+            _AGENT_EVENT.validate_python(_envelope(kind, {"deck_id": "x" * 257}))
+
+    @pytest.mark.parametrize("kind", _VIEW_KINDS)
+    def test_an_absent_deck_id_crosses_the_wire_as_null(self, kind):
+        # `null` is the one spelling of "the agent did not say" a reader folds to no label; a push
+        # that never named a deck must not reach the wire carrying some other placeholder.
+        event = _AGENT_EVENT.validate_python(_envelope(kind))
+
+        assert _AGENT_EVENT.dump_python(event, mode="json")["payload"]["deck_id"] is None
+
+
 class TestTheSystemSignals:
     """AC 15 / Q5: both signals carry a deck id, nullable, on the one existing bound."""
 

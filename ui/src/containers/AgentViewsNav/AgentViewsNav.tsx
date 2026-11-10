@@ -14,6 +14,8 @@ import {
   useAgentViewStore,
   useAgentViewUnread,
 } from '../../state/agentView'
+import { usePushProvenance } from '../../state/deckProvenance'
+import { PushProvenance } from '../AgentView/PushProvenance'
 import './AgentViewsNav.css'
 import './HistoryPopover.css'
 import {
@@ -603,12 +605,16 @@ function HistoryEntry({
   // be absent — the same two-guard shape the kind pill wears at its `<time>`.
   const raw = typeof entry.ts === 'string' ? entry.ts : null
   const time = raw === null ? null : pushTimeLabel(raw)
+  // The entry's OWN deck, resolved live — never the active deck — so an entry for deck A still
+  // says "For A" after the glass switches to B (quick wins 1.5). `null` draws nothing.
+  const provenance = usePushProvenance(entry)
   return (
     <button type="button" className="agent-views-nav-entry" onClick={() => onActivate(entry.id)}>
       <span className="agent-views-nav-entry-kind">{AGENT_VIEW_LABELS[entry.kind]}</span>
       {entry.title !== AGENT_VIEW_LABELS[entry.kind] && (
         <span className="agent-views-nav-entry-title">{entry.title}</span>
       )}
+      <PushProvenance provenance={provenance} compact />
       {raw !== null && time !== null && (
         <time className="agent-views-nav-entry-time" dateTime={raw}>
           {time}

@@ -1,0 +1,33 @@
+/* The push provenance line (quick wins 1.5): "For {deck}", a caution badge when stale, and the
+   reason sentences. A quiet secondary line — body type in the secondary tier, the reasons one
+   tier further down — so it reads as context for the view rather than as part of its content.
+   It wraps rather than overflowing: a long deck name and two reasons can exceed a narrow shell. */
+.push-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-3);
+  font: var(--type-body);
+  color: var(--text-secondary);
+}
+
+/* The deck name is the one part with no length guarantee, so it may shrink and wrap anywhere. */
+.push-provenance-deck {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.push-provenance-reason {
+  color: var(--text-tertiary);
+}
+
+/* The history-entry form: inline in the entry's baseline row, no padding of its own (the entry
+   pads), and the tertiary tier so the agent's own title stays the thing the row is read by. */
+.push-provenance-compact {
+  display: inline-flex;
+  min-width: 0;
+  padding: 0;
+  color: var(--text-tertiary);
+}

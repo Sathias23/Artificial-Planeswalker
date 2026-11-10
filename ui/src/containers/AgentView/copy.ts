@@ -46,3 +46,38 @@ export const AGENT_VIEW_KICKER = 'AGENT VIEW'
  * always-visible place it can say so.
  */
 export const CLOSE_PILL_LABEL = 'Close · esc'
+
+/**
+ * The provenance line's words (quick wins 1.5, decision 2 of the story plan): which saved deck a
+ * push is about, and why it may no longer describe the deck on screen. Authored here, beside the
+ * shell's chrome, because `PushProvenance` renders under the shell's header and in each history
+ * entry. Import-free, like every `copy.ts`.
+ */
+
+/** The placeholder {@link PROVENANCE_FOR_TEMPLATE} carries for the deck's name. */
+export const DECK_NAME_PLACEHOLDER = '{name}'
+
+/** "For {deck name}" — the label for a push whose deck is still saved. */
+export const PROVENANCE_FOR_TEMPLATE = 'For {name}'
+
+/** The label for a push whose `deck_id` names no saved deck any more (or never did). */
+export const PROVENANCE_MISSING_LABEL = 'For a deck that is no longer saved'
+
+/** The badge on a push that may no longer describe the deck it names, or the deck on screen. */
+export const STALE_BADGE = 'Stale'
+
+/**
+ * One sentence per reason a push is stale. `missing` has none of its own: the label already says
+ * the deck is gone, and saying it twice would be the line repeating itself.
+ */
+export const STALE_REASON_LINES = {
+  edited: 'The deck changed after this was sent.',
+  other_deck: 'Not the deck on screen.',
+} as const
+
+/**
+ * The label with the deck's name substituted. A REPLACER FUNCTION, not a replacement string: a
+ * deck name is user text, and `$&` or `$'` in a replacement string are substitution patterns.
+ */
+export const provenanceLabel = (deckName: string): string =>
+  PROVENANCE_FOR_TEMPLATE.replace(DECK_NAME_PLACEHOLDER, () => deckName)

@@ -16,7 +16,7 @@ import {
 } from '../../state/inspection'
 import { cardImageUrl } from '../CardTile/imageUrl'
 import { useCardArt } from '../useCardArt'
-import { emptyPushLine } from '../SuggestionsView/copy'
+import { AGENT_CONFIDENCE_LABEL, emptyPushLine } from '../SuggestionsView/copy'
 import './SwapsView.css'
 
 /**
@@ -42,8 +42,9 @@ import './SwapsView.css'
  * curve do NOT ship, deliberately: the wire carries no price (`types.d.ts` — the card table has
  * no price column and the importer never reads `prices`), and a curve chip would need the same
  * wire field the wire declines to carry. What remains is the one datum the wire does
- * carry — confidence — rendered as a real `StatChip` (label "Confidence", value = the wire
- * token, no delta: a confidence is a reading, not a change since a previous one).
+ * carry — confidence — rendered as a real `StatChip` (label "Agent confidence", because the
+ * reading is the agent's and not the app's; value = the wire token, no delta: a confidence is a
+ * reading, not a change since a previous one).
  *
  * ================= THE SAME UNTRUSTED-ITEM DISCIPLINE, FIELD FOR FIELD ==================
  *
@@ -259,11 +260,14 @@ function SwapRow({ item }: { item: UntrustedSwap }) {
       <span className="swap-row-text">
         <span className="swap-row-rationale">{rationaleOf(item)}</span>
         {/* THE ONE CHIP OF DESIGN.md's chip row (see the module header for the two that do not
-            ship). The label is this module's authored word — declared in COPY_MODULES — and the
-            value is the wire token verbatim. No `delta`: a confidence is a reading, not a change.
+            ship). The label is the shared "Agent confidence" (`SuggestionsView/copy.ts`), naming
+            whose reading it is, and the value is the wire token verbatim. No `delta`: a
+            confidence is a reading, not a change.
             Absent ⇒ no chip at all: a chip is only mounted to show a stat (StatChip's own
             contract), and an empty one would be chrome announcing nothing. */}
-        {confidence === null ? null : <StatChip label="Confidence" value={confidence} />}
+        {confidence === null ? null : (
+          <StatChip label={AGENT_CONFIDENCE_LABEL} value={confidence} />
+        )}
       </span>
     </div>
   )

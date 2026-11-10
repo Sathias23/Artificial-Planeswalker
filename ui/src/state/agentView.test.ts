@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { GroupsEvent, SuggestionsEvent, SwapsEvent, TierListEvent } from '../api/schema'
 import { EMPTY_PUSH_NOUNS } from '../containers/SuggestionsView/copy'
@@ -29,6 +29,7 @@ import {
   useAgentViewStore,
   useOpenAgentView,
 } from './agentView'
+import { resetDeckProvenance } from './deckProvenance'
 
 /**
  * The agent-view slice.
@@ -1188,5 +1189,110 @@ describe('the history hooks', () => {
     const { result: one } = renderHook(() => useAgentViewHistoryCount())
     expect(one.current).toBe(1)
     expect(typeof one.current).toBe('number')
+  })
+})
+
+// =========================================================================================
+// QUICK WINS 1.5 — A PUSH NAMES ITS DECK
+// =========================================================================================
+
+describe('a push carries the deck the agent named, read totally (quick wins 1.5)', () => {
+  const BUILDERS = [
+    ['suggestions', suggestionsViewOf],
+    ['swaps', swapsViewOf],
+    ['tier_list', tierListViewOf],
+    ['groups', groupsViewOf],
+  ] as const
+
+  /** One envelope of `kind` with `payload`, cast: the wire can carry any of these shapes. */
+  const envelope = (kind: string, payload: unknown) =>
+    ({ id: `push-${kind}`, ts: '2025-08-11T09:15:00Z', kind, payload }) as never
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetDeckProvenance()
+  })
+
+  it.each(BUILDERS)('%s: a present deck_id is kept, trimmed', (kind, build) => {
+    expect(build(envelope(kind, { items: [], deck_id: '  deck-a  ' })).deckId).toBe('deck-a')
+  })
+
+  it.each(BUILDERS)(
+    '%s: blank, null, non-string, absent or payload-less is no deck_id',
+    (kind, build) => {
+      for (const payload of [
+        { items: [], deck_id: '   ' },
+        { items: [], deck_id: '' },
+        { items: [], deck_id: null },
+        { items: [], deck_id: 42 },
+        { items: [] },
+        undefined,
+        null,
+      ]) {
+        expect(build(envelope(kind, payload)).deckId).toBeUndefined()
+      }
+    },
+  )
+
+  it('a push without a deck_id is the same content it always was', () => {
+    // The same object as before the field existed: `toStrictEqual`, which — unlike `toEqual` —
+    // fails on an own `deckId: undefined` key, plus the key-absence check stated outright.
+    const content = suggestionsViewOf(frame({ title: 'Ramp', items: [ITEM] }, 'push-7'))
+    expect(content).toStrictEqual({
+      id: 'push-7',
+      ts: '2025-08-11T09:15:00Z',
+      kind: 'suggestions',
+      title: 'Ramp',
+      count: 1,
+      items: [ITEM],
+    })
+    for (const [kind, build] of BUILDERS) {
+      expect('deckId' in build(envelope(kind, { items: [] }))).toBe(false)
+    }
+  })
+
+  it('every open verb re-reads the deck list when, and only when, the push names a deck', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('[]', { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    openSuggestionsPush(frame({ items: [] }))
+    openSwapsPush(envelope('swaps', { items: [] }))
+    openTierListPush(envelope('tier_list', { items: [], deck_id: ' ' }))
+    openGroupsPush(envelope('groups', { items: [] }))
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    openSuggestionsPush(frame({ items: [], deck_id: 'deck-a' }, 'push-a'))
+    openSwapsPush(envelope('swaps', { items: [], deck_id: 'deck-a' }))
+    openTierListPush(envelope('tier_list', { items: [], deck_id: 'deck-a' }))
+    openGroupsPush(envelope('groups', { items: [], deck_id: 'deck-a' }))
+    await Promise.resolve()
+
+    expect(fetchMock.mock.calls.map(([path]: unknown[]) => path)).toEqual([
+      '/api/decks',
+      '/api/decks',
+      '/api/decks',
+      '/api/decks',
+    ])
+  })
+
+  it('the view OPENS before the read settles, so a push never waits on the deck list', () => {
+    vi.stubGlobal('fetch', () => new Promise<Response>(() => {}))
+
+    openSuggestionsPush(frame({ items: [], deck_id: 'deck-a' }, 'push-a'))
+
+    expect(openViewNow()?.deckId).toBe('deck-a')
+  })
+
+  it('a history entry keeps its own deck_id after later pushes about other decks', () => {
+    vi.stubGlobal('fetch', () => new Promise<Response>(() => {}))
+
+    openSuggestionsPush(frame({ items: [], deck_id: 'deck-a' }, 'push-a'))
+    openSuggestionsPush(frame({ items: [], deck_id: 'deck-b' }, 'push-b'))
+
+    const history = useAgentViewStore.getState().history
+    expect(history.map((entry) => [entry.id, entry.deckId])).toEqual([
+      ['push-b', 'deck-b'],
+      ['push-a', 'deck-a'],
+    ])
   })
 })

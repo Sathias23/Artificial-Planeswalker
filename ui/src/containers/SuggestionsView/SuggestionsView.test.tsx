@@ -230,16 +230,19 @@ describe('the rows, and their anatomy (UX-DR24, UX-DR44)', () => {
     expect(rowAt(container, 0).querySelector('.badge')).toHaveClass('badge-neutral')
   })
 
-  it('renders the confidence TOKEN verbatim, and nothing when it is absent', () => {
+  it('renders the confidence TOKEN verbatim, as the agent’s, and nothing when it is absent', () => {
     seedHydrated('c-1')
     seedHydrated('c-2')
     const { container } = render(
       <SuggestionsView kind="suggestions" items={[{ ...ITEM, confidence: 'low' }, OTHER]} />,
     )
 
-    // The wire word, unwrapped. `--type-micro` uppercases it in the stylesheet — a type role
-    // doing its job — so no authored string is involved and no COPY_MODULES entry is owed.
-    expect(rowAt(container, 0).querySelector('.suggestion-row-confidence')).toHaveTextContent('low')
+    // The wire word, verbatim, behind the words that say whose reading it is (quick wins 1.5):
+    // bare, `low` read as the app's own judgement. `--type-micro` uppercases the whole line in
+    // the stylesheet; the DOM keeps the source case.
+    expect(rowAt(container, 0).querySelector('.suggestion-row-confidence')?.textContent).toBe(
+      'Agent confidence: low',
+    )
     expect(rowAt(container, 1).querySelector('.suggestion-row-confidence')).toBeNull()
   })
 
