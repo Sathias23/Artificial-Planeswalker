@@ -3,7 +3,7 @@ title: "Import pipeline paths are pinned through the orchestrator"
 type: 'test'
 ticket: 4
 created: '2026-11-10'
-status: review
+status: done
 baseline_revision: 'a02f3260f129642707dddfd7f4b872dcf54eeab9'
 route: 'full'
 route_source: 'auto'
