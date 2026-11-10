@@ -36,6 +36,7 @@ import {
   readActiveDeck,
   readCard,
   readDeck,
+  readDeckSummaries,
   readDecks,
   readFormatCheck,
   readInstanceId,
@@ -136,6 +137,62 @@ describe('a 200 becomes deck names, and a malformed one does not become an empty
     responding('<!doctype html><title>captive portal</title>', 200)
 
     expect(await readDecks()).toEqual({ kind: 'error', reason: null })
+  })
+})
+
+describe('readDeckSummaries reads the same route for push provenance (quick wins 1.5)', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: 'deck-a',
+    name: 'Boros Aggro',
+    updated_at: '2026-11-10T09:00:00+00:00',
+    mainboard_count: 60,
+    ...over,
+  })
+
+  it('asks /api/decks, uncached, and keeps exactly id, name and updated_at', async () => {
+    const fetchMock = responding(JSON.stringify([row()]), 200)
+
+    expect(await readDeckSummaries()).toEqual({
+      kind: 'summaries',
+      decks: [{ id: 'deck-a', name: 'Boros Aggro', updated_at: '2026-11-10T09:00:00+00:00' }],
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe(DECKS_PATH)
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+  })
+
+  it('drops a row with a blank or non-string field, keeping the well-formed ones', async () => {
+    responding(
+      JSON.stringify([
+        row({ id: '  ' }),
+        row({ id: 'deck-b', name: 7 }),
+        row({ id: 'deck-c', updated_at: null }),
+        { id: 'deck-d', name: 'No timestamp' },
+        null,
+        'a string',
+        row({ id: 'deck-e', name: 'Kept' }),
+      ]),
+      200,
+    )
+
+    const outcome = await readDeckSummaries()
+
+    expect(outcome.kind === 'summaries' ? outcome.decks.map((deck) => deck.id) : outcome).toEqual([
+      'deck-e',
+    ])
+  })
+
+  it('reads a non-array body as an error, never as "no decks"', async () => {
+    responding(JSON.stringify({ decks: [row()] }), 200)
+
+    expect(await readDeckSummaries()).toEqual({ kind: 'error', reason: null })
+  })
+
+  it('passes a refusal token through, and an unreachable backend stays unreachable', async () => {
+    responding(JSON.stringify({ reason: 'database_unavailable' }), 503)
+    expect(await readDeckSummaries()).toEqual({ kind: 'error', reason: 'database_unavailable' })
+
+    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    expect(await readDeckSummaries()).toEqual({ kind: 'unreachable' })
   })
 })
 

@@ -313,6 +313,10 @@ Rules that bite:
   card *name* in an id field will not render.
 - `companion_set_active_deck(deck_id)` first when the conversation settles on a deck, so the glass
   follows the conversation.
+- Pass **`payload.deck_id`** (the saved deck's id) on every push about a deck, so the companion
+  labels the view "For {deck name}" and marks it stale once that deck is edited or another one is
+  on screen. Optional, and not checked against the database; omit it only for advice about no
+  particular saved deck.
 - Every push tool degrades gracefully: `app_not_running` just means the companion isn't up —
   answer in chat as normal, then **offer to open it** once via the `companion` skill
   (`companion_status` → its `launch_command` in a background shell). Never block, retry-loop, or

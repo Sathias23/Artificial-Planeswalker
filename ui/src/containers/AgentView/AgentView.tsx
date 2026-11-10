@@ -1,7 +1,9 @@
 import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 
+import type { PushProvenance as Provenance } from '../../state/deckProvenance'
 import { focusHome } from '../focusHome'
 import { AGENT_VIEW_KICKER, CLOSE_PILL_LABEL } from './copy'
+import { PushProvenance } from './PushProvenance'
 import './AgentView.css'
 
 /**
@@ -10,8 +12,9 @@ import './AgentView.css'
  *
  * ================= IT IS A SHELL, AND IT KNOWS NOTHING ABOUT SUGGESTIONS ===============
  *
- * Every agent view lives inside this component, so it takes a `title`, a `count`, a `pushId`
- * and `children` and nothing else: no envelope, no wire type, no `kind`. `SuggestionsView`
+ * Every agent view lives inside this component, so it takes a `title`, a `count`, a `pushId`,
+ * an optional derived `provenance` line and `children` and nothing else: no envelope, no wire
+ * type, no `kind`. `SuggestionsView`
  * renders suggestion rows INTO it with **no edit to this file or its stylesheet**, and the nav
  * pills sit BESIDE it in `containers/AgentViewsNav`. That is the property that makes
  * "content-agnostic" a testable claim rather than a hope (`AgentView.test.tsx` mounts it over
@@ -79,6 +82,13 @@ export interface AgentViewProps {
   readonly count: number | null
   /** Dismissal. Bound to `closeAgentView` by `App`; called by all three gestures. */
   readonly onClose: () => void
+  /**
+   * Which saved deck the push is about and whether it is stale (quick wins 1.5), drawn as one
+   * line under the header. Optional, and `null` or absent draws nothing, so a push that names no
+   * deck renders exactly as before. Outside the `aria-live` heading on purpose: a REPLACE
+   * announces the new title, not a provenance line that may only change because a read landed.
+   */
+  readonly provenance?: Provenance | null
   /** The body. Anything — this shell renders it and asks nothing about it. */
   readonly children?: ReactNode
 }
@@ -121,7 +131,14 @@ const focusablesIn = (root: HTMLElement | null): HTMLElement[] =>
           !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
       )
 
-export function AgentView({ pushId, title, count, onClose, children }: AgentViewProps) {
+export function AgentView({
+  pushId,
+  title,
+  count,
+  onClose,
+  provenance = null,
+  children,
+}: AgentViewProps) {
   /**
    * The heading's `id`, for `aria-labelledby`.
    *
@@ -535,6 +552,7 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
             {CLOSE_PILL_LABEL}
           </button>
         </header>
+        <PushProvenance provenance={provenance} />
         {/* THE ONE SCROLL CONTAINER (*"the body scrolls while the shell does not"*).
             The overflow lives here rather than on `.agent-view`, so the header row stays put
             while a long list moves under it. */}

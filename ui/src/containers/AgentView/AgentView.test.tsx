@@ -2,7 +2,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AgentView } from './AgentView'
-import { AGENT_VIEW_KICKER, CLOSE_PILL_LABEL } from './copy'
+import {
+  AGENT_VIEW_KICKER,
+  CLOSE_PILL_LABEL,
+  PROVENANCE_MISSING_LABEL,
+  STALE_BADGE,
+  provenanceLabel,
+} from './copy'
 
 /**
  * The agent view shell.
@@ -855,5 +861,100 @@ describe('a replace re-fires what a remount would have, and nothing it must not'
 
     expect(screen.getByRole('dialog')).toHaveAttribute('data-entering', 'true')
     expect(document.activeElement).toBe(heading())
+  })
+})
+
+describe('the provenance line says which deck a push is about (quick wins 1.5)', () => {
+  const dialog = () => screen.getByRole('dialog')
+  const line = () => document.querySelector('.push-provenance')
+
+  it('draws nothing without a provenance — a push that names no deck renders as before', () => {
+    render(
+      <AgentView pushId="push-1" title={TITLE} count={3} onClose={() => {}}>
+        <p>body</p>
+      </AgentView>,
+    )
+    expect(line()).toBeNull()
+
+    render(
+      <AgentView pushId="push-2" title={TITLE} count={3} onClose={() => {}} provenance={null}>
+        <p>body</p>
+      </AgentView>,
+    )
+    expect(line()).toBeNull()
+  })
+
+  it('names the deck, with no stale marker, for a fresh push about the deck on screen', () => {
+    render(
+      <AgentView
+        pushId="push-1"
+        title={TITLE}
+        count={3}
+        onClose={() => {}}
+        provenance={{ deckName: 'Boros Aggro', stale: [] }}
+      />,
+    )
+
+    expect(line()?.textContent).toBe(provenanceLabel('Boros Aggro'))
+    expect(provenanceLabel('Boros Aggro')).toBe('For Boros Aggro')
+    expect(line()?.querySelector('.badge')).toBeNull()
+  })
+
+  it('marks a push about another deck, edited since, as stale and says both reasons', () => {
+    render(
+      <AgentView
+        pushId="push-1"
+        title={TITLE}
+        count={3}
+        onClose={() => {}}
+        provenance={{ deckName: 'Boros Aggro', stale: ['edited', 'other_deck'] }}
+      />,
+    )
+
+    expect(line()?.querySelector('.badge')).toHaveTextContent(STALE_BADGE)
+    expect(
+      [...(line()?.querySelectorAll('.push-provenance-reason') ?? [])].map((r) => r.textContent),
+    ).toEqual(['The deck changed after this was sent.', 'Not the deck on screen.'])
+  })
+
+  it('labels a deck that is no longer saved, stale, with no reason sentence of its own', () => {
+    render(
+      <AgentView
+        pushId="push-1"
+        title={TITLE}
+        count={3}
+        onClose={() => {}}
+        provenance={{ deckName: null, stale: ['missing'] }}
+      />,
+    )
+
+    expect(line()).toHaveTextContent(PROVENANCE_MISSING_LABEL)
+    expect(PROVENANCE_MISSING_LABEL).toBe('For a deck that is no longer saved')
+    expect(line()?.querySelector('.badge')).toHaveTextContent('Stale')
+    expect(line()?.querySelectorAll('.push-provenance-reason')).toHaveLength(0)
+  })
+
+  it('sits outside the live heading and adds no focusable element', () => {
+    render(
+      <AgentView
+        pushId="push-1"
+        title={TITLE}
+        count={3}
+        onClose={() => {}}
+        provenance={{ deckName: 'Boros Aggro', stale: ['other_deck'] }}
+      />,
+    )
+
+    expect(line()?.closest('[aria-live]')).toBeNull()
+    expect(dialog().querySelectorAll('[aria-live]')).toHaveLength(1)
+    expect(line()?.querySelectorAll('a, button, input, select, textarea, [tabindex]')).toHaveLength(
+      0,
+    )
+    // The heading is still the dialog's name, unpolluted by the provenance words.
+    expect(dialog()).toHaveAccessibleName(TITLE)
+  })
+
+  it('substitutes a deck name literally, even one carrying replacement patterns', () => {
+    expect(provenanceLabel("$& and $' deck")).toBe("For $& and $' deck")
   })
 })

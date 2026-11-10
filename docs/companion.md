@@ -6,7 +6,10 @@ images, laid out as cards instead of as a wall of text. Ask your agent to put a 
 (`companion_show_suggestions`), to show proposed card swaps as out/in pairs with the reasoning
 (`companion_show_swaps`), to show cards ranked into named tiers (`companion_show_tier_list`),
 or to show titled card groups with the reasoning behind each (`companion_show_groups`),
-and the page updates while you watch.
+and the page updates while you watch. A push that names its deck (`payload.deck_id`) is labelled
+"For {deck name}", in the view and in its history entry, and marked stale once that deck is edited
+or a different deck is on screen; the confidence a suggestion or swap carries is shown as the
+agent's.
 
 **It is optional, and nothing depends on it.** Every agent workflow completes with the app closed:
 the companion tools simply report `app_not_running`, and no other tool ever looks for it. The

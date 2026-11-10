@@ -685,6 +685,11 @@ def build_server(
                 (optional, one of ``low``, ``medium``, ``high``).
                 ``payload.title`` is an optional header for the list, up to 80
                 characters; omit it to let the companion use its own.
+                ``payload.deck_id`` is the id of the saved deck this push is about
+                (from ``create_deck`` or ``list_decks``) — optional, but pass it
+                whenever the push concerns a deck: the companion labels the view with
+                that deck's name and marks it stale once the deck changes or another
+                deck is shown. It is not checked against the database.
 
         Returns:
             A result whose ``status`` is ``displayed`` (delivered to at least
@@ -735,8 +740,13 @@ def build_server(
                 required, zero or more — zero is legal), and ``confidence``
                 (optional, one of ``low``, ``medium``, ``high``).
                 ``payload.title`` is an optional header for the list, up to 80
-                characters; omit it to let the companion use its own. Note the
-                total envelope is capped at 64 KB: a payload that maxes every
+                characters; omit it to let the companion use its own.
+                ``payload.deck_id`` is the id of the saved deck this push is about
+                (from ``create_deck`` or ``list_decks``) — optional, but pass it
+                whenever the push concerns a deck: the companion labels the view with
+                that deck's name and marks it stale once the deck changes or another
+                deck is shown. It is not checked against the database.
+                Note the total envelope is capped at 64 KB: a payload that maxes every
                 field cap at once (60 swaps, each with a full 600-character
                 rationale) exceeds it and comes back ``payload_rejected``, so
                 keep large pushes comfortably inside the caps rather than at
@@ -790,8 +800,13 @@ def build_server(
                 empty). Repeating a letter under a different name is legal: the
                 12-tier cap and the 5-letter vocabulary are different quantities.
                 ``payload.title`` is an optional header for the list, up to 80
-                characters; omit it to let the companion use its own. Note the
-                total envelope is capped at 64 KB: a payload that maxes every
+                characters; omit it to let the companion use its own.
+                ``payload.deck_id`` is the id of the saved deck this push is about
+                (from ``create_deck`` or ``list_decks``) — optional, but pass it
+                whenever the push concerns a deck: the companion labels the view with
+                that deck's name and marks it stale once the deck changes or another
+                deck is shown. It is not checked against the database.
+                Note the total envelope is capped at 64 KB: a payload that maxes every
                 field cap at once (12 tiers of 60 ids with full names and
                 notes) exceeds it and comes back ``payload_rejected``, so keep
                 large pushes comfortably inside the caps rather than at them.
@@ -847,7 +862,13 @@ def build_server(
                 60, each up to 128 characters, shown in the order you send them —
                 may be empty). ``payload.title`` is an optional header for the
                 whole view, up to 80 characters; omit it to let the companion use
-                its own. Note the total envelope is capped at 64 KB: a payload
+                its own.
+                ``payload.deck_id`` is the id of the saved deck this push is about
+                (from ``create_deck`` or ``list_decks``) — optional, but pass it
+                whenever the push concerns a deck: the companion labels the view with
+                that deck's name and marks it stale once the deck changes or another
+                deck is shown. It is not checked against the database.
+                Note the total envelope is capped at 64 KB: a payload
                 that maxes every field cap at once (12 groups of 60 ids with full
                 titles and rationales) exceeds it and comes back
                 ``payload_rejected``, so keep large pushes comfortably inside the

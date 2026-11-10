@@ -168,10 +168,11 @@ describe('the rows, and their anatomy (DESIGN.md swap-row)', () => {
     expect(arrow).toHaveAttribute('aria-hidden', 'true')
 
     expect(row.querySelector('.swap-row-rationale')).toHaveTextContent(TRADE.rationale)
-    // The confidence is a real StatChip beneath the rationale — label authored, value the wire
-    // token — and price/curve chips do NOT ship (the wire carries no price).
+    // The confidence is a real StatChip beneath the rationale — label authored and naming the
+    // AGENT as its owner (quick wins 1.5), value the wire token — and price/curve chips do NOT
+    // ship (the wire carries no price).
     const chip = row.querySelector('.stat-chip')
-    expect(chip?.querySelector('.stat-chip-label')).toHaveTextContent('Confidence')
+    expect(chip?.querySelector('.stat-chip-label')?.textContent).toBe('Agent confidence')
     expect(chip?.querySelector('.stat-chip-value')).toHaveTextContent('medium')
     expect(chip?.querySelector('.stat-chip-delta')).toBeNull()
     expect(row.querySelectorAll('.stat-chip')).toHaveLength(1)

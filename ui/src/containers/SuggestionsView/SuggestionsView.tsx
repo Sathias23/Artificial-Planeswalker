@@ -19,7 +19,7 @@ import {
 import { cardImageUrl } from '../CardTile/imageUrl'
 import { frontFaceCost, frontFaceName } from '../frontFaceCost'
 import { useCardArt } from '../useCardArt'
-import { emptyPushLine } from './copy'
+import { agentConfidenceLine, emptyPushLine } from './copy'
 import './SuggestionsView.css'
 
 /**
@@ -250,6 +250,7 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
   // `<img src="/api/card-image/">` request for one render.
   const unknown = isUnknownCard(entry) || cardId === ''
   const reason = reasonOf(item)
+  const confidence = confidenceOf(item)
   const pinnedId = usePinnedId()
 
   // RELEASE A STALE TARGET THE MOMENT HYDRATION SETTLES TO UNKNOWN. `inspectable()` treats an
@@ -373,14 +374,14 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
         <span className="suggestion-row-cost">
           <ManaCost cost={renderable === null ? null : frontFaceCost(renderable, entry)} />
         </span>
-        {/* THE CONFIDENCE, RIGHT-ALIGNED, AND RENDERED AS THE WIRE TOKEN.
+        {/* THE CONFIDENCE, RIGHT-ALIGNED: "Agent confidence: {token}", the token verbatim.
             `{typography.micro}` uppercases it in the stylesheet, which is the type role doing the
-            work; the word itself is wire data and not copy, so nothing here is owed a
-            `COPY_MODULES` entry. Wrapping it in authored words ("Confidence: high") would be new
-            copy no artefact carries. Absent ⇒ no element, because an empty right-aligned slot is
-            chrome announcing nothing. */}
-        {confidenceOf(item) === null ? null : (
-          <span className="suggestion-row-confidence">{confidenceOf(item)}</span>
+            work. The owner is named because a bare token read as the app's own judgement, and it
+            is the agent's (quick wins 1.5); the words live in `copy.ts`, shared with the swap
+            chip. Absent ⇒ no element, because an empty right-aligned slot is chrome announcing
+            nothing. */}
+        {confidence === null ? null : (
+          <span className="suggestion-row-confidence">{agentConfidenceLine(confidence)}</span>
         )}
       </span>
 

@@ -515,9 +515,10 @@ Same stance as :data:`_NonBlankReason` — required explanatory text, no fallbac
 _NullableDeckId = (
     Annotated[str, Field(max_length=_MAX_DECK_ID_LENGTH), AfterValidator(_refuse_blank_text)] | None
 )
-"""A signal payload's ``deck_id``: ``None`` means "refetch whatever is active"; a present value is
-capped and refused when blank — an empty string is a third state that is neither a real id nor the
-documented ``None`` sentinel.
+"""A payload's optional ``deck_id``: on a signal ``None`` means "refetch whatever is active", on an
+agent push it means "the agent did not say which deck"; a present value is capped and refused when
+blank — an empty string is a third state that is neither a real id nor the documented ``None``
+sentinel.
 """
 
 
@@ -805,6 +806,9 @@ class SuggestionsPayload(BaseModel):
         title: The optional agent-authored header for this view — see :data:`DEFAULT_TITLE_BY_KIND`
             for what a reader shows when it is absent.
         items: At most :data:`_MAX_ITEMS` suggestions, in payload order.
+        deck_id: The saved deck this push is about, or ``None`` when the agent did not say. Optional
+            and caller-supplied; nothing checks it against the database. A reader labels the view
+            with that deck's name and marks it stale once the deck changes or another is shown.
 
     Example:
         >>> SuggestionsPayload().items
@@ -815,6 +819,7 @@ class SuggestionsPayload(BaseModel):
 
     title: _NonBlankTitle | None = None
     items: list[SuggestionItem] = Field(default_factory=list, max_length=_MAX_ITEMS)
+    deck_id: _NullableDeckId = None
 
 
 # WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
@@ -827,6 +832,9 @@ class SwapsPayload(BaseModel):
         title: The optional agent-authored header for this view — see :data:`DEFAULT_TITLE_BY_KIND`
             for what a reader shows when it is absent.
         items: At most :data:`_MAX_ITEMS` swaps, in payload order.
+        deck_id: The saved deck this push is about, or ``None`` when the agent did not say. Optional
+            and caller-supplied; nothing checks it against the database. A reader labels the view
+            with that deck's name and marks it stale once the deck changes or another is shown.
 
     Example:
         >>> SwapsPayload().items
@@ -837,6 +845,7 @@ class SwapsPayload(BaseModel):
 
     title: _NonBlankTitle | None = None
     items: list[SwapItem] = Field(default_factory=list, max_length=_MAX_ITEMS)
+    deck_id: _NullableDeckId = None
 
 
 # WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
@@ -853,6 +862,9 @@ class TierListPayload(BaseModel):
         title: The optional agent-authored header for this view — see :data:`DEFAULT_TITLE_BY_KIND`
             for what a reader shows when it is absent.
         items: At most :data:`_MAX_BUCKETS` tiers, in payload order.
+        deck_id: The saved deck this push is about, or ``None`` when the agent did not say. Optional
+            and caller-supplied; nothing checks it against the database. A reader labels the view
+            with that deck's name and marks it stale once the deck changes or another is shown.
 
     Example:
         >>> TierListPayload().items
@@ -863,6 +875,7 @@ class TierListPayload(BaseModel):
 
     title: _NonBlankTitle | None = None
     items: list[TierItem] = Field(default_factory=list, max_length=_MAX_BUCKETS)
+    deck_id: _NullableDeckId = None
 
 
 # WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.
@@ -875,6 +888,9 @@ class GroupsPayload(BaseModel):
         title: The optional agent-authored header for this view, distinct from each group's own
             ``title`` — see :data:`DEFAULT_TITLE_BY_KIND` for the absent case.
         items: At most :data:`_MAX_BUCKETS` groups, in payload order.
+        deck_id: The saved deck this push is about, or ``None`` when the agent did not say. Optional
+            and caller-supplied; nothing checks it against the database. A reader labels the view
+            with that deck's name and marks it stale once the deck changes or another is shown.
 
     Example:
         >>> GroupsPayload().items
@@ -885,6 +901,7 @@ class GroupsPayload(BaseModel):
 
     title: _NonBlankTitle | None = None
     items: list[GroupItem] = Field(default_factory=list, max_length=_MAX_BUCKETS)
+    deck_id: _NullableDeckId = None
 
 
 # WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description.

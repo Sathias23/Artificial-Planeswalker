@@ -955,6 +955,8 @@ export interface components {
             title?: string | null;
             /** Items */
             items?: components["schemas"]["GroupItem"][];
+            /** Deck Id */
+            deck_id?: string | null;
         };
         /**
          * HealthResponse
@@ -1092,6 +1094,8 @@ export interface components {
             title?: string | null;
             /** Items */
             items?: components["schemas"]["SuggestionItem"][];
+            /** Deck Id */
+            deck_id?: string | null;
         };
         /**
          * SwapItem
@@ -1181,6 +1185,8 @@ export interface components {
             title?: string | null;
             /** Items */
             items?: components["schemas"]["SwapItem"][];
+            /** Deck Id */
+            deck_id?: string | null;
         };
         /**
          * TierItem
@@ -1273,6 +1279,8 @@ export interface components {
             title?: string | null;
             /** Items */
             items?: components["schemas"]["TierItem"][];
+            /** Deck Id */
+            deck_id?: string | null;
         };
         /**
          * UncheckedRule

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { AgentViewKind } from '../../api/schema'
+import type { AgentViewKind, DeckDetail } from '../../api/schema'
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
@@ -10,6 +10,9 @@ import {
   resetAgentView,
   useAgentViewStore,
 } from '../../state/agentView'
+import { resetDeckState, useDeckStore } from '../../state/deck'
+import { boardsOfDeck } from '../../state/deckGroups'
+import { refreshDeckProvenance, resetDeckProvenance } from '../../state/deckProvenance'
 import { AgentViewsNav } from './AgentViewsNav'
 import {
   HISTORY_LABEL,
@@ -683,3 +686,77 @@ function beforeEachHistory() {
     closeAgentView()
   })
 }
+
+// =========================================================================================
+// QUICK WINS 1.5 — EACH HISTORY ENTRY NAMES ITS OWN DECK
+// =========================================================================================
+
+describe('a history entry says which deck its push was about (quick wins 1.5)', () => {
+  const decksBody = () =>
+    new Response(
+      JSON.stringify([
+        { id: 'deck-a', name: 'Boros Aggro', updated_at: '2025-08-22T09:00:00+00:00' },
+        { id: 'deck-b', name: 'Dimir Mill', updated_at: '2025-08-22T09:00:00+00:00' },
+      ]),
+      { status: 200 },
+    )
+
+  /** Put a deck on the glass, the way a settled boot does. */
+  const display = (id: string) => {
+    const detail = { id, name: id, cards: [] } as unknown as DeckDetail
+    act(() => {
+      useDeckStore.setState({ deck: { status: 'deck', detail, boards: boardsOfDeck(detail) } })
+    })
+  }
+
+  beforeEach(async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(decksBody()))
+    await refreshDeckProvenance()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetDeckProvenance()
+    resetDeckState()
+  })
+
+  it('keeps "For A" on the entry after the glass switches to deck B, and marks it stale', () => {
+    display('deck-a')
+    openAgentView(historyPush(1, 'suggestions'))
+    openAgentView({ ...historyPush(2, 'swaps'), deckId: 'deck-a' })
+    closeAgentView()
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+
+    const aEntry = () => entries()[0]
+    expect(aEntry().querySelector('.push-provenance')).toHaveTextContent('For Boros Aggro')
+    expect(aEntry().querySelector('.badge')).toBeNull()
+
+    display('deck-b')
+
+    expect(aEntry().querySelector('.push-provenance')).toHaveTextContent('For Boros Aggro')
+    expect(aEntry().querySelector('.badge')).toHaveTextContent('Stale')
+    // Compact: the reasons are the open view's to state, not a one-line row's.
+    expect(aEntry().querySelectorAll('.push-provenance-reason')).toHaveLength(0)
+  })
+
+  it('draws nothing on an entry whose push named no deck', () => {
+    openAgentView(historyPush(1, 'suggestions'))
+    closeAgentView()
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+
+    expect(entries()[0].querySelector('.push-provenance')).toBeNull()
+  })
+
+  it('stays one button with no focusable child, so the entry remains a single Tab stop', () => {
+    openAgentView({ ...historyPush(1, 'suggestions'), deckId: 'deck-gone' })
+    closeAgentView()
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+
+    const entry = entries()[0]
+    expect(entry).toHaveTextContent('For a deck that is no longer saved')
+    expect(entry.querySelectorAll('a, button, input, select, textarea, [tabindex]')).toHaveLength(0)
+  })
+})

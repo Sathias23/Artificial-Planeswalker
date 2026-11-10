@@ -714,6 +714,45 @@ class TestNoDatabaseAnywhereNearThisRoute:
         assert response.status_code == 200
         assert json.loads(frames[0])["payload"]["items"][0]["card_id"] == unknown
 
+    @pytest.mark.parametrize("kind", ["suggestions", "swaps", "tier_list", "groups"])
+    async def test_a_push_deck_id_is_relayed_unchecked_and_its_absence_as_null(
+        self, lifespan_client, kind
+    ):
+        # Quick wins 1.5: the deck a push is about is the agent's claim, relayed verbatim. No deck
+        # by this id exists anywhere — the route has no database to ask — so it must still land.
+        app = build_app()
+        async with lifespan_client(app) as client:
+            ticket = await mint_ticket(client)
+            async with open_socket(app, ticket=ticket) as socket:
+                named = await client.post(
+                    _PATH,
+                    json=_event(
+                        kind=kind, id="named", payload={"items": [], "deck_id": "deck-never-saved"}
+                    ),
+                    headers=bearer(agent_token(app)),
+                )
+                unnamed = await client.post(
+                    _PATH,
+                    json=_event(kind=kind, id="unnamed", payload={"items": []}),
+                    headers=bearer(agent_token(app)),
+                )
+                frames = [json.loads(frame) for frame in socket.frames]
+
+        assert (named.status_code, unnamed.status_code) == (200, 200)
+        assert [frame["payload"]["deck_id"] for frame in frames] == ["deck-never-saved", None]
+
+    async def test_a_blank_push_deck_id_is_refused(self, lifespan_client):
+        app = build_app()
+        async with lifespan_client(app) as client:
+            response = await client.post(
+                _PATH,
+                json=_event(payload={"items": [], "deck_id": "  "}),
+                headers=bearer(agent_token(app)),
+            )
+
+        assert response.status_code == 400
+        assert response.json() == {"reason": "invalid_request"}
+
     def test_the_route_declares_no_service_unavailable(self, lifespan_client):
         # The operation has no database dependency, so it can answer neither 503 token. Declaring
         # one would promise a `types.d.ts` consumer a branch that can never arrive.
