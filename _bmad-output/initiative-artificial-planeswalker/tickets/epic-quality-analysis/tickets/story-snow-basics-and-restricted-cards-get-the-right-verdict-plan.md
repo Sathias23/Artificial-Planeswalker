@@ -3,7 +3,7 @@ title: 'Snow basics and restricted cards get the right verdict'
 type: 'bugfix'
 ticket: '1'
 created: '2026-11-10'
-status: 'review'
+status: done
 baseline_revision: '6f6322335427d80d69feb3331d0ed81bf48d57e6'
 route: 'full'
 route_source: 'auto'
