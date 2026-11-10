@@ -46,7 +46,7 @@ from src.companion.contracts import (
     _MAX_TITLE_LENGTH,
     AgentEvent,
 )
-from tests.unit.companion.conftest import FakeConnection, open_socket
+from tests.unit.companion.conftest import FakeConnection, bearer, mint_ticket, open_socket
 
 _AGENT_EVENT = TypeAdapter(AgentEvent)
 """The union as a standalone validator — the alias is ``Annotated``, so it has no
@@ -112,25 +112,13 @@ def _oversized_but_valid():
     )
 
 
-def _bearer(token):
-    """Return the ``Authorization`` header presenting *token*."""
-    return {"Authorization": f"Bearer {token}"}
-
-
-async def _mint(client):
-    """Mint one WebSocket ticket through the shipped endpoint, and return it."""
-    response = await client.get("/api/session")
-    assert response.status_code == 200, response.text
-    return response.json()["ticket"]
-
-
 class TestTheHappyPath:
     """AC 1, 2, 6: an authenticated valid envelope is accepted, relayed, and counted."""
 
     async def test_a_valid_envelope_is_accepted(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            response = await client.post(_PATH, json=_event(), headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
 
         assert response.status_code == 200
         # Zero connected clients is a success, not a failure: a companion with no tab open is the
@@ -143,12 +131,12 @@ class TestTheHappyPath:
         # refusing to carry the finding.
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 response = await client.post(
                     _PATH,
                     json=_event(payload={"items": []}),
-                    headers=_bearer(agent_token(app)),
+                    headers=bearer(agent_token(app)),
                 )
                 frames = list(socket.frames)
 
@@ -163,7 +151,7 @@ class TestTheHappyPath:
         # future field cannot slip in unnoticed.
         app = build_app()
         async with lifespan_client(app) as client:
-            response = await client.post(_PATH, json=_event(), headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
 
         assert set(response.json()) == {"clients"}
         assert _CARD_ID not in response.text
@@ -175,15 +163,13 @@ class TestTheRelayReachesEveryClient:
     async def test_both_open_sockets_receive_the_serialised_envelope(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            first_ticket = await _mint(client)
-            second_ticket = await _mint(client)
+            first_ticket = await mint_ticket(client)
+            second_ticket = await mint_ticket(client)
             async with (
                 open_socket(app, ticket=first_ticket) as first,
                 open_socket(app, ticket=second_ticket) as second,
             ):
-                response = await client.post(
-                    _PATH, json=_event(), headers=_bearer(agent_token(app))
-                )
+                response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
                 first_frames = list(first.frames)
                 second_frames = list(second.frames)
 
@@ -203,13 +189,13 @@ class TestTheRelayReachesEveryClient:
         # frame being an artefact of the handshake. Two pushes, two frames, both counted 1.
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 first = await client.post(
-                    _PATH, json=_event(id="first-push"), headers=_bearer(agent_token(app))
+                    _PATH, json=_event(id="first-push"), headers=bearer(agent_token(app))
                 )
                 second = await client.post(
-                    _PATH, json=_event(id="second-push"), headers=_bearer(agent_token(app))
+                    _PATH, json=_event(id="second-push"), headers=bearer(agent_token(app))
                 )
                 frames = list(socket.frames)
 
@@ -235,7 +221,7 @@ class TestTheNumberIsTheDeliveredCount:
             registry.add(healthy)
             registry.add(gone)
 
-            response = await client.post(_PATH, json=_event(), headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
 
         # Two registered, one delivered. `connected_count` sampled before the fan-out would have
         # said 2; the delivered count says 1, which is the truthful answer to "how many browsers
@@ -254,7 +240,7 @@ class TestTheNumberIsTheDeliveredCount:
             registry.add(FakeConnection())
             registry.add(FakeConnection())
 
-            response = await client.post(_PATH, json=_event(), headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
 
         assert response.json() == {"clients": 2}
 
@@ -286,7 +272,7 @@ class TestTheCredentialGate:
     ):
         app = build_app()
         async with lifespan_client(app) as client:
-            response = await client.post(_PATH, json=_event(), headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
 
         assert response.status_code == 200
 
@@ -295,14 +281,12 @@ class TestTheCredentialGate:
         # real open socket whose frame list stays EMPTY, which a status-only assertion cannot show.
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 refused = await client.post(_PATH, json=_event())
                 after_refusal = list(socket.frames)
 
-                accepted = await client.post(
-                    _PATH, json=_event(), headers=_bearer(agent_token(app))
-                )
+                accepted = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
                 after_acceptance = list(socket.frames)
 
         assert refused.status_code == 403
@@ -363,7 +347,7 @@ class TestFieldCapsAnswerFourHundred:
     ):
         app = build_app()
         async with lifespan_client(app) as client:
-            response = await client.post(_PATH, json=body, headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=body, headers=bearer(agent_token(app)))
 
         assert response.status_code == 400, description
         assert response.json() == {"reason": "invalid_request"}
@@ -375,17 +359,17 @@ class TestFieldCapsAnswerFourHundred:
         items = [{"card_id": _CARD_ID, "reason": "at cap"} for _ in range(_MAX_ITEMS)]
         at_cap = _event(payload={"items": items})
         async with lifespan_client(app) as client:
-            response = await client.post(_PATH, json=at_cap, headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=at_cap, headers=bearer(agent_token(app)))
 
         assert response.status_code == 200
 
     async def test_nothing_is_broadcast_when_the_envelope_is_rejected(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 rejected = await client.post(
-                    _PATH, json=_event(id="   "), headers=_bearer(agent_token(app))
+                    _PATH, json=_event(id="   "), headers=bearer(agent_token(app))
                 )
                 frames = list(socket.frames)
 
@@ -432,7 +416,7 @@ class TestTheByteCapAnswersFourHundredAndThirteen:
             response = await client.post(
                 _PATH,
                 content=payload,
-                headers={"content-type": "application/json", **_bearer(agent_token(app))},
+                headers={"content-type": "application/json", **bearer(agent_token(app))},
             )
 
         # 413, not 400 — and because the body above is a VALID envelope, this can only be the byte
@@ -452,7 +436,7 @@ class TestTheByteCapAnswersFourHundredAndThirteen:
             response = await client.post(
                 _PATH,
                 content=encoded,
-                headers={"content-type": "application/json", **_bearer(agent_token(app))},
+                headers={"content-type": "application/json", **bearer(agent_token(app))},
             )
 
         assert response.status_code == 200
@@ -544,18 +528,16 @@ class TestTheByteCapAnswersFourHundredAndThirteen:
         oversized = json.dumps(_oversized_but_valid()).encode("utf-8")
 
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 refused = await client.post(
                     _PATH,
                     content=oversized,
-                    headers={"content-type": "application/json", **_bearer(agent_token(app))},
+                    headers={"content-type": "application/json", **bearer(agent_token(app))},
                 )
                 after_refusal = list(socket.frames)
 
-                accepted = await client.post(
-                    _PATH, json=_event(), headers=_bearer(agent_token(app))
-                )
+                accepted = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
                 after_acceptance = list(socket.frames)
 
         assert refused.status_code == 413
@@ -586,7 +568,7 @@ class TestTheByteCapAnswersFourHundredAndThirteen:
             response = await client.post(
                 _PATH,
                 content=oversized,
-                headers={"content-type": "application/json", **_bearer(agent_token(app))},
+                headers={"content-type": "application/json", **bearer(agent_token(app))},
             )
             forbidden = await client.post(_PATH, json=_event())
 
@@ -635,7 +617,7 @@ class TestOneMechanismForBothBodyEndpoints:
             response = await client.put(
                 "/api/active-deck",
                 content=oversized,
-                headers={"content-type": "application/json", **_bearer(agent_token(app))},
+                headers={"content-type": "application/json", **bearer(agent_token(app))},
             )
 
         assert response.status_code == 413
@@ -651,7 +633,7 @@ class TestOneMechanismForBothBodyEndpoints:
             response = await client.put(
                 "/api/active-deck",
                 json={"deck_id": "deck-alpha-first-set"},
-                headers=_bearer(agent_token(app)),
+                headers=bearer(agent_token(app)),
             )
 
         assert response.status_code == 200
@@ -672,7 +654,7 @@ class TestOneMechanismForBothBodyEndpoints:
         # scopes as capped http ones would break the handshake outright.
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 assert socket.was_accepted
 
@@ -718,14 +700,14 @@ class TestNoDatabaseAnywhereNearThisRoute:
         app = build_app()
         unknown = "00000000-dead-4000-8000-000000000000"
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             async with open_socket(app, ticket=ticket) as socket:
                 response = await client.post(
                     _PATH,
                     json=_event(
                         payload={"items": [{"card_id": unknown, "reason": "not in the corpus"}]}
                     ),
-                    headers=_bearer(agent_token(app)),
+                    headers=bearer(agent_token(app)),
                 )
                 frames = list(socket.frames)
 
@@ -751,7 +733,7 @@ class TestNotShadowedBySpa:
         # ran" from "the mount swallowed it".
         app = build_app()
         async with lifespan_client(app) as client:
-            response = await client.post(_PATH, json=_event(), headers=_bearer(agent_token(app)))
+            response = await client.post(_PATH, json=_event(), headers=bearer(agent_token(app)))
 
         assert response.json() == {"clients": 0}
 

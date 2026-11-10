@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
@@ -41,6 +41,7 @@ def _sample_cards() -> list[CardModel]:
             collector_number="161",
             colors=["R"],
             color_identity=["R"],
+            keywords=[],  # as real Scryfall data, and what the index builder composes
             legalities={"standard": "legal", "modern": "legal"},
         ),
         CardModel(
@@ -59,6 +60,7 @@ def _sample_cards() -> list[CardModel]:
             collector_number="143",
             colors=["R"],
             color_identity=["R"],
+            keywords=[],  # as real Scryfall data, and what the index builder composes
             legalities={"modern": "legal"},
         ),
         CardModel(
@@ -76,36 +78,86 @@ def _sample_cards() -> list[CardModel]:
             collector_number="54",
             colors=["U"],
             color_identity=["U"],
+            keywords=[],  # as real Scryfall data, and what the index builder composes
             legalities={"standard": "legal", "modern": "legal"},
         ),
     ]
 
 
+# --- Shared database fixtures ----------------------------------------------------------------
+#
+# Every database here is built by the production engine and session factory (connect hooks, FK
+# enforcement, ``autoflush=False``). A test module that needs a seeded ``session`` overrides it by
+# requesting this one (a same-named fixture in a module receives the conftest's), so seeding stays
+# local while the engine stays shared.
+
+
 @pytest.fixture
-async def seeded_card_db(
-    tmp_path: Path,
-) -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
-    """Yield a session factory bound to a file-backed SQLite DB seeded with cards.
-
-    File-backed (not ``:memory:``) so that separately-opened sessions — the
-    seeding session here and each tool's own ``async with session_factory()``
-    block — all share the same database. Reusable across the Epic-1 MCP tool
-    stories (1.3-1.6).
-    """
-    db_path = tmp_path / "test.db"
-    engine = create_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")
+async def in_memory_engine() -> AsyncGenerator[AsyncEngine, None]:
+    """An in-memory SQLite engine with the full schema and no rows."""
+    engine = create_engine("sqlite+aiosqlite:///:memory:")
     await init_database(engine)
-    session_factory = create_session_factory(engine)
+    yield engine
+    await engine.dispose()
 
-    async with session_factory() as session:
-        for card in _sample_cards():
-            session.add(card)
-        await session.commit()
 
+@pytest.fixture
+async def session(in_memory_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
+    """One session over :func:`in_memory_engine`; seed and query through the same session."""
+    async with create_session_factory(in_memory_engine)() as session:
+        yield session
+
+
+@pytest.fixture
+def card_db_path(tmp_path: Path) -> Path:
+    """The file :func:`empty_card_db` (and so :func:`seeded_card_db`) builds.
+
+    Named so a test can open the same file through a second seam (a sync
+    :class:`~src.search.ConnectionFactory`, a ``CARDS_DATABASE_URL``) and see the same rows.
+    """
+    return tmp_path / "test.db"
+
+
+@pytest.fixture
+async def empty_card_db(
+    card_db_path: Path,
+) -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
+    """Yield a session factory over a file-backed database with the full schema and no rows.
+
+    File-backed (not ``:memory:``) so separately opened sessions all share one database.
+    """
+    engine = create_engine(f"sqlite+aiosqlite:///{card_db_path.as_posix()}")
+    await init_database(engine)
     try:
-        yield session_factory
+        yield create_session_factory(engine)
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+async def uninitialized_session(tmp_path: Path) -> AsyncGenerator[AsyncSession, None]:
+    """A session against a database file where ``init_database`` never ran (no tables at all)."""
+    engine = create_engine(f"sqlite+aiosqlite:///{(tmp_path / 'uninitialized.db').as_posix()}")
+    try:
+        async with create_session_factory(engine)() as session:
+            yield session
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+async def seeded_card_db(
+    empty_card_db: async_sessionmaker[AsyncSession],
+) -> async_sessionmaker[AsyncSession]:
+    """Return :func:`empty_card_db`'s factory with the three ``_sample_cards`` committed.
+
+    Lightning Bolt, Thunderbolt and Counterspell, in the file :func:`card_db_path` names. Reusable
+    across the Epic-1 MCP tool stories (1.3-1.6).
+    """
+    async with empty_card_db() as session:
+        session.add_all(_sample_cards())
+        await session.commit()
+    return empty_card_db
 
 
 # --- Semantic-search (card_vec-populated) fixture, Story 2.4 --------------------------------

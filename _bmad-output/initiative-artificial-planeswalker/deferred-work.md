@@ -41,3 +41,9 @@ Fix findings Brad dropped at the board review; ids are those stamped in `review-
 - source_plan: `_bmad-output/initiative-artificial-planeswalker/review-codebase-2026-11/review-codebase-2026-11.md`
   summary: "`B6-D3` option (a): fold `MODEL_NAME` and `EMBEDDING_DIM` into the index's content hash, so a model swap that keeps 384 dimensions re-embeds every card instead of ranking new query vectors against old card vectors. Deferred because it forces one full re-embed on every user's machine to guard a swap nobody has planned; add it in the PR that changes the embedding model."
   evidence: 'B6 code review, 2026-11-08, `src/search/index_builder.py:225-244`, `src/search/embedder.py:39-40`.'
+
+## Deferred from: story 4.2 (Python tests are hermetic), 2026-11-10
+
+- source_plan: `_bmad-output/initiative-artificial-planeswalker/tickets/epic-codebase-quality-pass/tickets/story-python-tests-are-hermetic-and-share-one-fixture-set-plan.md`
+  summary: "With the per-test data dir removed (every test sharing one data dir, so one `image_cache`), the suite spins at 100% CPU after `tests/unit/companion/test_routes_card_image.py::TestARepeatRequestMakesNoCdnRequest::test_the_second_request_is_served_from_a_file_that_actually_exists` and never finishes, instead of failing. The root `isolated_data_dir` fixture prevents the state today, but an isolation regression would hang CI rather than go red (no pytest-timeout, no job timeout until story 4.4)."
+  evidence: "Observed during story 4.2's isolation probe (literal fixture deletion, `PLANESWALKER_DATA_DIR` pointed at one scratch dir): 30+ min at 100% CPU, killed. Pre-existing code; medium, the spinning loop not yet located. Settle by running that class with a pre-populated shared `image_cache` and finding the loop."

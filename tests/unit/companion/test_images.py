@@ -1834,30 +1834,27 @@ class TestACacheFailureIsNeverARequestFailure:
 class TestBuildingTheCache:
     """Q6: the lifespan creates the root; a failure disables the cache, never the launch."""
 
-    def test_the_root_is_resolved_under_the_data_directory(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    def test_the_root_is_resolved_under_the_data_directory(self, isolated_data_dir) -> None:
+        assert images.cache_root() == isolated_data_dir / "image_cache"
 
-        assert images.cache_root() == tmp_path / "image_cache"
-
-    def test_building_one_creates_the_root(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
-
+    def test_building_one_creates_the_root(self, isolated_data_dir) -> None:
         cache = images.build_image_cache()
 
         assert cache is not None
-        assert cache.root == tmp_path / "image_cache"
+        assert cache.root == isolated_data_dir / "image_cache"
         assert cache.root.is_dir()
 
     def test_a_root_that_cannot_be_created_disables_the_cache_rather_than_raising(
-        self, tmp_path, monkeypatch
+        self, isolated_data_dir
     ) -> None:
         """Q6, and it is the half that keeps ``test_app.py::test_startup_failure_propagates``
         literally true: publishing the discovery file is still the ONLY startup step that can
         fail the launch. An app with no cache works and is slower; a half-launched rendezvous
         leaves every agent tool reporting ``app_not_running`` while the app visibly runs.
         """
-        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
-        (tmp_path / "image_cache").write_text("a file where a directory belongs", encoding="utf-8")
+        (isolated_data_dir / "image_cache").write_text(
+            "a file where a directory belongs", encoding="utf-8"
+        )
 
         assert images.build_image_cache() is None
 

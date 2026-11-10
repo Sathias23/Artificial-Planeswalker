@@ -3,10 +3,8 @@
 import json
 from pathlib import Path
 
-import pytest
 from sqlalchemy import func, select
 
-from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers.aggregate import build_oracle_aggregates
 from src.data.importers.importer import import_cards
 from src.data.importers.parser import stream_cards
@@ -23,32 +21,9 @@ from src.data.repositories.card import CardRepository
 from tests.fixtures.card_data import create_om1_spm_cards
 
 
-@pytest.fixture
-async def test_db(tmp_path):
-    """Create a temporary test database."""
-    db_path = tmp_path / "test_cards.db"
-    database_url = f"sqlite+aiosqlite:///{db_path}"
-
-    engine = create_engine(database_url)
-    await init_database(engine)
-
-    session_factory = create_session_factory(engine)
-
-    yield session_factory
-
-    await engine.dispose()
-
-
-@pytest.fixture
-def sample_json_file():
-    """Return path to sample Scryfall JSON fixture."""
-    return Path(__file__).parent.parent.parent / "fixtures" / "scryfall_sample.json"
-
-
-@pytest.mark.asyncio
-async def test_end_to_end_import(test_db, sample_json_file):
+async def test_end_to_end_import(empty_card_db, sample_json_file):
     """Test complete import pipeline from JSON to database."""
-    async with test_db() as session:
+    async with empty_card_db() as session:
         # Parse JSON and transform cards
         cards_stream = stream_cards(sample_json_file)
 
@@ -80,11 +55,10 @@ async def test_end_to_end_import(test_db, sample_json_file):
         assert "Pact of Negation" in card_names
 
 
-@pytest.mark.asyncio
-async def test_upsert_duplicate_cards(test_db, sample_json_file):
+async def test_upsert_duplicate_cards(empty_card_db, sample_json_file):
     """Test that re-importing cards updates existing records."""
     # First import - use a new session
-    async with test_db() as session:
+    async with empty_card_db() as session:
         cards_stream = stream_cards(sample_json_file)
 
         def transform_cards():
@@ -101,7 +75,7 @@ async def test_upsert_duplicate_cards(test_db, sample_json_file):
         assert bolt_v1.oracle_text == "Lightning Bolt deals 3 damage to any target."
 
     # Second import with modified data - use a new session
-    async with test_db() as session:
+    async with empty_card_db() as session:
         cards_stream2 = stream_cards(sample_json_file)
 
         def transform_cards2():
@@ -127,8 +101,7 @@ async def test_upsert_duplicate_cards(test_db, sample_json_file):
         assert bolt_v2.oracle_text == "UPDATED TEXT"
 
 
-@pytest.mark.asyncio
-async def test_batch_processing(test_db, tmp_path):
+async def test_batch_processing(empty_card_db, tmp_path):
     """Test that batch processing works correctly with multiple batches."""
     # Create a JSON file with 10 cards
     cards_data = []
@@ -156,7 +129,7 @@ async def test_batch_processing(test_db, tmp_path):
     test_json = tmp_path / "test_batch.json"
     test_json.write_text(json.dumps(cards_data))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         cards_stream = stream_cards(test_json)
 
         def transform_cards():
@@ -231,13 +204,12 @@ async def _run_two_pass_import(session, file_path: Path):
     return stats, reconcile
 
 
-@pytest.mark.asyncio
-async def test_two_pass_import_dedups_and_unions_games(test_db, tmp_path):
+async def test_two_pass_import_dedups_and_unions_games(empty_card_db, tmp_path):
     """Two printings of one oracle id import as ONE row with games = sorted union."""
     test_json = tmp_path / "printings.json"
     test_json.write_text(json.dumps(_masking_printings()))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats, reconcile = await _run_two_pass_import(session, test_json)
 
         assert stats.total_inserted == 1  # non-canonical printing skipped, not errored
@@ -256,8 +228,7 @@ async def test_two_pass_import_dedups_and_unions_games(test_db, tmp_path):
         assert rows[0].games == ["arena", "mtgo", "paper"]
 
 
-@pytest.mark.asyncio
-async def test_reconcile_dedups_stale_preexisting_row(test_db, tmp_path):
+async def test_reconcile_dedups_stale_preexisting_row(empty_card_db, tmp_path):
     """A pre-existing stale row is deleted; only this run's canonical row survives."""
     spm_card = create_om1_spm_cards()[0]  # the paper-only half of the masking pair
     assert spm_card.games == ["paper"]
@@ -270,7 +241,7 @@ async def test_reconcile_dedups_stale_preexisting_row(test_db, tmp_path):
     printings[0]["games"] = ["arena", "mtgo", "paper"]  # union as seen across the new file
     test_json.write_text(json.dumps(printings))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         # Seed the old DB state: the stale paper-only SPM printing (e.g. an older
         # oracle_cards import whose canonical pick differed).
         session.add(spm_card)
@@ -290,8 +261,7 @@ async def test_reconcile_dedups_stale_preexisting_row(test_db, tmp_path):
         assert rows["om1-153"].games == ["arena", "mtgo", "paper"]
 
 
-@pytest.mark.asyncio
-async def test_two_pass_import_is_noop_for_unique_oracle_ids(test_db, tmp_path):
+async def test_two_pass_import_is_noop_for_unique_oracle_ids(empty_card_db, tmp_path):
     """oracle_cards-style input (one printing per oracle id) imports every card unchanged."""
     cards_data = []
     for i in range(4):
@@ -314,7 +284,7 @@ async def test_two_pass_import_is_noop_for_unique_oracle_ids(test_db, tmp_path):
     test_json = tmp_path / "oracle_style.json"
     test_json.write_text(json.dumps(cards_data))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats, reconcile = await _run_two_pass_import(session, test_json)
 
         assert stats.total_inserted == 4
@@ -340,8 +310,7 @@ def _snapshot_b(game_changer: bool = True) -> list[dict]:
     return [{**p, "game_changer": game_changer} for p in _masking_printings()]
 
 
-@pytest.mark.asyncio
-async def test_reimport_with_shifted_canonical_collapses_to_one_row(test_db, tmp_path):
+async def test_reimport_with_shifted_canonical_collapses_to_one_row(empty_card_db, tmp_path):
     """Two-snapshot re-import over a persisted DB: one row per oracle id, snapshot-B data wins."""
     snapshot_a = tmp_path / "snapshot_a.json"
     snapshot_a.write_text(json.dumps(_snapshot_a()))
@@ -349,7 +318,7 @@ async def test_reimport_with_shifted_canonical_collapses_to_one_row(test_db, tmp
     snapshot_b.write_text(json.dumps(_snapshot_b()))
 
     # Snapshot A lands the om1-153 row (game_changer unknown back then -> NULL).
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats, _ = await _run_two_pass_import(session, snapshot_a)
         assert stats.total_inserted == 1
         result = await session.execute(select(CardModel))
@@ -359,7 +328,7 @@ async def test_reimport_with_shifted_canonical_collapses_to_one_row(test_db, tmp
 
     # Snapshot B (new session over the SAME persisted DB file) shifts the canonical to
     # spm-276 — the damaged-DB shape a plain re-import must repair.
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats, reconcile = await _run_two_pass_import(session, snapshot_b)
         assert stats.total_inserted == 1
         assert reconcile.rows_deleted == 1
@@ -381,7 +350,7 @@ async def test_reimport_with_shifted_canonical_collapses_to_one_row(test_db, tmp
         assert found.id == "spm-276"
 
     # Idempotence: an unchanged re-import performs zero deletes/repoints/updates.
-    async with test_db() as session:
+    async with empty_card_db() as session:
         _, reconcile = await _run_two_pass_import(session, snapshot_b)
         assert reconcile.rows_deleted == 0
         assert reconcile.deck_cards_repointed == 0
@@ -390,13 +359,12 @@ async def test_reimport_with_shifted_canonical_collapses_to_one_row(test_db, tmp
         assert reconcile.stale_remaining == 0
 
 
-@pytest.mark.asyncio
-async def test_reconcile_repoints_deck_cards_to_canonical(test_db, tmp_path):
+async def test_reconcile_repoints_deck_cards_to_canonical(empty_card_db, tmp_path):
     """A deck referencing the stale printing is repointed before the stale row is deleted."""
     snapshot_b = tmp_path / "snapshot_b.json"
     snapshot_b.write_text(json.dumps(_snapshot_b()))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         # Old DB state: the om1-153 row from an earlier import, referenced by a deck.
         session.add(create_om1_spm_cards()[1])  # om1-153
         deck = DeckModel(name="Goblin Deck", format="modern")
@@ -406,7 +374,7 @@ async def test_reconcile_repoints_deck_cards_to_canonical(test_db, tmp_path):
         await session.commit()
         deck_id = deck.id
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         _, reconcile = await _run_two_pass_import(session, snapshot_b)
         assert reconcile.rows_deleted == 1
         assert reconcile.deck_cards_repointed == 1
@@ -426,13 +394,14 @@ async def test_reconcile_repoints_deck_cards_to_canonical(test_db, tmp_path):
         assert [row.id for row in result.scalars().all()] == ["spm-276"]
 
 
-@pytest.mark.asyncio
-async def test_reconcile_merges_deck_quantities_when_deck_holds_both_printings(test_db, tmp_path):
+async def test_reconcile_merges_deck_quantities_when_deck_holds_both_printings(
+    empty_card_db, tmp_path
+):
     """Composite-PK collision: quantities sum onto the canonical row, stale entry removed."""
     snapshot_b = tmp_path / "snapshot_b.json"
     snapshot_b.write_text(json.dumps(_snapshot_b()))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         spm_card, om1_card = create_om1_spm_cards()[:2]
         session.add(spm_card)
         session.add(om1_card)
@@ -445,7 +414,7 @@ async def test_reconcile_merges_deck_quantities_when_deck_holds_both_printings(t
         await session.commit()
         deck_id = deck.id
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         _, reconcile = await _run_two_pass_import(session, snapshot_b)
         assert reconcile.rows_deleted == 1
         assert reconcile.deck_cards_merged == 1
@@ -484,8 +453,7 @@ def _stale_printing(card_id: str) -> CardModel:
     )
 
 
-@pytest.mark.asyncio
-async def test_reconcile_collapses_two_stale_printings_held_by_one_deck(test_db, tmp_path):
+async def test_reconcile_collapses_two_stale_printings_held_by_one_deck(empty_card_db, tmp_path):
     """TWO stale printings in one deck collapse onto the canonical row with summed quantity.
 
     Neither pre-existing row is the canonical: the repoint of the first stale entry
@@ -495,7 +463,7 @@ async def test_reconcile_collapses_two_stale_printings_held_by_one_deck(test_db,
     snapshot_b = tmp_path / "snapshot_b.json"
     snapshot_b.write_text(json.dumps(_snapshot_b()))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         session.add(_stale_printing("old-a"))
         session.add(_stale_printing("old-b"))
         deck = DeckModel(name="Two Stale Printings", format="modern")
@@ -506,7 +474,7 @@ async def test_reconcile_collapses_two_stale_printings_held_by_one_deck(test_db,
         await session.commit()
         deck_id = deck.id
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         _, reconcile = await _run_two_pass_import(session, snapshot_b)
         assert reconcile.rows_deleted == 2  # both stale printings collapsed away
         assert reconcile.deck_cards_repointed == 1  # first stale entry creates the key
@@ -527,9 +495,8 @@ async def test_reconcile_collapses_two_stale_printings_held_by_one_deck(test_db,
         assert [row.id for row in result.scalars().all()] == ["spm-276"]
 
 
-@pytest.mark.asyncio
 async def test_reconcile_failure_is_nonfatal_and_leaves_session_usable(
-    test_db, tmp_path, monkeypatch
+    empty_card_db, tmp_path, monkeypatch
 ):
     """A failing reconcile sets ``failed`` without failing the import or the session.
 
@@ -569,7 +536,7 @@ async def test_reconcile_failure_is_nonfatal_and_leaves_session_usable(
         "src.data.importers.scryfall.reconcile_oracle_identities", _failing_reconcile
     )
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats = await import_scryfall_bulk_data(
             session, bulk_type="default_cards", temp_dir=tmp_path
         )
@@ -583,8 +550,7 @@ async def test_reconcile_failure_is_nonfatal_and_leaves_session_usable(
         assert count == 1
 
 
-@pytest.mark.asyncio
-async def test_reconcile_leaves_identity_untouched_when_canonical_rejected(test_db, tmp_path):
+async def test_reconcile_leaves_identity_untouched_when_canonical_rejected(empty_card_db, tmp_path):
     """When the canonical printing is rejected, existing rows survive and get counted."""
     printings = _masking_printings()
     for printing in printings:
@@ -593,12 +559,12 @@ async def test_reconcile_leaves_identity_untouched_when_canonical_rejected(test_
     snapshot = tmp_path / "snapshot_rejected_canonical.json"
     snapshot.write_text(json.dumps(printings))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         om1_card = create_om1_spm_cards()[1]  # pre-existing row, games ["arena", "mtgo"]
         session.add(om1_card)
         await session.commit()
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats, reconcile = await _run_two_pass_import(session, snapshot)
 
         assert stats.total_errors == 1
@@ -618,8 +584,7 @@ async def test_reconcile_leaves_identity_untouched_when_canonical_rejected(test_
         assert rows[0].games == ["arena", "mtgo"]  # even its games stay as they were
 
 
-@pytest.mark.asyncio
-async def test_import_captures_reject_identity_and_reason(test_db, tmp_path):
+async def test_import_captures_reject_identity_and_reason(empty_card_db, tmp_path):
     """A transformer reject surfaces its identity + reason on ImportStatistics.rejects."""
     cards_data = [
         {
@@ -642,7 +607,7 @@ async def test_import_captures_reject_identity_and_reason(test_db, tmp_path):
     snapshot = tmp_path / "with_reject.json"
     snapshot.write_text(json.dumps(cards_data))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats, _ = await _run_two_pass_import(session, snapshot)
 
         assert stats.total_inserted == 1
@@ -652,13 +617,12 @@ async def test_import_captures_reject_identity_and_reason(test_db, tmp_path):
         assert "type_line" in stats.rejects[0].reason
 
 
-@pytest.mark.asyncio
-async def test_empty_import(test_db, tmp_path):
+async def test_empty_import(empty_card_db, tmp_path):
     """Test importing an empty JSON array."""
     empty_json = tmp_path / "empty.json"
     empty_json.write_text("[]")
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         cards_stream = stream_cards(empty_json)
 
         def transform_cards():

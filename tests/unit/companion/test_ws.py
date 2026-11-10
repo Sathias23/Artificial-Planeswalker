@@ -44,10 +44,10 @@ from tests.unit.companion.conftest import (
     FakeClock,
     FakeConnection,
     drive_handshake,
+    mint_ticket,
     open_socket,
 )
 
-_SESSION_PATH = "/api/session"
 _WS_LOGGER = "src.companion.app.ws"
 
 _POLICY_VIOLATION = 1008
@@ -56,18 +56,6 @@ asserts the shipped number instead of agreeing with whatever the module currentl
 
 _INTERNAL_ERROR = 1011
 """The fail-closed code, likewise spelled out rather than imported (c5-3, Q6)."""
-
-
-async def _mint(client):
-    """Mint one ticket through the shipped endpoint, and return it.
-
-    Deliberately over the wire rather than by calling ``store.mint()``: the sequence under test is
-    "browser reads a ticket from same-origin ``GET /api/session``, then upgrades", and a test that
-    reached into the store would skip the half c5-2 shipped.
-    """
-    response = await client.get(_SESSION_PATH)
-    assert response.status_code == 200, "the mint must work, or every test below is vacuous"
-    return response.json()["ticket"]
 
 
 def _close_codes(sent):
@@ -86,7 +74,7 @@ class TestTheHappyPath:
     async def test_a_valid_ticket_from_our_own_origin_is_accepted(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             sent = await drive_handshake(app, ticket=ticket)
 
@@ -103,7 +91,7 @@ class TestTheHappyPath:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             store = ticket_store(app)
             assert store.resident_count == 1, "non-vacuity: the mint really put one in the map"
 
@@ -114,7 +102,7 @@ class TestTheHappyPath:
     async def test_replaying_a_consumed_ticket_is_refused(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             first = await drive_handshake(app, ticket=ticket)
             replay = await drive_handshake(app, ticket=ticket)
@@ -132,8 +120,8 @@ class TestTheHappyPath:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            first = await drive_handshake(app, ticket=await _mint(client))
-            second = await drive_handshake(app, ticket=await _mint(client))
+            first = await drive_handshake(app, ticket=await mint_ticket(client))
+            second = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert _was_accepted(first)
         assert _was_accepted(second)
@@ -162,8 +150,8 @@ class TestEveryRejectionLooksTheSame:
         clock = FakeClock()
         async with lifespan_client(app) as client:
             real_store = ticket_store(app)
-            live = await _mint(client)
-            spent = await _mint(client)
+            live = await mint_ticket(client)
+            spent = await mint_ticket(client)
             await drive_handshake(app, ticket=spent)
 
             app.state.ticket_store = TicketStore(clock=clock.time)
@@ -228,7 +216,7 @@ class TestEveryRejectionLooksTheSame:
         """AD-5: the ticket is a credential, so a rejection log names the fact and no value."""
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             await drive_handshake(app, ticket=ticket)
             with caplog.at_level(logging.DEBUG, logger=_WS_LOGGER):
                 await drive_handshake(app, ticket=ticket)
@@ -251,7 +239,7 @@ class TestOriginIsCheckedBeforeTheTicket:
     async def test_a_rejected_foreign_handshake_leaves_the_ticket_alive(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             refused = await drive_handshake(
                 app, ticket=ticket, origin=f"http://evil.example.com:{bound_port(app)}"
@@ -267,7 +255,7 @@ class TestOriginIsCheckedBeforeTheTicket:
         """The same property read off the store, so it holds even if the second handshake broke."""
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             store = ticket_store(app)
 
             await drive_handshake(app, ticket=ticket, origin="http://evil.example.com")
@@ -293,7 +281,7 @@ class TestTheOriginGate:
     async def test_a_foreign_origin_is_refused(self, lifespan_client, origin):
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             sent = await drive_handshake(app, ticket=ticket, origin=origin)
 
@@ -308,7 +296,7 @@ class TestTheOriginGate:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             sent = await drive_handshake(app, ticket=ticket, origin=None)
 
@@ -318,7 +306,7 @@ class TestTheOriginGate:
         """Non-vacuity for the whole class, and the second of the two spellings AC 7 names."""
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             sent = await drive_handshake(
                 app, ticket=ticket, origin=f"http://localhost:{bound_port(app)}"
@@ -331,11 +319,11 @@ class TestTheOriginGate:
         app = build_app()
         app.state.bound_port = 55555
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             matching = await drive_handshake(app, ticket=ticket, origin="http://127.0.0.1:55555")
             stale = await drive_handshake(
-                app, ticket=await _mint(client), origin="http://127.0.0.1:8765"
+                app, ticket=await mint_ticket(client), origin="http://127.0.0.1:8765"
             )
 
         assert bound_port(app) == 55555, "the seam must not have overwritten the stamped port"
@@ -355,7 +343,7 @@ class TestHostIsTheShippedMiddlewareAndNotACopy:
     async def test_a_rebound_host_is_closed_before_the_route_runs(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             store = ticket_store(app)
 
             sent = await drive_handshake(
@@ -372,7 +360,7 @@ class TestHostIsTheShippedMiddlewareAndNotACopy:
         """AC 10, first pairing: ``Host`` alone is not enough — an honest hostile tab passes it."""
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             sent = await drive_handshake(app, ticket=ticket, origin="http://evil.example.com")
 
@@ -382,7 +370,7 @@ class TestHostIsTheShippedMiddlewareAndNotACopy:
         """AC 10, second pairing: the two checks are independent and both are required."""
         app = build_app()
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
 
             sent = await drive_handshake(app, ticket=ticket, host="evil.example.com:1")
 
@@ -392,7 +380,7 @@ class TestHostIsTheShippedMiddlewareAndNotACopy:
         """The non-vacuity corner of the AC 10 matrix."""
         app = build_app()
         async with lifespan_client(app) as client:
-            sent = await drive_handshake(app, ticket=await _mint(client))
+            sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert _was_accepted(sent)
 
@@ -408,7 +396,7 @@ class TestAfterTheSocketIsAccepted:
             {"type": "websocket.receive", "text": '{"kind":"not-a-real-command"}'},
         ]
         async with lifespan_client(app) as client:
-            sent = await drive_handshake(app, ticket=await _mint(client), frames=frames)
+            sent = await drive_handshake(app, ticket=await mint_ticket(client), frames=frames)
 
         assert _was_accepted(sent)
         assert _close_codes(sent) == [], "chatter must not close the socket (AD-6, one-way)"
@@ -427,7 +415,7 @@ class TestAfterTheSocketIsAccepted:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            sent = await drive_handshake(app, ticket=await _mint(client))
+            sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert [message["type"] for message in sent] == ["websocket.accept"]
 
@@ -460,7 +448,7 @@ class TestThePathAndTheMountOrdering:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            sent = await drive_handshake(app, ticket=await _mint(client))
+            sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert _was_accepted(sent)
 
@@ -492,7 +480,7 @@ class TestThePathAndTheMountOrdering:
     ):
         app = build_app()
         async with lifespan_client(app) as client:
-            sent = await drive_handshake(app, path="/nope", ticket=await _mint(client))
+            sent = await drive_handshake(app, path="/nope", ticket=await mint_ticket(client))
 
         assert not _was_accepted(sent)
         assert ticket_store(app).resident_count == 1, "the handler ran for a path it does not own"
@@ -540,7 +528,7 @@ class TestTheFailClosedNet:
 
         async with lifespan_client(app) as client:
             with caplog.at_level(logging.ERROR, logger=_WS_LOGGER):
-                sent = await drive_handshake(app, ticket=await _mint(client))
+                sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert not _was_accepted(sent), "the fault is inside accept() itself, before it lands"
         assert _close_codes(sent) == [_INTERNAL_ERROR]
@@ -559,7 +547,7 @@ class TestTheFailClosedNet:
 
         async with lifespan_client(app) as client:
             with caplog.at_level(logging.ERROR, logger=_WS_LOGGER):
-                sent = await drive_handshake(app, ticket=await _mint(client))
+                sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert _was_accepted(sent), "the fault must be reached *after* the socket is established"
         assert _close_codes(sent) == [_INTERNAL_ERROR]
@@ -575,7 +563,7 @@ class TestTheFailClosedNet:
         monkeypatch.setattr(ws, "_drain_until_disconnect", exploding_drain)
 
         async with lifespan_client(app) as client:
-            ticket = await _mint(client)
+            ticket = await mint_ticket(client)
             # No pytest.raises: the assertion is that this line simply returns.
             await drive_handshake(app, ticket=ticket)
 
@@ -583,7 +571,7 @@ class TestTheFailClosedNet:
         """Non-vacuity: 1011 must be reachable only through a fault."""
         app = build_app()
         async with lifespan_client(app) as client:
-            sent = await drive_handshake(app, ticket=await _mint(client))
+            sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
         assert _INTERNAL_ERROR not in _close_codes(sent)
 
@@ -915,7 +903,7 @@ class TestTheSocketLifecycle:
             registry = connection_registry(app)
             assert registry.connected_count == 0  # non-vacuity: it starts empty
 
-            async with open_socket(app, ticket=await _mint(client)):
+            async with open_socket(app, ticket=await mint_ticket(client)):
                 assert registry.connected_count == 1
 
             assert registry.connected_count == 0, "the finally ran on the ordinary disconnect"
@@ -960,7 +948,7 @@ class TestTheSocketLifecycle:
         async with lifespan_client(app) as client:
             registry = connection_registry(app)
 
-            sent = await drive_handshake(app, ticket=await _mint(client))
+            sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
             assert not _was_accepted(sent), "non-vacuity: the fault really was inside accept()"
             assert _close_codes(sent) == [_INTERNAL_ERROR]
@@ -972,10 +960,12 @@ class TestTheSocketLifecycle:
         async with lifespan_client(app) as client:
             registry = connection_registry(app)
 
-            await drive_handshake(app, ticket=await _mint(client), origin="http://evil.example")
+            await drive_handshake(
+                app, ticket=await mint_ticket(client), origin="http://evil.example"
+            )
             assert registry.connected_count == 0
 
-            await drive_handshake(app, ticket=await _mint(client))
+            await drive_handshake(app, ticket=await mint_ticket(client))
             assert registry.connected_count == 0, "and the accepted one left again on disconnect"
 
     async def test_the_1011_fault_path_also_unregisters(self, lifespan_client, monkeypatch):
@@ -994,7 +984,7 @@ class TestTheSocketLifecycle:
         async with lifespan_client(app) as client:
             registry = connection_registry(app)
 
-            sent = await drive_handshake(app, ticket=await _mint(client))
+            sent = await drive_handshake(app, ticket=await mint_ticket(client))
 
             assert _was_accepted(sent), "non-vacuity: the fault is genuinely post-accept"
             assert _close_codes(sent) == [_INTERNAL_ERROR]
@@ -1006,8 +996,8 @@ class TestTheSocketLifecycle:
         async with lifespan_client(app) as client:
             registry = connection_registry(app)
 
-            async with open_socket(app, ticket=await _mint(client)):
-                async with open_socket(app, ticket=await _mint(client)):
+            async with open_socket(app, ticket=await mint_ticket(client)):
+                async with open_socket(app, ticket=await mint_ticket(client)):
                     assert registry.connected_count == 2
                 assert registry.connected_count == 1
 

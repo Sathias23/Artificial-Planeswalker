@@ -8,7 +8,6 @@ end-to-end MCP-client wiring is covered separately in test_mcp_tools.py.
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 
@@ -35,20 +34,10 @@ def _card(card_id: str, name: str, legalities: dict[str, str] | None = None) -> 
 
 
 @pytest.fixture
-async def in_memory_engine():
-    """Create an in-memory SQLite engine for testing."""
-    engine = create_engine("sqlite+aiosqlite:///:memory:")
-    await init_database(engine)
-    yield engine
-    await engine.dispose()
-
-
-@pytest.fixture
-async def session(in_memory_engine):
-    """Create a test session and seed cards (same session seeds and queries)."""
-    session_factory = create_session_factory(in_memory_engine)
-    async with session_factory() as session:
-        cards = [
+async def session(session: AsyncSession) -> AsyncSession:
+    """The shared in-memory ``session``, seeded with cards (same session seeds and queries)."""
+    session.add_all(
+        [
             _card("c-lbolt", "Lightning Bolt"),
             _card("c-tbolt", "Thunderbolt"),
             _card("c-bhound", "Bolt Hound"),
@@ -61,10 +50,9 @@ async def session(in_memory_engine):
             _card("c-d6", "Sea Drake"),
             _card("c-modern", "Modern Relic", legalities={"modern": "legal"}),
         ]
-        for card in cards:
-            session.add(card)
-        await session.commit()
-        yield session
+    )
+    await session.commit()
+    return session
 
 
 async def test_exact_match_returns_found(session: AsyncSession):

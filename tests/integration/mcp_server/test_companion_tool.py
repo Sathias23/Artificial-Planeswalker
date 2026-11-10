@@ -52,7 +52,7 @@ from src.companion.contracts import (
     TierItem,
     TierListPayload,
 )
-from src.companion.discovery import COMPANION_FILENAME, DiscoveryRecord, read_discovery
+from src.companion.discovery import DiscoveryRecord, read_discovery
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.data.repositories.deck import DeckRepository
@@ -73,10 +73,10 @@ from src.mcp_server.tools.companion import (
 from src.mcp_server.tools.deck_management import create_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
-# The loopback toolkit, imported rather than rebuilt — `test_deck_changed_wiring.py`'s precedent,
-# on the same terms: `test_client.py` owns the only real HTTP stubs in the repo, and a second
+# The loopback toolkit, imported rather than rebuilt: ``tests/fixtures/companion_stubs.py`` holds
+# the only real HTTP stubs in the repo (``stub_server`` is a root fixture), and a second
 # implementation here would be a fake of a fake.
-from tests.unit.companion.test_client import StubFleet, health_bytes, plant_discovery
+from tests.fixtures.companion_stubs import health_bytes, plant_discovery
 
 _MISSING_DECK = "deck-not-in-database-00000"
 """Short enough to stay under ``_ECHO_LIMIT`` (48) unmangled, so ``deck_id == _MISSING_DECK``
@@ -1202,20 +1202,6 @@ class TestCompanionStatusIsReadOnlyAndNamesTheNextStep:
         }
 
 
-@pytest.fixture
-def stub_server():
-    """Yield :meth:`StubFleet.start` and tear down every loopback stub it handed out.
-
-    A four-line fixture over an imported helper, exactly as ``test_client.py``,
-    ``test_server.py`` and ``test_deck_changed_wiring.py`` each keep their own: the fixture
-    cannot simply be imported, because a module-level ``stub_server`` binding and a test
-    parameter of the same name are a redefinition (ruff F811).
-    """
-    fleet = StubFleet()
-    yield fleet.start
-    fleet.close_all()
-
-
 class TestCompanionStatusOverARealSocket:
     """Pre-cut R7: the ``clients`` fold proven against a real health body on a real socket.
 
@@ -1226,21 +1212,12 @@ class TestCompanionStatusOverARealSocket:
     the whole proof — identity match included.
     """
 
-    @pytest.fixture(autouse=True)
-    def isolated_data_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-        """Point the real client at an empty data dir, and prove it starts empty."""
-        data_dir = tmp_path / "companion-data"
-        data_dir.mkdir()
-        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
-        assert not (data_dir / COMPANION_FILENAME).exists()
+    async def test_a_real_health_body_with_one_client_reports_the_tab(self, stub_server):
+        """``clients: 1`` parsed off the wire — no monkeypatched client functions anywhere."""
         assert read_discovery() is None, (
             "something published a discovery record into the isolated data dir — this test "
             "would be measuring a live companion"
         )
-        return data_dir
-
-    async def test_a_real_health_body_with_one_client_reports_the_tab(self, stub_server):
-        """``clients: 1`` parsed off the wire — no monkeypatched client functions anywhere."""
         stub = stub_server(body=health_bytes("inst-real-parse", clients=1))
         plant_discovery(port=stub.port, instance_id="inst-real-parse")
 
@@ -1255,6 +1232,10 @@ class TestCompanionStatusOverARealSocket:
 
     async def test_a_real_health_body_without_the_count_reads_as_unknown(self, stub_server):
         """The unknown arm, off the wire: an older companion's body carries no ``clients``."""
+        assert read_discovery() is None, (
+            "something published a discovery record into the isolated data dir — this test "
+            "would be measuring a live companion"
+        )
         stub = stub_server(body=health_bytes("inst-real-parse"))
         plant_discovery(port=stub.port, instance_id="inst-real-parse")
 

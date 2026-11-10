@@ -56,19 +56,6 @@ and keeps this file's seeding to the one deck ``companion_set_active_deck`` genu
 
 
 @pytest.fixture
-def closed_companion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point every data-dir consumer at a directory holding no discovery file.
-
-    Returns:
-        The isolated data directory, so a test can assert the absence it depends on.
-    """
-    data_dir = tmp_path / "no-companion-here"
-    data_dir.mkdir()
-    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
-    return data_dir
-
-
-@pytest.fixture
 async def deck_db(tmp_path: Path) -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
     """A file-backed, initialised database the tools can read through.
 
@@ -119,20 +106,20 @@ def _text_of(result) -> str:
 class TestTheAppIsClosedAndTheToolsStillAnswer:
     """AC 1: every companion tool degrades to a result. None raises, in a real MCP session."""
 
-    async def test_the_discovery_file_really_is_absent(self, closed_companion: Path) -> None:
+    async def test_the_discovery_file_really_is_absent(self, isolated_data_dir: Path) -> None:
         """The precondition, asserted rather than assumed.
 
         Without this the whole class could pass against a *live* companion on the developer's own
         machine and nobody would know — the c1-7 rendezvous lesson, applied to a test's setup.
         """
-        assert not (closed_companion / COMPANION_FILENAME).exists()
+        assert not (isolated_data_dir / COMPANION_FILENAME).exists()
         assert read_discovery() is None, (
             "Something published a discovery record into the isolated data dir — this file would "
             "be measuring a live companion instead of a closed one."
         )
 
     async def test_the_status_tool_reports_not_running_with_a_launch_command(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         """17.4: the read-only tool answers ``not_running`` and still hands over the command."""
         server = build_server(session_factory=deck_db)
@@ -149,7 +136,7 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
         assert "not_running" in _text_of(result)
 
     async def test_the_push_tool_reports_the_closed_app_and_does_not_raise(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         server = build_server(session_factory=deck_db)
         async with create_connected_server_and_client_session(server) as client:
@@ -176,7 +163,7 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
         )
 
     async def test_the_swaps_push_tool_reports_the_closed_app_and_does_not_raise(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         """16-1 AC 1: the second push tool degrades exactly as the first — called BY NAME over a
         real in-memory MCP session, so the seam under test is the registered tool and not the
@@ -214,7 +201,7 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
         )
 
     async def test_the_tier_list_push_tool_reports_the_closed_app_and_does_not_raise(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         """16-2 AC: the third push tool degrades exactly as the first two — called BY NAME over a
         real in-memory MCP session, so the seam under test is the registered tool and not the
@@ -251,7 +238,7 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
         )
 
     async def test_the_groups_push_tool_reports_the_closed_app_and_does_not_raise(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         """16-3 AC: the fourth push tool degrades exactly as the first three — called BY NAME
         over a real in-memory MCP session, so the seam under test is the registered tool and not
@@ -288,7 +275,7 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
         )
 
     async def test_the_control_tool_reports_the_closed_app_and_does_not_raise(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         """The control tool has to get *past* its database read to reach the client at all.
 
@@ -321,7 +308,7 @@ class TestAPreExistingWorkflowIsIndifferent:
     """AC 3: a tool that predates the companion is unchanged by its absence — the SC-3 claim."""
 
     async def test_list_decks_is_bit_for_bit_the_same_beside_a_failed_push(
-        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+        self, isolated_data_dir: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:
         """One session, three calls: read, failed push, read again.
 

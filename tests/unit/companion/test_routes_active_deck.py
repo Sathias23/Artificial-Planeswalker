@@ -26,7 +26,7 @@ from pydantic import TypeAdapter
 from src.companion.app.main import agent_token, build_app
 from src.companion.app.state import active_deck, connection_registry
 from src.companion.contracts import _MAX_ENVELOPE_BYTES, ActiveDeckChangedEvent, AgentEvent
-from tests.unit.companion.conftest import FakeConnection, open_socket
+from tests.unit.companion.conftest import FakeConnection, bearer, mint_ticket, open_socket
 
 _PATH = "/api/active-deck"
 
@@ -40,11 +40,6 @@ _PATH = "/api/active-deck"
 _FIRST_DECK = "deck-alpha-first-set"
 _SECOND_DECK = "deck-beta-overwrites-alpha"
 _UNKNOWN_DECK = "deck-that-is-definitely-not-in-any-database-00000"
-
-
-def _bearer(token):
-    """Return the ``Authorization`` header presenting *token*."""
-    return {"Authorization": f"Bearer {token}"}
 
 
 class TestTheReadRequiresNothing:
@@ -98,7 +93,7 @@ class TestTheWriteNeedsTheCredential:
         app = build_app()
         async with lifespan_client(app) as client:
             response = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app))
             )
 
         assert response.status_code == 200
@@ -112,9 +107,7 @@ class TestTheWriteNeedsTheCredential:
         """AC 4 as a **sequence through the wire** — never by reading the holder."""
         app = build_app()
         async with lifespan_client(app) as client:
-            await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
-            )
+            await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app)))
             response = await client.get(_PATH)
 
         assert response.status_code == 200
@@ -126,7 +119,7 @@ class TestTheWriteNeedsTheCredential:
         # coincidentally agree.
         app = build_app()
         async with lifespan_client(app) as client:
-            headers = _bearer(agent_token(app))
+            headers = bearer(agent_token(app))
             await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
             await client.put(_PATH, json={"deck_id": _SECOND_DECK}, headers=headers)
             response = await client.get(_PATH)
@@ -155,10 +148,10 @@ class TestTheWriteNeedsTheCredential:
             token = agent_token(app)
             # Seed a known value through the ACCEPTED path first, so "did not move" is a real
             # claim about a real value rather than about the None the slot starts at (AC 25).
-            seeded = await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(token))
+            seeded = await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(token))
             assert seeded.status_code == 200, f"the accepted path broke, so {case} proves nothing"
 
-            attempt = headers if headers is not None else _bearer(token[:16])
+            attempt = headers if headers is not None else bearer(token[:16])
             response = await client.put(_PATH, json={"deck_id": _SECOND_DECK}, headers=attempt)
             after = await client.get(_PATH)
 
@@ -295,7 +288,7 @@ class TestARestartForgets:
         first = build_app()
         async with lifespan_client(first) as client:
             await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(first))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(first))
             )
             confirmed = await client.get(_PATH)
         # Non-vacuity: the deck really was set in the first process, so the None below is
@@ -321,9 +314,7 @@ class TestARestartForgets:
         second = build_app()
         async with lifespan_client(second) as client:
             assert agent_token(second) != stale
-            response = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(stale)
-            )
+            response = await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(stale))
 
         assert response.status_code == 403
         assert response.json() == {"reason": "forbidden"}
@@ -343,7 +334,7 @@ class TestNoDeckExistenceCheck:
         app = build_app()
         async with lifespan_client(app) as client:
             stored = await client.put(
-                _PATH, json={"deck_id": _UNKNOWN_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _UNKNOWN_DECK}, headers=bearer(agent_token(app))
             )
             read_back = await client.get(_PATH)
 
@@ -359,7 +350,7 @@ class TestNoDeckExistenceCheck:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            headers = _bearer(agent_token(app))
+            headers = bearer(agent_token(app))
             accepted = await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
             refused = await client.put(_PATH, json={"deck_id": ""}, headers=headers)
 
@@ -408,7 +399,7 @@ class TestTheMethodSemantics:
         app = build_app()
         async with lifespan_client(app) as client:
             response = await client.post(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app))
             )
 
         assert response.status_code == 405
@@ -445,7 +436,7 @@ class TestAMalformedBody:
     async def test_it_answers_400_invalid_request(self, lifespan_client, case, kwargs):
         app = build_app()
         async with lifespan_client(app) as client:
-            headers = dict(_bearer(agent_token(app)))
+            headers = dict(bearer(agent_token(app)))
             if "content" in kwargs:
                 headers["content-type"] = "application/json"
             response = await client.put(_PATH, headers=headers, **kwargs)
@@ -456,7 +447,7 @@ class TestAMalformedBody:
     async def test_a_malformed_body_does_not_move_the_active_deck(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:
-            headers = _bearer(agent_token(app))
+            headers = bearer(agent_token(app))
             await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
             await client.put(_PATH, json={"deck_id": ""}, headers=headers)
             response = await client.get(_PATH)
@@ -470,7 +461,7 @@ class TestAMalformedBody:
         boundary = "x" * 256
         async with lifespan_client(app) as client:
             response = await client.put(
-                _PATH, json={"deck_id": boundary}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": boundary}, headers=bearer(agent_token(app))
             )
 
         assert response.status_code == 200
@@ -680,7 +671,7 @@ class TestNothingIsLoggedThatShouldNotBe:
             async with lifespan_client(app) as client:
                 token = agent_token(app)
                 await client.put(
-                    _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer("wrong-" + token)
+                    _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer("wrong-" + token)
                 )
 
         rejections = [r for r in caplog.records if "Refusing" in r.getMessage()]
@@ -695,13 +686,6 @@ class TestNothingIsLoggedThatShouldNotBe:
         # …and not one byte more.
         assert token not in message
         assert "wrong-" + token not in message
-
-
-async def _mint_ticket(client):
-    """Mint one WebSocket ticket over the shipped ``GET /api/session``, and return it."""
-    response = await client.get("/api/session")
-    assert response.status_code == 200, "the mint must work, or the socket tests are vacuous"
-    return response.json()["ticket"]
 
 
 class TestThePutBroadcasts:
@@ -721,7 +705,7 @@ class TestThePutBroadcasts:
             connection_registry(app).add(connection)
 
             response = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app))
             )
 
         assert response.status_code == 200
@@ -746,7 +730,7 @@ class TestThePutBroadcasts:
             slot.set = lambda deck_id: setattr(slot, "_deck_id", "rewritten-by-the-slot")
 
             response = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app))
             )
 
         assert response.json() == {"deck_id": "rewritten-by-the-slot", "clients": 1}
@@ -766,7 +750,7 @@ class TestThePutBroadcasts:
         async with lifespan_client(app) as client:
             connection = FakeConnection()
             connection_registry(app).add(connection)
-            headers = _bearer(agent_token(app))
+            headers = bearer(agent_token(app))
 
             await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
             await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
@@ -794,7 +778,7 @@ class TestThePutBroadcasts:
             registry.add(second)
 
             response = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app))
             )
 
         assert response.json() == {"deck_id": _FIRST_DECK, "clients": 2}
@@ -808,15 +792,13 @@ class TestThePutBroadcasts:
             connection_registry(app).add(connection)
 
             refused = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer("not-the-token")
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer("not-the-token")
             )
             assert refused.status_code == 403
             assert connection.sent == []
 
             # Paired acceptance from the same call site, so this cannot pass by never broadcasting.
-            await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
-            )
+            await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app)))
 
         assert len(connection.sent) == 1
 
@@ -833,7 +815,7 @@ class TestThePutBroadcasts:
             connection_registry(app).add(connection)
 
             response = await client.put(
-                _PATH, json={"deck_id": "   "}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": "   "}, headers=bearer(agent_token(app))
             )
 
         assert response.status_code == 400
@@ -851,7 +833,7 @@ class TestThePutBroadcasts:
             registry.add(FakeConnection(fails=True))
 
             response = await client.put(
-                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=bearer(agent_token(app))
             )
             stored = await client.get(_PATH)
 
@@ -888,13 +870,13 @@ class TestTwoTabsOnePut:
         app = build_app()
         async with lifespan_client(app) as client:
             async with (
-                open_socket(app, ticket=await _mint_ticket(client)) as first,
-                open_socket(app, ticket=await _mint_ticket(client)) as second,
+                open_socket(app, ticket=await mint_ticket(client)) as first,
+                open_socket(app, ticket=await mint_ticket(client)) as second,
             ):
                 assert connection_registry(app).connected_count == 2  # non-vacuity
 
                 response = await client.put(
-                    _PATH, json={"deck_id": _SECOND_DECK}, headers=_bearer(agent_token(app))
+                    _PATH, json={"deck_id": _SECOND_DECK}, headers=bearer(agent_token(app))
                 )
 
                 assert response.status_code == 200
@@ -914,9 +896,9 @@ class TestTwoTabsOnePut:
         """
         app = build_app()
         async with lifespan_client(app) as client:
-            headers = _bearer(agent_token(app))
-            async with open_socket(app, ticket=await _mint_ticket(client)) as survivor:
-                async with open_socket(app, ticket=await _mint_ticket(client)) as closing:
+            headers = bearer(agent_token(app))
+            async with open_socket(app, ticket=await mint_ticket(client)) as survivor:
+                async with open_socket(app, ticket=await mint_ticket(client)) as closing:
                     await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
                     assert len(closing.frames) == 1  # non-vacuity: it really was reachable
 

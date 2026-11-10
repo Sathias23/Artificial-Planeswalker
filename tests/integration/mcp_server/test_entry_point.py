@@ -103,19 +103,6 @@ def recorded_run(monkeypatch: pytest.MonkeyPatch):
     return recorder
 
 
-@pytest.fixture(autouse=True)
-def isolated_data_dir(tmp_path, monkeypatch):
-    """Point ``PLANESWALKER_DATA_DIR`` at this test's own ``tmp_path``, and drop the URL.
-
-    ``_log_startup_diagnostics`` opens the real card database otherwise, and the companion path
-    would take a lock in the developer's real data directory. ``CARDS_DATABASE_URL`` is deleted
-    too: it outranks the data dir for the database file, so a developer who exports it would
-    otherwise have every test here open *that* database.
-    """
-    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)
-
-
 def test_main_defaults_to_stdio_transport(monkeypatch: pytest.MonkeyPatch):
     """With no MCP_TRANSPORT set, the entry point runs over stdio (AC2)."""
     fake = _FakeServer()

@@ -1,10 +1,9 @@
 """Unit tests for CardRepository query methods."""
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.models.base import Base
 from src.data.repositories.card import CardRepository
 from src.data.schemas.card import Card
 from tests.fixtures.card_data import (
@@ -12,36 +11,7 @@ from tests.fixtures.card_data import (
     create_multiface_card,
     create_om1_spm_cards,
     create_sample_cards,
-    create_standard_legal_cards,
 )
-
-
-@pytest.fixture
-async def async_engine():
-    """Create an in-memory SQLite async engine for testing."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    # Cleanup
-    await engine.dispose()
-
-
-@pytest.fixture
-async def async_session(async_engine) -> AsyncSession:
-    """Create an async session for testing."""
-    async_session_maker = sessionmaker(
-        async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    async with async_session_maker() as session:
-        yield session
 
 
 @pytest.fixture
@@ -70,28 +40,6 @@ def card_repo(async_session: AsyncSession) -> CardRepository:
 def populated_repo(populated_session: AsyncSession) -> CardRepository:
     """Create a CardRepository with populated data."""
     return CardRepository(populated_session)
-
-
-@pytest.fixture
-async def mixed_format_session(async_session: AsyncSession) -> AsyncSession:
-    """Create a session with both Standard-legal and non-legal cards."""
-    # Add non-Standard cards
-    sample_cards = create_sample_cards()
-    async_session.add_all(sample_cards)
-
-    # Add Standard-legal cards
-    standard_cards = create_standard_legal_cards()
-    async_session.add_all(standard_cards)
-
-    await async_session.commit()
-
-    return async_session
-
-
-@pytest.fixture
-def mixed_format_repo(mixed_format_session: AsyncSession) -> CardRepository:
-    """Create a CardRepository with mixed format legality data."""
-    return CardRepository(mixed_format_session)
 
 
 @pytest.fixture
@@ -124,6 +72,16 @@ async def om1_spm_session(async_session: AsyncSession) -> AsyncSession:
 def om1_spm_repo(om1_spm_session: AsyncSession) -> CardRepository:
     """Create a CardRepository with OM1/SPM test data."""
     return CardRepository(om1_spm_session)
+
+
+async def test_the_shared_session_enforces_foreign_keys(async_session: AsyncSession) -> None:
+    """The conftest session runs the production connect hooks, so FK enforcement is on.
+
+    A bare ``create_async_engine`` (what these fixtures used to be) reads ``0`` here, and a
+    ``deck_cards`` row naming a missing card would then insert silently.
+    """
+    result = await async_session.execute(text("PRAGMA foreign_keys"))
+    assert result.scalar_one() == 1
 
 
 class TestFindByNameExact:

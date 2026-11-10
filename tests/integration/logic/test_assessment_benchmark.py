@@ -25,6 +25,7 @@ empty combo data scores without crashing (NFR3 core side).
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 import pytest
@@ -43,6 +44,7 @@ from src.logic.assessment import (
 )
 from tests.fixtures.assessment import make_combo_record, make_deck_card
 from tests.fixtures.benchmark_decks import BenchmarkEntry, load_benchmark
+from tests.fixtures.real_data import REAL_DATABASE_FILE
 
 pytestmark = pytest.mark.integration
 
@@ -99,9 +101,34 @@ class _ResolvedEntry:
     unknown_gc: tuple[str, ...]
 
 
+def _read_only_url(db_file: Path) -> str:
+    """Return a URL opening *db_file* read-only and immutable, so SQLite never writes beside it.
+
+    ``immutable=1`` also stops SQLite creating the ``-wal`` / ``-shm`` pair, which a plain
+    ``mode=ro`` open of a WAL database still does.
+
+    The price of writing nothing: an immutable open reads only the main file. Commits still in
+    ``cards.db-wal`` (not yet checkpointed) are invisible to it, and a writer that checkpoints
+    while this read is in progress can make SQLite return wrong results or report
+    ``SQLITE_CORRUPT``. Run the benchmark with no import or MCP server writing to the database.
+    """
+    return f"sqlite+aiosqlite:///file:{db_file.as_posix()}?mode=ro&immutable=1&uri=true"
+
+
 async def _resolve_all() -> dict[str, _ResolvedEntry] | None:
-    """Resolve every benchmark entry via the central DB; ``None`` if uninitialized."""
-    engine = create_engine()
+    """Resolve every benchmark entry via the operator's real DB; ``None`` if absent or empty.
+
+    The one sanctioned reader of operator data in the suite. It names
+    :data:`~tests.fixtures.real_data.REAL_DATABASE_FILE` explicitly rather than resolving a
+    default path, because the module-scoped fixture that calls it sets up before the root
+    ``isolated_data_dir`` fixture has repointed the environment. Opened read-only and immutable,
+    with ``ensure_indexes=False`` so no repair hook issues DDL or a ``DELETE``; see
+    :func:`_read_only_url` for what an immutable open cannot see (un-checkpointed WAL commits) and
+    why a concurrent writer can corrupt the read.
+    """
+    if not REAL_DATABASE_FILE.is_file():
+        return None
+    engine = create_engine(_read_only_url(REAL_DATABASE_FILE), ensure_indexes=False)
     try:
         session_factory = create_session_factory(engine)
         async with session_factory() as session:

@@ -55,14 +55,13 @@ from src.mcp_server import server as server_module
 from src.mcp_server.server import build_server
 from src.mcp_server.tools import companion, initialize_database
 from src.mcp_server.tools.assess_deck_power import MULTIPLAYER_VARIANCE_CAVEAT
+from src.search import ConnectionFactory
 from src.viewer import present
+from tests.fixtures.assessment_db import assessment_core_cards, null_game_changer_card
 from tests.fixtures.combo_snapshot import seed_snapshot, snapshot_variant
 from tests.fixtures.embedder import FakeEmbedder
+from tests.fixtures.server_seams import RecordingNotifier, fake_importer
 from tests.integration.conftest import SeededVecDB
-from tests.integration.mcp_server.test_first_run_data_init import (
-    _fake_importer,
-    _sync_cards_factory,
-)
 
 
 async def test_lookup_card_exact_hit(seeded_card_db: async_sessionmaker[AsyncSession]):
@@ -342,17 +341,6 @@ def _updated_at(deck: dict) -> datetime:
     return value
 
 
-class _RecordingNotifier:
-    """Records every ``deck_changed`` emit the server makes (installed at server.py's seam)."""
-
-    def __init__(self) -> None:
-        self.deck_ids: list[str | None] = []
-
-    async def __call__(self, deck_id: str | None = None, *, timeout: object = None) -> PushOutcome:
-        self.deck_ids.append(deck_id)
-        return PushOutcome(outcome="displayed", clients=1)
-
-
 async def _load(client: ClientSession, deck_id: str) -> dict:
     loaded = await client.call_tool("load_deck", {"deck_id": deck_id})
     assert loaded.isError is False and loaded.structuredContent is not None
@@ -489,7 +477,7 @@ async def test_update_deck_rejects_an_unknown_key_in_changes(
 ):
     """A typo'd field (``strategey``) fails validation on the wire instead of being silently
     dropped — alone or beside a valid field — and writes and emits nothing."""
-    notifier = _RecordingNotifier()
+    notifier = RecordingNotifier()
     monkeypatch.setattr(server_module, "_notify_deck_changed", notifier)
     server = build_server(session_factory=seeded_card_db)
     async with create_connected_server_and_client_session(server) as client:
@@ -560,7 +548,7 @@ async def test_set_card_quantity_without_a_quantity_is_rejected(
 ):
     """``quantity`` has no default: a call that omits it fails argument validation on the wire,
     so it can never silently trim a playset to one copy. Nothing is written or emitted."""
-    notifier = _RecordingNotifier()
+    notifier = RecordingNotifier()
     monkeypatch.setattr(server_module, "_notify_deck_changed", notifier)
     server = build_server(session_factory=seeded_card_db)
     async with create_connected_server_and_client_session(server) as client:
@@ -996,107 +984,14 @@ _VECTOR_KEYS = [
 ]
 
 
-def _assessment_card(
-    card_id: str,
-    name: str,
-    *,
-    type_line: str,
-    cmc: float = 2.0,
-    oracle_text: str = "Does a thing.",
-    colors: list[str] | None = None,
-    game_changer: bool | None = False,
-) -> CardModel:
-    """Build a CardModel legal in commander+standard with a unique oracle_id.
-
-    Mirrors the ``_card`` builder shape in test_assess_deck_power_tool.py.
-    ``game_changer`` defaults to ``False`` (confirmed not) so high-confidence
-    paths stay clean; the NULL fixture card opts in explicitly.
-    """
-    return CardModel(
-        id=card_id,
-        name=name,
-        printed_name=None,
-        oracle_id=f"oracle-{card_id}",
-        mana_cost="{R}",
-        cmc=cmc,
-        type_line=type_line,
-        oracle_text=oracle_text,
-        rarity="common",
-        set_code="TST",
-        set_name="Test Set",
-        collector_number="1",
-        colors=colors if colors is not None else ["R"],
-        color_identity=colors if colors is not None else ["R"],
-        legalities={"standard": "legal", "commander": "legal"},
-        games=["paper", "arena", "mtgo"],
-        game_changer=game_changer,
-    )
-
-
 def _assessment_cards() -> list[CardModel]:
     """Assessment-grade seed: commander candidates, combo partners, GC states, lands.
 
-    Deliberately NOT added to the shared ``_sample_cards`` — its counts are pinned
-    by existing assertions (Story 7.4 AC 5). The two confirmed Game Changers are
-    seeded in reverse bytewise name order ("Bolas's Citadel" before "Aura Shards")
-    so sorted-emission assertions cannot pass by insert-order accident.
+    Deliberately NOT added to the shared ``_sample_cards`` — its counts are pinned by existing
+    assertions (Story 7.4 AC 5). The shared core (``e2e-`` ids, the two confirmed Game Changers
+    in reverse bytewise name order) plus the NULL Game Changer.
     """
-    return [
-        _assessment_card(
-            "e2e-mountain",
-            "Mountain",
-            type_line="Basic Land — Mountain",
-            cmc=0.0,
-            oracle_text="{T}: Add {R}.",
-            colors=[],
-        ),
-        _assessment_card(
-            "e2e-krenko",
-            "Krenko, Mob Boss",
-            type_line="Legendary Creature — Goblin",
-            cmc=4.0,
-        ),
-        _assessment_card(
-            "e2e-zada",
-            "Zada, Hedron Grinder",
-            type_line="Legendary Creature — Goblin Ally",
-            cmc=3.0,
-        ),
-        _assessment_card(
-            "e2e-goblin-guide",
-            "Goblin Guide",
-            type_line="Creature — Goblin Scout",
-            cmc=1.0,
-        ),
-        _assessment_card(
-            "e2e-shock",
-            "Shock",
-            type_line="Instant",
-            cmc=1.0,
-        ),
-        _assessment_card(
-            "e2e-gc-bolas",
-            "Bolas's Citadel",
-            type_line="Legendary Artifact",
-            cmc=6.0,
-            game_changer=True,
-        ),
-        _assessment_card(
-            "e2e-gc-aura",
-            "Aura Shards",
-            type_line="Enchantment",
-            cmc=3.0,
-            colors=["G", "W"],
-            game_changer=True,
-        ),
-        _assessment_card(
-            "e2e-gc-null",
-            "Mystery Relic",
-            type_line="Artifact",
-            cmc=2.0,
-            game_changer=None,  # unknown state — the game_changer_data_unavailable fixture
-        ),
-    ]
+    return [*assessment_core_cards("e2e-"), null_game_changer_card("e2e-")]
 
 
 @pytest.fixture
@@ -2022,7 +1917,7 @@ async def test_initialize_database_round_trip(tmp_path: Path, monkeypatch: pytes
     """First call imports (``ok``), the second finds the cards and downloads nothing."""
     db_path = tmp_path / "fresh.db"
     monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{db_path.as_posix()}")
-    monkeypatch.setattr(initialize_database, "import_scryfall_bulk_data", _fake_importer)
+    monkeypatch.setattr(initialize_database, "import_scryfall_bulk_data", fake_importer)
 
     server = build_server(session_factory=create_session_factory(create_engine()))
     async with create_connected_server_and_client_session(server) as client:
@@ -2058,9 +1953,10 @@ async def test_initialize_database_import_failure_is_a_graceful_error(
 
 
 async def test_build_search_index_round_trip(
-    seeded_card_db: async_sessionmaker[AsyncSession], tmp_path: Path
+    seeded_card_db: async_sessionmaker[AsyncSession], card_db_path: Path
 ):
-    factory = _sync_cards_factory(tmp_path, seed=True)
+    """Both seams open the one file ``seeded_card_db`` wrote, so all three of its cards index."""
+    factory = ConnectionFactory(db_path=str(card_db_path))
     try:
         server = build_server(
             session_factory=seeded_card_db, connection_factory=factory, embedder=FakeEmbedder()
@@ -2072,7 +1968,7 @@ async def test_build_search_index_round_trip(
 
     assert result.isError is False and result.structuredContent is not None
     assert result.structuredContent["status"] == "ok"
-    assert result.structuredContent["cards_indexed"] == 2
+    assert result.structuredContent["cards_indexed"] == 3
 
 
 class _BlockingEmbedder(FakeEmbedder):
@@ -2090,12 +1986,16 @@ class _BlockingEmbedder(FakeEmbedder):
 
 
 async def test_a_tool_call_is_answered_while_the_index_builds(
-    seeded_card_db: async_sessionmaker[AsyncSession], tmp_path: Path
+    seeded_card_db: async_sessionmaker[AsyncSession], card_db_path: Path
 ):
-    """``build_search_index`` runs off the loop: a concurrent ``list_decks`` returns mid-build."""
+    """``build_search_index`` runs off the loop: a concurrent card lookup answers mid-build.
+
+    The lookup reads ``cards`` from the very file being indexed (both seams open
+    ``card_db_path``), so this also proves the build does not lock readers out.
+    """
     gate = threading.Event()
     embedder = _BlockingEmbedder(gate)
-    factory = _sync_cards_factory(tmp_path, seed=True)
+    factory = ConnectionFactory(db_path=str(card_db_path))
     try:
         server = build_server(
             session_factory=seeded_card_db, connection_factory=factory, embedder=embedder
@@ -2105,19 +2005,23 @@ async def test_a_tool_call_is_answered_while_the_index_builds(
             try:
                 # The build is inside the embedder (in a worker thread) and holding there...
                 assert await asyncio.wait_for(asyncio.to_thread(embedder.entered.wait, 15), 20)
-                # ...while the loop answers another tool call.
-                listed = await asyncio.wait_for(client.call_tool("list_decks", {}), timeout=10)
-                assert not build.done(), "list_decks returned while the build was still parked"
+                # ...while the loop answers another tool call against the same file.
+                looked_up = await asyncio.wait_for(
+                    client.call_tool("lookup_card_by_name", {"card_name": "Lightning Bolt"}),
+                    timeout=10,
+                )
+                assert not build.done(), "the lookup returned while the build was still parked"
             finally:
                 gate.set()
             built = await build
     finally:
         factory.close()
 
-    assert listed.isError is False and listed.structuredContent is not None
-    assert listed.structuredContent["status"] in {"ok", "empty"}
+    assert looked_up.isError is False and looked_up.structuredContent is not None
+    assert looked_up.structuredContent["status"] == "found"
     assert built.isError is False and built.structuredContent is not None
     assert built.structuredContent["status"] == "ok"
+    assert built.structuredContent["cards_indexed"] == 3
 
 
 async def test_the_server_lifespan_closes_the_shared_companion_client(
@@ -2134,17 +2038,8 @@ async def test_the_server_lifespan_closes_the_shared_companion_client(
     assert companion_client._shared is None
 
 
-@pytest.fixture
-def closed_companion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A data directory holding no discovery file, so no companion is running."""
-    data_dir = tmp_path / "no-companion-here"
-    data_dir.mkdir()
-    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
-    return data_dir
-
-
 async def test_companion_status_round_trip(
-    seeded_card_db: async_sessionmaker[AsyncSession], closed_companion: Path
+    seeded_card_db: async_sessionmaker[AsyncSession],
 ):
     server = build_server(session_factory=seeded_card_db)
     async with create_connected_server_and_client_session(server) as client:
@@ -2156,7 +2051,7 @@ async def test_companion_status_round_trip(
 
 
 async def test_companion_set_active_deck_round_trip(
-    seeded_card_db: async_sessionmaker[AsyncSession], closed_companion: Path
+    seeded_card_db: async_sessionmaker[AsyncSession],
 ):
     """The deck is read first; with no companion running the tool says so and nothing else."""
     server = build_server(session_factory=seeded_card_db)

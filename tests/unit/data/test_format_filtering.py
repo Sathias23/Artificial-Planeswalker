@@ -1,63 +1,9 @@
 """Unit tests for format filtering in CardRepository."""
 
-import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.models.base import Base
 from src.data.repositories.card import CardRepository
 from src.data.schemas.pagination import PaginatedResult
-from tests.fixtures.card_data import create_sample_cards, create_standard_legal_cards
-
-
-@pytest.fixture
-async def async_engine():
-    """Create an in-memory SQLite async engine for testing."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    # Cleanup
-    await engine.dispose()
-
-
-@pytest.fixture
-async def async_session(async_engine) -> AsyncSession:
-    """Create an async session for testing."""
-    async_session_maker = sessionmaker(
-        async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    async with async_session_maker() as session:
-        yield session
-
-
-@pytest.fixture
-async def mixed_format_session(async_session: AsyncSession) -> AsyncSession:
-    """Create a session with both Standard-legal and non-legal cards."""
-    # Add non-Standard cards
-    sample_cards = create_sample_cards()
-    async_session.add_all(sample_cards)
-
-    # Add Standard-legal cards
-    standard_cards = create_standard_legal_cards()
-    async_session.add_all(standard_cards)
-
-    await async_session.commit()
-
-    return async_session
-
-
-@pytest.fixture
-def mixed_format_repo(mixed_format_session: AsyncSession) -> CardRepository:
-    """Create a CardRepository with mixed format legality data."""
-    return CardRepository(mixed_format_session)
 
 
 class TestFormatFilteringExactName:

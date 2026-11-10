@@ -15,7 +15,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers import spellbook
 from src.data.importers.spellbook import SpellbookImportError, import_spellbook_snapshot
 from src.data.models.combo import (
@@ -23,22 +22,6 @@ from src.data.models.combo import (
     ComboVariantModel,
     ComboVariantPieceModel,
 )
-
-
-@pytest.fixture
-async def test_db(tmp_path):
-    """Create a temporary test database."""
-    db_path = tmp_path / "test_cards.db"
-    database_url = f"sqlite+aiosqlite:///{db_path}"
-
-    engine = create_engine(database_url)
-    await init_database(engine)
-
-    session_factory = create_session_factory(engine)
-
-    yield session_factory
-
-    await engine.dispose()
 
 
 def make_wire_variant(
@@ -116,10 +99,10 @@ async def _snapshot_state(session) -> tuple[set[str], set[tuple[str, str]], Any]
     return variant_ids, pieces, meta
 
 
-async def test_fresh_import_populates_all_three_tables(test_db, monkeypatch):
+async def test_fresh_import_populates_all_three_tables(empty_card_db, monkeypatch):
     patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats = await import_spellbook_snapshot(session)
 
         assert stats.total_variants == 3
@@ -154,8 +137,8 @@ async def test_fresh_import_populates_all_three_tables(test_db, monkeypatch):
         assert variant.popularity == 10
 
 
-async def test_rerun_replaces_snapshot_idempotently(test_db, monkeypatch):
-    async with test_db() as session:
+async def test_rerun_replaces_snapshot_idempotently(empty_card_db, monkeypatch):
+    async with empty_card_db() as session:
         patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
         await import_spellbook_snapshot(session)
 
@@ -178,8 +161,8 @@ async def test_rerun_replaces_snapshot_idempotently(test_db, monkeypatch):
         assert meta.variant_count == 1
 
 
-async def test_poisoned_second_payload_leaves_first_snapshot_intact(test_db, monkeypatch):
-    async with test_db() as session:
+async def test_poisoned_second_payload_leaves_first_snapshot_intact(empty_card_db, monkeypatch):
+    async with empty_card_db() as session:
         patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
         first_stats = await import_spellbook_snapshot(session)
         assert first_stats.imported == 3
@@ -192,7 +175,7 @@ async def test_poisoned_second_payload_leaves_first_snapshot_intact(test_db, mon
         with pytest.raises(SpellbookImportError, match="9-9"):
             await import_spellbook_snapshot(session)
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         variant_ids, pieces, meta = await _snapshot_state(session)
         assert variant_ids == {"1-2", "3-4", "5-6"}, "first snapshot must survive"
         assert len(pieces) == 7
@@ -200,8 +183,8 @@ async def test_poisoned_second_payload_leaves_first_snapshot_intact(test_db, mon
         assert meta.export_version == "5.6.0", "meta must still describe the first import"
 
 
-async def test_zero_eligible_variants_aborts_and_preserves_snapshot(test_db, monkeypatch):
-    async with test_db() as session:
+async def test_zero_eligible_variants_aborts_and_preserves_snapshot(empty_card_db, monkeypatch):
+    async with empty_card_db() as session:
         patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
         await import_spellbook_snapshot(session)
 
@@ -212,18 +195,20 @@ async def test_zero_eligible_variants_aborts_and_preserves_snapshot(test_db, mon
         with pytest.raises(SpellbookImportError, match="[Zz]ero eligible"):
             await import_spellbook_snapshot(session)
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         variant_ids, _, meta = await _snapshot_state(session)
         assert variant_ids == {"1-2", "3-4", "5-6"}
         assert meta is not None
         assert meta.export_version == "5.6.0"
 
 
-async def test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact(test_db, monkeypatch):
+async def test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact(
+    empty_card_db, monkeypatch
+):
     """A corrupt export with a duplicate spellbook_id fails the PK constraint inside the
     write transaction; the IntegrityError rollback branch fires and the previous snapshot
     survives (the mid-transaction atomicity guarantee, otherwise only claimed in prose)."""
-    async with test_db() as session:
+    async with empty_card_db() as session:
         patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
         await import_spellbook_snapshot(session)
 
@@ -239,7 +224,7 @@ async def test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact(test_db
         with pytest.raises(IntegrityError):
             await import_spellbook_snapshot(session)
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         variant_ids, pieces, meta = await _snapshot_state(session)
         assert variant_ids == {"1-2", "3-4", "5-6"}, "first snapshot must survive rollback"
         assert len(pieces) == 7
@@ -247,7 +232,7 @@ async def test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact(test_db
         assert meta.export_version == "5.6.0", "meta must still describe the first import"
 
 
-async def test_skip_counters_reported(test_db, monkeypatch):
+async def test_skip_counters_reported(empty_card_db, monkeypatch):
     variants = FIRST_VARIANTS + [
         make_wire_variant("10-1", ["Card A"], status="E"),
         make_wire_variant("10-2", ["Card B"], bracket_tag="B"),
@@ -259,7 +244,7 @@ async def test_skip_counters_reported(test_db, monkeypatch):
     ]
     patch_download(monkeypatch, gzipped_payload(variants))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats = await import_spellbook_snapshot(session)
 
         assert stats.total_variants == 6
@@ -269,14 +254,14 @@ async def test_skip_counters_reported(test_db, monkeypatch):
         assert stats.skipped_requires == 1
 
 
-async def _import_first_snapshot(test_db, monkeypatch) -> None:
+async def _import_first_snapshot(empty_card_db, monkeypatch) -> None:
     patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
-    async with test_db() as session:
+    async with empty_card_db() as session:
         await import_spellbook_snapshot(session)
 
 
-async def _assert_first_snapshot_intact(test_db) -> None:
-    async with test_db() as session:
+async def _assert_first_snapshot_intact(empty_card_db) -> None:
+    async with empty_card_db() as session:
         variant_ids, pieces, meta = await _snapshot_state(session)
     assert variant_ids == {"1-2", "3-4", "5-6"}
     assert len(pieces) == 7
@@ -284,46 +269,46 @@ async def _assert_first_snapshot_intact(test_db) -> None:
     assert meta.export_version == "5.6.0"
 
 
-async def test_a_header_after_the_variants_array_is_a_malformed_export(test_db, monkeypatch):
+async def test_a_header_after_the_variants_array_is_a_malformed_export(empty_card_db, monkeypatch):
     """``timestamp``/``version`` must precede ``variants``; an export that reaches the array
     first is refused as broken and the previous snapshot is untouched."""
-    await _import_first_snapshot(test_db, monkeypatch)
+    await _import_first_snapshot(empty_card_db, monkeypatch)
     doc = {"variants": FIRST_VARIANTS, "timestamp": "2026-07-17T00:00:00+00:00", "version": "9"}
     patch_download(monkeypatch, gzip.compress(json.dumps(doc).encode("utf-8")))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         with pytest.raises(SpellbookImportError, match="header"):
             await import_spellbook_snapshot(session)
 
-    await _assert_first_snapshot_intact(test_db)
+    await _assert_first_snapshot_intact(empty_card_db)
 
 
-async def test_a_truncated_gzip_is_a_broken_download(test_db, monkeypatch):
-    await _import_first_snapshot(test_db, monkeypatch)
+async def test_a_truncated_gzip_is_a_broken_download(empty_card_db, monkeypatch):
+    await _import_first_snapshot(empty_card_db, monkeypatch)
     whole = gzipped_payload(FIRST_VARIANTS, version="5.7.0")
     patch_download(monkeypatch, whole[: len(whole) // 2])
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         with pytest.raises(SpellbookImportError, match="broken or truncated"):
             await import_spellbook_snapshot(session)
 
-    await _assert_first_snapshot_intact(test_db)
+    await _assert_first_snapshot_intact(empty_card_db)
 
 
-async def test_an_export_without_a_variants_array_is_refused(test_db, monkeypatch):
-    await _import_first_snapshot(test_db, monkeypatch)
+async def test_an_export_without_a_variants_array_is_refused(empty_card_db, monkeypatch):
+    await _import_first_snapshot(empty_card_db, monkeypatch)
     doc = {"timestamp": "2026-07-17T00:00:00+00:00", "version": "5.7.0", "aliases": []}
     patch_download(monkeypatch, gzip.compress(json.dumps(doc).encode("utf-8")))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         with pytest.raises(SpellbookImportError, match="no 'variants' array"):
             await import_spellbook_snapshot(session)
 
-    await _assert_first_snapshot_intact(test_db)
+    await _assert_first_snapshot_intact(empty_card_db)
 
 
 async def test_every_skip_reason_is_counted_once_and_an_all_skipped_export_aborts(
-    test_db, monkeypatch
+    empty_card_db, monkeypatch
 ):
     """Three variants, one per skip reason: the stats name each, and zero eligible aborts."""
     variants = [
@@ -335,7 +320,7 @@ async def test_every_skip_reason_is_counted_once_and_an_all_skipped_export_abort
     ]
     patch_download(monkeypatch, gzipped_payload(variants))
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         with pytest.raises(SpellbookImportError, match="[Zz]ero eligible.*3"):
             await import_spellbook_snapshot(session)
         variant_ids, pieces, meta = await _snapshot_state(session)
@@ -344,14 +329,14 @@ async def test_every_skip_reason_is_counted_once_and_an_all_skipped_export_abort
 
 
 async def test_a_caller_supplied_temp_dir_keeps_the_directory_and_drops_the_download(
-    test_db, monkeypatch, tmp_path
+    empty_card_db, monkeypatch, tmp_path
 ):
     patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
     temp_dir = tmp_path / "operator-scratch"
     temp_dir.mkdir()
     (temp_dir / "keep.txt").write_text("the operator's own file", encoding="utf-8")
 
-    async with test_db() as session:
+    async with empty_card_db() as session:
         stats = await import_spellbook_snapshot(session, temp_dir=temp_dir)
 
     assert stats.imported == 3

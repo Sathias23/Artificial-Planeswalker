@@ -33,7 +33,7 @@ from src.companion.app import deps
 from src.companion.app.deps import Database, DbSession, database, database_file
 from src.companion.app.errors import CompanionError
 from src.companion.app.main import build_app
-from tests.unit.companion.conftest import keep_spa_mount_last
+from tests.unit.companion.conftest import _point_at, keep_spa_mount_last
 
 _DEPS_MODULE = "src.companion.app.deps"
 _ERRORS_MODULE = "src.companion.app.errors"
@@ -72,8 +72,13 @@ def _mark_import_in_progress(path: Path, flag: int = 1) -> None:
         )
 
 
-def _ready_database(path: Path) -> Path:
-    """Build a database at *path* that ``is_database_initialized`` calls ready, and return it."""
+def _ready_sqlite_file(path: Path) -> Path:
+    """Build a database at *path* that ``is_database_initialized`` calls ready, and return it.
+
+    Raw ``sqlite3``, a minimal ``cards`` table and one row, rather than the conftest's full-schema
+    ``ready_db``: this suite exercises the dependency, not the routes, and builds the shapes the
+    dependency must tell apart (absent, empty, corrupt, mid-import) byte by byte.
+    """
     _create_cards_table(path)
     _insert_card(path)
     return path
@@ -137,24 +142,6 @@ def _corrupt(path: Path) -> Path:
     is built) but the first read raises ``DatabaseError: file is not a database``.
     """
     path.write_bytes(b"this is definitely not a sqlite database" * 8)
-    return path
-
-
-def _point_at(monkeypatch, path: Path) -> Path:
-    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``.
-
-    The precedent is ``tests/integration/mcp_server/test_first_run_data_init.py``: an explicit
-    ``CARDS_DATABASE_URL`` wins over everything, so the resolution cannot be hijacked by a
-    developer's own environment.
-
-    Args:
-        monkeypatch: The pytest monkeypatch fixture.
-        path: The SQLite file the app should resolve, whether or not it exists.
-
-    Returns:
-        *path*, so callers can use this inline.
-    """
-    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{path.as_posix()}")
     return path
 
 
@@ -228,7 +215,7 @@ class TestFirstUseCreatesExactlyOneEngine:
     """AC 2 + AC 6: the engine appears on first use, is reused, and comes from the shared recipe."""
 
     async def test_first_call_creates_and_second_call_reuses(self, tmp_path, monkeypatch):
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         holder = Database()
 
         first = await holder.session_factory()
@@ -244,7 +231,7 @@ class TestFirstUseCreatesExactlyOneEngine:
     async def test_the_engine_carries_the_shared_recipe(self, tmp_path, monkeypatch):
         """AC 6: ``create_engine`` is what supplies the busy timeout, so a local
         ``create_async_engine`` call here would drift from ``src/mcp_server/server.py``."""
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         holder = Database()
 
         factory = await holder.session_factory()
@@ -265,7 +252,7 @@ class TestFirstUseCreatesExactlyOneEngine:
         fully synchronous, so on single-threaded asyncio this passes with the lock removed too. The
         two assertions with real teeth are in :class:`TestTheCreationLock` below.
         """
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         calls = []
         real_create_engine = deps.create_engine
 
@@ -304,7 +291,7 @@ class TestTheCreationLock:
     async def test_the_lock_is_held_while_the_engine_is_created(self, tmp_path, monkeypatch):
         """Fails if the lock is removed, or if the creation call is moved outside it — which is the
         double-check-inside-the-lock half of AC 7."""
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         holder = Database()
         held = []
         real_create_engine = deps.create_engine
@@ -355,7 +342,7 @@ class TestMissingFileIsServedNotCreated:
         so it must be deleted for this to prove anything (precedent: tests/unit/test_paths.py)."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
-        _ready_database(data_dir / "cards.db")
+        _ready_sqlite_file(data_dir / "cards.db")
         monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)
         monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
         holder = Database()
@@ -380,7 +367,7 @@ class TestDispose:
     async def test_dispose_releases_the_engine_and_leaves_the_holder_honest(
         self, tmp_path, monkeypatch
     ):
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         holder = Database()
         await holder.session_factory()
 
@@ -427,7 +414,7 @@ class TestReadinessIsTheProjectsExistingDefinition:
 
     async def test_a_ready_database_answers_200(self, tmp_path, monkeypatch, lifespan_client):
         """The non-vacuity anchor for every 503 in this class."""
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         app = _data_app()
 
         async with lifespan_client(app) as client:
@@ -487,7 +474,7 @@ class TestReadinessIsTheProjectsExistingDefinition:
     ):
         """Rows present but ``import_state.in_progress = 1`` — the fourth not-ready shape
         (:mod:`src.data.import_state`), and the reason readiness is not "the table has rows"."""
-        path = _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        path = _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         _mark_import_in_progress(path)
         app = _data_app()
 
@@ -533,7 +520,7 @@ class TestNoHolder:
         the lifespan (the ``lifespan_client`` seam always does). The port is stamped and the base
         URL matched so the request still passes c1-5's ``Host`` envelope rather than dying at a 400.
         """
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         app = _data_app()
         app.state.bound_port = 54321
 
@@ -581,7 +568,7 @@ class TestTransientFailureIsDatabaseUnavailable:
     async def test_a_failure_inside_a_route_body_answers_503(
         self, tmp_path, monkeypatch, lifespan_client
     ):
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         app = _data_app()
 
         async with lifespan_client(app) as client:
@@ -599,7 +586,7 @@ class TestTransientFailureIsDatabaseUnavailable:
         """``str(exc)`` carries the statement *and its bound parameters* (verified), and the
         companion is one ``fetch`` away from any page in the browser. So the log names the exception
         class and ``exc.orig`` — the DBAPI error — and never the exception's own string form."""
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         app = _data_app()
 
         with caplog.at_level(logging.WARNING):
@@ -670,7 +657,7 @@ class TestConcurrentFirstRequests:
 
         See :class:`TestTheCreationLock` for why this test alone does not prove the lock works.
         """
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         engines = []
         real_create_engine = deps.create_engine
 
@@ -716,7 +703,7 @@ class TestDatabaseAppearingAtRuntime:
             assert holder.engine is None, "nothing may be created while the file is absent"
 
             # The user asks their agent to run initialize_database; here, plain sqlite3 stands in.
-            _ready_database(path)
+            _ready_sqlite_file(path)
             appeared = await client.get(_DATA_PATH)
             assert holder.engine is not None, "the engine is created on the request that needs it"
 
@@ -743,7 +730,7 @@ class TestDatabaseAppearingAtRuntime:
             assert cached is not None, "a present file means the engine was built"
 
             # A *separate* sqlite3 connection writes the schema and a row.
-            _ready_database(path)
+            _ready_sqlite_file(path)
             ready = await client.get(_DATA_PATH)
             assert holder.engine is cached, "the same cached engine served both requests"
 
@@ -763,7 +750,7 @@ class TestShutdownDisposesTheEngine:
     async def test_dispose_is_reached_after_an_engine_was_created(
         self, tmp_path, monkeypatch, lifespan_client
     ):
-        _point_at(monkeypatch, _ready_database(tmp_path / "cards.db"))
+        _point_at(monkeypatch, _ready_sqlite_file(tmp_path / "cards.db"))
         app = _data_app()
 
         async with lifespan_client(app) as client:
