@@ -39,8 +39,8 @@ repos:
         entry: 'C:[\\/]+Users[\\/]+brads|c-{2}Users-brads'
         exclude: ^(docs/release-readiness-review\.md|_bmad-output/initiative-artificial-planeswalker/quality-audit-2026-09-03/quality-audit-2026-09-03\.md|_bmad-output/initiative-artificial-planeswalker/archive-v6/spec-quality-audit-p1/stories/1-metadata-bounds-clutter-process-move\.md)$
 
-  # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source
-  # input changes, rebuild it; pre-commit then fails if plugin/ was modified, prompting a re-add.
+  # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. Every commit
+  # rebuilds it; pre-commit then fails if plugin/ was modified, prompting a re-add.
   - repo: local
     hooks:
       # CI parity for the ui job's Prettier step: `npm run lint` does NOT include Prettier, so
@@ -52,9 +52,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^ui/
+      # Runs on every commit, not on a `files` match: pre-commit selects staged files with
+      # --diff-filter=ACMRTUXB, which leaves out deletions, so a commit that only deleted a src/
+      # file matched nothing, the hook never ran, and plugin/ kept the stale copy until CI's
+      # drift check failed. A rebuild takes about 0.4 s. Its inputs are listed in AGENTS.md.
       - id: build-plugin-sync
         name: rebuild plugin/ (keep marketplace source in sync with src/)
         entry: uv run python -m scripts.build_plugin
         language: system
         pass_filenames: false
-        files: ^(src/|\.claude/skills/(magic-deckbuilding|mana-curve-analysis|synergy-discovery|format-legality|companion)/|pyproject\.toml|uv\.lock|README\.md|LICENSE|NOTICE|scripts/build_plugin\.py)
+        always_run: true

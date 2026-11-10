@@ -8,14 +8,16 @@ name: CI
 #                             scoped to "not integration".
 #   `frontend`              — the ui/ gate (eslint + stylelint, prettier, tsc -b, vitest, vite
 #                             build) plus the SPA-bundle and generated-types drift checks.
-#   `companion-integration` — the one companion real-socket test, on Windows. Scoped by path to
-#                             tests/integration/companion/, so it runs the integration-marked test
-#                             the `quality` jobs deselect. See the job's own comment for why.
+#   `companion-integration` — the one companion real-socket test, on Windows, plus the four
+#                             companion unit files whose code differs per platform. Scoped by path,
+#                             so it runs the integration-marked test the `quality` jobs deselect.
+#                             See the job's own comment for why.
 #
 # Runs on pushes to master and on every pull request. No DB, model or secrets are required by any
 # job. Every job installs its dependencies from a package registry; beyond that, `frontend` is the
-# only one that reaches the network for anything, and `companion-integration`'s TEST step talks to
-# 127.0.0.1 and nothing else.
+# only one that reaches the network for anything, and `companion-integration`'s TEST steps talk to
+# 127.0.0.1 and nothing else. The model-backed search tests (the recall eval) run in
+# recall-eval.yml, which is path-filtered and not a required check.
 
 on:
   push:
@@ -35,6 +37,11 @@ jobs:
   quality:
     name: lint · types · tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # About seven times the measured job (under 2 min). Without it a hung test burns the 6-hour
+    # default and, because `cancel-in-progress` is false for master, holds the concurrency group
+    # every later master run queues behind. pytest runs with -v, so the log's last line names the
+    # test that hung.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +54,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
+          # Pinned on every setup-uv step (this workflow, live-contract.yml, recall-eval.yml), so a
+          # uv release cannot change how `uv sync --locked` reads the lock with no change here.
+          # Not `[tool.uv] required-version` in pyproject.toml: build_plugin copies that file into
+          # plugin/server/ verbatim, and an exact pin there would refuse every plugin user's uv.
+          # Bump all of them together.
+          version: "0.13.7"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
@@ -136,6 +149,9 @@ jobs:
   frontend:
     name: lint · types · tests (ui, node 20)
     runs-on: ubuntu-latest
+    # About seven times the measured job (just over 2 min); same hazard as `quality`'s. test:gates
+    # boots a real Vite dev server under a 180 s per-test timeout, so a wedged one still ends here.
+    timeout-minutes: 15
 
     defaults:
       run:
@@ -290,9 +306,8 @@ jobs:
   # Deliberately NOT folded into the `quality` matrix. That job runs `-m "not integration"`, which
   # deselects this test by definition, so it would have to change scope; and adding an OS axis to
   # it would re-run the whole ~2,770-test unit suite on the slowest and costliest runner class to
-  # reach one test. (NOT because an OS axis would find nothing — it would: test_singleton.py takes
-  # a real msvcrt branch on Windows that CI has only ever type-checked, never executed. That is a
-  # genuine gap, and it is not this job's to close.)
+  # reach one test. An OS axis would find something, though: the companion modules below take a
+  # different branch on Windows, which this job therefore also runs (its second pytest step).
   #
   # Windows because this seam is hardest there — `terminate()` is a hard kill, an un-waited child
   # keeps the port and cards.db open, and `localhost` resolves ::1 against an IPv4-only bind — and
@@ -331,11 +346,32 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
+          # Pinned (see the `quality` job's setup-uv step).
+          version: "0.13.7"
           enable-cache: true
           python-version: "3.12"
 
       - name: Sync dependencies (locked)
+        id: sync
         run: uv sync --locked
 
       - name: Pytest (companion integration only)
         run: uv run pytest tests/integration/companion/
+
+      # The Windows halves of the companion unit suite, which `quality` (ubuntu) never executes:
+      # the msvcrt lock and LK_UNLCK release in test_singleton.py, SO_EXCLUSIVEADDRUSE in
+      # test_server.py, the same-key os.replace race in test_images.py, and test_discovery.py's
+      # os.replace over an existing file. By path, not the whole of tests/unit/companion/: these
+      # four hold the per-platform code, and the rest already runs on every `quality` leg. About
+      # 4 s locally on Windows. A renamed file exits 4, so this step cannot pass on a missing path.
+      # It runs even when the real-socket step above fails, so one red run reports both suites.
+      #
+      # This job's `name:` is the branch-protection required check, so the job keeps it.
+      - name: Pytest (per-platform companion unit files)
+        if: ${{ !cancelled() && steps.sync.outcome == 'success' }}
+        run: >-
+          uv run pytest
+          tests/unit/companion/test_singleton.py
+          tests/unit/companion/test_server.py
+          tests/unit/companion/test_discovery.py
+          tests/unit/companion/test_images.py
