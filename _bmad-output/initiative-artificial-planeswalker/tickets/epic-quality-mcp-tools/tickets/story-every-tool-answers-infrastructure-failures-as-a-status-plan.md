@@ -199,8 +199,14 @@ full suite (-m 'not integration'): 3481 collected, 19 failed, 0 errored, exit 1
   RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_network_import_failure_keeps_the_network_hint[api]
 ```
 
-The three review-patch tests (vanished card, failed fastembed import, database error with network
-context) were added in `ce9cdb9` and have no harness red proof.
+The three review-patch guards from `ce9cdb9`, proved the same way (plants: the card re-check disabled,
+`ImportError` dropped from the embedder wrap, the cause chain walked innermost first):
+```
+full suite (-m 'not integration'): 3484 collected, 3 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_failed_fastembed_import_answers_error_naming_the_model
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_card_removed_between_resolution_and_the_write_is_card_not_found
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_database_error_cleaning_up_after_a_network_failure_blames_the_database
+```
 
 After the review patches (`ce9cdb9`): ruff, ruff format, mypy (both platforms) clean; `uv run pytest`
 3509 passed, 2 skipped; `scripts.build_plugin` leaves no drift.
