@@ -3,7 +3,7 @@ title: 'Recommendation provenance in the companion'
 type: 'feature'
 ticket: '5'
 created: '2026-11-10'
-status: 'review'
+status: done
 baseline_revision: '7cdd2d57c740f50d17e290bbabf5a945acb503a9'
 route: 'full'
 route_source: 'auto'
