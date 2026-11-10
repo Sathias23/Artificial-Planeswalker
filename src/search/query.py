@@ -225,6 +225,8 @@ def is_database_initialized(conn: sqlite3.Connection) -> bool:
     tool runs. Both states return ``False`` **without raising**, so the sync sqlite-vec tools
     (``semantic_search_cards`` / ``find_similar_cards`` / ``build_search_index``) can surface a
     graceful ``database_not_initialized`` status instead of leaking a raw ``OperationalError``.
+    A file that cannot be read at all (corrupt, not a database, locked) still raises
+    ``sqlite3.DatabaseError``; the MCP tool edge answers that as ``status="error"``.
 
     This is the sync counterpart of :func:`src.data.database.is_database_initialized` (used by the
     async relational tools); the two never share a call site. Mirrors :func:`index_is_populated`:

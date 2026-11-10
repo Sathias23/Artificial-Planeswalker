@@ -57,9 +57,9 @@ def ensure_nocase_indexes(dbapi_connection: Any, _connection_record: Any = None)
 
     Never fails the connection: a competing writer holding the lock (a bulk import or index build)
     surfaces as ``sqlite3.OperationalError``, and a corrupt or non-SQLite file as another
-    ``sqlite3.DatabaseError``; both are logged so the connection still opens and
-    :func:`is_database_initialized` can report the state gracefully. The next new connection
-    retries.
+    ``sqlite3.DatabaseError``; both are logged and the connection still opens. The tool's own first
+    query then meets the same fault — :func:`is_database_initialized` raises on an unreadable file
+    — and the MCP tool edge answers it as ``status="error"``. The next new connection retries.
 
     Args:
         dbapi_connection: The raw (aiosqlite-adapted or plain ``sqlite3``) DBAPI connection.
@@ -96,8 +96,9 @@ def enable_foreign_keys(dbapi_connection: Any, _connection_record: Any = None) -
     missing deck or card is rejected with ``IntegrityError``.
 
     Never fails the connection: a ``sqlite3.DatabaseError`` (a corrupt or non-SQLite file) is
-    logged and the connection still opens so :func:`is_database_initialized` can report the
-    state gracefully.
+    logged and the connection still opens. The tool's own first query then meets the same fault —
+    :func:`is_database_initialized` raises on an unreadable file — and the MCP tool edge answers it
+    as ``status="error"``.
 
     Args:
         dbapi_connection: The raw (aiosqlite-adapted or plain ``sqlite3``) DBAPI connection.
@@ -186,7 +187,8 @@ def remove_orphan_deck_cards(dbapi_connection: Any, _connection_record: Any = No
 
     Never fails the connection: a lock held by a competing writer or a corrupt file surfaces
     as ``sqlite3.DatabaseError``, which is rolled back and logged; the next new connection
-    retries.
+    retries. The tool's own first query then meets the same fault and the MCP tool edge answers
+    it as ``status="error"``.
 
     Args:
         dbapi_connection: The raw (aiosqlite-adapted or plain ``sqlite3``) DBAPI connection.
@@ -235,12 +237,17 @@ def remove_orphan_deck_cards(dbapi_connection: Any, _connection_record: Any = No
         cursor.close()
 
 
-def create_engine(database_url: str | None = None, *, ensure_indexes: bool = True) -> AsyncEngine:
+def create_engine(
+    database_url: str | None = None, *, ensure_indexes: bool = True, busy_timeout: float = 5
+) -> AsyncEngine:
     """Create an async SQLAlchemy engine.
 
     Args:
         database_url: Database connection string. If None, resolves the shared central-data-dir
             URL via ``src.paths.database_url()`` (an explicit ``CARDS_DATABASE_URL`` still wins).
+        busy_timeout: Seconds a connection waits on a competing writer's lock before SQLite
+            answers "database is locked" (default 5). A test seam: a locked-file test passes a
+            small value so it fails fast. Every connect hook pays this wait once on a locked file.
         ensure_indexes: Register the connect hooks that repair an existing database (the
             no-script migration path): the ``cards`` NOCASE indexes and the orphan
             ``deck_cards`` sweep. The companion app passes ``False``: it is a read-only shell of
@@ -254,11 +261,11 @@ def create_engine(database_url: str | None = None, *, ensure_indexes: bool = Tru
     engine = create_async_engine(
         url,
         echo=False,  # Set to True for SQL query logging during development
-        # Wait up to 5s for a competing writer's lock instead of failing instantly with
-        # "database is locked" — the bulk import and index build are both writers, and WAL
-        # lets a reader proceed but not a second writer. (aiosqlite forwards this to
+        # Wait for a competing writer's lock instead of failing instantly with "database is
+        # locked" — the bulk import and index build are both writers, and WAL lets a reader
+        # proceed but not a second writer. (aiosqlite forwards this to
         # sqlite3.connect(timeout=...), which sets SQLite's busy timeout.)
-        connect_args={"timeout": 5},
+        connect_args={"timeout": busy_timeout},
     )
     if engine.dialect.name == "sqlite":
         # The pragma is per connection and must precede any transaction, so it is the first
@@ -355,6 +362,11 @@ async def is_database_initialized(session: AsyncSession) -> bool:
     data is treated as not-initialized and ``initialize_database`` re-imports rather than trusting
     it.
 
+    A file that cannot be read at all — not a SQLite database, corrupt, or locked by another
+    writer past the busy timeout — is **not** a "not ready" state: the probe **raises** SQLAlchemy's
+    ``DatabaseError`` (``OperationalError`` for a lock), and the MCP tool edge
+    (``src/mcp_server/tools/failures.py``) maps it to the tool's ``status="error"``.
+
     The existence probe reads ``sqlite_master`` (always present) so the missing-table case returns
     ``False`` rather than raising; ``cards`` is a schema constant, never interpolated input. This is
     the async counterpart of :func:`src.search.query.is_database_initialized` (used by the sync
@@ -365,6 +377,9 @@ async def is_database_initialized(session: AsyncSession) -> bool:
 
     Returns:
         ``True`` if ``cards`` exists and contains at least one row, else ``False``.
+
+    Raises:
+        sqlalchemy.exc.DatabaseError: If the file is unreadable, corrupt or locked.
     """
     table = (
         await session.execute(

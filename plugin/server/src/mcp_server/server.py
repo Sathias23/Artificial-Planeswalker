@@ -20,6 +20,14 @@ no data) and ``build_search_index`` offload their heavy passes the same way. Eve
 guards an un-imported database with a ``database_not_initialized`` status that points at
 ``initialize_database`` rather than leaking a raw "no such table" error.
 
+What a helper cannot guard is the work before its own ``try``, so every database-backed tool
+(the session tools and the three sqlite-vec tools; not ``initialize_database``, which catches its
+own failures, nor the companion push tools and ``companion_status``, which read no database) runs
+under one edge guard (``tools/failures.py``): a corrupt, unreadable or locked ``cards.db``, a
+missing sqlite-vec extension or an embedding model that cannot load answers the tool's own
+``status="error"`` with a message naming the cause. Only those failures: a ``ProgrammingError`` or
+any other exception is a bug and still surfaces as an MCP error.
+
 ``view_deck`` renders a saved deck to a self-contained HTML page and best-effort opens it in the
 host's browser (the file path is always returned, so a headless host degrades gracefully). **It is
 deprecated (AD-15)**: the companion app superseded it, ``src/viewer`` is frozen, and nothing new is
@@ -37,7 +45,7 @@ Registration is transport-agnostic: the transport string is selected only at the
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -109,6 +117,7 @@ from src.mcp_server.tools.deck_management import (
 )
 from src.mcp_server.tools.deck_management import set_card_quantity as _set_card_quantity_helper
 from src.mcp_server.tools.deck_management import update_deck as _update_deck_helper
+from src.mcp_server.tools.failures import answer_infrastructure_failures
 from src.mcp_server.tools.find_similar import SimilarCardsResult
 from src.mcp_server.tools.find_similar import find_similar_cards as _find_similar_helper
 from src.mcp_server.tools.initialize_database import InitializeDatabaseResult
@@ -129,13 +138,13 @@ async def _emit_deck_changed(deck_id: str | None) -> None:
 
     The one wire between the deck-mutation tools and the shared notifier
     (:func:`src.companion.client.notify_deck_changed`). Each mutation wrapper awaits this *after*
-    its ``async with session_factory()`` block has exited, so every commit has landed and the pooled
-    connection is released before the up-to-~1 s notify window opens, and only when its result
-    proves a write actually happened. A plain bounded await, never a detached task
-    (``create_task``/``ensure_future``/``TaskGroup``/``gather`` are banned on this path: a task
-    outliving the tool call can be torn down before it runs, silently losing the event). The
-    outcome never alters the tool's own result; the notifier never raises (AD-9), and all this
-    function does with the :class:`~src.companion.client.PushOutcome` is debug-log it.
+    its guarded ``_in_session`` call has returned (the session block lives inside it), so every
+    commit has landed and the pooled connection is released before the up-to-~1 s notify window
+    opens, and only when its result proves a write actually happened. A plain bounded await, never a
+    detached task (``create_task``/``ensure_future``/``TaskGroup``/``gather`` are banned on this
+    path: a task outliving the tool call can be torn down before it runs, silently losing the
+    event). The outcome never alters the tool's own result; the notifier never raises (AD-9), and
+    all this function does with the :class:`~src.companion.client.PushOutcome` is debug-log it.
 
     **The accepted staleness window (AD-9, ``ARCHITECTURE-SPINE.md:211``)**, stated at both sites
     that swallow (here and on :func:`src.companion.client.notify_deck_changed`), so an amendment
@@ -196,6 +205,29 @@ def build_server(
 
     mcp = FastMCP("artificial-planeswalker", lifespan=_lifespan)
 
+    async def _in_session[ResultT](
+        tool: str,
+        run: Callable[[AsyncSession], Awaitable[ResultT]],
+        on_error: Callable[[str], ResultT],
+    ) -> ResultT:
+        """Run a session tool's body under the infrastructure guard (``tools/failures.py``).
+
+        The session is opened *inside* the guard, so a fault while it opens, while the helper's
+        readiness probe runs, or while it closes answers ``on_error(message)`` like any other.
+        """
+
+        async def call() -> ResultT:
+            async with session_factory() as session:
+                return await run(session)
+
+        return await answer_infrastructure_failures(tool, call, on_error)
+
+    async def _in_thread[ResultT](
+        tool: str, run: Callable[[], ResultT], on_error: Callable[[str], ResultT]
+    ) -> ResultT:
+        """Run a sync search tool's body in a worker thread, under the infrastructure guard."""
+        return await answer_infrastructure_failures(tool, lambda: asyncio.to_thread(run), on_error)
+
     @mcp.tool()
     async def lookup_card_by_name(
         card_name: str,
@@ -214,10 +246,14 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``found`` (single ``card``),
-            ``ambiguous`` (multiple ``matches`` to choose from), or ``not_found``.
+            ``ambiguous`` (multiple ``matches`` to choose from), ``not_found``, or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            return await lookup_card(session, card_name, format=format, games=games)
+        return await _in_session(
+            "lookup_card_by_name",
+            lambda session: lookup_card(session, card_name, format=format, games=games),
+            lambda message: CardLookupResult(status="error", message=message),
+        )
 
     @mcp.tool()
     async def search_cards(
@@ -259,11 +295,13 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (``cards`` plus pagination
-            metadata), ``empty`` (no matches — a graceful hint), or ``invalid``
-            (a filter value failed validation, with a message naming it).
+            metadata), ``empty`` (no matches — a graceful hint), ``invalid``
+            (a filter value failed validation, with a message naming it), or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            return await _search_cards_helper(
+        return await _in_session(
+            "search_cards",
+            lambda session: _search_cards_helper(
                 session,
                 colors=colors,
                 color_mode=color_mode,
@@ -277,7 +315,11 @@ def build_server(
                 games=games,
                 page=page,
                 page_size=page_size,
-            )
+            ),
+            lambda message: CardSearchResult(
+                status="error", page=page, page_size=page_size, message=message
+            ),
+        )
 
     @mcp.tool()
     async def list_decks(format: str | None = None) -> DeckListResult:
@@ -291,10 +333,14 @@ def build_server(
             format: Optional MTG format to filter by (e.g. "standard").
 
         Returns:
-            A result whose ``status`` is ``ok`` (``decks`` populated) or ``empty``.
+            A result whose ``status`` is ``ok`` (``decks`` populated), ``empty``, or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            return await _list_decks_helper(session, format=format)
+        return await _in_session(
+            "list_decks",
+            lambda session: _list_decks_helper(session, format=format),
+            lambda message: DeckListResult(status="error", message=message),
+        )
 
     @mcp.tool()
     async def create_deck(
@@ -316,12 +362,16 @@ def build_server(
             tags: Optional list of tags / win conditions.
 
         Returns:
-            A result whose ``status`` is ``ok`` (``deck`` populated) or ``invalid``.
+            A result whose ``status`` is ``ok`` (``deck`` populated), ``invalid``, or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            result = await _create_deck_helper(
+        result = await _in_session(
+            "create_deck",
+            lambda session: _create_deck_helper(
                 session, name=name, format=format, strategy=strategy, tags=tags
-            )
+            ),
+            lambda message: DeckResult(status="error", message=message),
+        )
         if result.status == "ok" and result.deck is not None:
             await _emit_deck_changed(result.deck.id)
         return result
@@ -335,8 +385,11 @@ def build_server(
         Stateless: pass the source deck_id every call. Omit name for exactly
         '<source name> (copy)'; explicit names must be nonblank and at most 100 characters.
         """
-        async with session_factory() as session:
-            result = await _clone_deck_helper(session, deck_id=deck_id, name=name)
+        result = await _in_session(
+            "clone_deck",
+            lambda session: _clone_deck_helper(session, deck_id=deck_id, name=name),
+            lambda message: DeckResult(status="error", message=message),
+        )
         if result.status == "ok" and result.deck is not None:
             await _emit_deck_changed(result.deck.id)
         return result
@@ -353,10 +406,14 @@ def build_server(
             deck_id: The deck id to load.
 
         Returns:
-            A result whose ``status`` is ``ok`` (``deck`` populated) or ``not_found``.
+            A result whose ``status`` is ``ok`` (``deck`` populated), ``not_found``, or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            return await _load_deck_helper(session, deck_id=deck_id)
+        return await _in_session(
+            "load_deck",
+            lambda session: _load_deck_helper(session, deck_id=deck_id),
+            lambda message: DeckResult(status="error", message=message),
+        )
 
     @mcp.tool()
     async def update_deck(deck_id: str, changes: DeckMetadataUpdate) -> DeckResult:
@@ -379,10 +436,14 @@ def build_server(
         Returns:
             A result whose ``status`` is ``ok`` (``deck`` populated, or ``None`` if the
             committed change could not be reloaded — call ``load_deck``), ``not_found``,
-            or ``invalid`` (empty ``changes``, blank ``name``, or a value over its cap).
+            ``invalid`` (empty ``changes``, blank ``name``, or a value over its cap), or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            result = await _update_deck_helper(session, deck_id=deck_id, changes=changes)
+        result = await _in_session(
+            "update_deck",
+            lambda session: _update_deck_helper(session, deck_id=deck_id, changes=changes),
+            lambda message: DeckResult(status="error", message=message),
+        )
         if result.status == "ok":
             # ``ok`` means the write committed, even when the post-commit reload failed and
             # ``deck`` is absent — so the emit keys on the caller's deck_id, not on the payload.
@@ -400,10 +461,14 @@ def build_server(
             deck_id: The deck id to delete.
 
         Returns:
-            A result whose ``status`` is ``ok`` (deleted) or ``not_found``.
+            A result whose ``status`` is ``ok`` (deleted), ``not_found``, or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            result = await _delete_deck_helper(session, deck_id=deck_id)
+        result = await _in_session(
+            "delete_deck",
+            lambda session: _delete_deck_helper(session, deck_id=deck_id),
+            lambda message: DeckDeleteResult(status="error", deck_id=deck_id, message=message),
+        )
         if result.status == "ok":
             await _emit_deck_changed(result.deck_id)
         return result
@@ -437,10 +502,12 @@ def build_server(
 
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``exists``/
-            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``).
+            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``), or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            result = await _add_card_to_deck_helper(
+        result = await _in_session(
+            "add_card_to_deck",
+            lambda session: _add_card_to_deck_helper(
                 session,
                 deck_id=deck_id,
                 card_id=card_id,
@@ -448,7 +515,11 @@ def build_server(
                 quantity=quantity,
                 sideboard=sideboard,
                 commander=commander,
-            )
+            ),
+            lambda message: DeckCardResult(
+                status="error", deck_id=deck_id.strip(), message=message
+            ),
+        )
         if result.status == "ok":
             await _emit_deck_changed(result.deck_id)
         return result
@@ -485,18 +556,24 @@ def build_server(
 
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``unchanged``/
-            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``); on
-            ``ok`` and ``unchanged`` its ``quantity`` is the stored count.
+            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``, or ``error``
+            — the local card database could not be read or written, ``message`` says why);
+            on ``ok`` and ``unchanged`` its ``quantity`` is the stored count.
         """
-        async with session_factory() as session:
-            result = await _set_card_quantity_helper(
+        result = await _in_session(
+            "set_card_quantity",
+            lambda session: _set_card_quantity_helper(
                 session,
                 deck_id=deck_id,
                 card_id=card_id,
                 name=name,
                 quantity=quantity,
                 sideboard=sideboard,
-            )
+            ),
+            lambda message: DeckCardResult(
+                status="error", deck_id=deck_id.strip(), message=message
+            ),
+        )
         if result.status == "ok":
             await _emit_deck_changed(result.deck_id)
         return result
@@ -516,7 +593,9 @@ def build_server(
         ``ok``, ``ambiguous``, ``not_found``, ``invalid``, or ``exists``. Every
         line is resolved first and all resolvable lines are written in one
         transaction: a line that fails to resolve never blocks the others, but
-        if that single write fails nothing is added and the status is ``error``.
+        if that single write fails nothing is added and the status is ``error``
+        (as it is when the local card database cannot be read at all — ``message``
+        says why).
 
         Args:
             deck_id: Existing saved deck id from ``create_deck`` or ``list_decks``.
@@ -525,10 +604,15 @@ def build_server(
         Returns:
             A structured summary with imported line/copy totals and per-line outcomes.
         """
-        async with session_factory() as session:
-            result = await _import_decklist_helper(
+        result = await _in_session(
+            "import_decklist",
+            lambda session: _import_decklist_helper(
                 session, deck_id=deck_id, arena_export=arena_export
-            )
+            ),
+            lambda message: DeckImportResult(
+                status="error", deck_id=deck_id.strip(), message=message
+            ),
+        )
         # One emit per tool call: the helper commits its resolvable lines in one transaction, and
         # the glass needs to hear "changed" exactly once, after that commit has landed.
         if result.imported_lines > 0:
@@ -556,16 +640,22 @@ def build_server(
 
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``not_in_deck``/
-            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``).
+            ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``), or
+            ``error`` (the local card database could not be read or written — ``message`` says why).
         """
-        async with session_factory() as session:
-            result = await _remove_card_from_deck_helper(
+        result = await _in_session(
+            "remove_card_from_deck",
+            lambda session: _remove_card_from_deck_helper(
                 session,
                 deck_id=deck_id,
                 card_id=card_id,
                 name=name,
                 sideboard=sideboard,
-            )
+            ),
+            lambda message: DeckCardResult(
+                status="error", deck_id=deck_id.strip(), message=message
+            ),
+        )
         if result.status == "ok":
             await _emit_deck_changed(result.deck_id)
         return result
@@ -597,8 +687,11 @@ def build_server(
             ``opened_in_browser`` reports whether a browser launched), ``not_found``,
             ``error``, or ``database_not_initialized``.
         """
-        async with session_factory() as session:
-            return await _view_deck_helper(session, deck_id=deck_id, open_browser=open_browser)
+        return await _in_session(
+            "view_deck",
+            lambda session: _view_deck_helper(session, deck_id=deck_id, open_browser=open_browser),
+            lambda message: ViewDeckResult(status="error", message=message),
+        )
 
     @mcp.tool()
     async def companion_status() -> CompanionStatusResult:
@@ -649,8 +742,11 @@ def build_server(
             running), ``payload_rejected``, ``backend_error``,
             ``database_not_initialized``, or ``error``.
         """
-        async with session_factory() as session:
-            return await _set_active_deck_helper(session, deck_id=deck_id)
+        return await _in_session(
+            "companion_set_active_deck",
+            lambda session: _set_active_deck_helper(session, deck_id=deck_id),
+            lambda message: SetActiveDeckResult(status="error", message=message),
+        )
 
     @mcp.tool()
     async def companion_show_suggestions(payload: SuggestionsPayload) -> ShowSuggestionsResult:
@@ -905,8 +1001,13 @@ def build_server(
             A result whose ``status`` is ``ok`` (analysis populated), ``empty``
             (no mainboard cards), ``deck_not_found``, or ``error``.
         """
-        async with session_factory() as session:
-            return await _analyze_mana_curve_helper(session, deck_id=deck_id)
+        return await _in_session(
+            "analyze_mana_curve",
+            lambda session: _analyze_mana_curve_helper(session, deck_id=deck_id),
+            lambda message: ManaCurveResult(
+                status="error", deck_id=deck_id.strip(), message=message
+            ),
+        )
 
     @mcp.tool()
     async def detect_synergies(deck_id: str) -> SynergyResult:
@@ -924,8 +1025,11 @@ def build_server(
             A result whose ``status`` is ``ok`` (synergies populated), ``empty``
             (no mainboard cards), ``deck_not_found``, or ``error``.
         """
-        async with session_factory() as session:
-            return await _detect_synergies_helper(session, deck_id=deck_id)
+        return await _in_session(
+            "detect_synergies",
+            lambda session: _detect_synergies_helper(session, deck_id=deck_id),
+            lambda message: SynergyResult(status="error", deck_id=deck_id.strip(), message=message),
+        )
 
     @mcp.tool()
     async def validate_deck(
@@ -963,8 +1067,15 @@ def build_server(
             A result whose ``status`` is ``ok`` (``report`` populated),
             ``deck_not_found``, ``invalid`` (a bad ``games`` value), or ``error``.
         """
-        async with session_factory() as session:
-            return await _validate_deck_helper(session, deck_id=deck_id, format=format, games=games)
+        return await _in_session(
+            "validate_deck",
+            lambda session: _validate_deck_helper(
+                session, deck_id=deck_id, format=format, games=games
+            ),
+            lambda message: ValidateDeckResult(
+                status="error", deck_id=deck_id.strip(), message=message
+            ),
+        )
 
     @mcp.tool()
     async def assess_deck_power(deck_id: str, format: str | None = None) -> AssessDeckPowerResult:
@@ -1003,8 +1114,13 @@ def build_server(
             ``unsupported_format``, ``database_not_initialized``, or
             ``error``.
         """
-        async with session_factory() as session:
-            return await _assess_deck_power_helper(session, deck_id=deck_id, format=format)
+        return await _in_session(
+            "assess_deck_power",
+            lambda session: _assess_deck_power_helper(session, deck_id=deck_id, format=format),
+            lambda message: AssessDeckPowerResult(
+                status="error", deck_id=deck_id.strip(), summary=message
+            ),
+        )
 
     @mcp.tool()
     async def compare_deck_power(
@@ -1050,10 +1166,18 @@ def build_server(
             ``deck_b_failed``, ``both_decks_failed``, ``format_mismatch``,
             ``database_not_initialized``, or ``error``.
         """
-        async with session_factory() as session:
-            return await _compare_deck_power_helper(
+        return await _in_session(
+            "compare_deck_power",
+            lambda session: _compare_deck_power_helper(
                 session, deck_id_a=deck_id_a, deck_id_b=deck_id_b, format=format
-            )
+            ),
+            lambda message: CompareDeckPowerResult(
+                status="error",
+                deck_id_a=deck_id_a.strip(),
+                deck_id_b=deck_id_b.strip(),
+                summary=message,
+            ),
+        )
 
     @mcp.tool()
     async def semantic_search_cards(
@@ -1093,18 +1217,20 @@ def build_server(
             ``distance``), ``empty`` (a valid query with no surviving matches — a graceful hint),
             ``invalid`` (a query/filter value failed validation, with a message naming it),
             ``index_unavailable`` (the semantic index has not been built yet — run the
-            ``build_search_index`` tool), or ``database_not_initialized`` (no card data yet — run
-            the ``initialize_database`` tool).
+            ``build_search_index`` tool), ``database_not_initialized`` (no card data yet — run
+            the ``initialize_database`` tool), or ``error`` (the card database, the sqlite-vec
+            extension or the embedding model could not be used — ``message`` names which; the
+            other card and deck tools may still work).
         """
 
-        # Off the loop: the per-thread sqlite-vec connection (NFR6) and the embedder are both
-        # resolved inside the worker, then the sync helper runs there.
+        # Off the loop: the per-thread sqlite-vec connection (NFR6) is taken inside the worker,
+        # and the embedder is handed over *uncalled* so the helper loads the model only after its
+        # database and index guards pass: an unbuilt index never triggers a model download.
         def _run() -> SemanticSearchResult:
             conn = connection_factory.get_connection()
-            emb = embedder if embedder is not None else get_embedder()
             return _semantic_search_helper(
                 conn,
-                emb,
+                embedder if embedder is not None else get_embedder,
                 query,
                 colors=colors,
                 color_mode=color_mode,
@@ -1115,7 +1241,11 @@ def build_server(
                 limit=limit,
             )
 
-        return await asyncio.to_thread(_run)
+        return await _in_thread(
+            "semantic_search_cards",
+            _run,
+            lambda message: SemanticSearchResult(status="error", query=query, message=message),
+        )
 
     @mcp.tool()
     async def find_similar_cards(
@@ -1162,8 +1292,10 @@ def build_server(
             index yet), ``ambiguous`` (the name matched multiple cards — see ``matches``, re-call
             with a ``card_id``), ``invalid`` (a parameter failed validation),
             ``index_unavailable`` (the semantic index has not been built yet — run the
-            ``build_search_index`` tool), or ``database_not_initialized`` (no card data yet — run
-            the ``initialize_database`` tool).
+            ``build_search_index`` tool), ``database_not_initialized`` (no card data yet — run
+            the ``initialize_database`` tool), or ``error`` (the card database or the sqlite-vec
+            extension could not be used — ``message`` names which; the other card and deck tools
+            may still work).
         """
 
         # Off the loop: the per-thread sqlite-vec connection (NFR6) is taken inside the worker.
@@ -1183,7 +1315,11 @@ def build_server(
                 limit=limit,
             )
 
-        return await asyncio.to_thread(_run)
+        return await _in_thread(
+            "find_similar_cards",
+            _run,
+            lambda message: SimilarCardsResult(status="error", message=message),
+        )
 
     # Both tools below wipe-and-rebuild local state (the card tables / the embedding index), so
     # they carry an honest destructive hint for clients that gate such tools behind confirmation.
@@ -1242,8 +1378,12 @@ def build_server(
         """
         # Off the loop: the whole build (connection, embedder resolution, embedding) runs in a
         # worker thread so other tool calls are answered while it works.
-        return await asyncio.to_thread(
-            _build_search_index_helper, connection_factory, embedder=embedder, rebuild=rebuild
+        return await _in_thread(
+            "build_search_index",
+            lambda: _build_search_index_helper(
+                connection_factory, embedder=embedder, rebuild=rebuild
+            ),
+            lambda message: BuildSearchIndexResult(status="error", message=message),
         )
 
     return mcp

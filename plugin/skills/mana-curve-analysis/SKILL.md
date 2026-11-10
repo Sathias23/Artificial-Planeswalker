@@ -155,9 +155,9 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 | `analyze_mana_curve` | `deck_id` **only** (no `format`) | `ok` (`distribution`, `total_lands`, `total_spells`, `average_cmc`, `playable_cards_by_turn`, `land_ratio`, `issues[]`, `recommendations[]`, `deck_name`) · `empty` (no mainboard cards) · `deck_not_found` · `error` |
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `error` |
-| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
-| `search_cards` | `colors?`, `color_mode?`, `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
-| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card` w/ full `oracle_text`/`type_line`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, NOT `ok` |
+| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` · `error` |
+| `search_cards` | `colors?`, `color_mode?`, `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` · `error` |
+| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card` w/ full `oracle_text`/`type_line`) · `ambiguous` (`matches`) · `not_found` · `error` — success is **`found`**, NOT `ok` |
 
 **Stateless contract (D5 — non-negotiable):** the server holds **no** state. `analyze_mana_curve` itself
 takes only `deck_id`; any `search_cards`/`semantic_search_cards`/`lookup_card_by_name` you run for fix-it
@@ -275,6 +275,10 @@ The tools return structured statuses, not raw exceptions — handle each:
   the same string.
 - **`invalid`**: a bad parameter — read the message and fix it. Common causes: `limit > 50`, or a `games`
   value outside `paper`/`arena`/`mtgo`.
+- **`error`** (any tool, lookup and search included): the local card database could not be used, and the
+  `message` says why. Report it honestly. An `error` from `semantic_search_cards` whose `message` names
+  sqlite-vec or the embedding model degrades like `index_unavailable` (fall back to `search_cards`); one
+  that says the database is locked can be retried once after a moment.
 
 ## Hard rules (do not break these)
 

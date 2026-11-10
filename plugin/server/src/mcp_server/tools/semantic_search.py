@@ -14,6 +14,7 @@ the sync sqlite-vec connection), not ``async`` over an ``AsyncSession``. Statele
 
 import logging
 import sqlite3
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import BaseModel
@@ -67,8 +68,11 @@ class SemanticSearchResult(BaseModel):
 
     Attributes:
         status: ``ok`` (``cards`` populated), ``empty`` (a valid query/filters with no surviving
-            matches), ``invalid`` (a query/filter value failed validation), or
-            ``index_unavailable`` (the ``card_vec`` semantic index has not been built yet).
+            matches), ``invalid`` (a query/filter value failed validation),
+            ``index_unavailable`` (the ``card_vec`` semantic index has not been built yet),
+            ``database_not_initialized`` (no card data yet), or ``error`` (the card database, the
+            sqlite-vec extension or the embedding model could not be used — ``message`` names
+            which; answered by the tool edge in ``tools/failures.py``).
         cards: The ranked hits, nearest-first (empty unless ``status == "ok"``).
         total_count: Number of hits returned (after oracle de-dup and ``limit``).
         query: The natural-language query reflected back to the caller.
@@ -76,7 +80,9 @@ class SemanticSearchResult(BaseModel):
             empty, or the offending value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid", "index_unavailable", "database_not_initialized"]
+    status: Literal[
+        "ok", "empty", "invalid", "index_unavailable", "database_not_initialized", "error"
+    ]
     cards: list[SemanticCardHit] = []
     total_count: int = 0
     query: str
@@ -135,7 +141,7 @@ def _validation_error(
 
 def semantic_search_cards(
     conn: sqlite3.Connection,
-    embedder: Embedder,
+    embedder: Embedder | Callable[[], Embedder],
     query: str,
     *,
     colors: list[str] | None = None,
@@ -158,7 +164,11 @@ def semantic_search_cards(
         conn: A sync ``sqlite3.Connection`` from
             :class:`~src.search.connection.ConnectionFactory` (sqlite-vec loaded; sees both
             ``card_vec`` and ``cards`` in the single DB file).
-        embedder: The :class:`~src.search.embedder.Embedder` used to embed ``query``.
+        embedder: The :class:`~src.search.embedder.Embedder` used to embed ``query``, or a
+            zero-argument callable returning one (the server passes
+            :func:`~src.search.embedder.get_embedder` uncalled). A callable is resolved only after
+            the database and index guards pass, so an unbuilt index never loads — or downloads —
+            the model.
         query: The natural-language search query (must be non-empty / non-whitespace).
         colors: Colour codes (W/U/B/R/G) matched per ``color_mode`` (vec0 metadata pre-filter).
         color_mode: How ``colors`` is matched — ``any`` / ``all`` / ``exact`` / ``at_most``.
@@ -171,7 +181,12 @@ def semantic_search_cards(
 
     Returns:
         A :class:`SemanticSearchResult` with ``status`` of ``ok`` / ``empty`` / ``invalid`` /
-        ``index_unavailable`` (the ``card_vec`` index has not been built yet).
+        ``index_unavailable`` (the ``card_vec`` index has not been built yet) /
+        ``database_not_initialized``.
+
+    Raises:
+        EmbeddingModelUnavailableError: If resolving ``embedder`` cannot load the model.
+        sqlite3.DatabaseError: If the database file is unreadable or locked.
 
     Example:
         >>> from src.search import ConnectionFactory, get_embedder
@@ -217,7 +232,10 @@ def semantic_search_cards(
             message=INDEX_NOT_BUILT_MESSAGE,
         )
 
-    query_vector = embedder.encode(query)
+    # Resolved only now, past both guards: loading the model is the expensive (first run: a
+    # download) step, and an install whose index is not built yet must not pay it to learn that.
+    resolved_embedder = embedder() if callable(embedder) else embedder
+    query_vector = resolved_embedder.encode(query)
     hits = hybrid_search(
         conn,
         query_vector,

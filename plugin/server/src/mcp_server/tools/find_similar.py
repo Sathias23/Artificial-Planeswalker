@@ -73,8 +73,11 @@ class SimilarCardsResult(BaseModel):
         status: ``ok`` (``cards`` populated), ``empty`` (seed resolved/indexed but nothing survived
             the filters/exclusion), ``invalid`` (a parameter failed validation), ``not_found`` (the
             seed matched no card, or matched a card that isn't in the semantic index yet), or
-            ``ambiguous`` (the name matched multiple distinct Oracle cards — see ``matches``), or
-            ``index_unavailable`` (the ``card_vec`` semantic index has not been built yet).
+            ``ambiguous`` (the name matched multiple distinct Oracle cards — see ``matches``),
+            ``index_unavailable`` (the ``card_vec`` semantic index has not been built yet),
+            ``database_not_initialized`` (no card data yet), or ``error`` (the card database or the
+            sqlite-vec extension could not be used — ``message`` names which; answered by the tool
+            edge in ``tools/failures.py``).
         cards: The ranked alternatives, nearest-first (empty unless ``status == "ok"``).
         total_count: Number of alternatives returned (after oracle de-dup, exclusion, ``limit``).
         seed: The resolved seed card. Echoed back for ``ok`` and ``empty`` (seed found and
@@ -96,6 +99,7 @@ class SimilarCardsResult(BaseModel):
         "ambiguous",
         "index_unavailable",
         "database_not_initialized",
+        "error",
     ]
     cards: list[SemanticCardHit] = []
     total_count: int = 0
