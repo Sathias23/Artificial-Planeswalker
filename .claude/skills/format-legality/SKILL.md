@@ -84,7 +84,7 @@ output for the real format, not to relitigate every rule.
 **Banlist vs rotation (explain the concept, don't hardcode the list):**
 - **Banned** = legal-by-pool but disallowed (too strong / unhealthy). The card is in the format's set pool
   but you can't play it.
-- **Restricted** (Vintage only) = legal at **exactly 1 copy**.
+- **Restricted** (mostly Vintage; Scryfall also restricts cards in `duel`, `competitivebrawl`, `tlr` and `timeless`) = legal at **exactly 1 copy** — `validate_deck` enforces it as `restricted_card` (as `singleton` in the singleton formats `duel` and `competitivebrawl`).
 - **Rotated out** = a Standard-style format dropped the card's set from its pool; it was legal, now isn't —
   but it's still legal in the non-rotating formats (Pioneer/Modern/Legacy/…).
 - **Never in the format** = the card's set was never in this pool (e.g. a Modern staple in Standard).
@@ -95,7 +95,7 @@ The live truth for all four lives in each card's `legalities` dict — read it v
 ## What `validate_deck` can and cannot see (the reason this skill exists)
 
 `validate_deck` (source: `src/logic/deck_validator.py` + the tool wrapper
-`src/mcp_server/tools/deck_analysis.py`) checks exactly six rules. **`_MIN_MAINBOARD = 60` /
+`src/mcp_server/tools/deck_analysis.py`) checks the nine rules in the table below. **`_MIN_MAINBOARD = 60` /
 `_MAX_SIDEBOARD = 15` are hard-coded for every `format`** (an explicit limitation), while the **copy limit
 IS format-aware**: 4 copies normally, **1 copy in the singleton formats** (`brawl`, `standardbrawl`,
 `commander`, `gladiator`, `competitivebrawl`, `duel`, `oathbreaker`, `paupercommander`, `predh`), basics

@@ -8,9 +8,9 @@ baseline_revision: '6f6322335427d80d69feb3331d0ed81bf48d57e6'
 route: 'full'
 route_source: 'auto'
 risk: 'medium'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick']
 review_loop_iteration: 0
 context:
   - '{project-root}/AGENTS.md'
@@ -106,9 +106,25 @@ The pin passed on the baseline before any `src/` change; every other new matrix 
 - `ui/` (after `npm ci` in this worktree): `lint`, `format:check`, `typecheck` clean; `npm test` 1786 passed; `test:gates` 39 passed; `build` and `gen:types` left no diff under `src/companion/app/static/` or `ui/src/api/`.
 - `uv run python -m scripts.build_plugin`: `plugin/server/src/...` (validator, both docstrings) and `plugin/skills/{format-legality,magic-deckbuilding}` regenerated and committed.
 
+### After review (2026-11-10, orchestrating session)
+
+- **Supersedes "Not touched" above.** The two stale `format-legality/SKILL.md` lines were fixed after all, since the grep-the-whole-pattern rule covers them: the restricted bullet now names every format Scryfall restricts in and says the tool reports `restricted_card` (`singleton` in duel and competitivebrawl). The "checks exactly six rules" sentence, already stale before this story at eight rules, now reads "the nine rules in the table below". `plugin/skills/format-legality/SKILL.md` was rebuilt with them.
+- **Correction to proof 2's list.** `TestValidateDeckRestricted` has six tests; the four that went red are one copy, two copies, five copies and singleton. 4 + 2 + 2 + 2 matches the harness's `10 failed`; the pasted harness line is the record.
+- `docs/future-ideas.md:21,41` no longer lists restricted-card semantics as missing.
+- These are text-only changes (skills, docs, plan); no code changed after the implementer's probe proofs. Python gate re-run on the final tree: ruff check and format clean, both mypy passes clean, `uv run pytest` 3400 passed, 2 skipped.
+
 ## Plan Change Log
 
 ## Review Triage Log
+
+Pass 1, lens `quick`: 4 findings. 2 `low` (patched), 2 rejected as plan-record edits (the plan is corrected by an appended note instead).
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | `SKILL.md:87` says restricted cards are always reported as `restricted_card`, but duel and competitivebrawl are singleton and report `singleton` | low | patch | Real: `deck_validator.py` checks `if singleton:` before `elif restricted:`. Added the parenthetical on both skill copies, after a plugin rebuild. |
+| 2 | The plan's "Not touched" note is false after the skill edits | low | rejected (plan edit) | True of the record only; appended a superseding note above. |
+| 3 | Proof 2's hand-written red list says "all five ... except two" for a six-test class | low | rejected (plan edit) | The count is wrong, but the harness line (10 failed) is right; appended a correction above. |
+| 4 | `docs/future-ideas.md:21,41` still lists restricted-card semantics as missing | low | patch | Real; both sentences rewritten. |
 
 ## Verification
 

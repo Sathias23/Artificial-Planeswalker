@@ -18,7 +18,7 @@ Complexity: **S** = contained extension; **M** = coordinated changes across seve
 
 | Rank | Change / feature | Area | Complexity | Return | Why prioritize it |
 |---|---|---|---|---|---|
-| 1 | **Complete format-aware legality** | Both | M–L | Very high | Correctness underpins every recommendation. Add format-specific sizes, commander eligibility/identity, restricted cards, and copy exceptions; explicitly identify unchecked rules. |
+| 1 | **Complete format-aware legality** | Both | M–L | Very high | Correctness underpins every recommendation. Add format-specific sizes, commander eligibility/identity and copy exceptions (restricted cards are modelled since quality story 7.1); explicitly identify unchecked rules. |
 | 2 | **Transactional changes with a before/after preview** | Both | M | Very high | Turn displayed swaps into a coherent change plan. Preview legality, curve and assessment effects; apply the entire plan in one transaction through MCP. |
 | 3 | **Rename decks and set quantities directly** | MCP | S | High | Basic edits currently require awkward workflows. Relevant repository methods already exist, making this a strong quick win. |
 | 4 | **Clone a deck** | MCP | S–M | High | Makes experimenting and using the existing power comparison straightforward. Preserve boards, commanders, quantities and metadata. |
@@ -38,7 +38,7 @@ Complexity: **S** = contained extension; **M** = coordinated changes across seve
 
 ### Legality needs attention first
 
-The shared validator deliberately applies a 60-card minimum and 15-card sideboard maximum across formats. It has singleton support, but omits Commander-specific construction checks and restricted-card semantics. A successful verdict can therefore imply more coverage than exists.
+The shared validator deliberately applies a 60-card minimum and 15-card sideboard maximum across formats. It has singleton support and treats a restricted card as legal at one copy (quality story 7.1), but omits Commander-specific construction checks. A successful verdict can therefore imply more coverage than exists.
 
 First expose coverage limitations clearly, then implement the missing rule profiles. Commander’s size and colour-identity requirements are part of the [official format rules](https://magic.wizards.com/en/formats/commander).
 
