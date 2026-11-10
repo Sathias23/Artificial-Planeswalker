@@ -7,25 +7,44 @@ model download):
   import failures as ``status="error"`` rather than raising.
 * ``build_search_index`` — builds the ``card_vec`` index when cards are present, and guards an
   un-imported database with ``database_not_initialized``.
-* The ``database_not_initialized`` guard across the relational tools (one per result model) and the
-  two-state semantic contract (``database_not_initialized`` with no cards → ``index_unavailable``
-  once cards exist but the index does not).
+* The ``database_not_initialized`` guard across the relational tools (one row per guarded helper)
+  and the two-state semantic contract (``database_not_initialized`` with no cards →
+  ``index_unavailable`` once cards exist but the index does not).
 """
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.importers.importer import ImportStatistics, ReconcileStatistics
 from src.data.importers.transformers import TransformReject
+from src.mcp_server.tools.assess_deck_power import assess_deck_power
 from src.mcp_server.tools.build_search_index import build_search_index
 from src.mcp_server.tools.card_lookup import lookup_card
 from src.mcp_server.tools.card_search import search_cards
-from src.mcp_server.tools.deck_analysis import analyze_mana_curve, validate_deck
-from src.mcp_server.tools.deck_management import add_card_to_deck, create_deck, list_decks
+from src.mcp_server.tools.companion import set_active_deck
+from src.mcp_server.tools.compare_deck_power import compare_deck_power
+from src.mcp_server.tools.deck_analysis import analyze_mana_curve, detect_synergies, validate_deck
+from src.mcp_server.tools.deck_import import import_decklist
+from src.mcp_server.tools.deck_management import (
+    DeckMetadataUpdate,
+    add_card_to_deck,
+    clone_deck,
+    create_deck,
+    delete_deck,
+    list_decks,
+    load_deck,
+    remove_card_from_deck,
+    set_card_quantity,
+    update_deck,
+)
 from src.mcp_server.tools.find_similar import find_similar_cards
 from src.mcp_server.tools.initialize_database import initialize_database
+from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 from src.mcp_server.tools.semantic_search import semantic_search_cards
 from src.mcp_server.tools.view_deck import view_deck
 from src.search import ConnectionFactory, compose_card_text
@@ -254,55 +273,61 @@ async def test_build_search_index_guards_uninitialized_db(
 
 # --- database_not_initialized guard across relational tools ---------------------------------------
 
+#: Every async helper that guards an un-imported database, each called with arguments that pass its
+#: own input validation, so the readiness probe is what answers. On an empty card table most of
+#: these would otherwise answer ``deck_not_found`` / ``not_found`` / ``empty``, which is why each
+#: needs its own row: deleting any one guard turns exactly that row red.
+_GUARDED_HELPERS: list[tuple[str, Callable[[AsyncSession], Awaitable[Any]]]] = [
+    ("lookup_card", lambda s: lookup_card(s, "Lightning Bolt")),
+    ("search_cards", lambda s: search_cards(s, colors=["R"])),
+    ("list_decks", lambda s: list_decks(s)),
+    ("create_deck", lambda s: create_deck(s, name="My Deck")),
+    ("clone_deck", lambda s: clone_deck(s, deck_id="d-1")),
+    ("load_deck", lambda s: load_deck(s, deck_id="d-1")),
+    (
+        "update_deck",
+        lambda s: update_deck(s, deck_id="d-1", changes=DeckMetadataUpdate(name="Renamed")),
+    ),
+    ("delete_deck", lambda s: delete_deck(s, deck_id="d-1")),
+    ("add_card_to_deck", lambda s: add_card_to_deck(s, deck_id="d-1", name="Bolt")),
+    (
+        "set_card_quantity",
+        lambda s: set_card_quantity(s, deck_id="d-1", name="Bolt", quantity=2),
+    ),
+    ("remove_card_from_deck", lambda s: remove_card_from_deck(s, deck_id="d-1", name="Bolt")),
+    (
+        "import_decklist",
+        lambda s: import_decklist(
+            s, deck_id="d-1", arena_export="Deck\n1 Lightning Bolt (LEA) 161"
+        ),
+    ),
+    ("view_deck", lambda s: view_deck(s, deck_id="d-1", open_browser=False)),
+    ("set_active_deck", lambda s: set_active_deck(s, deck_id="d-1")),
+    ("analyze_mana_curve", lambda s: analyze_mana_curve(s, deck_id="d-1")),
+    ("detect_synergies", lambda s: detect_synergies(s, deck_id="d-1")),
+    ("validate_deck", lambda s: validate_deck(s, deck_id="d-1")),
+    ("assess_deck_power", lambda s: assess_deck_power(s, deck_id="d-1")),
+    ("compare_deck_power", lambda s: compare_deck_power(s, deck_id_a="d-1", deck_id_b="d-2")),
+]
 
-async def test_lookup_card_guards_uninitialized_db(empty_card_db) -> None:
+
+@pytest.mark.parametrize(
+    "call", [call for _, call in _GUARDED_HELPERS], ids=[name for name, _ in _GUARDED_HELPERS]
+)
+async def test_every_guarded_helper_answers_database_not_initialized_on_an_empty_card_table(
+    empty_card_db, call
+) -> None:
+    """One row per guarded helper: the schema exists, ``cards`` is empty, the guard answers.
+
+    The message is the shared one that names ``initialize_database`` (the assessment tools carry it
+    in ``summary``), so a helper answering the right token with a stray message also fails.
+    """
     async with empty_card_db() as session:
-        result = await lookup_card(session, "Lightning Bolt")
+        result = await call(session)
     assert result.status == "database_not_initialized"
-    assert "initialize_database" in result.message
-
-
-async def test_search_cards_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await search_cards(session, colors=["R"])
-    assert result.status == "database_not_initialized"
-
-
-async def test_list_decks_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await list_decks(session)
-    assert result.status == "database_not_initialized"
-
-
-async def test_create_deck_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await create_deck(session, name="My Deck")
-    assert result.status == "database_not_initialized"
-
-
-async def test_add_card_to_deck_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await add_card_to_deck(session, deck_id="d-1", name="Bolt")
-    assert result.status == "database_not_initialized"
-
-
-async def test_view_deck_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await view_deck(session, deck_id="d-1")
-    assert result.status == "database_not_initialized"
-    assert "initialize_database" in result.message
-
-
-async def test_analyze_mana_curve_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await analyze_mana_curve(session, deck_id="d-1")
-    assert result.status == "database_not_initialized"
-
-
-async def test_validate_deck_guards_uninitialized_db(empty_card_db) -> None:
-    async with empty_card_db() as session:
-        result = await validate_deck(session, deck_id="d-1")
-    assert result.status == "database_not_initialized"
+    text = getattr(result, "message", None) or result.summary
+    assert text == DATABASE_NOT_INITIALIZED_MESSAGE
+    assert "initialize_database" in text
 
 
 # --- semantic tools: two-state contract -----------------------------------------------------------

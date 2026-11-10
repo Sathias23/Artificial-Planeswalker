@@ -657,15 +657,18 @@ class TestANoWriteOutcomeEmitsNothing:
             ("update_deck", {"changes": {"name": "Renamed"}}, "update_deck"),
             ("set_card_quantity", {"card_id": "card-bolt", "quantity": 2}, "update_card_quantity"),
             ("set_card_quantity", {"card_id": "card-bolt", "quantity": 0}, "remove_card_from_deck"),
+            ("add_card_to_deck", {"card_id": "card-thunderbolt"}, "add_card_to_deck"),
+            ("remove_card_from_deck", {"card_id": "card-bolt"}, "remove_card_from_deck"),
         ],
     )
     async def test_a_database_error_in_the_new_tools_is_silent_and_leaves_the_deck_alone(
         self, deck_db, notifier, monkeypatch, tool, args, repo_method
     ):
-        """Each write branch of the two quick-wins tools: a ``DatabaseError`` from the repository
-        method it delegates to is ``status="error"``, nothing is emitted, and the deck reads back
-        through a separate session exactly as it was. The patched method counts its calls, so a
-        misspelt ``repo_method`` cannot pass by never being reached."""
+        """Each card-write branch: a ``DatabaseError`` from the repository method it delegates to
+        is ``status="error"``, nothing is emitted, and the deck reads back through a separate
+        session exactly as it was. The patched method counts its calls, so a misspelt
+        ``repo_method`` cannot pass by never being reached. The message names the write that
+        failed, which is the helper's own arm speaking rather than any outer catch."""
         calls: list[str] = []
 
         async def boom(self, *a, **kw):
@@ -679,6 +682,7 @@ class TestANoWriteOutcomeEmitsNothing:
         assert calls == [repo_method], "the planted failure was really reached"
         assert result.isError is False
         assert result.structuredContent["status"] == "error"
+        assert result.structuredContent["message"].startswith("A database error occurred")
         assert emitted == [], "the failed write was silent"
         assert deck.name == "Sturdy"
         assert [(e.card_id, e.quantity) for e in deck.deck_cards] == [("card-bolt", 4)]
