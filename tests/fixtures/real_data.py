@@ -14,6 +14,7 @@ calls :func:`src.paths.data_dir`, which creates the directory it returns.
 
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 from platformdirs import user_data_dir
 
@@ -46,3 +47,21 @@ MODEL_CACHE_DIR: Path = _model_cache_dir()
 
 REAL_DATABASE_FILE: Path = _real_database_file()
 """The developer's card database. Only the assessment benchmark reads it, read-only."""
+
+
+def read_only_url(db_file: Path) -> str:
+    """Return a URL opening *db_file* read-only and immutable, so SQLite never writes beside it.
+
+    ``immutable=1`` also stops SQLite creating the ``-wal`` / ``-shm`` pair, which a plain
+    ``mode=ro`` open of a WAL database still does.
+
+    The price of writing nothing: an immutable open reads only the main file. Commits still in
+    ``cards.db-wal`` (not yet checkpointed) are invisible to it, and a writer that checkpoints
+    while this read is in progress can make SQLite return wrong results or report
+    ``SQLITE_CORRUPT``. Run the benchmark with no import or MCP server writing to the database.
+
+    The path is percent-quoted: in a URI filename SQLite reads ``#`` as a fragment and ``?`` as a
+    query, so an unquoted data dir holding either silently opens a different (empty) file.
+    """
+    path = quote(db_file.as_posix(), safe="/:")
+    return f"sqlite+aiosqlite:///file:{path}?mode=ro&immutable=1&uri=true"
