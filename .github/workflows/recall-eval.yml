@@ -1,0 +1,112 @@
+name: Recall eval
+
+# The semantic-search tests that need the real fastembed model, kept out of ci.yml so the required
+# checks stay model-free (no ~80 MB download can red or slow an unrelated PR).
+#
+# WHY IT EXISTS. AGENTS.md names one silent-degradation risk: fastembed ships a quantized model, and
+# a search or ranking change, a fastembed bump in uv.lock, or a new upload to the model's Hugging
+# Face repo can drop recall below tests/integration/search/test_rag_eval.py's TARGET_HIT_RATE with
+# every other test green. Before this workflow those tests ran on no CI runner.
+#
+# WHAT IT RUNS. The integration-marked tests in the selection below: the recall sanity eval, the
+# real-model embedder test, the semantic-search tool's ranking test and the index builder's end-to-
+# end test. Each builds its own tmp_path database, so no cards.db is needed. The assessment
+# benchmark (tests/integration/logic/) stays local: it reads the operator's real cards.db.
+#
+# WHEN. On a PR or master push that touches the search path, and weekly. The path runs restore the
+# model from a cache keyed on the locked fastembed version. The weekly run deliberately skips the
+# cache: fastembed resolves the model repo's current revision at download time, so only a fresh
+# download tests the model a new user's install would fetch today.
+#
+# Vacuity: a renamed or deleted path exits 4 and an empty selection exits 5, so the job cannot pass
+# on nothing; a skipped or gutted test is not seen.
+
+on:
+  schedule:
+    # 08:00 UTC every Monday, an hour after live-contract.yml.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [master]
+    # The search package, the three search tools, every src module they import directly, the
+    # selected tests with the conftests and fixtures they load, the lock, and this file. A change
+    # deeper than one import away reaches the eval on the weekly run.
+    paths: &search-paths
+      - "src/search/**"
+      - "src/mcp_server/tools/semantic_search.py"
+      - "src/mcp_server/tools/find_similar.py"
+      - "src/mcp_server/tools/build_search_index.py"
+      - "src/mcp_server/tools/card_search.py"
+      - "src/mcp_server/tools/messages.py"
+      - "src/data/import_state.py"
+      - "src/data/schemas/card.py"
+      - "src/paths.py"
+      - "tests/integration/search/**"
+      - "tests/integration/mcp_server/test_semantic_search_tool.py"
+      - "tests/unit/search/**"
+      - "tests/fixtures/**"
+      - "tests/conftest.py"
+      - "tests/integration/conftest.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/recall-eval.yml"
+  pull_request:
+    paths: *search-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recall-eval-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  recall:
+    name: semantic recall eval (real model)
+    runs-on: ubuntu-latest
+    # A cold run is a model download plus five tests (about 15 s locally). The bound turns a
+    # stalled download or a hung test into a failure instead of the 6-hour default.
+    timeout-minutes: 15
+    env:
+      # tests/fixtures/real_data.py snapshots this at import as the persistent model cache.
+      FASTEMBED_CACHE_DIR: ${{ github.workspace }}/.fastembed-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          # Pinned, as in ci.yml (see the comment there).
+          version: "0.13.7"
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+
+      # Both halves of the key come from the code, not from literals here: an exact key hit skips
+      # the cache save, so a model switch under an unchanged key would never be cached.
+      - name: Read the locked fastembed version and the model name
+        if: github.event_name != 'schedule'
+        id: fastembed
+        run: |
+          version="$(uv run python -c 'import importlib.metadata as m; print(m.version("fastembed"))')"
+          model="$(uv run python -c 'from src.search.embedder import MODEL_NAME; print(MODEL_NAME.replace("/", "-"))')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "model=$model" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the fastembed model
+        if: github.event_name != 'schedule'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FASTEMBED_CACHE_DIR }}
+          key: fastembed-${{ runner.os }}-${{ steps.fastembed.outputs.version }}-${{ steps.fastembed.outputs.model }}
+
+      - name: Pytest (model-backed search tests)
+        run: >-
+          uv run pytest -m integration
+          tests/integration/search/
+          tests/integration/mcp_server/test_semantic_search_tool.py
+          tests/unit/search/test_index_builder.py
