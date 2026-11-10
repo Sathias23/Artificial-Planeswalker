@@ -148,6 +148,15 @@ def _seed_cards() -> list[CardModel]:
             colors=[],
             legalities={"vintage": "restricted", "legacy": "banned", "standard": "not_legal"},
         ),
+        _card(
+            "card-wastes",
+            "Wastes",
+            type_line="Basic Land",
+            cmc=0.0,
+            oracle_text="{T}: Add {C}.",
+            colors=[],
+            legalities={"commander": "legal", "standard": "legal"},
+        ),
     ]
 
 
@@ -503,3 +512,112 @@ async def test_validate_deck_two_restricted_copies_are_one_violation(
             "2 copies of 'Black Lotus'; it is restricted in vintage (max 1 copy).",
         )
     ]
+
+
+# --- visible legality coverage (quick wins ticket 4): what was NOT checked ---
+#
+# Every verdict and violation list below is the PRE-CHANGE expectation: ``unchecked`` is
+# reporting only, so the rules that ran must answer exactly as they did before it existed.
+
+
+async def test_validate_deck_commander_lists_the_unchecked_rules(session: AsyncSession) -> None:
+    """A 100-card Commander deck is legal, and says size, commander and identity went unchecked."""
+    deck_id = await _make_deck(session, [("card-wastes", 100, False)], format="commander")
+
+    result = await validate_deck(session, deck_id=deck_id, format="commander")
+
+    assert result.status == "ok"
+    assert result.report is not None
+    assert result.report.is_legal is True
+    assert result.report.violations == []
+    assert [rule.rule for rule in result.report.unchecked] == [
+        "deck_size",
+        "commander_eligibility",
+        "color_identity",
+        "copy_exceptions",
+    ]
+    assert all("commander" in rule.detail for rule in result.report.unchecked)
+    assert result.message == (
+        "Deck is legal in commander (100-card mainboard). Not checked: deck size, "
+        "commander eligibility, color identity, copy exceptions."
+    )
+
+
+async def test_validate_deck_commander_violations_are_unchanged(session: AsyncSession) -> None:
+    """The list does not touch the verdict: a broken Commander deck reports the same two faults."""
+    deck_id = await _make_deck(
+        session,
+        [("card-wastes", 98, False), ("card-brawl-goblin", 2, False)],
+        format="commander",
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format="commander")
+
+    assert result.report is not None
+    assert result.report.is_legal is False
+    assert [(v.rule, v.card_name, v.detail) for v in result.report.violations] == [
+        (
+            "singleton",
+            "Brawl Goblin",
+            "2 copies of 'Brawl Goblin'; commander is a singleton format "
+            "(max 1 copy of any non-basic card).",
+        ),
+        ("format_legality", "Brawl Goblin", "'Brawl Goblin' is not legal in commander."),
+    ]
+    assert result.message == (
+        "Deck has 2 issues for commander legality. Not checked: deck size, "
+        "commander eligibility, color identity, copy exceptions."
+    )
+
+
+async def test_validate_deck_vintage_lists_no_restricted_rule(session: AsyncSession) -> None:
+    """Restricted cards are checked in Vintage, so only copy exceptions go unchecked."""
+    deck_id = await _make_deck(
+        session,
+        [("card-snow-forest", 59, False), ("card-black-lotus", 1, False)],
+        format="vintage",
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format="vintage")
+
+    assert result.report is not None
+    assert result.report.is_legal is True
+    assert result.report.violations == []
+    assert [rule.rule for rule in result.report.unchecked] == ["copy_exceptions"]
+    assert not any("restricted" in rule.detail for rule in result.report.unchecked)
+
+
+async def test_validate_deck_standard_lists_rotation_and_copy_exceptions(
+    session: AsyncSession,
+) -> None:
+    """Standard reports nothing beyond rotation and copy exceptions."""
+    deck_id = await _make_deck(session, [("card-mountain", 60, False)])
+
+    result = await validate_deck(session, deck_id=deck_id, format="standard")
+
+    assert result.report is not None
+    assert result.report.is_legal is True
+    assert result.report.violations == []
+    assert [rule.rule for rule in result.report.unchecked] == ["rotation", "copy_exceptions"]
+    assert result.message == (
+        "Deck is legal in standard (60-card mainboard). Not checked: rotation exposure, "
+        "copy exceptions."
+    )
+
+
+async def test_validate_deck_unknown_format_lists_nothing(session: AsyncSession) -> None:
+    """An unknown format's own violation says what was skipped; the list and message add nothing."""
+    deck_id = await _make_deck(session, [("card-mountain", 60, False)])
+
+    result = await validate_deck(session, deck_id=deck_id, format="potato")
+
+    assert result.report is not None
+    assert result.report.is_legal is False
+    assert [(v.rule, v.detail) for v in result.report.violations] == [
+        (
+            "unknown_format",
+            "'potato' is not a recognized format; per-card legality was not checked.",
+        )
+    ]
+    assert result.report.unchecked == []
+    assert result.message == "Deck has 1 issue for potato legality."

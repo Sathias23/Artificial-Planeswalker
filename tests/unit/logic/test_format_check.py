@@ -37,8 +37,12 @@ from src.logic.deck_validator import (
     _SINGLETON_FORMATS,
     CHECK_FOR_RULE,
     CHECK_ORDER,
+    UNCHECKED_ORDER,
+    UNCHECKED_PHRASES,
+    UNCHECKED_RULES,
     DeckViolationRule,
     FormatCheckReport,
+    UncheckedRuleName,
     format_check,
     validate_deck,
 )
@@ -753,3 +757,83 @@ class TestKnownFormatsMatchScryfall:
 
         assert [card["name"] for card in cards] == ["Black Lotus", "Snow-Covered Forest"]
         assert all(card["legalities"] for card in cards)
+
+
+class TestUncheckedRules:
+    """``UNCHECKED_RULES`` covers every recognised format, in the declared order (ticket 4).
+
+    The table is hand-maintained, so it is pinned total against ``_KNOWN_FORMATS`` (itself pinned
+    to the real Scryfall keys above): a new key fails here by name rather than reading as "fully
+    checked" with an empty list.
+    """
+
+    def test_the_table_covers_exactly_the_known_formats(self) -> None:
+        missing = sorted(_KNOWN_FORMATS - set(UNCHECKED_RULES))
+        stale = sorted(set(UNCHECKED_RULES) - _KNOWN_FORMATS)
+        assert not missing and not stale, (
+            f"formats without an UNCHECKED_RULES entry: {missing}; "
+            f"UNCHECKED_RULES entries that are not known formats: {stale}"
+        )
+
+    def test_the_declared_order_is_the_vocabulary(self) -> None:
+        assert len(UNCHECKED_ORDER) == len(set(UNCHECKED_ORDER))
+        assert set(UNCHECKED_ORDER) == set(get_args(UncheckedRuleName))
+        assert set(UNCHECKED_PHRASES) == set(get_args(UncheckedRuleName))
+
+    @pytest.mark.parametrize("format", sorted(UNCHECKED_RULES))
+    def test_every_entry_is_a_declared_order_tuple_of_real_members(self, format: str) -> None:
+        entry = UNCHECKED_RULES[format]
+
+        assert isinstance(entry, tuple)
+        assert entry, f"{format} lists nothing"
+        assert set(entry) <= set(UNCHECKED_ORDER)
+        assert list(entry) == sorted(set(entry), key=UNCHECKED_ORDER.index)
+        # Brad, 2026-11-10: copy exceptions are unchecked everywhere, Standard included.
+        assert entry[-1] == "copy_exceptions"
+
+    def test_own_deck_size_is_listed_for_exactly_the_singleton_formats(self) -> None:
+        sized = {format for format, entry in UNCHECKED_RULES.items() if "deck_size" in entry}
+
+        assert sized == _SINGLETON_FORMATS
+
+    def test_gladiator_has_no_commander(self) -> None:
+        assert UNCHECKED_RULES["gladiator"] == ("deck_size", "copy_exceptions")
+
+    def test_vintage_lists_no_restricted_rule(self) -> None:
+        """``restricted_card`` checks restricted cards, so nothing about them is unchecked."""
+        assert UNCHECKED_RULES["vintage"] == ("copy_exceptions",)
+
+    def test_a_standard_report_lists_only_rotation_and_copy_exceptions(self) -> None:
+        report = validate_deck(_deck([_mountain(60)]), format="standard")
+
+        assert [rule.rule for rule in report.unchecked] == ["rotation", "copy_exceptions"]
+        assert all("standard" in rule.detail for rule in report.unchecked)
+
+    @pytest.mark.parametrize("format", ["potato", "", "  "])
+    def test_an_unrecognised_or_empty_format_lists_nothing(self, format: str) -> None:
+        assert validate_deck(_deck([_mountain(60)]), format=format).unchecked == []
+
+    def test_the_projection_drops_rotation_and_keeps_the_rest(self) -> None:
+        deck = _deck([_mountain(60)], format="standardbrawl")
+
+        assert [rule.rule for rule in validate_deck(deck, format="standardbrawl").unchecked] == [
+            "deck_size",
+            "commander_eligibility",
+            "color_identity",
+            "rotation",
+            "copy_exceptions",
+        ]
+        assert [rule.rule for rule in format_check(deck).unchecked] == [
+            "deck_size",
+            "commander_eligibility",
+            "color_identity",
+            "copy_exceptions",
+        ]
+
+    def test_the_deck_size_sentence_names_no_size_but_the_minimum_applied(self) -> None:
+        report = validate_deck(_deck([_mountain(60)], format="gladiator"), format="gladiator")
+
+        assert report.unchecked[0].detail == (
+            "Deck size was not checked against gladiator's own rule; "
+            "only the 60-card minimum was applied."
+        )

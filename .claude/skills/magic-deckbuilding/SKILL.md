@@ -80,6 +80,10 @@ only** — they never modify the deck.
    (`restricted_card` rule; a single restricted copy is legal), per-card legality, platform
    availability; the `format` key is case-insensitive). Any illegal/over-limit card is a **mandatory cut**
    candidate. Note the size rules are still constructed-60 (no 100-card Commander/Brawl minima).
+   Read `report.unchecked` too: each `{rule, detail}` names a rule the tool did **not** check for this
+   format (`deck_size`, `commander_eligibility`, `color_identity`, `rotation`, `copy_exceptions`; a
+   Commander deck lists the first three plus copy exceptions). Those are yours to check, and a `legal`
+   verdict never covers them.
 
 Hold these findings — every swap you propose in Step 3 must trace back to one of them.
 
@@ -180,7 +184,7 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 | `delete_deck` | `deck_id` | `ok` (deleted) · `not_found` · `error` |
 | `analyze_mana_curve` | `deck_id` | `ok` (`distribution`, `total_lands/total_spells`, `average_cmc`, `land_ratio`, `issues`, `recommendations`) · `empty` · `deck_not_found` · `error` |
 | `detect_synergies` | `deck_id` | `ok` (`synergies[]`, `synergy_count`, `deck_cohesion`) · `empty` · `deck_not_found` · `error` |
-| `validate_deck` | `deck_id`, `format`, `games?` | `ok` (`report.is_legal` + violations) · `deck_not_found` · `invalid` · `error` |
+| `validate_deck` | `deck_id`, `format`, `games?` | `ok` (`report.is_legal` + violations + `unchecked[]`, the rules not checked) · `deck_not_found` · `invalid` · `error` |
 | `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each with `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
 | `find_similar_cards` | `card_name?` \| `card_id?`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` |
 | `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |

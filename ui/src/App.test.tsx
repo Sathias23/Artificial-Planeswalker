@@ -317,6 +317,15 @@ function formatCheckReport(overrides: Record<string, unknown> = {}) {
             'Rotation exposure cannot be checked: the local card data carries no set release dates.',
         },
       ],
+      // The one rule a Standard deck lists as unchecked once rotation (its own row) is dropped.
+      unchecked: [
+        {
+          rule: 'copy_exceptions',
+          detail:
+            "Cards that allow more copies than standard's copy limit (such as Relentless Rats) " +
+            'were not recognized; the limit was applied to them like any other card.',
+        },
+      ],
       ...overrides,
     }),
     { status: 200 },
@@ -1147,7 +1156,14 @@ describe('a cold open finds the deck and puts it on the glass (FR-07)', () => {
     // check in `CHECK_ORDER` whether or not anything is wrong, so this number is six on every
     // deck in the corpus and does not vary with the fixture above it.
     const formatCheck = screen.getByRole('region', { name: 'Format check' })
-    expect(within(formatCheck).getAllByRole('listitem')).toHaveLength(6)
+    const checkRows = formatCheck.querySelector('.format-check-rows')
+    expect(checkRows, 'the format check rows are not on the glass').not.toBeNull()
+    expect(within(checkRows as HTMLElement).getAllByRole('listitem')).toHaveLength(6)
+    // …and the FIFTH list, inside the same panel: the "Not checked" rules. A Standard deck lists
+    // one (copy exceptions; rotation is dropped because its own row says it).
+    const unchecked = formatCheck.querySelector('.format-check-unchecked')
+    expect(unchecked, 'the not-checked list is not on the glass').not.toBeNull()
+    expect(within(unchecked as HTMLElement).getAllByRole('listitem')).toHaveLength(1)
     // AND THE DOCUMENT-WIDE TOTAL, WHICH IS **FOUR** LISTS AND NOT THREE.
     // Worth writing down because the fourth is easy to miss: `ColourDistribution`'s LEGEND is a
     // `<ul>` too (deliberately — *"five entries in a mono-to-five-colour range is a list"*), and
@@ -1159,7 +1175,7 @@ describe('a cold open finds the deck and puts it on the glass (FR-07)', () => {
     const legend = document.querySelector('.colour-legend')
     expect(legend).not.toBeNull()
     expect(within(legend as HTMLElement).getAllByRole('listitem')).toHaveLength(1)
-    expect(screen.getAllByRole('listitem')).toHaveLength(2 + 2 + 1 + 6)
+    expect(screen.getAllByRole('listitem')).toHaveLength(2 + 2 + 1 + 6 + 1)
 
     // BOTH OF THESE ARE SCOPED TOO, for the same reason.
     // A tile and a row now name the same card and show the same count, on purpose — they are two

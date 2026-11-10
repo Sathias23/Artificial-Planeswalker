@@ -135,6 +135,7 @@ class TestLegalDeck:
             "mainboard_count",
             "sideboard_count",
             "rows",
+            "unchecked",
         }
         assert "status" not in body
         assert "report" not in body
@@ -421,6 +422,72 @@ class TestSnowBasicsAndRestrictedCards:
 
 
 # --------------------------------------------------------------------------------------------
+# Quick wins ticket 4: the format's known rules that were NOT checked
+# --------------------------------------------------------------------------------------------
+
+
+def _wastes() -> CardModel:
+    """A colorless basic, Commander- and Standard-legal, so a 100-card deck breaks nothing."""
+    return _legal_card(
+        "card-wastes",
+        "Wastes",
+        legalities={"commander": "legal", "standard": "legal"},
+        type_line="Basic Land",
+    )
+
+
+class TestUncheckedRules:
+    """The same list ``validate_deck`` reports, minus rotation, which has its own row."""
+
+    async def test_a_commander_deck_names_size_commander_and_identity(
+        self, ready_db, lifespan_client
+    ):
+        seeder, holder = _deck_seeder([_wastes()], [("card-wastes", 100)], format="commander")
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_PATH.format(deck_id=holder["id"]))).json()
+
+        assert [entry["rule"] for entry in body["unchecked"]] == [
+            "deck_size",
+            "commander_eligibility",
+            "color_identity",
+            "copy_exceptions",
+        ]
+        for entry in body["unchecked"]:
+            assert set(entry) == {"rule", "detail"}
+            assert "commander" in entry["detail"]
+        # The verdict is the one the rows gave before the list existed.
+        assert _rows(body) == {
+            "legality": "pass",
+            "size": "pass",
+            "copy_limit": "pass",
+            "sideboard": "pass",
+            "banned": "pass",
+            "rotation": "advisory",
+        }
+        assert _detail(body, "size") == "Mainboard has 100 cards; the minimum is 60."
+        assert body["is_legal"] is True
+
+    async def test_a_standard_deck_lists_copy_exceptions_and_not_rotation(
+        self, ready_db, lifespan_client
+    ):
+        seeder, holder = _deck_seeder(
+            [_basic("card-mountain", "Mountain")], [("card-mountain", 60)]
+        )
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_PATH.format(deck_id=holder["id"]))).json()
+
+        assert [entry["rule"] for entry in body["unchecked"]] == ["copy_exceptions"]
+        assert "rotation" not in {entry["rule"] for entry in body["unchecked"]}
+        # Rotation is still said, once, by its own row.
+        assert _rows(body)["rotation"] == "advisory"
+        assert body["is_legal"] is True
+
+
+# --------------------------------------------------------------------------------------------
 # AC 7: a deck whose format cannot be checked
 # --------------------------------------------------------------------------------------------
 
@@ -450,8 +517,11 @@ class TestNoFormatToCheckAgainst:
             "mainboard_count",
             "sideboard_count",
             "rows",
+            "unchecked",
         }
         assert body["format_recognized"] is False
+        # Nothing listed: the advisory rows already say what an unusable format skipped.
+        assert body["unchecked"] == []
         assert _rows(body)["legality"] == "advisory"
         assert _rows(body)["banned"] == "advisory"
         # The structural checks still answered, so "advisory" is not a blanket give-up.

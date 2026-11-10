@@ -777,6 +777,14 @@ const formatCheckBody = (overrides: Record<string, unknown> = {}) =>
           'Rotation exposure cannot be checked: the local card data carries no set release dates.',
       },
     ],
+    unchecked: [
+      {
+        rule: 'copy_exceptions',
+        detail:
+          "Cards that allow more copies than standard's copy limit (such as Relentless Rats) " +
+          'were not recognized; the limit was applied to them like any other card.',
+      },
+    ],
     ...overrides,
   })
 
@@ -842,6 +850,11 @@ describe('a 200 from the format check: the rows are the contract', () => {
     ['an empty rows array', formatCheckBody({ rows: [] })],
     ['a null row element', formatCheckBody({ rows: [{ check: 'legality' }, null] })],
     ['a scalar row element', formatCheckBody({ rows: ['legality'] })],
+    // `unchecked` is read during render too (`unchecked.length`, then each entry's fields), so the
+    // same three shapes that crash on `rows` crash on it. An EMPTY `unchecked` is valid (below).
+    ['a missing unchecked array', formatCheckBody({ unchecked: undefined })],
+    ['unchecked as an object', formatCheckBody({ unchecked: { rule: 'copy_exceptions' } })],
+    ['a null unchecked element', formatCheckBody({ unchecked: [null] })],
   ])('reports %s as a contract violation, not as a report with no rows', async (_label, body) => {
     // The `namesOf` posture: an empty format-check panel reads as "nothing to report" about a
     // deck that was never checked, which is a calm and confidently wrong thing to draw.
@@ -861,6 +874,8 @@ describe('a 200 from the format check: the rows are the contract', () => {
         is_legal: false,
         format: 'potato',
         format_recognized: false,
+        // Empty, as the real route answers an unrecognised format — and a VALID shape.
+        unchecked: [],
         rows: [
           {
             check: 'legality',
@@ -898,6 +913,8 @@ describe('a 200 from the format check: the rows are the contract', () => {
 
     expect(outcome.kind).toBe('report')
     expect(outcome.kind === 'report' && outcome.report.format_recognized).toBe(false)
+    // An EMPTY `unchecked` is the real answer here and must not be refused.
+    expect(outcome.kind === 'report' && outcome.report.unchecked).toEqual([])
     expect(outcome.kind === 'report' && outcome.report.rows).toHaveLength(6)
   })
 

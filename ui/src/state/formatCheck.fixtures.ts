@@ -34,6 +34,45 @@
 
 import type { FormatCheckReport, FormatCheckRow } from '../api/schema'
 
+type UncheckedRule = FormatCheckReport['unchecked'][number]
+
+/**
+ * `copy_exceptions` for *format* — the one unchecked rule every recognised format lists.
+ *
+ * The sentences in this block are `deck_validator.py`'s `_UNCHECKED_DETAIL`, read out of the real
+ * `format_check` (quick wins ticket 4). They are data, like the row sentences.
+ */
+const copyExceptions = (format: string): UncheckedRule => ({
+  rule: 'copy_exceptions',
+  detail:
+    `Cards that allow more copies than ${format}'s copy limit (such as Relentless Rats) were ` +
+    'not recognized; the limit was applied to them like any other card.',
+})
+
+/**
+ * What a commander-style format (`brawl`, `commander`, …) lists as unchecked, rotation aside:
+ * its own deck size, commander eligibility, color identity, then copy exceptions.
+ */
+const commanderStyleUnchecked = (format: string): UncheckedRule[] => [
+  {
+    rule: 'deck_size',
+    detail: `Deck size was not checked against ${format}'s own rule; only the 60-card minimum was applied.`,
+  },
+  {
+    rule: 'commander_eligibility',
+    detail:
+      `Commander eligibility was not checked for ${format}; nothing confirmed the deck has an ` +
+      'eligible commander.',
+  },
+  {
+    rule: 'color_identity',
+    detail:
+      `Color identity was not checked for ${format}; no card was compared with a ` +
+      "commander's color identity.",
+  },
+  copyExceptions(format),
+]
+
 /** The permanent rotation advisory. 86 characters, on **40 of 40 decks, forever**. */
 export const ROTATION_ADVISORY: FormatCheckRow = {
   check: 'rotation',
@@ -64,6 +103,7 @@ export const ALL_PASS_REPORT: FormatCheckReport = {
     { check: 'banned', status: 'pass', detail: 'No card is banned in standard.' },
     ROTATION_ADVISORY,
   ],
+  unchecked: [copyExceptions('standard')],
 }
 
 /**
@@ -94,6 +134,7 @@ export const BRAWL_VIOLATION_REPORT: FormatCheckReport = {
     { check: 'banned', status: 'pass', detail: 'No card is banned in brawl.' },
     ROTATION_ADVISORY,
   ],
+  unchecked: commanderStyleUnchecked('brawl'),
 }
 
 /**
@@ -120,6 +161,7 @@ export const ONE_CARD_REPORT: FormatCheckReport = {
     { check: 'banned', status: 'pass', detail: 'No card is banned in historic.' },
     ROTATION_ADVISORY,
   ],
+  unchecked: [copyExceptions('historic')],
 }
 
 /**
@@ -161,6 +203,7 @@ export const FORMATLESS_REPORT: FormatCheckReport = {
     },
     ROTATION_ADVISORY,
   ],
+  unchecked: [],
 }
 
 /**
@@ -221,6 +264,7 @@ export const SINGLETON_VIOLATION_REPORT: FormatCheckReport = {
     { check: 'banned', status: 'pass', detail: 'No card is banned in commander.' },
     ROTATION_ADVISORY,
   ],
+  unchecked: commanderStyleUnchecked('commander'),
 }
 
 /**
@@ -263,6 +307,37 @@ export const MULTI_VIOLATION_REPORT: FormatCheckReport = {
     { check: 'banned', status: 'violation', detail: "'Time Warp' is banned in brawl." },
     ROTATION_ADVISORY,
   ],
+  unchecked: commanderStyleUnchecked('brawl'),
+}
+
+/**
+ * ⚠️ **DECLARED SYNTHETIC — a legal 100-card Commander deck, for the "Not checked" list.**
+ *
+ * Every row passes, which is exactly the case the list exists for: a panel of passes over a deck
+ * whose size, commander and color identity were never examined. Produced by running the real
+ * `format_check` over a 100-Wastes `commander` deck (the route test
+ * `TestUncheckedRules::test_a_commander_deck_names_size_commander_and_identity` seeds the same
+ * deck); the deck is synthetic, every sentence is the backend's.
+ */
+export const COMMANDER_REPORT: FormatCheckReport = {
+  is_legal: true,
+  format: 'commander',
+  format_recognized: true,
+  mainboard_count: 100,
+  sideboard_count: 0,
+  rows: [
+    { check: 'legality', status: 'pass', detail: 'Every card is legal in commander.' },
+    { check: 'size', status: 'pass', detail: 'Mainboard has 100 cards; the minimum is 60.' },
+    {
+      check: 'copy_limit',
+      status: 'pass',
+      detail: 'No card exceeds the copy limit; basic lands are exempt.',
+    },
+    { check: 'sideboard', status: 'pass', detail: 'Sideboard has 0 cards; the maximum is 15.' },
+    { check: 'banned', status: 'pass', detail: 'No card is banned in commander.' },
+    ROTATION_ADVISORY,
+  ],
+  unchecked: commanderStyleUnchecked('commander'),
 }
 
 /** Every fixture in this module, so the pins over it cannot be selective. */
@@ -274,4 +349,5 @@ export const ALL_FIXTURES: { name: string; report: FormatCheckReport }[] = [
   { name: 'NO_FORMAT_REPORT', report: NO_FORMAT_REPORT },
   { name: 'SINGLETON_VIOLATION_REPORT', report: SINGLETON_VIOLATION_REPORT },
   { name: 'MULTI_VIOLATION_REPORT', report: MULTI_VIOLATION_REPORT },
+  { name: 'COMMANDER_REPORT', report: COMMANDER_REPORT },
 ]

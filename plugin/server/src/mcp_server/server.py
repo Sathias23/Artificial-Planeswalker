@@ -925,7 +925,11 @@ def build_server(
         ``format_legality`` one. ``format`` is case-insensitive (lowercased before
         use); ``format``/``games`` are per-call parameters (no server-side
         state). Returns a report listing every violation; ``report.is_legal`` is
-        the overall verdict.
+        the overall verdict. ``report.unchecked`` lists the format's known rules
+        that were NOT checked (each ``{rule, detail}``: ``deck_size``,
+        ``commander_eligibility``, ``color_identity``, ``rotation``,
+        ``copy_exceptions``), and ``message`` names them after "Not checked:" — a
+        legal verdict covers only the rules checked, never the ones listed there.
 
         Args:
             deck_id: The deck id (from ``create_deck`` or ``list_decks``).

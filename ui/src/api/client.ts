@@ -264,8 +264,11 @@ const deckOf = (body: unknown): DeckDetail | null => {
 
 /**
  * The format-check report out of a `200` body, or `null` if the body was not the promised record.
- * `rows` is the one field checked (the scalars are bound to nothing), and it must be a NON-EMPTY
- * array of objects. Empty: the six-rows-always contract means `{rows: []}` is never the promised
+ * `rows` and `unchecked` are the two fields checked (the scalars are bound to nothing). `rows` must
+ * be a NON-EMPTY array of objects; `unchecked` must be an array of objects, and EMPTY is valid (an
+ * unrecognised format lists nothing). The container reads `unchecked.length` and each entry's
+ * `rule`/`detail` during render, so a missing `unchecked` or a `null` entry would crash it exactly
+ * as a bad row would. Empty: the six-rows-always contract means `{rows: []}` is never the promised
  * record, and accepting it drew a titled "Format check" over nothing. Objects: the container
  * dereferences `row.check` on every element during render with no error boundary above it, so one
  * `null` element would take down the whole deck view. Row FIELDS are not validated: an off-vocabulary
@@ -277,6 +280,8 @@ const formatCheckOf = (body: unknown): FormatCheckReport | null => {
   const record = body as Partial<FormatCheckReport>
   if (!Array.isArray(record.rows) || record.rows.length === 0) return null
   if (!record.rows.every((row) => typeof row === 'object' && row !== null)) return null
+  if (!Array.isArray(record.unchecked)) return null
+  if (!record.unchecked.every((entry) => typeof entry === 'object' && entry !== null)) return null
   return body as FormatCheckReport
 }
 

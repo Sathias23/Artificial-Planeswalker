@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ALL_FIXTURES,
   BRAWL_VIOLATION_REPORT,
+  COMMANDER_REPORT,
   FORMATLESS_REPORT,
   NO_FORMAT_REPORT,
   ONE_CARD_REPORT,
@@ -153,5 +154,40 @@ describe('the fixtures model the shipped contract', () => {
     // …and `rotation` is NEVER anything else, in any fixture.
     expect(seen.has('rotation:pass')).toBe(false)
     expect(seen.has('rotation:violation')).toBe(false)
+  })
+})
+
+describe('the fixtures carry `unchecked` the way the real route does (quick wins ticket 4)', () => {
+  it.each(ALL_FIXTURES)(
+    '$name never lists rotation — its own row already says it',
+    ({ report }) => {
+      expect(report.unchecked.map((entry) => entry.rule)).not.toContain('rotation')
+      for (const entry of report.unchecked) expect(entry.detail.trim()).not.toBe('')
+    },
+  )
+
+  it.each(ALL_FIXTURES.filter(({ report }) => report.format_recognized))(
+    '$name, a recognised format, ends its list with copy exceptions',
+    ({ report }) => {
+      expect(report.unchecked.at(-1)?.rule).toBe('copy_exceptions')
+      for (const entry of report.unchecked) expect(entry.detail).toContain(report.format)
+    },
+  )
+
+  it('lists nothing for either formatless spelling', () => {
+    expect(FORMATLESS_REPORT.unchecked).toEqual([])
+    expect(NO_FORMAT_REPORT.unchecked).toEqual([])
+  })
+
+  it('lists size, commander and color identity for the commander deck, whose rows all pass', () => {
+    expect(
+      COMMANDER_REPORT.rows.every((row) => row.check === 'rotation' || row.status === 'pass'),
+    ).toBe(true)
+    expect(COMMANDER_REPORT.unchecked.map((entry) => entry.rule)).toEqual([
+      'deck_size',
+      'commander_eligibility',
+      'color_identity',
+      'copy_exceptions',
+    ])
   })
 })

@@ -4,7 +4,7 @@ import { Panel } from '../../components/Panel/Panel'
 import type { FormatCheckRow } from '../../api/schema'
 import { useFormatCheck } from '../../state/formatCheck'
 import './FormatCheck.css'
-import { CHECK_LABELS, FORMAT_CHECK_TITLE, STATUS_WORDS } from './copy'
+import { CHECK_LABELS, FORMAT_CHECK_TITLE, STATUS_WORDS, UNCHECKED_HEADING } from './copy'
 
 /**
  * The format check — six checks, one row each (UX-DR21, UX-DR44, UX-DR47, `DESIGN.md:376`,
@@ -259,6 +259,27 @@ export function FormatCheck() {
           </li>
         ))}
       </ul>
+      {/* WHAT WAS NOT CHECKED (quick wins ticket 4). A "pass" on every row must not read as
+          "fully checked": a Commander deck's size, commander and color identity were never
+          examined. The server lists those rules in `report.unchecked`, rotation excluded (its
+          own row already says it), and this renders them beneath the rows, in the payload's
+          order. The sentences are DATA, like `row.detail`; only the sub-heading is copy.
+
+          Nothing when the list is empty (an unrecognised or empty format, whose advisory rows
+          already say what was skipped). Display-only like the rows: no new focusable element.
+          An `<h3>` under the panel's `<h2>`, so the list is reachable by heading navigation. */}
+      {report.unchecked.length > 0 ? (
+        <>
+          <h3 className="format-check-unchecked-heading">{UNCHECKED_HEADING}</h3>
+          <ul className="format-check-unchecked">
+            {report.unchecked.map((entry) => (
+              <li className="format-check-unchecked-item" key={entry.rule}>
+                {entry.detail}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </Panel>
   )
 }

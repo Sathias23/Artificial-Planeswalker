@@ -19,6 +19,7 @@ import { loadFormatCheck, resetFormatCheckState } from '../../state/formatCheck'
 import {
   ALL_PASS_REPORT,
   BRAWL_VIOLATION_REPORT,
+  COMMANDER_REPORT,
   FORMATLESS_REPORT,
   MULTI_VIOLATION_REPORT,
   NO_FORMAT_REPORT,
@@ -26,7 +27,7 @@ import {
   SINGLETON_VIOLATION_REPORT,
 } from '../../state/formatCheck.fixtures'
 import { FormatCheck } from './FormatCheck'
-import { CHECK_LABELS, FORMAT_CHECK_TITLE, STATUS_WORDS } from './copy'
+import { CHECK_LABELS, FORMAT_CHECK_TITLE, STATUS_WORDS, UNCHECKED_HEADING } from './copy'
 
 /** Put a report in the store the way production does — through the slice's own action. */
 const showing = async (report: FormatCheckReport) => {
@@ -37,6 +38,16 @@ const showing = async (report: FormatCheckReport) => {
 const panel = () => screen.getByRole('region', { name: FORMAT_CHECK_TITLE })
 
 const rowsOf = (report: FormatCheckReport) => report.rows.map((row) => row.check)
+
+/**
+ * The six check rows' own `<ul>`. Scoped by class, not by `listitem` over the whole panel: the
+ * panel holds a second list (the "Not checked" rules) whenever the report names any.
+ */
+const checkRows = () => {
+  const list = panel().querySelector('.format-check-rows')
+  expect(list, 'the check rows are not on the glass').not.toBeNull()
+  return within(list as HTMLElement)
+}
 
 beforeEach(() => {
   resetFormatCheckState()
@@ -75,9 +86,9 @@ describe('exactly six rows, in the payload’s order, never sorted', () => {
   it('renders one list item per row, six of them', async () => {
     await showing(ALL_PASS_REPORT)
 
-    // SCOPED to this panel: a document-wide `getAllByRole('listitem')` would count the grid's and
-    // the deck list's items too. This is the panel's own count beside theirs.
-    expect(within(panel()).getAllByRole('listitem')).toHaveLength(6)
+    // SCOPED to the rows' own list: a document-wide `getAllByRole('listitem')` would count the
+    // grid's and the deck list's items too, and the panel holds the "Not checked" list as well.
+    expect(checkRows().getAllByRole('listitem')).toHaveLength(6)
   })
 
   it('follows the PAYLOAD’s order, not a local list — proved with a shuffled payload', async () => {
@@ -91,7 +102,7 @@ describe('exactly six rows, in the payload’s order, never sorted', () => {
     }
     await showing(shuffled)
 
-    const rendered = within(panel())
+    const rendered = checkRows()
       .getAllByRole('listitem')
       .map((item) => item.querySelector('.format-check-label')?.textContent)
     expect(rendered).toEqual(rowsOf(shuffled).map((check) => CHECK_LABELS[check]))
@@ -271,7 +282,7 @@ describe('the formatless report: six rows, no second layout, nothing negative', 
   ])('renders %s as an ordinary six-row report', async (_label, report) => {
     await showing(report)
 
-    expect(within(panel()).getAllByRole('listitem')).toHaveLength(6)
+    expect(checkRows().getAllByRole('listitem')).toHaveLength(6)
     // Both advisory sentences reach the glass — the only reading of `format_recognized` there is,
     // performed by this suite against the real field rather than by a decorative branch in the
     // component (see FormatCheck.tsx's header for why the component does not read it).
@@ -312,6 +323,45 @@ describe('the formatless report: six rows, no second layout, nothing negative', 
     for (const format of ['standard', 'brawl', 'potato', 'historic', 'commander']) {
       expect(chrome.toLowerCase()).not.toContain(format)
     }
+  })
+})
+
+describe('the rules that were NOT checked are said in words (quick wins ticket 4)', () => {
+  it('lists the commander deck’s unchecked size, commander and color identity', async () => {
+    await showing(COMMANDER_REPORT)
+
+    expect(
+      within(panel()).getByRole('heading', { level: 3, name: UNCHECKED_HEADING }),
+    ).toBeVisible()
+    const list = panel().querySelector('.format-check-unchecked')
+    expect(list?.tagName).toBe('UL')
+    const items = within(list as HTMLElement).getAllByRole('listitem')
+    // The server's sentences, verbatim and in the payload's order — data, not copy.
+    expect(items.map((item) => item.textContent)).toEqual(
+      COMMANDER_REPORT.unchecked.map((entry) => entry.detail),
+    )
+    const text = (list as HTMLElement).textContent ?? ''
+    expect(text).toContain('Deck size was not checked')
+    expect(text).toContain('Commander eligibility was not checked')
+    expect(text).toContain('Color identity was not checked')
+    // Every check row still passes: the list says what a pass does not cover.
+    expect(panel().querySelectorAll('.badge-negative')).toHaveLength(0)
+  })
+
+  it('renders no "Not checked" at all when the list is empty', async () => {
+    expect(FORMATLESS_REPORT.unchecked).toEqual([])
+    await showing(FORMATLESS_REPORT)
+
+    expect(panel().textContent).not.toContain(UNCHECKED_HEADING)
+    expect(within(panel()).queryByRole('heading', { level: 3 })).toBeNull()
+    expect(panel().querySelector('.format-check-unchecked')).toBeNull()
+  })
+
+  it('adds no focusable element', async () => {
+    const view = await showing(COMMANDER_REPORT)
+
+    expect(view.container.querySelectorAll('button, a, input, select, textarea')).toHaveLength(0)
+    expect(view.container.querySelectorAll('[tabindex]')).toHaveLength(0)
   })
 })
 
