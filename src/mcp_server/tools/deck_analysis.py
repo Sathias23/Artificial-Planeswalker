@@ -280,15 +280,16 @@ async def validate_deck(
 
     Loads the deck by ``deck_id`` and checks the constructed rules: mainboard
     size, sideboard size, the copy limit (counted across both boards, basics
-    exempt — 4 copies normally, **1 copy in singleton formats**: brawl,
-    standardbrawl, commander, gladiator, competitivebrawl, duel, oathbreaker,
-    paupercommander, predh — reported as
+    exempt, snow basics and Wastes included — 4 copies normally, **1 copy in
+    singleton formats**: brawl, standardbrawl, commander, gladiator,
+    competitivebrawl, duel, oathbreaker, paupercommander, predh — reported as
     ``singleton``), per-card legality in ``format``, and — when ``games`` is
     given — card availability on those platforms (based on the union of games
-    across all printings). A **banned** card is reported separately as
-    ``banned_card``; a card that is merely not in the format (and also a
-    ``restricted`` one, which this validator does not model a per-card copy
-    limit for) is reported as ``format_legality``. ``format`` is case-insensitive
+    across all printings). A **restricted** card is legal at **1 copy**; more
+    than one is reported as ``restricted_card`` (``singleton`` in a singleton
+    format), and a card gets at most one copy-count violation. A **banned** card
+    is reported separately as ``banned_card``; a card that is merely not in the
+    format is reported as ``format_legality``. ``format`` is case-insensitive
     (lowercased here) and, like ``games``, a per-call parameter (no server-side
     state). Returns a structured report listing every violation;
     ``report.is_legal`` is the overall verdict.

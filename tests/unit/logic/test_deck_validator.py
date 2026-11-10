@@ -182,6 +182,37 @@ class TestIsBasicLand:
         )
         assert is_basic_land(uppercase_basic) is True
 
+    @pytest.mark.parametrize(
+        ("name", "type_line"),
+        [
+            ("Snow-Covered Forest", "Basic Snow Land — Forest"),
+            ("Snow-Covered Wastes", "Basic Snow Land"),
+            ("Wastes", "Basic Land"),
+        ],
+        ids=["snow-basic", "snow-basic-without-subtype", "basic-without-subtype"],
+    )
+    def test_every_basic_land_spelling_is_basic(self, name: str, type_line: str) -> None:
+        """Scryfall's real type lines for the basics a substring test missed (``M2``).
+
+        ``Snow`` sits between ``Basic`` and ``Land``, so ``"basic land" in type_line`` was false
+        for every snow basic; Wastes has no subtype and therefore no dash at all.
+        """
+        assert is_basic_land(_vd_card(name.lower(), name, type_line=type_line, cmc=0.0)) is True
+
+    @pytest.mark.parametrize(
+        ("name", "type_line"),
+        [
+            ("Omnipresent Impostor", "Basic Creature — Shapeshifter"),
+            ("Snow-Covered Elk", "Snow Creature — Elk"),
+            ("Subtype Trick", "Sorcery — Basic Land"),
+        ],
+        ids=["basic-non-land", "snow-non-basic", "basic-land-only-after-the-dash"],
+    )
+    def test_basic_and_land_must_both_be_supertypes(self, name: str, type_line: str) -> None:
+        """The non-vacuity pair: ``Basic`` without ``Land`` (or the words only after the dash,
+        a constructed line) is not a basic land and stays under the copy limit."""
+        assert is_basic_land(_vd_card(name.lower(), name, type_line=type_line)) is False
+
 
 class TestGetCurrentCardCount:
     """Test get_current_card_count() helper function."""
@@ -651,22 +682,33 @@ class TestValidateDeck:
             "Modern Staple"
         ]
 
-    def test_restricted_is_unchanged_by_the_banned_split(self) -> None:
-        """The latent bug the split deliberately did not fix: a restricted card is legal with a
-        1-copy limit, which this validator does not model, so it keeps reporting as not legal.
-        Pinned so a later change to that behaviour is a decision rather than a side effect."""
-        restricted = _vd_card(
-            "restricted", "Restricted Relic", legalities={"vintage": "restricted"}
+    def test_ten_snow_basics_are_copy_limit_exempt(self) -> None:
+        """Snow basics are basics (``M2`` / ``B4-P1``): ten Snow-Covered Forests in a 60-card
+        deck break no copy limit, and the deck is legal."""
+        mountain = _vd_card("mountain", "Mountain", type_line="Basic Land — Mountain", cmc=0.0)
+        snow = _vd_card(
+            "snow-forest", "Snow-Covered Forest", type_line="Basic Snow Land — Forest", cmc=0.0
         )
-        deck = _vd_deck([_vd_deck_card(restricted, 1)])
+        deck = _vd_deck([_vd_deck_card(mountain, 50), _vd_deck_card(snow, 10)])
 
-        report = validate_deck(deck, format="vintage")
+        report = validate_deck(deck)
 
-        assert any(
-            v.rule == "format_legality" and v.card_name == "Restricted Relic"
-            for v in report.violations
+        assert report.violations == []
+        assert report.is_legal is True
+
+    def test_five_basic_non_lands_still_flag_copy_limit(self) -> None:
+        """The pair: ``Basic`` alone is not the exemption. Omnipresent Impostor is a Basic
+        Creature, so five copies are a copy_limit violation."""
+        impostor = _vd_card(
+            "impostor", "Omnipresent Impostor", type_line="Basic Creature — Shapeshifter"
         )
-        assert not any(v.rule == "banned_card" for v in report.violations)
+        deck = _vd_deck([_vd_deck_card(impostor, 5)])
+
+        report = validate_deck(deck)
+
+        assert [v.card_name for v in report.violations if v.rule == "copy_limit"] == [
+            "Omnipresent Impostor"
+        ]
 
     def test_null_legalities_and_games_coerce_without_raising(self) -> None:
         """A card whose DB ``legalities``/``games`` were NULL coerces to ``{}``/``[]`` at
@@ -791,6 +833,84 @@ class TestValidateDeck:
         assert violation.rule == "copy_limit"
         assert violation.card_name == "X"
         assert violation.detail == "too many"
+
+
+def _restricted_deck(*entries: tuple[int, bool], format_legality: str = "vintage") -> Deck:
+    """A 60-card mainboard (vintage-legal basics as filler) plus Black Lotus *entries*.
+
+    Each entry is ``(quantity, sideboard)``. The Lotus is ``restricted`` in *format_legality*
+    and ``banned`` in legacy, as on the real card, so a rule that read the wrong key would show.
+    """
+    lotus = _vd_card(
+        "black-lotus",
+        "Black Lotus",
+        type_line="Artifact",
+        cmc=0.0,
+        legalities={format_legality: "restricted", "legacy": "banned"},
+    )
+    island = _vd_card(
+        "island",
+        "Island",
+        type_line="Basic Land — Island",
+        cmc=0.0,
+        legalities={format_legality: "legal"},
+    )
+    mainboard_lotus = sum(quantity for quantity, sideboard in entries if not sideboard)
+    return _vd_deck(
+        [_vd_deck_card(island, 60 - mainboard_lotus)]
+        + [_vd_deck_card(lotus, quantity, sideboard=sideboard) for quantity, sideboard in entries]
+    )
+
+
+class TestValidateDeckRestricted:
+    """A ``restricted`` card in a known format is legal at one copy across both boards (B4-D1)."""
+
+    def test_one_restricted_copy_is_legal(self) -> None:
+        report = validate_deck(_restricted_deck((1, False)), format="vintage")
+
+        assert report.violations == []
+        assert report.is_legal is True
+
+    def test_two_copies_across_boards_are_one_restricted_violation(self) -> None:
+        report = validate_deck(_restricted_deck((1, False), (1, True)), format="vintage")
+
+        assert [(v.rule, v.card_name, v.detail) for v in report.violations] == [
+            (
+                "restricted_card",
+                "Black Lotus",
+                "2 copies of 'Black Lotus'; it is restricted in vintage (max 1 copy).",
+            )
+        ]
+
+    def test_five_copies_report_the_restricted_rule_only(self) -> None:
+        """The tightest limit wins: five copies break the 4-copy limit too, but a card gets one
+        copy-count violation at most."""
+        report = validate_deck(_restricted_deck((5, False)), format="vintage")
+
+        assert [v.rule for v in report.violations] == ["restricted_card"]
+        assert "5 copies of 'Black Lotus'" in report.violations[0].detail
+
+    def test_restricted_in_a_singleton_format_is_the_singleton_rule(self) -> None:
+        """competitivebrawl restricts cards and is singleton; the same 1-copy limit is reported
+        once, as singleton, and the restricted card is not a legality violation there."""
+        deck = _restricted_deck((2, False), format_legality="competitivebrawl")
+
+        report = validate_deck(deck, format="competitivebrawl")
+
+        assert [(v.rule, v.card_name) for v in report.violations] == [("singleton", "Black Lotus")]
+
+    def test_an_unknown_format_runs_no_restricted_check(self) -> None:
+        """``potato`` is not a format: the deck gets unknown_format and nothing card-specific."""
+        report = validate_deck(_restricted_deck((2, False)), format="potato")
+
+        assert [v.rule for v in report.violations] == ["unknown_format"]
+
+    def test_a_restricted_card_elsewhere_is_still_checked_by_its_own_key(self) -> None:
+        """The same Lotus is ``banned`` in legacy, so there it is banned_card, not restricted."""
+        report = validate_deck(_restricted_deck((1, False)), format="legacy")
+
+        assert ("banned_card", "Black Lotus") in [(v.rule, v.card_name) for v in report.violations]
+        assert not any(v.rule == "restricted_card" for v in report.violations)
 
 
 class TestValidateDeckSingleton:

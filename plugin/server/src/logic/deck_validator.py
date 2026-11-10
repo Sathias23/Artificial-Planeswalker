@@ -2,7 +2,8 @@
 
 This module provides business logic for validating deck construction rules:
 - Maximum 4 copies of any card (except basic lands - unlimited); singleton
-  formats (brawl, commander, ...) get a 1-copy limit instead
+  formats (brawl, commander, ...) get a 1-copy limit instead, and so does a
+  card that is ``restricted`` in the format
 - Format legality checking, with banned cards reported separately from cards
   that are merely not in the format
 - Clear error messages for rule violations
@@ -43,14 +44,28 @@ def is_basic_land(card: Card) -> bool:
 
     Basic lands are exempt from the 4-copy limit and can have unlimited copies in a deck.
 
+    Reads the supertypes and card types, the part of ``type_line`` before the first ``—``
+    (the whole line when there is no dash, as for Wastes): a basic land has both ``Basic``
+    and ``Land`` there. A substring test for ``"basic land"`` missed every snow basic,
+    because ``Snow`` sits between the two words ("Basic Snow Land — Forest").
+
     Args:
         card: The card to check
 
     Returns:
-        True if the card's type_line contains "Basic Land" (case-insensitive), False otherwise
+        True if the words before the dash include both "basic" and "land"
+        (case-insensitive), False otherwise
 
     Examples:
         >>> card = Card(type_line="Basic Land — Mountain", ...)
+        >>> is_basic_land(card)
+        True
+
+        >>> card = Card(type_line="Basic Snow Land — Forest", ...)  # Snow-Covered Forest
+        >>> is_basic_land(card)
+        True
+
+        >>> card = Card(type_line="Basic Land", ...)  # Wastes: no subtype, no dash
         >>> is_basic_land(card)
         True
 
@@ -58,11 +73,12 @@ def is_basic_land(card: Card) -> bool:
         >>> is_basic_land(card)
         False
 
-        >>> card = Card(type_line="Creature — Goblin Warrior", ...)
+        >>> card = Card(type_line="Basic Creature — Shapeshifter", ...)  # Omnipresent Impostor
         >>> is_basic_land(card)
         False
     """
-    return "basic land" in card.type_line.lower()
+    supertypes = card.type_line.split("—", 1)[0].lower().split()
+    return "basic" in supertypes and "land" in supertypes
 
 
 def get_current_card_count(deck: Deck, card_id: str) -> int:
@@ -197,10 +213,13 @@ _SINGLETON_FORMATS = frozenset(
 )
 
 #: Recognized Scryfall legality keys (the format names ``validate_deck`` can
-#: meaningfully check). Mirrors the keys present in every card's ``legalities``
-#: dict; a superset of ``_SINGLETON_FORMATS``. An unrecognized format is
-#: reported as an ``unknown_format`` violation rather than silently flagging
-#: every card illegal (``legalities.get("potato")`` → ``None`` for all cards).
+#: meaningfully check); a superset of ``_SINGLETON_FORMATS``. Pinned by equality
+#: to the keys of real Scryfall ``legalities`` dicts in
+#: ``tests/fixtures/scryfall_legalities.json``
+#: (``test_format_check.py::TestKnownFormatsMatchScryfall``), so a key Scryfall
+#: renames or adds fails by name once the fixture is refreshed. An unrecognized
+#: format is reported as an ``unknown_format`` violation rather than silently
+#: flagging every card illegal (``legalities.get("potato")`` → ``None`` for all cards).
 _KNOWN_FORMATS = frozenset(
     {
         "alchemy",
@@ -235,6 +254,7 @@ DeckViolationRule = Literal[
     "max_sideboard_size",
     "copy_limit",
     "singleton",
+    "restricted_card",
     "format_legality",
     "banned_card",
     "game_availability",
@@ -248,9 +268,11 @@ its members: a rule added here without a row assignment fails
 
 ``banned_card`` splits out what used to be one violation: a banned card and a card
 simply not printed into the format were one ``format_legality`` violation, which UX-DR21 lists as
-two separate checks. ``restricted`` is deliberately **not** a member: a restricted card is legal
-with a 1-copy limit, which this validator does not model, so it keeps reporting as
-``format_legality`` exactly as it did before the split.
+two separate checks. ``restricted_card`` is the copy-count rule for a card whose legality is
+``restricted``: such a card is legal at one copy, counted across both boards, and more than one is
+a ``restricted_card`` violation. It mirrors ``banned_card`` so a consumer can name the restricted
+rule from this vocabulary alone, and :data:`CHECK_FOR_RULE` puts it on the ``copy_limit`` row
+because what it breaks is a copy limit, not the card's legality.
 """
 
 
@@ -260,8 +282,8 @@ class DeckViolation(BaseModel):
     Attributes:
         rule: The construction rule that was broken.
         card_name: The offending card's name when the violation is card-specific
-            (``copy_limit`` / ``singleton`` / ``format_legality`` / ``banned_card`` /
-            ``game_availability``); ``None`` for whole-deck rules
+            (``copy_limit`` / ``singleton`` / ``restricted_card`` / ``format_legality`` /
+            ``banned_card`` / ``game_availability``); ``None`` for whole-deck rules
             (``min_deck_size`` / ``max_sideboard_size`` / ``unknown_format``).
         detail: Human-readable explanation of the violation.
     """
@@ -301,17 +323,19 @@ def validate_deck(
     - **Mainboard size:** at least 60 cards (``min_deck_size``).
     - **Sideboard size:** at most 15 cards (``max_sideboard_size``).
     - **Copy limit:** at most 4 copies of any non-basic card, counted across
-      mainboard and sideboard combined; basic lands are exempt (``copy_limit``).
+      mainboard and sideboard combined; basic lands (snow basics and Wastes
+      included, see :func:`is_basic_land`) are exempt (``copy_limit``).
       In singleton formats (``_SINGLETON_FORMATS`` — brawl, standardbrawl,
       commander, gladiator, etc.) the limit is 1 instead, reported as
-      ``singleton``.
-    - **Format legality:** each distinct card must be ``legal`` in ``format``.
-      A card whose legality is exactly ``banned`` is reported as ``banned_card``;
-      anything else that is not ``legal`` — ``not_legal``, and also ``restricted``
-      — is reported as ``format_legality``. The two are separate
-      because UX-DR21 asks for them as separate checks; ``restricted`` stays with
-      the plain legality rule because a restricted card is legal with a 1-copy
-      limit, which this validator does not model.
+      ``singleton``. A card whose legality in a known ``format`` is
+      ``restricted`` is also limited to 1, reported as ``restricted_card``
+      (``singleton`` when the format is singleton too). A card gets at most one
+      copy-count violation: the tightest applicable limit wins.
+    - **Format legality:** each distinct card must be ``legal`` or ``restricted``
+      in ``format``. A card whose legality is exactly ``banned`` is reported as
+      ``banned_card``; anything else (``not_legal``, a missing key) is reported
+      as ``format_legality``. The two are separate because UX-DR21 asks for them
+      as separate checks.
     - **Game availability:** when ``games`` is provided, each distinct card must
       be available on at least one requested platform (``game_availability``).
 
@@ -398,11 +422,15 @@ def validate_deck(
         card_by_id[dc.card_id] = dc.card
 
     # Copy limit — combined across both boards, basic lands exempt. Singleton
-    # formats cap non-basics at 1 copy (rule="singleton"); everything else at 4.
+    # formats cap non-basics at 1 copy (rule="singleton"); a card restricted in a
+    # known format is capped at 1 too (rule="restricted_card"); everything else at
+    # 4. One copy-count violation per card at most: the tightest limit wins, and
+    # singleton names it when both apply.
     singleton = format in _SINGLETON_FORMATS
-    max_copies = 1 if singleton else _MAX_COPIES
     for card_id, total in combined_counts.items():
         card = card_by_id[card_id]
+        restricted = known_format and card.legalities.get(format) == "restricted"
+        max_copies = 1 if singleton or restricted else _MAX_COPIES
         if is_basic_land(card) or total <= max_copies:
             continue
         if singleton:
@@ -413,6 +441,17 @@ def validate_deck(
                     detail=(
                         f"{total} copies of '{card.name}'; {format} is a singleton format "
                         f"(max 1 copy of any non-basic card)."
+                    ),
+                )
+            )
+        elif restricted:
+            violations.append(
+                DeckViolation(
+                    rule="restricted_card",
+                    card_name=card.name,
+                    detail=(
+                        f"{total} copies of '{card.name}'; it is restricted in {format} "
+                        f"(max 1 copy)."
                     ),
                 )
             )
@@ -431,9 +470,8 @@ def validate_deck(
     for card in card_by_id.values():
         # Read the value once and branch on it. Scryfall's legality vocabulary is four values
         # (measured over the shipped corpus: not_legal 516,401 / legal 362,238 / banned 1,275 /
-        # restricted 89) and only `banned` splits off here. Note what this deliberately does NOT
-        # do: `restricted` falls through to the same branch it always did, so the split changes
-        # no verdict for a restricted card (a known, unmodelled limitation).
+        # restricted 89). `banned` splits off here; `restricted` counts as legal, because its
+        # one-copy limit is enforced by the copy-limit loop above.
         if known_format:
             legality = card.legalities.get(format)
             if legality == "banned":
@@ -444,7 +482,7 @@ def validate_deck(
                         detail=f"'{card.name}' is banned in {format}.",
                     )
                 )
-            elif legality != "legal":
+            elif legality not in ("legal", "restricted"):
                 violations.append(
                     DeckViolation(
                         rule="format_legality",
@@ -504,6 +542,9 @@ CHECK_FOR_RULE: dict[DeckViolationRule, FormatCheckName | None] = {
     "max_sideboard_size": "sideboard",
     "copy_limit": "copy_limit",
     "singleton": "copy_limit",
+    # A restricted card is legal; what it breaks above one copy is a copy limit, so it lands here
+    # and never on the legality or banned row.
+    "restricted_card": "copy_limit",
     "format_legality": "legality",
     "banned_card": "banned",
     # Not a row: UX-DR21 names six checks and platform availability is not one of them. It can
