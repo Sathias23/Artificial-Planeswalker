@@ -41,7 +41,7 @@ from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.repositories.deck import _UNSET, DeckRepository
 from src.data.schemas.card import Card, CardSummary
-from src.data.schemas.deck import DeckDetail, DeckSummary
+from src.data.schemas.deck import MAX_CARD_QUANTITY, DeckDetail, DeckSummary
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -50,9 +50,8 @@ logger = logging.getLogger(__name__)
 _MAX_MATCHES = 10
 
 # Ceilings on the LLM-supplied arguments (nothing at the MCP boundary bounds them otherwise).
-# ``MAX_CARD_QUANTITY`` is the single copy cap shared with ``deck_import``: no real deck holds
-# more than 250 of one card, and an unbounded integer would be stored as-is.
-MAX_CARD_QUANTITY = 250
+# ``MAX_CARD_QUANTITY`` (the copy cap) lives in ``src.data.schemas.deck`` so the importer's
+# reconcile holds it too.
 MAX_DECK_NAME_CHARS = 100
 MAX_STRATEGY_CHARS = 2000
 MAX_TAGS = 20

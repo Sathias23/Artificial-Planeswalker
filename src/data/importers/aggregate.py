@@ -26,14 +26,32 @@ class OracleAggregate:
     Attributes:
         games: Union of ``games`` values across all printings seen for this identity.
         canonical_id: Scryfall ``id`` of the printing chosen to represent the identity
-            (max ``released_at``, ties broken by min ``id``).
+            (an English printing first, then max ``released_at``, ties broken by min ``id``).
         canonical_released_at: The canonical printing's ``released_at`` ISO date string
             (empty when the printing carries none — ISO dates compare correctly as strings).
+        canonical_is_english: Whether the canonical printing is English (``lang`` of ``"en"``,
+            or no ``lang`` at all).
     """
 
     games: set[str] = field(default_factory=set)
     canonical_id: str = ""
     canonical_released_at: str = ""
+    canonical_is_english: bool = False
+
+
+def is_english_printing(card_json: dict[str, Any]) -> bool:
+    """Return whether a printing is English: ``lang`` is ``"en"``, or the printing carries none.
+
+    A missing ``lang`` counts as English so a bulk file (or a fixture) without the field ranks
+    exactly as it did under the date-only rule.
+
+    Args:
+        card_json: A raw Scryfall card object from the bulk file.
+
+    Returns:
+        ``True`` for an English (or language-less) printing.
+    """
+    return str(card_json.get("lang") or "en") == "en"
 
 
 def resolve_oracle_id(card_json: dict[str, Any]) -> str | None:
@@ -89,12 +107,14 @@ def build_oracle_aggregates(file_path: Path) -> dict[str, OracleAggregate]:
     """Stream a Scryfall bulk file and aggregate printings per oracle identity (pass 1).
 
     For each group key (see :func:`group_key`) this unions the ``games`` of every printing
-    (absent/``null`` treated as empty) and picks the canonical printing: the one with the
-    greatest ``released_at`` (ISO date strings compare lexicographically), ties broken by
-    the smallest ``id`` — deterministic across runs.
+    (absent/``null`` treated as empty) and picks the canonical printing. An English printing
+    (:func:`is_english_printing`) outranks any other, so the stored row never carries a
+    foreign ``printed_name`` while an English one exists; among equals the greatest
+    ``released_at`` wins (ISO date strings compare lexicographically), ties broken by the
+    smallest ``id`` — deterministic across runs.
 
     Memory stays small: one entry per oracle identity (~35k for ``default_cards``), each a
-    tiny set plus two strings.
+    tiny set plus two strings and a flag.
 
     Args:
         file_path: Path to the bulk JSON file (a top-level array of card objects).
@@ -111,6 +131,7 @@ def build_oracle_aggregates(file_path: Path) -> dict[str, OracleAggregate]:
             continue
         card_id = str(card_json.get("id") or "")
         released_at = str(card_json.get("released_at") or "")
+        is_english = is_english_printing(card_json)
         games: list[str] = card_json.get("games") or []
         aggregate = aggregates.get(key)
         if aggregate is None:
@@ -118,19 +139,23 @@ def build_oracle_aggregates(file_path: Path) -> dict[str, OracleAggregate]:
                 games=set(games),
                 canonical_id=card_id,
                 canonical_released_at=released_at,
+                canonical_is_english=is_english,
             )
             continue
         aggregate.games.update(games)
         if not card_id:
             continue  # a printing without an id can never be the canonical row
+        candidate = (is_english, released_at)
+        current = (aggregate.canonical_is_english, aggregate.canonical_released_at)
         if not aggregate.canonical_id:
             replaces = True
-        elif released_at != aggregate.canonical_released_at:
-            replaces = released_at > aggregate.canonical_released_at
+        elif candidate != current:
+            replaces = candidate > current
         else:
             replaces = card_id < aggregate.canonical_id
         if replaces:
             aggregate.canonical_id = card_id
             aggregate.canonical_released_at = released_at
+            aggregate.canonical_is_english = is_english
     logger.info("Aggregated %d printings into %d oracle identities", printings, len(aggregates))
     return aggregates

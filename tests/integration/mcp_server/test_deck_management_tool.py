@@ -22,9 +22,8 @@ from src.data.database import create_engine, create_session_factory, init_databa
 from src.data.models.card import CardModel
 from src.data.models.deck_card import DeckCardModel
 from src.data.schemas.card import CardSummary
-from src.data.schemas.deck import DeckCardSummary
+from src.data.schemas.deck import MAX_CARD_QUANTITY, DeckCardSummary
 from src.mcp_server.tools.deck_management import (
-    MAX_CARD_QUANTITY,
     MAX_DECK_NAME_CHARS,
     MAX_STRATEGY_CHARS,
     MAX_TAG_CHARS,
