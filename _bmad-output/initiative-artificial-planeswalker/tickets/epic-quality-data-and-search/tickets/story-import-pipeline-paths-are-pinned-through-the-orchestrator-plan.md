@@ -52,13 +52,77 @@ context: []
 
 ## Implementation Notes
 
-(proof lines below)
+- Every new test passes on the baseline `src/`: these pin correct behaviour, and none exposed a bug. `src/` is untouched (`git diff --exit-code a02f326 -- src/` clean).
+- `tests/fixtures/scryfall_bulk.py` replaces only `fetch_bulk_data_list` and `download_bulk_data`; `import_through_orchestrator` passes the test's `tmp_path` as `temp_dir`, so the download never touches the shared temp root. `test_end_to_end_import` now reads the sample file and runs it through the orchestrator (same counts: 6 processed, 5 inserted, 1 error). `test_batch_processing` and `test_empty_import` stay on `import_cards`: the first pins batching the orchestrator's fixed batch size cannot reach, and the second's orchestrator-level behaviour is what 6.6 (M41) changes.
+- The first-run marker test reads the flag *during* the import through a pass-through spy on the real `reconcile_oracle_identities` (it runs after the upsert has committed). Checking only the end state would pass with `mark_import_started` deleted, which is the very bug the marker exists to prevent.
+- The caller-`temp_dir` test went into `test_download_hardening.py` next to its private-directory sibling (the finding's cited site), parametrized over a succeeding and a failing import because the cleanup is a `finally`.
+- Upsert column coverage: through the orchestrator, dropping `games` from `set_` is **masked**, because stage 6 rewrites every surviving row's `games` to the cross-printing union. So the every-column test is parametrized over `orchestrator` and `import_cards`; the `import_cards` case pins the upsert alone, `games` included, which matters for a run whose reconcile fails. Dropping `game_changer` or `image_uris` also turns both cases red (checked with a targeted run, not a harness run).
+- `make_wire_variant` gains `quantities` (default 1 per piece, so every existing caller is unchanged).
+- Probe proofs. One full-suite harness run per planted mutation, with `src/` restored by byte copy and checked with `git diff --exit-code src/` (0) after each. `uv run python -m scripts.probe_harness --expect-red '<node>'`, harness exit 0 every time:
+  ```
+  occupied-key (occupied/target_key without sideboard) -- B3-P6
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_keeps_mainboard_and_sideboard_copies_apart
+  merge-where (merge UPDATE without sideboard) -- B3-P6
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_keeps_mainboard_and_sideboard_copies_apart
+  repoint-where (repoint UPDATE without sideboard) -- B3-P6
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_keeps_mainboard_and_sideboard_copies_apart
+  no-mark-started (mark_import_started deleted) -- B3-P7
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_the_first_run_marker_spans_the_import_and_is_cleared_after[first-run]
+  no-resume-clause (manage_marker = existing == 0) -- B3-P7
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_the_first_run_marker_spans_the_import_and_is_cleared_after[resume]
+  always-mark (manage_marker = True) -- B3-P7
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_the_first_run_marker_spans_the_import_and_is_cleared_after[update]
+  finish-inside-reconcile-try (mark_import_finished moved into the reconcile try) -- B3-P7
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_failure_is_nonfatal_and_leaves_session_usable
+  piece-key-list (per-variant set replaced by a list) -- B3-P8
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_spellbook_import_e2e.py::test_a_quantity_two_piece_writes_one_piece_row
+  no-caller-dir-unlink (output_file.unlink replaced by pass) -- B3-P9
+  full suite (-m 'not integration'): 3338 collected, 2 failed, 0 errored, exit 1
+    RED    tests/unit/data/importers/test_download_hardening.py::test_a_caller_supplied_temp_dir_keeps_the_directory_and_drops_the_download[import-succeeds]
+    RED    tests/unit/data/importers/test_download_hardening.py::test_a_caller_supplied_temp_dir_keeps_the_directory_and_drops_the_download[import-fails]
+  no-rejects-wiring (rejects=rejects deleted from the import_cards call) -- T1-1-P1
+  full suite (-m 'not integration'): 3338 collected, 2 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_leaves_identity_untouched_when_canonical_rejected
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_import_captures_reject_identity_and_reason
+  no-reconcile-assignment (stats.reconcile = dropped) -- T1-1-P1
+  full suite (-m 'not integration'): 3338 collected, 7 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_dedups_stale_preexisting_row
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reimport_with_shifted_canonical_collapses_to_one_row
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_repoints_deck_cards_to_canonical
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_merges_deck_quantities_when_deck_holds_both_printings
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_keeps_mainboard_and_sideboard_copies_apart
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_collapses_two_stale_printings_held_by_one_deck
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reconcile_leaves_identity_untouched_when_canonical_rejected
+  upsert-drops-legalities ("legalities" removed from set_) -- T1-1-P2
+  full suite (-m 'not integration'): 3338 collected, 2 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reimport_updates_every_column_of_an_existing_row[orchestrator]
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reimport_updates_every_column_of_an_existing_row[import_cards]
+  upsert-drops-games ("games" removed from set_) -- T1-1-P2
+  full suite (-m 'not integration'): 3338 collected, 1 failed, 0 errored, exit 1
+    RED    tests/integration/data/test_scryfall_import_e2e.py::test_reimport_updates_every_column_of_an_existing_row[import_cards]
+  ```
+- Final tree, `uv run python -m scripts.probe_harness --expect-green`, harness exit 0:
+  ```
+  full suite (-m 'not integration'): 3338 collected, 0 failed, exit 0
+  ```
+  Full `uv run pytest` (integration included): 3363 passed, 2 skipped. `ruff check .`, `ruff format --check .`, `mypy src/` and `mypy src/ --platform win32` all clean. `uv run python -m scripts.build_plugin`: no content change in `plugin/`.
+- Out of scope, noticed: of the three `sideboard` terms in the merge, the one in the merge `DELETE`'s `WHERE` cannot be observed. Without it the first merge also deletes a stale sideboard row that a later planned merge was due to delete, and the planned quantities land the same either way. It is left unpinned on purpose. The ticket's `width` puts `test_download_hardening.py` under `tests/integration/data/`; it lives at `tests/unit/data/importers/`.
 
 ## Plan Change Log
 
 ## Review Triage Log
 
 ## Design Notes
+
+Mutations were planted by a scratch script (exact-string replacement, each asserting one match) and restored from a byte copy, never with `git checkout`; the test work was committed before the first plant.
 
 ## Verification
 
