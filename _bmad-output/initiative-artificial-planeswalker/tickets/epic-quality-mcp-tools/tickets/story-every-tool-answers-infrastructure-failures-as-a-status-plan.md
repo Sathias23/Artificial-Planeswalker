@@ -8,9 +8,9 @@ baseline_revision: '1d2ec06524d70378b4d29d96613d3a57a4aeecf2'
 route: 'full'
 route_source: 'auto'
 risk: 'high'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick']
 review_loop_iteration: 0
 context: []
 ---
@@ -120,8 +120,9 @@ Deviations and choices the plan left open:
   hint only for `ScryfallAPIError` / `httpx.HTTPError` in the chain.
 - `failure_detail` is public in `failures.py` so `initialize_database` reuses the same capped text.
 - The connection wrap catches `(AttributeError, OSError, sqlite3.Error)` around
-  `enable_load_extension` + `sqlite_vec.load`; the embedder wrap covers the cache `mkdir` and the
-  `TextEmbedding(...)` construction only (the fastembed import itself is unwrapped).
+  `enable_load_extension` + `sqlite_vec.load`; the embedder wrap covers the fastembed import
+  (`ImportError`, e.g. a Windows "DLL load failed"), the cache `mkdir` and the `TextEmbedding(...)`
+  construction (review fix).
 - `src/search/query.is_database_initialized` got the same one-sentence "raises on an unreadable file"
   docstring correction as its async twin (same pattern, not in the Code Map).
 - The B8-P6 and B9-P18 tests also assert the helper's own message, so they still pin the helpers'
@@ -165,3 +166,56 @@ full suite (-m 'not integration'): 3481 collected, 3 failed, 0 errored, exit 1
   RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_locked_file_answers_error_from_every_database_tool
   RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_side_a_probe_failure_still_assesses_side_b
 ```
+
+Pins and bug fixes, proved after implementation (13 plants in one run: `session.close()` dropped in
+`set_active_deck`; the add/remove card and the three analysis `except DatabaseError` arms narrowed to
+`KeyError`; the `database_not_initialized` guard disabled in `load_deck`, `delete_deck`,
+`remove_card_from_deck` and `detect_synergies`; the B8-P7 deck re-check disabled; the server resolving
+`get_embedder()` before the helper; the old "Check the connection" init message restored). Tree staged
+first; each file reverted with `git checkout` and checked with `git diff --exit-code`. All 14
+`--expect-red` met; the 5 extra reds are knock-ons of the embedder and init-message plants (the model
+loads early in the corrupt/locked sweeps and the `ValueError` pass-through row; the old message lacks
+"network"):
+```
+full suite (-m 'not integration'): 3481 collected, 19 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_companion_tool.py::TestAnExistingDeckIsDelegated::test_the_read_transaction_is_released_before_the_companion_is_called
+  RED    tests/integration/mcp_server/test_deck_analysis_tool.py::test_a_database_error_loading_the_deck_is_status_error[analyze_mana_curve]
+  RED    tests/integration/mcp_server/test_deck_analysis_tool.py::test_a_database_error_loading_the_deck_is_status_error[detect_synergies]
+  RED    tests/integration/mcp_server/test_deck_analysis_tool.py::test_a_database_error_loading_the_deck_is_status_error[validate_deck]
+  RED    tests/integration/mcp_server/test_deck_changed_wiring.py::TestANoWriteOutcomeEmitsNothing::test_a_database_error_in_the_new_tools_is_silent_and_leaves_the_deck_alone[add_card_to_deck-args3-add_card_to_deck]
+  RED    tests/integration/mcp_server/test_deck_changed_wiring.py::TestANoWriteOutcomeEmitsNothing::test_a_database_error_in_the_new_tools_is_silent_and_leaves_the_deck_alone[remove_card_from_deck-args4-remove_card_from_deck]
+  RED    tests/integration/mcp_server/test_first_run_data_init.py::test_every_guarded_helper_answers_database_not_initialized_on_an_empty_card_table[load_deck]
+  RED    tests/integration/mcp_server/test_first_run_data_init.py::test_every_guarded_helper_answers_database_not_initialized_on_an_empty_card_table[delete_deck]
+  RED    tests/integration/mcp_server/test_first_run_data_init.py::test_every_guarded_helper_answers_database_not_initialized_on_an_empty_card_table[remove_card_from_deck]
+  RED    tests/integration/mcp_server/test_first_run_data_init.py::test_every_guarded_helper_answers_database_not_initialized_on_an_empty_card_table[detect_synergies]
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_corrupt_file_answers_error_from_every_database_tool
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_locked_file_answers_error_from_every_database_tool
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_an_offline_model_with_an_unbuilt_index_is_index_unavailable_without_a_load
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_non_infrastructure_exception_still_surfaces_as_an_mcp_error[ValueError]
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_deck_deleted_between_the_check_and_the_write_is_deck_not_found
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_non_network_import_failure_names_its_cause_without_a_network_hint[bad-bulk-file]
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_non_network_import_failure_names_its_cause_without_a_network_hint[wrapped-bad-bulk-file]
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_network_import_failure_keeps_the_network_hint[httpx]
+  RED    tests/integration/mcp_server/test_infrastructure_failures.py::test_a_network_import_failure_keeps_the_network_hint[api]
+```
+
+The three review-patch tests (vanished card, failed fastembed import, database error with network
+context) were added in `ce9cdb9` and have no harness red proof.
+
+After the review patches (`ce9cdb9`): ruff, ruff format, mypy (both platforms) clean; `uv run pytest`
+3509 passed, 2 skipped; `scripts.build_plugin` leaves no drift.
+
+## Plan Change Log
+
+## Review Triage Log
+
+**Pass 1 (quick lens):** 0 high / 1 medium / 3 low / 0 false / 0 maybe-false.
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | `add_card_to_deck` still reports a card removed between resolution and insert as `exists`; the comment named two constraints, `deck_cards` has three (`deck_card.py:30` FK to `cards.id`) | low | patch | Confirmed: the update reconcile deletes `cards` rows (`scryfall.py:345`), and the deck re-check alone then answers `exists`. Same root defect the intent names, and the fix mirrors the deck re-check. Implementer re-reads the card (`card_not_found`), corrected the comment, and added a test. |
+| 2 | `Embedder.__init__` calls `_load_text_embedding()` (the fastembed / onnxruntime import) outside the wrap, so a Windows "DLL load failed" `ImportError` is still an MCP `isError` from `semantic_search_cards` | medium | patch | Confirmed: only `build_search_index` was covered, by its own `except Exception`. Moved the call inside the try and added `ImportError`, with a test. |
+| 3 | `initialize_database._failure_message` scanned the whole chain for a network cause first, so a locked `_clear_cards` after a download failure read "database is locked. Check the network…"; the network branch also produced ".." | low | patch | Confirmed: the cleanup error carries the network error as `__context__`. A direct correction: the first classified link, outermost first, decides, and `.rstrip('.')`. Test added. |
+| 4 | `server.py` module docstring and the skill `error` notes promise a message naming the cause, but helper-arm catches (analysis, deck writes, assess/compare) return generic text | low | patch | Confirmed for the arms. Wording only: the docstring distinguishes edge-caught from helper-caught failures, and two skills say the message "describes the failure". The conditional "locked → retry once" advice stands. `plugin/` rebuilt. |
+
+Pass 1 outcome: four patches applied by the implementer in `ce9cdb9`, nothing rejected, nothing deferred, no loopback.
