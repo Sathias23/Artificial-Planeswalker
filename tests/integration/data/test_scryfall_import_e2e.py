@@ -662,8 +662,10 @@ async def test_the_first_run_marker_spans_the_import_and_is_cleared_after(
     A first run and a resume of a killed import (rows present, flag still set) are marked in
     progress while their batches land, so a kill mid-import leaves a database the tools refuse
     as partial. An update of a complete database is never marked, so it stays usable throughout.
-    Every run ends with the flag clear. The flag is read at the reconcile stage, after the
-    upsert has committed, through a pass-through spy on the real reconcile.
+    Every run ends with the flag clear. The flag is read twice through pass-through spies: before
+    the first batch writes, through a second session (so only a committed marker counts, as a
+    killed process would leave it), and at the reconcile stage, after the upsert has committed.
+    The first read is what fails a marker set late, after the batches have already landed.
     """
     async with empty_card_db() as session:
         if starting_state != "empty":
@@ -671,6 +673,16 @@ async def test_the_first_run_marker_spans_the_import_and_is_cleared_after(
             await session.commit()
         if starting_state == "killed-mid-import":
             await mark_import_started(session)
+
+    real_import_cards = scryfall.import_cards
+    seen_before_batches: list[bool] = []
+
+    async def spying_import_cards(*args, **kwargs):
+        async with empty_card_db() as probe:  # a second session: only a committed marker counts
+            seen_before_batches.append(await is_import_in_progress(probe))
+        return await real_import_cards(*args, **kwargs)
+
+    monkeypatch.setattr(scryfall, "import_cards", spying_import_cards)
 
     real_reconcile = scryfall.reconcile_oracle_identities
     seen_in_progress: list[bool] = []
@@ -687,6 +699,7 @@ async def test_the_first_run_marker_spans_the_import_and_is_cleared_after(
         )
         assert stats.reconcile.failed is False
 
+    assert seen_before_batches == [marked_during_import]
     assert seen_in_progress == [marked_during_import]
     async with empty_card_db() as session:
         assert await is_import_in_progress(session) is False
