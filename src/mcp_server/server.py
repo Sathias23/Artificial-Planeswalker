@@ -601,13 +601,20 @@ def build_server(
         The import is additive: it never clears the deck or silently merges an
         existing quantity. Each nonblank card line gets an ordered result such as
         ``ok``, ``ambiguous`` (up to 10 candidate ``matches`` in name order; the
-        message says "more than 10" when more matched), ``not_found``, ``invalid``,
-        or ``exists``. Every
+        message says "more than 10" when more matched), ``not_found``, ``invalid``
+        (malformed, or a quantity outside 1 to 250), or ``exists`` (the card was
+        already in that board of the deck; its quantity is left unchanged — use
+        ``set_card_quantity``). Set codes do not pick a printing, so lines naming
+        the same card for the same board (two Arena printings of a basic land, or
+        a card under both Commander and Deck) are summed into one deck row and all
+        answer ``ok``; if their sum passes 250 copies every one of those lines is
+        ``invalid`` and none of their copies is added. Every
         line is resolved first and all resolvable lines are written in one
         transaction: a line that fails to resolve never blocks the others, but
         if that single write fails nothing is added and the status is ``error``
         (as it is when the local card database cannot be read at all — ``message``
-        describes the failure).
+        describes the failure). ``imported_lines`` counts the ``ok`` lines and
+        ``imported_copies`` sums their quantities.
 
         Args:
             deck_id: Existing saved deck id from ``create_deck`` or ``list_decks``.

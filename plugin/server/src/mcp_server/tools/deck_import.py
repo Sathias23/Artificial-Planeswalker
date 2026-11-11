@@ -2,8 +2,10 @@
 
 import logging
 import re
+from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Never, NoReturn
 
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import DatabaseError, IntegrityError
@@ -12,10 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.repositories.deck import DeckRepository
-from src.data.schemas.card import CardSummary
+from src.data.schemas.card import Card, CardSummary
 from src.data.schemas.deck import MAX_CARD_QUANTITY, DeckCardEntry
 from src.mcp_server.tools.deck_management import (
-    DeckCardResult,
     ambiguous_message,
     card_added_message,
     card_exists_message,
@@ -51,6 +52,15 @@ _CARD_LINE_RE = re.compile(
 class DeckImportLineResult(BaseModel):
     """Outcome for one nonblank, non-header Arena export line.
 
+    ``status`` is ``ok`` (the line's copies were added), ``ambiguous`` (the name
+    matched several cards — see ``matches``), ``not_found``, ``invalid`` (the line
+    is malformed, its quantity is outside 1 to 250, or the lines naming its card
+    for that board sum past 250), ``exists`` (the card is already in that board
+    of the deck; its stored quantity is unchanged) or ``error`` (a database
+    failure stopped it). Lines naming the same card for the same board — two
+    Arena printings of one card, say — share one deck row: they are summed and
+    answer together, and ``quantity`` stays each line's own parsed count.
+
     ``sideboard`` and ``commander`` are both derived from the line's section
     (``commander`` is True exactly for ``Commander``-section lines); either is
     None when no section could be determined.
@@ -72,7 +82,13 @@ class DeckImportLineResult(BaseModel):
 
 
 class DeckImportResult(BaseModel):
-    """Structured result of importing an Arena export into a saved deck."""
+    """Structured result of importing an Arena export into a saved deck.
+
+    ``status`` is ``ok`` when every line answered ``ok`` and ``partial`` when any
+    did not. ``imported_lines`` counts the lines answered ``ok`` and
+    ``imported_copies`` sums their quantities, so two printings of one card
+    imported together count as two lines.
+    """
 
     status: Literal[
         "ok",
@@ -288,40 +304,24 @@ def _parse_arena_export(
     return items, parsed_count
 
 
-def _error_line(parsed: _ParsedArenaLine) -> DeckImportLineResult:
-    """Build the ``error`` result for a valid line a database failure stopped."""
-    return DeckImportLineResult(
-        line_number=parsed.line_number,
-        raw_line=parsed.raw_line,
-        section=parsed.section,
-        quantity=parsed.quantity,
-        name=parsed.name,
-        set_code=parsed.set_code,
-        collector_number=parsed.collector_number,
-        sideboard=parsed.sideboard,
-        commander=parsed.commander,
-        status="error",
-        message=f"Line {parsed.line_number}: a database error occurred.",
-    )
+@dataclass(frozen=True, slots=True)
+class _FoundLine:
+    """A parsed line whose name resolved to one card, awaiting :func:`_sum_printings`."""
+
+    index: int  # the line's slot in the ordered results
+    parsed: _ParsedArenaLine
+    card: Card
 
 
-def _line_result(parsed: _ParsedArenaLine, outcome: DeckCardResult) -> DeckImportLineResult:
-    """Project an existing single-card add outcome into an import-line result."""
-    if outcome.status == "card_not_found":
-        status: ImportLineStatus = "not_found"
-    elif outcome.status == "ok":
-        status = "ok"
-    elif outcome.status == "ambiguous":
-        status = "ambiguous"
-    elif outcome.status == "exists":
-        status = "exists"
-    elif outcome.status == "invalid":
-        status = "invalid"
-    elif outcome.status == "error":
-        status = "error"
-    else:
-        status = "error"
-
+def _resolved_line(
+    parsed: _ParsedArenaLine,
+    *,
+    status: ImportLineStatus,
+    message: str,
+    card_id: str | None = None,
+    matches: list[CardSummary] | None = None,
+) -> DeckImportLineResult:
+    """Build the result for a parsed line, prefixing ``message`` with its line number."""
     return DeckImportLineResult(
         line_number=parsed.line_number,
         raw_line=parsed.raw_line,
@@ -333,10 +333,107 @@ def _line_result(parsed: _ParsedArenaLine, outcome: DeckCardResult) -> DeckImpor
         sideboard=parsed.sideboard,
         commander=parsed.commander,
         status=status,
-        card_id=outcome.card_id,
-        matches=outcome.matches,
-        message=f"Line {parsed.line_number}: {outcome.message}",
+        card_id=card_id,
+        matches=matches or [],
+        message=f"Line {parsed.line_number}: {message}",
     )
+
+
+def _error_line(parsed: _ParsedArenaLine) -> DeckImportLineResult:
+    """Build the ``error`` result for a valid line a database failure stopped."""
+    return _resolved_line(parsed, status="error", message="a database error occurred.")
+
+
+def _unhandled_status(status: Never) -> NoReturn:
+    """Fail loudly on a resolver status the import does not handle (a bug, not a line outcome).
+
+    Typed ``Never`` so mypy rejects the call unless every status above it was handled. At run time
+    it raises before the import writes anything, and the MCP call answers ``isError`` naming the
+    status rather than a line ``error`` that would blame the database.
+    """
+    raise AssertionError(
+        f"import_decklist: the card resolver answered an unhandled status {status!r}; "
+        "nothing was written."
+    )
+
+
+def _sum_printings(
+    found: Sequence[_FoundLine], occupied: AbstractSet[tuple[str, bool]]
+) -> tuple[dict[int, DeckImportLineResult], list[DeckCardEntry]]:
+    """Lines of one export naming the same (card_id, sideboard) are one row: sum, cap, write.
+
+    Card rows are oracle identities, so two Arena printings of one card (``2 Island (ELD) 250`` and
+    ``2 Island (THB) 251``) resolve to the same row. The found lines are grouped by the
+    association's primary key ``(card_id, sideboard)`` in first-seen order, and each group is
+    decided whole:
+
+    - The deck already holds that row (``occupied``): every line is ``exists`` and the stored
+      quantity is left alone (the import never merges into an existing row).
+    - The lines' quantities sum past ``MAX_CARD_QUANTITY``: every line is ``invalid`` and none of
+      the copies is added. Adding only part of them would leave the deck short without saying so.
+    - Otherwise every line is ``ok`` and the group becomes one entry of the summed quantity,
+      flagged commander when any of its lines is (a ``Commander`` and a ``Deck`` line of one card
+      share the mainboard row).
+
+    Groups never span boards: the same card in ``Deck`` and ``Sideboard`` is two rows.
+
+    Args:
+        found: The lines whose names resolved to one card, in source order.
+        occupied: The ``(card_id, sideboard)`` rows the deck held when it was loaded.
+
+    Returns:
+        Each found line's result keyed by its ``index``, and the entries for the one bulk write.
+    """
+    groups: dict[tuple[str, bool], list[_FoundLine]] = {}
+    for line in found:
+        groups.setdefault((line.card.id, line.parsed.sideboard), []).append(line)
+
+    results: dict[int, DeckImportLineResult] = {}
+    entries: list[DeckCardEntry] = []
+    for (card_id, sideboard), lines in groups.items():
+        card_name = lines[0].card.name
+        total = sum(line.parsed.quantity for line in lines)
+        line_numbers = ", ".join(str(line.parsed.line_number) for line in lines)
+
+        if (card_id, sideboard) in occupied:
+            message = card_exists_message(card_name, sideboard=sideboard)
+            for line in lines:
+                results[line.index] = _resolved_line(
+                    line.parsed, status="exists", card_id=card_id, message=message
+                )
+            continue
+
+        if total > MAX_CARD_QUANTITY:
+            board = "sideboard" if sideboard else "mainboard"
+            message = (
+                f"'{card_name}' totals {total} copies in the {board} across lines {line_numbers}, "
+                f"more than the {MAX_CARD_QUANTITY} one card can have; none of them were added."
+            )
+            for line in lines:
+                results[line.index] = _resolved_line(
+                    line.parsed, status="invalid", card_id=card_id, message=message
+                )
+            continue
+
+        for line in lines:
+            message = card_added_message(card_name, line.parsed.quantity, sideboard=sideboard)
+            if len(lines) > 1:
+                message = (
+                    f"{message.removesuffix('.')} "
+                    f"({total} copies in all from lines {line_numbers})."
+                )
+            results[line.index] = _resolved_line(
+                line.parsed, status="ok", card_id=card_id, message=message
+            )
+        entries.append(
+            DeckCardEntry(
+                card_id=card_id,
+                quantity=total,
+                sideboard=sideboard,
+                commander=any(line.parsed.commander for line in lines),
+            )
+        )
+    return results, entries
 
 
 async def import_decklist(
@@ -350,12 +447,16 @@ async def import_decklist(
     resolved first, then all resolvable lines are written in **one transaction**:
     a line that fails to resolve (unknown, ambiguous, malformed, or already in
     that board) is reported and never blocks the others, but if the single write
-    itself fails nothing is added and the result is ``error``. A card named twice
-    for the same board within one export is ``exists`` on its second line, just
-    as it would be against a card already in the deck. Arena's optional
-    ``About`` / ``Name`` metadata block is skipped. Set and collector annotations
-    are reported but do not constrain name resolution because card rows
-    represent aggregated oracle identities rather than every printing.
+    itself fails nothing is added and the result is ``error``. Set and collector
+    annotations are reported but do not constrain name resolution because card
+    rows represent aggregated oracle identities rather than every printing, so
+    lines naming the same card for the same board (two Arena printings of one
+    card, or a card under both ``Commander`` and ``Deck``) are summed into one
+    row (:func:`_sum_printings`): all of them ``ok``, or all ``invalid`` when the
+    sum passes 250 copies. ``exists`` means the card was already in that board of
+    the deck before the import; its stored quantity is left alone. Arena's
+    optional ``About`` / ``Name`` metadata block is skipped. A resolver status
+    the import does not handle raises before anything is written.
 
     Args:
         session: Async database session.
@@ -439,15 +540,14 @@ async def import_decklist(
         )
 
     card_repo = CardRepository(session)
-    results: list[DeckImportLineResult] = []
-    # Rows already in the deck plus rows this import has claimed so far, keyed like the
-    # association's primary key. Reproduces the per-line ``exists`` a sequential import gave.
-    occupied: set[tuple[str, bool]] = {(dc.card_id, dc.sideboard) for dc in deck.deck_cards}
-    pending: list[tuple[int, _ParsedArenaLine, DeckCardEntry]] = []
+    # Pass 1: resolve every line. Unparseable, ambiguous, unknown and failed lines are decided
+    # here; a line that resolved to one card leaves its slot empty for pass 2.
+    slots: list[DeckImportLineResult | None] = []
+    found: list[_FoundLine] = []
 
     for item in items:
         if isinstance(item, DeckImportLineResult):
-            results.append(item)
+            slots.append(item)
             continue
 
         try:
@@ -458,55 +558,44 @@ async def import_decklist(
                 deck_id,
                 item.line_number,
             )
-            results.append(_error_line(item))
+            slots.append(_error_line(item))
             continue
 
-        card = resolution.card
-        if resolution.status == "ambiguous":
-            outcome = DeckCardResult(
-                status="ambiguous",
-                deck_id=deck_id,
-                matches=[CardSummary.model_validate(c) for c in resolution.matches],
-                message=ambiguous_message(item.name, resolution),
-            )
-        elif card is None:
-            outcome = DeckCardResult(
-                status="card_not_found",
-                deck_id=deck_id,
-                message=card_not_found_message(card_id=None, name=item.name),
-            )
-        elif (card.id, item.sideboard) in occupied:
-            outcome = DeckCardResult(
-                status="exists",
-                deck_id=deck_id,
-                card_id=card.id,
-                message=card_exists_message(card.name, sideboard=item.sideboard),
-            )
-        else:
-            occupied.add((card.id, item.sideboard))
-            outcome = DeckCardResult(
-                status="ok",
-                deck_id=deck_id,
-                card_id=card.id,
-                message=card_added_message(card.name, item.quantity, sideboard=item.sideboard),
-            )
-            pending.append(
-                (
-                    len(results),
-                    item,
-                    DeckCardEntry(
-                        card_id=card.id,
-                        quantity=item.quantity,
-                        sideboard=item.sideboard,
-                        commander=item.commander,
-                    ),
+        resolved = resolution.status
+        match resolved:
+            case "found":
+                assert resolution.card is not None  # ``found`` means ``card`` is set
+                found.append(_FoundLine(index=len(slots), parsed=item, card=resolution.card))
+                slots.append(None)
+            case "ambiguous":
+                slots.append(
+                    _resolved_line(
+                        item,
+                        status="ambiguous",
+                        matches=[CardSummary.model_validate(c) for c in resolution.matches],
+                        message=ambiguous_message(item.name, resolution),
+                    )
                 )
-            )
-        results.append(_line_result(item, outcome))
+            case "not_found":
+                slots.append(
+                    _resolved_line(
+                        item,
+                        status="not_found",
+                        message=card_not_found_message(card_id=None, name=item.name),
+                    )
+                )
+            case _:
+                _unhandled_status(resolved)
 
-    if pending:
+    # Pass 2: sum the found lines per deck row against the rows the deck already holds.
+    occupied = frozenset((dc.card_id, dc.sideboard) for dc in deck.deck_cards)
+    summed, entries = _sum_printings(found, occupied)
+    results = [slot if slot is not None else summed[index] for index, slot in enumerate(slots)]
+    ok_lines = [line for line in found if results[line.index].status == "ok"]
+
+    if entries:
         try:
-            await deck_repo.add_cards_to_deck(deck_id, [entry for _, _, entry in pending])
+            await deck_repo.add_cards_to_deck(deck_id, entries)
         except IntegrityError:
             # Only reachable when another writer added one of these rows between resolution and
             # the commit: the in-memory ``occupied`` check covered everything the deck held when
@@ -514,10 +603,10 @@ async def import_decklist(
             logger.warning(
                 "import_decklist bulk write hit a duplicate row: deck_id=%s lines=%d",
                 deck_id,
-                len(pending),
+                len(ok_lines),
             )
-            for index, item, _ in pending:
-                results[index] = _error_line(item)
+            for line in ok_lines:
+                results[line.index] = _error_line(line.parsed)
             return DeckImportResult(
                 status="error",
                 deck_id=deck_id,
@@ -531,10 +620,10 @@ async def import_decklist(
         except DatabaseError:
             # The repository rolled the session back; nothing was added.
             logger.exception(
-                "import_decklist bulk write failed: deck_id=%s lines=%d", deck_id, len(pending)
+                "import_decklist bulk write failed: deck_id=%s lines=%d", deck_id, len(ok_lines)
             )
-            for index, item, _ in pending:
-                results[index] = _error_line(item)
+            for line in ok_lines:
+                results[line.index] = _error_line(line.parsed)
             return DeckImportResult(
                 status="error",
                 deck_id=deck_id,
@@ -546,8 +635,8 @@ async def import_decklist(
                 ),
             )
 
-    imported_lines = len(pending)
-    imported_copies = sum(item.quantity for _, item, _ in pending)
+    imported_lines = len(ok_lines)
+    imported_copies = sum(line.parsed.quantity for line in ok_lines)
     status: Literal["ok", "partial"] = (
         "ok" if results and all(result.status == "ok" for result in results) else "partial"
     )
