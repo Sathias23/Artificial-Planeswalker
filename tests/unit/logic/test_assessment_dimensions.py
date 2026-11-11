@@ -724,11 +724,16 @@ def _resilience_deck() -> list[DeckCard]:
 
 
 class TestRangeOnlyDimensionPins:
-    """Exact values for ``mana_efficiency``, ``resilience`` and ``card_advantage``.
+    """Exact values for four dimensions that were only range-checked or left unpinned.
+
+    The four are ``mana_efficiency``, ``resilience``, ``card_advantage`` and
+    ``combo_potential``.
 
     Each case pins one rule: the screw cases need the absolute land delta and the pip-deficit
     penalty, the flood cases need the absolute land delta, and the resilience deck puts a
-    different count on each of its blend inputs so a swapped argument changes the value.
+    different count on each of its blend inputs so a swapped argument changes the value. The
+    ``combo_potential`` case pins the half-credit rule: an ``almost_included`` record earns half
+    its included credit (25 against 66 included for the same two-card infinite).
     """
 
     @pytest.mark.parametrize(
