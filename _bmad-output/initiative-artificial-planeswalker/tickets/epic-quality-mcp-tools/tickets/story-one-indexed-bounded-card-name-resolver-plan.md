@@ -8,9 +8,9 @@ baseline_revision: 'e1dbe89453bed88243675d816d5115addde5d74e'
 route: 'full'
 route_source: 'auto'
 risk: 'medium'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick']
 review_loop_iteration: 0
 context: []
 ---
@@ -184,6 +184,27 @@ sync seam; median ms, rows returned):
   the gain is the rows read and validated, not the scan.
 - partial "zq": old 227.3 ms → new 179.4 ms (1 row each).
 
+Review patches (`e56106e`): `test_wildcards_in_types_keywords_and_games_are_literal` sends `%`/`_`
+through `search_cards` `types` and `keywords` and lookup `games=["%"]`; the `find_deck_by_name`
+docstring now says it raises `MultipleResultsFound` on more than one match. After the patches:
+ruff, ruff format, mypy (both platforms) clean; `uv run pytest` 3539 passed, 2 skipped; plugin
+rebuild, no drift.
+
+`search_advanced` types escape removed (back to `ilike(f"%{type_str}%")`, tree staged first,
+reverted with `git checkout`, `git diff --exit-code` clean):
+```
+full suite (-m 'not integration'): 3514 collected, 1 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_wildcards_in_types_keywords_and_games_are_literal
+```
+
 ## Plan Change Log
 
 ## Review Triage Log
+
+Pass 1 (lens `quick`, 2026-11-11): 2 findings — high 0, medium 1, low 1, false 0, maybe-false 0.
+Both routed **patch**; no loopback.
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | Escape proven only at `contains_pattern`; a call site that drops `escape=LIKE_ESCAPE` or reverts to `f"%{x}%"` passes the suite | medium | patch | Verified: `search_cards` passes `types` and `keywords` unvalidated (`card_search._validation_error` checks colours, rarity, games, mana, paging only), and `lookup_card` passes `games` unvalidated; no test sends `%`/`_` through those sites. Action: one entry-point test over `search_cards` types/keywords and lookup `games=["%"]`. |
+| 2 | `find_deck_by_name`'s rewritten docstring still says "Returns the first match if multiple decks match" | low | patch | Verified: body calls `scalar_one_or_none()` over an unordered `ILIKE`, which raises `MultipleResultsFound` on two matches (`scripts/view_deck.py:46` avoids it for that reason). Direct docstring correction; no behaviour change (5.1 deletes the method). |
