@@ -7,8 +7,9 @@ fastembed singleton + persistent cache), the ``card_vec`` ``vec0`` schema
 builder (:func:`build_card_embeddings` + its ``card_embedding_meta`` companion-hash table)
 that populates the vectors + filterable metadata and tracks per-card content
 hashes for idempotent, incremental re-builds, the reusable hybrid query path
-(:func:`hybrid_search` returning :class:`CardHit` rows — KNN + metadata pre-filter + JOIN
-post-filter + oracle de-dup) that the semantic-search tools consume, and the
+(:func:`hybrid_search` returning :class:`HybridHits`, a list of :class:`CardHit` rows — KNN +
+metadata pre-filter + JOIN post-filter + oracle de-dup, widened once when filters run short) that
+the semantic-search tools consume, and the
 seed-vector read-back (:func:`get_card_vector` — a primary-key point lookup that deserializes a
 stored embedding) that lets ``find_similar_cards`` seed :func:`hybrid_search` from a
 card it already has (no re-embed). The named load failures (:class:`SearchBackendUnavailableError`
@@ -29,7 +30,7 @@ from src.search.index_builder import (
     content_hash,
     strip_reminder_text,
 )
-from src.search.query import CardHit, get_card_vector, hybrid_search
+from src.search.query import CardHit, HybridHits, get_card_vector, hybrid_search
 from src.search.schema import (
     CARD_EMBEDDING_META_TABLE,
     CARD_VEC_TABLE,
@@ -48,6 +49,7 @@ __all__ = [
     "ConnectionFactory",
     "Embedder",
     "EmbeddingModelUnavailableError",
+    "HybridHits",
     "SearchBackendUnavailableError",
     "VectorExtensionUnavailableError",
     "build_card_embeddings",

@@ -17,7 +17,7 @@ banlist/legality changes), and a final reconcile pass collapses duplicates left 
 stale printing rows are **removed**, deck references are repointed to the surviving canonical row
 (user decks are preserved), and ``games`` is rewritten to the cross-printing union. Building the
 semantic index is a separate, optional step (``build_search_index``) — re-run it after an update to
-index the new cards (with ``prune=true`` when the reconcile removed rows, so their vectors go too).
+index the new cards; the same run drops the vectors of any rows the reconcile removed.
 """
 
 import logging
@@ -253,9 +253,8 @@ async def initialize_database(
                     added = max(0, total - cards_before)
                     if stats.reconcile.rows_deleted > 0:
                         index_hint = (
-                            " If you use semantic search, re-run `build_search_index` with "
-                            "`prune=true` to index the new cards and drop the vectors of "
-                            "the removed rows."
+                            " If you use semantic search, re-run `build_search_index` to "
+                            "index the new cards and drop the vectors of the removed rows."
                         )
                     else:
                         index_hint = (

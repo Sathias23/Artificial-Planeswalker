@@ -162,6 +162,43 @@ def test_ok_filters_compose_color_mana_format_games(tmp_path) -> None:
     factory.close()
 
 
+def test_limit_is_forwarded_to_the_search(tmp_path) -> None:
+    """Four cards survive every filter; ``limit=2`` returns two of them, not all four."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    for i in range(4):
+        _seed_card(conn, f"id-{i}", name=f"Card {i}", oracle_text=f"Text {i}.")
+    build_card_embeddings(conn, fake)
+
+    result = semantic_search_cards(
+        conn, fake, _query_text("Card 0", oracle_text="Text 0."), limit=2
+    )
+
+    assert result.status == "ok"
+    assert result.total_count == 2
+    assert len(result.cards) == 2
+    factory.close()
+
+
+def test_color_mode_is_forwarded_to_the_search(tmp_path) -> None:
+    """``all`` with W+U drops the mono-white card that ``any`` keeps."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "id-wu", name="Azorius Card", oracle_text="WU.", colors=["W", "U"])
+    _seed_card(conn, "id-w", name="White Card", oracle_text="W.", colors=["W"])
+    build_card_embeddings(conn, fake)
+    q = _query_text("White Card", oracle_text="W.")
+
+    every = semantic_search_cards(conn, fake, q, colors=["W", "U"], color_mode="all")
+    either = semantic_search_cards(conn, fake, q, colors=["W", "U"], color_mode="any")
+
+    assert {hit.card.id for hit in every.cards} == {"id-wu"}
+    assert {hit.card.id for hit in either.cards} == {"id-wu", "id-w"}
+    factory.close()
+
+
 # --- status="empty": valid query/filters, nothing survives ----------------------------------
 
 

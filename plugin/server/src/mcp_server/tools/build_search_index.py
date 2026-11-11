@@ -6,7 +6,8 @@ separate, explicit step because it is heavier — it downloads a small (~80 MB) 
 first run and embeds every card. Like the relational tools it guards an un-imported database
 gracefully (``database_not_initialized``); the build itself is idempotent/incremental (a card
 whose composite text hash is unchanged is not re-embedded, and if only its colour flags or mana
-value drifted the filter metadata is rewritten in place), so re-running is cheap.
+value drifted the filter metadata is rewritten in place), so re-running is cheap. Every build
+also drops the vectors of cards no longer in the database.
 """
 
 import logging
@@ -39,6 +40,7 @@ class BuildSearchIndexResult(BaseModel):
         cards_skipped: Cards not re-embedded (their text was unchanged).
         cards_refreshed: Cards whose text was unchanged but whose colour flags / mana value were
             rewritten in place (no re-embedding); a subset of ``cards_skipped``.
+        cards_pruned: Vectors removed because their card is no longer in the database.
         message: Human-facing summary.
     """
 
@@ -46,6 +48,7 @@ class BuildSearchIndexResult(BaseModel):
     cards_indexed: int = 0
     cards_skipped: int = 0
     cards_refreshed: int = 0
+    cards_pruned: int = 0
     message: str
 
 
@@ -55,9 +58,10 @@ def build_search_index(
     embedder: Embedder | None = None,
     limit: int | None = None,
     rebuild: bool = False,
-    prune: bool = False,
 ) -> BuildSearchIndexResult:
     """Build (or incrementally update) the semantic search index from the imported cards.
+
+    Each build also removes the vectors of cards no longer in ``cards`` (``cards_pruned``).
 
     Args:
         connection_factory: The sync sqlite-vec :class:`~src.search.connection.ConnectionFactory`
@@ -66,7 +70,6 @@ def build_search_index(
             :func:`~src.search.embedder.get_embedder` singleton (loads the model on first call).
         limit: If set, only embed the first ``limit`` cards (fast dev/test runs).
         rebuild: Drop the existing index and re-embed every card (needed after a model change).
-        prune: Remove index rows for cards no longer present after the build.
 
     Returns:
         A :class:`BuildSearchIndexResult`. A missing card database returns
@@ -91,7 +94,7 @@ def build_search_index(
             drop_card_vec_table(conn)
             create_card_embedding_meta_table(conn)
             clear_card_embedding_meta(conn)
-        stats = build_card_embeddings(conn, active_embedder, limit=limit, prune=prune)
+        stats = build_card_embeddings(conn, active_embedder, limit=limit)
     except Exception as exc:
         logger.exception("build_search_index failed")
         return BuildSearchIndexResult(
@@ -104,13 +107,20 @@ def build_search_index(
         if stats.refreshed
         else ""
     )
+    pruned_note = (
+        f" Removed {stats.pruned:,} vectors of cards no longer in the database."
+        if stats.pruned
+        else ""
+    )
     return BuildSearchIndexResult(
         status="ok",
         cards_indexed=embedded,
         cards_skipped=stats.skipped,
         cards_refreshed=stats.refreshed,
+        cards_pruned=stats.pruned,
         message=(
             f"Semantic search index built: {embedded:,} cards embedded, "
-            f"{stats.skipped:,} already current{refreshed_note}. Semantic search is ready."
+            f"{stats.skipped:,} already current{refreshed_note}.{pruned_note} "
+            "Semantic search is ready."
         ),
     )

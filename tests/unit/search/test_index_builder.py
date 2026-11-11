@@ -520,8 +520,8 @@ def test_limit_processes_only_first_n_cards(tmp_path) -> None:
     factory.close()
 
 
-def test_prune_removes_orphan_vectors(tmp_path) -> None:
-    """Recommended prune: a card removed from cards leaves no orphan vector/hash after prune."""
+def test_default_build_prunes_orphan_vectors(tmp_path) -> None:
+    """A card removed from cards leaves no orphan vector/hash after a plain re-build."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
     fake = FakeEmbedder()
@@ -532,7 +532,7 @@ def test_prune_removes_orphan_vectors(tmp_path) -> None:
 
     conn.execute("DELETE FROM cards WHERE id = ?", ("id-drop",))
     conn.commit()
-    stats = build_card_embeddings(conn, fake, prune=True)
+    stats = build_card_embeddings(conn, fake)
 
     assert stats.pruned == 1
     assert _vec_count(conn) == 1

@@ -4,12 +4,14 @@ Centralized so every tool's ``database_not_initialized`` (and the semantic tools
 message stays consistent and — crucially — names the in-client **tool** to run next, never a
 terminal command. A packaged plugin / Claude Desktop user has no shell to run
 ``scripts/build_card_embeddings.py``; they ask the assistant to call the tool. The ``ambiguous``
-wording ``lookup_card_by_name`` and ``find_similar_cards`` share lives here for the same reason.
+wording ``lookup_card_by_name`` and ``find_similar_cards`` share lives here for the same reason, as
+does the note both semantic tools append when a filtered search stopped at the widest window.
 """
 
 from typing import Any
 
 from src.data.repositories.card import MAX_NAME_MATCHES, NameResolution
+from src.search.query import MAX_OVER_FETCH_K
 
 #: Surfaced by every relational + semantic tool when the ``cards`` table is missing or empty.
 #: Names the ``initialize_database`` tool (the in-client, consent-gated card import).
@@ -55,3 +57,23 @@ def ambiguous_lookup_message(
         return f"{found} Please refine your search{alternative}{showing}."
     pick = " Re-call with a specific card_id." if card_id_hint else ""
     return f"{found} Which one did you mean?{pick}"
+
+
+def semantic_cap_note(matched: int) -> str:
+    """The sentence ``semantic_search_cards`` and ``find_similar_cards`` append at the cap.
+
+    Appended to an ``ok`` or ``empty`` message when :func:`~src.search.query.hybrid_search`
+    reports ``cap_reached``: the filters left fewer than ``limit`` hits among the nearest
+    :data:`~src.search.query.MAX_OVER_FETCH_K` vectors, so more matches may exist further out.
+
+    Args:
+        matched: How many hits survived the filters (``0`` for an ``empty`` result).
+
+    Returns:
+        One sentence with a leading space, ready to append.
+    """
+    count = "None" if matched == 0 else f"Only {matched}"
+    return (
+        f" {count} of the nearest {MAX_OVER_FETCH_K:,} cards matched the filters; "
+        "`search_cards` filters the whole database, so use it for the full filtered set."
+    )

@@ -6,9 +6,17 @@ The serve-time read path for the semantic index. A single hybrid query (research
   ``color_{w,u,b,r,g}`` flags are ``vec0`` metadata columns, so they go in the ``MATCH``/``k``
   ``WHERE`` and sqlite-vec applies a KNN-aware bitmap *before* computing distance.
 * **Pattern 2 — relational post-filter (outside the KNN):** format legality and games
-  availability resolve via a JOIN to ``cards`` (``json_extract`` / ``cast … LIKE``), which is
-  why the KNN **over-fetches** ``k`` — the JOIN-side trim and the oracle-id de-dup happen after
-  the vector scan and must not starve the requested ``limit``.
+  availability resolve via a ``LEFT JOIN`` to ``cards`` (``json_extract`` / ``cast … LIKE``),
+  computed as a ``passes`` column rather than a ``WHERE``, so the row count still says how many
+  vectors the KNN returned. The JOIN-side trim, orphan vectors (a ``card_vec`` row whose card is
+  gone) and the oracle-id de-dup all happen after the vector scan, which is why the KNN
+  **over-fetches** ``k``.
+
+The window widens once: the first KNN takes the nearest ``over_fetch_k`` (200) vectors. When that
+leaves fewer than ``limit`` hits *and* the KNN filled ``k`` (so more matches may lie further out),
+it runs again at :data:`MAX_OVER_FETCH_K` (4,096, the largest ``k`` vec0 accepts on sqlite-vec
+0.1.9). A window that fills ``limit``, or a KNN the metadata pre-filter exhausted, runs exactly one
+KNN. :class:`HybridHits` says when even the widest window came back full and short.
 
 The index is keyed by *printing* (``card_id``), so many printings of one card share near-identical
 vectors; results are **de-duplicated by ``oracle_id``** (nearest printing kept) before trimming to
@@ -24,9 +32,9 @@ import json
 import logging
 import math
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import sqlite_vec
@@ -49,6 +57,10 @@ ColorMode = Literal["any", "all", "exact", "at_most"]
 #: Map a WUBRG colour letter to its ``card_vec`` flag column, derived from :data:`COLOR_COLS`
 #: so the mapping can never drift from the schema's declared column order.
 _COLOR_LETTER_TO_COL: dict[str, str] = {col.rsplit("_", 1)[1].upper(): col for col in COLOR_COLS}
+
+#: The largest KNN ``k`` vec0 accepts: measured on sqlite-vec 0.1.9, ``k=4097`` raises "k value in
+#: knn query too large". :func:`hybrid_search` never binds a larger ``k``.
+MAX_OVER_FETCH_K = 4096
 
 
 @dataclass(frozen=True)
@@ -94,6 +106,25 @@ class CardHit:
     colors: list[str]
     rarity: str
     set_code: str
+
+
+class HybridHits(list[CardHit]):
+    """The :class:`CardHit` list :func:`hybrid_search` returns, plus whether it stopped at the cap.
+
+    A plain ``list`` to every existing caller; ``cap_reached`` is the one extra fact. It is ``True``
+    only when the widest KNN (``k`` = :data:`MAX_OVER_FETCH_K`) also came back full and the
+    filters still left fewer than ``limit`` hits, so matches may exist beyond the nearest 4,096
+    vectors. It is ``False`` when the result filled ``limit`` or the KNN ran out of candidates.
+
+    Example:
+        >>> hits = HybridHits([], cap_reached=True)
+        >>> hits == [], hits.cap_reached
+        (True, True)
+    """
+
+    def __init__(self, hits: Iterable[CardHit] = (), *, cap_reached: bool = False) -> None:
+        super().__init__(hits)
+        self.cap_reached = cap_reached
 
 
 def _coerce_json_list(raw: str | None) -> list[str]:
@@ -266,16 +297,19 @@ def hybrid_search(
     format_legal: str | None = None,
     games: Sequence[str] | None = None,
     exclude_oracle_id: str | None = None,
-) -> list[CardHit]:
+) -> HybridHits:
     """Run the hybrid KNN + JOIN query and return de-duplicated, ranked :class:`CardHit` rows.
 
     Embeds nothing — the caller supplies ``query_vector`` (the embedded NL query, or a
     seed card's stored vector). The query vector and **every** filter value are bound
     as parameters; the only SQL-literal identifiers are schema constants (table/column names and
-    the colour flag columns). Over-fetches ``over_fetch_k`` candidates from the KNN so the JOIN-side
-    legality/games trim and the oracle-id de-dup can pare the set down to ``limit`` without starving
-    it. Results are ordered nearest-first by raw vec0 distance, then collapsed to one hit per
-    ``oracle_id`` (the nearest printing wins), then truncated to ``limit``.
+    the colour flag columns). The first KNN over-fetches ``over_fetch_k`` candidates so the
+    JOIN-side legality/games trim, orphan vectors and the oracle-id de-dup can pare the set down to
+    ``limit``. If they leave fewer than ``limit`` hits and that KNN returned all ``k`` rows it asked
+    for, the query runs once more at :data:`MAX_OVER_FETCH_K` (4,096); a KNN that returned fewer
+    than ``k`` rows has no further candidates, so it is never repeated. Results are ordered
+    nearest-first by raw vec0 distance, then collapsed to one hit per ``oracle_id`` (the nearest
+    printing wins), then truncated to ``limit``.
 
     Args:
         conn: A ``sqlite3.Connection`` from
@@ -285,8 +319,9 @@ def hybrid_search(
         query_vector: A 384-dim query embedding (``float32`` ndarray or a float sequence);
             serialized via ``sqlite_vec.serialize_float32``.
         limit: Maximum number of de-duplicated hits to return (default 10).
-        over_fetch_k: The mandatory KNN ``k`` (default 200) — over-fetched so JOIN-side filtering
-            and oracle de-dup do not starve ``limit``. Never emit an unbounded ``vec0`` scan.
+        over_fetch_k: The first KNN's ``k`` (default 200), the initial window; a short, full
+            window is retried once at :data:`MAX_OVER_FETCH_K`. Clamped to that cap, so no KNN
+            binds a larger ``k``. Never emit an unbounded ``vec0`` scan.
         mana_value_min: Inclusive minimum mana value; **floored** to an int (the column is
             ``int(cmc)``) before binding. ``None`` omits the lower bound.
         mana_value_max: Inclusive maximum mana value; **ceiled** to an int before binding.
@@ -305,8 +340,9 @@ def hybrid_search(
             ``limit`` accounting stays correct. Default ``None`` excludes nothing.
 
     Returns:
-        A list of :class:`CardHit`, nearest-first, one per ``oracle_id``, at most ``limit`` long.
-        Empty if nothing survives the filters.
+        A :class:`HybridHits` list of :class:`CardHit`, nearest-first, one per ``oracle_id``, at
+        most ``limit`` long; empty if nothing survives the filters. Its ``cap_reached`` is
+        ``True`` when the 4,096-vector window also came back full and the result is still short.
 
     Raises:
         sqlite3.OperationalError: If ``conn`` lacks the sqlite-vec extension, or on a SQL error.
@@ -332,8 +368,11 @@ def hybrid_search(
         inner_clauses.extend(_color_predicates(colors, color_mode))
     inner_where = "".join(f"\n      AND {clause}" for clause in inner_clauses)
 
-    # --- Pattern 2: relational predicates live OUTSIDE, on the JOIN to cards ----------------
-    outer_clauses: list[str] = []
+    # --- Pattern 2: relational predicates live OUTSIDE, as a computed column -----------------
+    # A WHERE would hide how many vectors the KNN returned, and that count is what says whether a
+    # wider window could find more. The LEFT JOIN keeps an orphan vector (card gone) as a row with
+    # a NULL ``c.id``, which never passes.
+    outer_clauses: list[str] = ["c.id IS NOT NULL"]
     outer_params: list[object] = []
     if format_legal:
         outer_clauses.append("json_extract(c.legalities, ?) = 'legal'")
@@ -342,9 +381,10 @@ def hybrid_search(
         game_ors = " OR ".join("cast(c.games AS TEXT) LIKE ?" for _ in games)
         outer_clauses.append(f"({game_ors})")
         outer_params.extend(f'%"{game}"%' for game in games)
-    outer_where = ("\nWHERE " + "\n  AND ".join(outer_clauses)) if outer_clauses else ""
+    passes = "CASE WHEN " + " AND ".join(outer_clauses) + " THEN 1 ELSE 0 END"
 
     qvec_blob = sqlite_vec.serialize_float32(np.asarray(query_vector, dtype=np.float32))
+    # Placeholders bind in textual order: the CTE's (vector, k, pre-filters), then ``passes``.
     sql = (
         f"WITH knn AS (\n"
         f"    SELECT {CARD_ID_COL}, distance\n"
@@ -354,18 +394,53 @@ def hybrid_search(
         f")\n"
         f"SELECT knn.{CARD_ID_COL}, knn.distance,\n"
         f"       c.oracle_id, c.name, c.mana_cost, c.cmc, c.type_line, c.oracle_text,\n"
-        f"       c.colors, c.rarity, c.set_code\n"
-        f"FROM knn JOIN cards c ON c.id = knn.{CARD_ID_COL}{outer_where}\n"
+        f"       c.colors, c.rarity, c.set_code,\n"
+        f"       {passes} AS passes, c.id IS NULL AS orphan\n"
+        f"FROM knn LEFT JOIN cards c ON c.id = knn.{CARD_ID_COL}\n"
         f"ORDER BY knn.distance"
     )
-    params: list[object] = [qvec_blob, over_fetch_k, *inner_params, *outer_params]
-    rows = conn.execute(sql, params).fetchall()
 
-    # Oracle de-dup: rows are already nearest-first, so the first sighting of an oracle_id is its
-    # nearest printing — keep it, drop later duplicates, and stop once `limit` unique hits are in.
+    k = min(over_fetch_k, MAX_OVER_FETCH_K)
+    while True:
+        params: list[object] = [qvec_blob, k, *inner_params, *outer_params]
+        rows = conn.execute(sql, params).fetchall()
+        hits = _dedup_hits(rows, limit=limit, exclude_oracle_id=exclude_oracle_id)
+        window_full = len(rows) == k
+        logger.debug(
+            "hybrid_search: k=%d -> %d rows (%d orphan) -> %d unique hits (limit=%d)",
+            k,
+            len(rows),
+            sum(1 for row in rows if row[12]),
+            len(hits),
+            limit,
+        )
+        if len(hits) >= limit or not window_full or k >= MAX_OVER_FETCH_K:
+            break
+        k = MAX_OVER_FETCH_K
+
+    # Short at the cap with the window still full: matches may lie beyond the nearest 4,096.
+    return HybridHits(hits, cap_reached=len(hits) < limit and window_full and k >= MAX_OVER_FETCH_K)
+
+
+def _dedup_hits(rows: list[Any], *, limit: int, exclude_oracle_id: str | None) -> list[CardHit]:
+    """Keep the passing rows, one per ``oracle_id`` (nearest first), up to ``limit``.
+
+    Rows are already nearest-first, so the first sighting of an oracle_id is its nearest printing:
+    keep it, drop later duplicates, and stop once ``limit`` unique hits are in.
+
+    Args:
+        rows: :func:`hybrid_search`'s result rows (``passes`` at index 11).
+        limit: Maximum number of hits to keep.
+        exclude_oracle_id: An oracle whose every printing is skipped before it takes a slot.
+
+    Returns:
+        The de-duplicated hits, nearest-first.
+    """
     hits: list[CardHit] = []
     seen_oracles: set[str] = set()
     for row in rows:
+        if not row[11]:
+            continue
         oracle_id = row[2]
         # Drop the seed's whole oracle (find_similar) before it can consume a `limit` slot.
         if exclude_oracle_id is not None and oracle_id == exclude_oracle_id:
@@ -390,12 +465,4 @@ def hybrid_search(
         )
         if len(hits) >= limit:
             break
-
-    logger.debug(
-        "hybrid_search: k=%d -> %d rows -> %d unique hits (limit=%d)",
-        over_fetch_k,
-        len(rows),
-        len(hits),
-        limit,
-    )
     return hits
