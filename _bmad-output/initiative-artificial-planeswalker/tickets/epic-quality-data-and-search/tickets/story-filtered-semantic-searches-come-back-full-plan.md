@@ -8,9 +8,9 @@ baseline_revision: '4321f054175cb1933180bb42129133ef7ad4b119'
 route: 'full'
 route_source: 'auto'
 risk: 'high'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick']
 review_loop_iteration: 0
 context: []
 ---
@@ -62,10 +62,10 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Commit 1 (`test:`): `test_semantic_search_tool.py`, `test_find_similar_tool.py` -- `limit=2` over four surviving cards returns 2; `color_mode="all"` with `["W","U"]` excludes a mono-W card that `any` keeps. Green on the old code; probe-prove each with the forward dropped.
-- [ ] Commit 2 (`fix:`): `src/search/query.py` widening; `tests/fixtures/embedder.py` `RankedEmbedder`; `tests/unit/search/test_query.py` -- starved filter fills (red on the old code), exhausted pre-filter and filled first window each issue one KNN (counted via `conn.set_trace_callback`), and a cap test over 4,100 nearer illegal cards that the old code also fails (`cap_reached` true; false when the first window fills or the KNN is exhausted). New `tests/integration/mcp_server/test_filtered_semantic_fill.py` on `empty_card_db` drives both helpers with `format="standard", limit=10` → 10, and each tool's message carries the cap sentence only when `cap_reached`.
-- [ ] Commit 3 (`fix:`): builder, tool, CLI and initialize-database prune changes; tests in the new file: the default `build_search_index` and CLI `main()` (argv, `CARDS_DATABASE_URL` and `get_embedder` patched) leave no `card_vec` row without a card; the import marker skips the prune. Update the two existing prune tests.
-- [ ] Commit 4 (`docs:`): docstrings, skills, `plugin/` rebuild.
+- [x] Commit 1 (`test:`): `test_semantic_search_tool.py`, `test_find_similar_tool.py` -- `limit=2` over four surviving cards returns 2; `color_mode="all"` with `["W","U"]` excludes a mono-W card that `any` keeps. Green on the old code; probe-prove each with the forward dropped.
+- [x] Commit 2 (`fix:`): `src/search/query.py` widening; `tests/fixtures/embedder.py` `RankedEmbedder`; `tests/unit/search/test_query.py` -- starved filter fills (red on the old code), exhausted pre-filter and filled first window each issue one KNN (counted via `conn.set_trace_callback`), and a cap test over 4,100 nearer illegal cards that the old code also fails (`cap_reached` true; false when the first window fills or the KNN is exhausted). New `tests/integration/mcp_server/test_filtered_semantic_fill.py` on `empty_card_db` drives both helpers with `format="standard", limit=10` → 10, and each tool's message carries the cap sentence only when `cap_reached`.
+- [x] Commit 3 (`fix:`): builder, tool, CLI and initialize-database prune changes; tests in the new file: the default `build_search_index` and CLI `main()` (argv, `CARDS_DATABASE_URL` and `get_embedder` patched) leave no `card_vec` row without a card; the import marker skips the prune. Update the two existing prune tests.
+- [x] Commit 4 (`docs:`): docstrings, skills, `plugin/` rebuild.
 
 **Acceptance Criteria:**
 - Given the real index (read-only), when the 16 measured queries run with `format="standard", limit=10`, then every one returns 10.
@@ -144,6 +144,28 @@ Gate on `841e501`: `ruff check .`, `ruff format --check .`, `mypy src/`, `mypy s
 
 "Red on the old code": plant A restores the old single fixed window, and the starved test goes red under it. A scratch check also ran `hybrid_search` from `5dfb50d` itself on the starved and cap layouts. Each returned `len 0` and a plain `list` with no `cap_reached`, so the starved test (expects 10) and the cap test (reads `cap_reached`) both fail on the old module.
 
+Orchestrator re-check on `bf1ef4e`, after the implementer returned:
+- **Gate:** ruff check, ruff format --check, mypy (native and `--platform win32`) clean; `uv run pytest` 3564 passed, 2 skipped. `build_plugin` leaves no drift.
+- **Recall selection:** 5 passed (model cache pinned to the persistent cache); hit-rate 12/12 = 1.000.
+- **Real index, read-only, the plan's original 16 queries** (the planning-time scratch `filtered_recall.py`: 10 seed vectors Sol Ring, Llanowar Elves, Lightning Bolt, Counterspell, Wrath of God, Dark Ritual, Serra Angel, Shivan Dragon, Thoughtseize, Giant Growth; 6 embedded queries "cheap red burn spell", "draw cards", "flying dragon with haste", "destroy all creatures", "graveyard recursion", "ramp mana elf"). Before → after, recall against brute force:
+  - standard limit=10: 149/160 = 0.931 → 160/160 = 1.000 (every query returns 10)
+  - standard limit=50: 220/800 = 0.275 → 800/800 = 1.000
+  - pauper limit=50: 0.882 → 1.000
+  - oldschool limit=10: 0.075 → 0.956
+  - Worst single search 250 ms, before any prune.
+- **The review's six measured seeds** (Lightning Bolt, Llanowar Elves, Counterspell, Glorybringer, Sol Ring, Wrath of God): standard limit=10 returns 10 for each, both with the seed excluded (`find_similar`) and without it.
+- **Real data directory afterwards:** `cards.db` mtime unchanged (2026-11-08 14:13:53), and no `-wal`/`-shm` files beside it.
+
 ## Plan Change Log
 
 ## Review Triage Log
+
+Pass 1 (quick lens, 2026-11-11): 5 findings: 0 high, 0 medium, 3 low, 2 false, 0 maybe-false. No patch, no loopback.
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| 1 | AC 4 says "exactly that node red", but plants A, E, G1/G2 and H turn 2–7 nodes red | low | rejected | Each plant breaks a behaviour that several tests cover by design (e.g. A removes the retry, which every widening test needs). The guard is proven red each time. The only fix is rewording the frozen AC, which this build may not edit; raised to Brad. |
+| 2 | AC 1 rests on a re-chosen query set, not the measured 16 | false | rejected | The orchestrator re-ran the plan's original 16 (the planning-time scratch script) on the read-only real index: 10 each. The review's six seeds, Glorybringer included, also return 10. |
+| 3 | Commit-3 probes are labelled `841e501` (commit 4), not `f894d10` | false | rejected | `git diff f894d10 841e501` touches only `server.py` docstrings, four skills and `plugin/`. The guard code the probes planted into is identical, so the proofs hold for commit 3. |
+| 4 | Execution checklist left unticked | low | rejected (bookkeeping done) | A record-only gap; boxes ticked as bookkeeping, not as a review patch. |
+| 5 | Removing `--prune` breaks `build_card_embeddings.py --prune` (exit 2), and no CHANGELOG entry | low | rejected | The approved plan removes the flag, and a default build now does what `--prune` did. Quality-pass stories (5.6 PR #129, 5.9 PR #130) add no CHANGELOG entries; the lane's release carries them. Raised to Brad for the release notes. |
