@@ -1,6 +1,7 @@
 """Integration tests for bulk Arena deck import."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session
@@ -292,13 +293,25 @@ async def test_import_decklist_card_already_in_deck_named_twice_is_exists_on_bot
 async def test_import_decklist_unexpected_resolver_status_is_an_mcp_error(
     seeded_card_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A resolver status the import does not handle is a bug: ``isError``, nothing written."""
+    """A resolver status the import does not handle is a bug: ``isError``, nothing written.
+
+    Only the *second* line's card answers the unknown status, so the first line has already
+    resolved ``found`` when the import fails: an import that wrote each valid card as it went
+    would leave Lightning Bolt in the deck (Greptile, PR #130).
+    """
+    real_status = NameResolution.status
+
+    def status(self: NameResolution[Any]) -> str:
+        if self.card is not None and self.card.name == "Counterspell":
+            return "retired"
+        return real_status.fget(self)
+
     server = build_server(session_factory=seeded_card_db)
     async with create_connected_server_and_client_session(server) as client:
         created = await client.call_tool("create_deck", {"name": "Arena Import"})
         deck_id = created.structuredContent["deck"]["id"]
         with monkeypatch.context() as patch:
-            patch.setattr(NameResolution, "status", property(lambda self: "retired"))
+            patch.setattr(NameResolution, "status", property(status))
             imported = await client.call_tool(
                 "import_decklist",
                 {

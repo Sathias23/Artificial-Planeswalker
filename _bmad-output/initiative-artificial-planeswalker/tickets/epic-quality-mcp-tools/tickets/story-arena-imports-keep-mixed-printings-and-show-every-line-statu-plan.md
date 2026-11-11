@@ -116,3 +116,16 @@ Both routed **patch**; no loopback.
 | 2 | `DeckImportResult`'s new docstring names only `ok` / `partial` | low | patch | Verified: the `status` Literal also carries `invalid`, `deck_not_found`, `error`, `database_not_initialized`, and a failed bulk write answers `error` with non-ok lines; the model docstring becomes the tool's output-schema description. Action: list all six and scope the `ok`/`partial` rule to a resolved-and-written import. |
 
 Review patches (`dc29eb2`, docs only, no new guard): the skill bullet says "for the same board", that a Deck and a Sideboard copy stay two rows, and that an over-250 sum refuses all of that card's lines; `DeckImportResult`'s docstring lists all six statuses and scopes the `ok`/`partial` rule. After the patches: ruff, ruff format, mypy (both platforms) clean; `uv run pytest` 3548 passed, 2 skipped; plugin rebuild, no drift. Commit 1 (`b9b48c2`) re-checked in a detached worktree: `test_deck_import_tool.py` 24 passed on the old code.
+
+Pass 2 (Greptile, PR #130, 4/5): 1 finding, P2, routed **patch**.
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | The unknown-status test patches `status` to `"retired"` for every card, so no valid line has resolved when the import fails, and an import that wrote each card as it went would still pass | low | patch | Verified: the patched property answered `"retired"` on the first line too. Action: only Counterspell (line 2) answers `"retired"`; Lightning Bolt (line 1) keeps its real `found`, and the empty-deck assertion now covers a found line. |
+
+Planted a write of the lines found so far before `_unhandled_status` (tree staged first, reverted with
+`git checkout`, `git diff --exit-code` clean):
+```
+full suite (-m 'not integration'): 3523 collected, 1 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_deck_import_tool.py::test_import_decklist_unexpected_resolver_status_is_an_mcp_error
+```
