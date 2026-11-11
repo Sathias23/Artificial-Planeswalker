@@ -1,14 +1,28 @@
-"""Card repository for database operations on card data."""
+"""Card repository for database operations on card data.
+
+Also home of the one card-name resolver every name-taking tool calls: an exact ``COLLATE NOCASE``
+match on ``name`` or ``printed_name`` (served by the ``ix_cards_*_nocase`` indexes), then an
+escaped substring read collapsed to one card per Oracle id, ordered by name and capped at
+:data:`MAX_NAME_MATCHES` + 1 rows so the caller learns whether more matched without reading them.
+The statements are built once (:func:`_exact_name_statement`, :func:`_partial_name_statement`) and
+run on either seam: :meth:`CardRepository.resolve_name` on the async session, and
+:func:`resolve_name_on_connection` on the sync sqlite-vec connection, which compiles the same
+``Select`` objects for SQLite.
+"""
 
 import math
+import sqlite3
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, not_, or_, select
+from sqlalchemy.dialects import sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from src.data.models.card import CardModel
-from src.data.repositories.base import BaseRepository
+from src.data.repositories.base import LIKE_ESCAPE, BaseRepository, contains_pattern
 from src.data.schemas.card import Card
 from src.data.schemas.pagination import PaginatedResult
 
@@ -19,6 +33,44 @@ FormatFilter = str | None
 # Type alias for games availability filter
 # Scryfall platforms: paper, arena, mtgo
 GamesFilter = list[str] | None
+
+#: The most candidates a name resolution returns; the partial read fetches one more to learn
+#: whether the list was cut (:attr:`NameResolution.more`).
+MAX_NAME_MATCHES = 10
+
+#: The SQLite dialect the sync seam compiles statements with. ``named`` so a ``%`` in a compiled
+#: ``LIKE`` stays a single ``%`` (the ``pyformat`` style would double it) and parameters bind by
+#: name from ``compiled.params``.
+_SQLITE_NAMED = sqlite.dialect(paramstyle="named")
+
+
+@dataclass(frozen=True)
+class NameResolution[T]:
+    """The outcome of resolving a card name: one card, several candidates, or nothing.
+
+    ``T`` is the row shape of the seam that resolved it: a :class:`Card` on the async session, a
+    positional ``sqlite3`` row on the sync connection.
+
+    Attributes:
+        card: The one card the name names (an exact match, or the only partial match).
+        matches: The candidates when the name matched more than one Oracle card, in name order,
+            at most :data:`MAX_NAME_MATCHES`.
+        more: ``True`` when more than :data:`MAX_NAME_MATCHES` Oracle cards matched, so
+            ``matches`` is the first :data:`MAX_NAME_MATCHES` of them, not all.
+    """
+
+    card: T | None = None
+    matches: list[T] = field(default_factory=list)
+    more: bool = False
+
+    @property
+    def status(self) -> Literal["found", "ambiguous", "not_found"]:
+        """``found`` (``card`` set), ``ambiguous`` (``matches`` set) or ``not_found``."""
+        if self.card is not None:
+            return "found"
+        if self.matches:
+            return "ambiguous"
+        return "not_found"
 
 
 class CardRepository(BaseRepository):
@@ -36,7 +88,8 @@ class CardRepository(BaseRepository):
         """
         super().__init__(session)
 
-    def _apply_format_filter(self, stmt: Select[Any], format_filter: FormatFilter) -> Select[Any]:
+    @staticmethod
+    def _apply_format_filter(stmt: Select[Any], format_filter: FormatFilter) -> Select[Any]:
         """Apply format legality filter to a SELECT statement.
 
         Filters cards based on their legalities JSON field. Only cards with
@@ -50,23 +103,18 @@ class CardRepository(BaseRepository):
             Modified SELECT statement with format filter applied (if format_filter is not None)
 
         Example:
-            stmt = select(CardModel).where(CardModel.name.ilike("bolt"))
-            stmt = self._apply_format_filter(stmt, "standard")
+            stmt = select(CardModel).where(CardModel.name == "Lightning Bolt")
+            stmt = CardRepository._apply_format_filter(stmt, "standard")
         """
         if format_filter is None:
             return stmt
 
-        # For SQLite, query JSON field using json_extract or direct access
-        # SQLite stores JSON as text, so we can use the -> operator
-        # We need to check if legalities->'standard' = "legal"
-        from sqlalchemy import func
-
-        # Use json_extract for SQLite compatibility
-        # json_extract(legalities, '$.standard') = 'legal'
+        # SQLite stores JSON as text: json_extract(legalities, '$.standard') = 'legal'
         legality_check = func.json_extract(CardModel.legalities, f"$.{format_filter}") == "legal"
         return stmt.where(legality_check)
 
-    def _apply_games_filter(self, stmt: Select[Any], games: GamesFilter) -> Select[Any]:
+    @staticmethod
+    def _apply_games_filter(stmt: Select[Any], games: GamesFilter) -> Select[Any]:
         """Apply games availability filter to a SELECT statement.
 
         Filters cards based on their games JSON array field. Uses OR logic:
@@ -80,26 +128,27 @@ class CardRepository(BaseRepository):
             Modified SELECT statement with games filter applied (if games is not None/empty)
 
         Example:
-            stmt = select(CardModel).where(CardModel.name.ilike("bolt"))
-            stmt = self._apply_games_filter(stmt, ["arena"])
+            stmt = select(CardModel).where(CardModel.name == "Lightning Bolt")
+            stmt = CardRepository._apply_games_filter(stmt, ["arena"])
         """
         if games is None or not games:
             return stmt
 
-        from sqlalchemy import String, cast, or_
-
-        # Build OR conditions - card must be available in at least one specified game
-        # Use LIKE pattern matching for JSON array elements
-        conditions = []
-        for game in games:
-            conditions.append(cast(CardModel.games, String).like(f'%"{game}"%'))
+        # Card must be available in at least one specified game: a LIKE on the JSON array text,
+        # escaped because ``lookup_card_by_name`` passes ``games`` through unvalidated.
+        conditions = [
+            cast(CardModel.games, String).like(contains_pattern(f'"{game}"'), escape=LIKE_ESCAPE)
+            for game in games
+        ]
         return stmt.where(or_(*conditions))
 
-    def _apply_unique_oracle_filter(self, stmt: Select[Any]) -> Select[Any]:
+    @staticmethod
+    def _apply_unique_oracle_filter(stmt: Select[Any]) -> Select[Any]:
         """Filter to one card per Oracle ID (removes duplicate printings).
 
         Uses a subquery to select only the first card (by ID) for each unique Oracle ID.
         This ensures users see only unique cards, not multiple printings of the same card.
+        ``stmt`` must select ``cards.id`` and ``cards.oracle_id`` (the CTE reads both).
 
         Args:
             stmt: SQLAlchemy SELECT statement to filter
@@ -108,8 +157,8 @@ class CardRepository(BaseRepository):
             Modified SELECT statement that returns only one card per Oracle ID
 
         Example:
-            stmt = select(CardModel).where(CardModel.name.ilike("bolt"))
-            stmt = self._apply_unique_oracle_filter(stmt)
+            stmt = select(CardModel).where(CardModel.type_line == "Instant")
+            stmt = CardRepository._apply_unique_oracle_filter(stmt)
             # Now returns only one Lightning Bolt instead of dozens of printings
         """
         # Create a CTE (Common Table Expression) from stmt to get filtered cards
@@ -151,6 +200,37 @@ class CardRepository(BaseRepository):
 
         return Card.model_validate(card_model)
 
+    async def resolve_name(
+        self, name: str, *, format_filter: FormatFilter = None, games: GamesFilter = None
+    ) -> NameResolution[Card]:
+        """Resolve a card name the way every name-taking tool does.
+
+        Strips ``name``; a blank one resolves to nothing without a query. Otherwise an exact
+        case-insensitive match on ``name`` or ``printed_name`` (first printing by id) wins; failing
+        that, a literal substring match on either (``%`` and ``_`` are not wildcards), one card per
+        Oracle id, in name order, reading at most :data:`MAX_NAME_MATCHES` + 1 rows. One partial
+        match is the card; several are ``matches``, with ``more`` saying whether the list was cut.
+
+        Args:
+            name: The exact or partial card name.
+            format_filter: Optional format the card must be legal in.
+            games: Optional platforms the card must be available on (any of them).
+
+        Returns:
+            A :class:`NameResolution` of :class:`Card` schemas.
+        """
+        name = name.strip()
+        if not name:
+            return NameResolution()
+
+        exact = await self.find_by_name_exact(name, format_filter=format_filter, games=games)
+        if exact is not None:
+            return NameResolution(card=exact)
+
+        stmt = _partial_name_statement((CardModel,), name, format_filter=format_filter, games=games)
+        result = await self.session.execute(stmt)
+        return _bucket([Card.model_validate(model) for model in result.scalars().all()])
+
     async def find_by_name_exact(
         self, name: str, format_filter: FormatFilter = None, games: GamesFilter = None
     ) -> Card | None:
@@ -164,10 +244,9 @@ class CardRepository(BaseRepository):
 
         The comparison is ``COLLATE NOCASE`` equality, so it is served by the
         ``ix_cards_*_nocase`` indexes rather than a table scan, and ``name`` is compared
-        literally — ``%`` and ``_`` are not wildcards here (see ``find_by_name_partial``).
-        SQLite's ``NOCASE`` folds ASCII letters only (exactly like the ``lower()``/``LIKE`` path
-        it replaced), so a non-ASCII case mismatch misses here and falls to callers' partial
-        bucket.
+        literally — ``%`` and ``_`` are not wildcards here. SQLite's ``NOCASE`` folds ASCII
+        letters only (exactly like the ``lower()``/``LIKE`` path it replaced), so a non-ASCII case
+        mismatch misses here and falls to the resolver's partial step.
 
         Args:
             name: Card name to search for (case-insensitive, matches name OR printed_name)
@@ -189,19 +268,7 @@ class CardRepository(BaseRepository):
             # With games filter
             card = await repo.find_by_name_exact("Nill, Vessel of Valgavoth", games=["arena"])
         """
-        from sqlalchemy import or_
-
-        # Search both name and printed_name fields. One collated term per index: SQLite's OR
-        # optimisation needs an index for each term or it falls back to a scan.
-        stmt = select(CardModel).where(
-            or_(
-                CardModel.name.collate("NOCASE") == name,
-                CardModel.printed_name.collate("NOCASE") == name,
-            )
-        )
-        stmt = self._apply_format_filter(stmt, format_filter)
-        stmt = self._apply_games_filter(stmt, games)
-        stmt = stmt.order_by(CardModel.id).limit(1)
+        stmt = _exact_name_statement((CardModel,), name, format_filter=format_filter, games=games)
         result = await self.session.execute(stmt)
         card_model = result.scalar_one_or_none()
 
@@ -211,19 +278,25 @@ class CardRepository(BaseRepository):
         return Card.model_validate(card_model)
 
     async def find_by_name_partial(
-        self, query: str, format_filter: FormatFilter = None, games: GamesFilter = None
+        self,
+        query: str,
+        format_filter: FormatFilter = None,
+        games: GamesFilter = None,
+        *,
+        limit: int = MAX_NAME_MATCHES,
     ) -> list[Card]:
-        """Find all cards matching a partial name (case-insensitive substring).
+        """Find cards whose name or printed name contains ``query`` (case-insensitive, literal).
 
-        Performs a case-insensitive substring search on both name and printed_name fields.
-        This allows searching for both Oracle names and printed names (e.g., OM1 Universes Within).
-        Returns only one card per Oracle ID (no duplicate printings).
-        Optionally filters by format legality and game availability.
+        One card per Oracle ID (no duplicate printings), in name order, at most ``limit`` of
+        them. ``%`` and ``_`` in ``query`` match themselves. Optionally filters by format legality
+        and game availability. The tools resolve names through :meth:`resolve_name`; this is the
+        bare substring read for scripts.
 
         Args:
             query: Partial name to search for (case-insensitive, matches name OR printed_name)
             format_filter: Optional format to filter by ("standard" or None)
             games: Optional list of games to filter by (["arena"] or None)
+            limit: The most cards to return (default :data:`MAX_NAME_MATCHES`).
 
         Returns:
             List of matching Card schemas (one per Oracle ID, empty list if no matches)
@@ -231,28 +304,14 @@ class CardRepository(BaseRepository):
         Example:
             cards = await repo.find_by_name_partial("lightning")
             cards = await repo.find_by_name_partial("Nill")  # Finds OM1 cards with printed_name
-            for card in cards:
-                print(f"Found: {card.name}")
-
-            # With format filter
             cards = await repo.find_by_name_partial("lightning", format_filter="standard")
-
-            # With games filter
             cards = await repo.find_by_name_partial("Nill", games=["arena"])
         """
-        from sqlalchemy import or_
-
-        # Search both name and printed_name fields
-        stmt = select(CardModel).where(
-            or_(CardModel.name.ilike(f"%{query}%"), CardModel.printed_name.ilike(f"%{query}%"))
+        stmt = _partial_name_statement(
+            (CardModel,), query, format_filter=format_filter, games=games, limit=limit
         )
-        stmt = self._apply_format_filter(stmt, format_filter)
-        stmt = self._apply_games_filter(stmt, games)
-        stmt = self._apply_unique_oracle_filter(stmt)
         result = await self.session.execute(stmt)
-        card_models = result.scalars().all()
-
-        return [Card.model_validate(card) for card in card_models]
+        return [Card.model_validate(card) for card in result.scalars().all()]
 
     async def find_by_colors(
         self, color: str, format_filter: FormatFilter = None, games: GamesFilter = None
@@ -287,7 +346,6 @@ class CardRepository(BaseRepository):
         else:
             # For SQLite, check if color exists in JSON array by casting to string
             # and using LIKE pattern matching
-            from sqlalchemy import String, cast
 
             # This checks if the color appears in the JSON array representation
             # e.g., '["R"]' or '["R", "U"]' will match when searching for "R"
@@ -328,7 +386,9 @@ class CardRepository(BaseRepository):
             # With games filter
             arena_instants = await repo.find_by_type("Instant", games=["arena"])
         """
-        stmt = select(CardModel).where(CardModel.type_line.ilike(f"%{type_query}%"))
+        stmt = select(CardModel).where(
+            CardModel.type_line.ilike(contains_pattern(type_query), escape=LIKE_ESCAPE)
+        )
         stmt = self._apply_format_filter(stmt, format_filter)
         stmt = self._apply_games_filter(stmt, games)
         stmt = self._apply_unique_oracle_filter(stmt)
@@ -365,13 +425,14 @@ class CardRepository(BaseRepository):
             # With games filter
             arena_haste = await repo.search_by_keywords("haste", games=["arena"])
         """
-        from sqlalchemy import String, cast, or_
 
         # Search in oracle_text (case-insensitive)
-        oracle_match = CardModel.oracle_text.ilike(f"%{keyword}%")
+        oracle_match = CardModel.oracle_text.ilike(contains_pattern(keyword), escape=LIKE_ESCAPE)
 
         # Search in keywords JSON array (cast to string and check for keyword)
-        keywords_match = cast(CardModel.keywords, String).ilike(f'%"{keyword}"%')
+        keywords_match = cast(CardModel.keywords, String).ilike(
+            contains_pattern(f'"{keyword}"'), escape=LIKE_ESCAPE
+        )
 
         stmt = select(CardModel).where(or_(oracle_match, keywords_match))
         stmt = self._apply_format_filter(stmt, format_filter)
@@ -478,7 +539,6 @@ class CardRepository(BaseRepository):
                 limit=30  # Treated as page_size=30, page=1
             )
         """
-        from sqlalchemy import String, cast, or_
 
         # Handle backward compatibility with limit parameter
         if limit is not None:
@@ -492,8 +552,6 @@ class CardRepository(BaseRepository):
 
         # Apply color filter based on color_mode
         if colors:
-            from sqlalchemy import not_
-
             if color_mode == "any":
                 # OR logic - card must have at least one of the colors (current behavior)
                 color_conditions = []
@@ -531,19 +589,27 @@ class CardRepository(BaseRepository):
         # Apply type filters (AND logic - must match all types)
         if types:
             for type_str in types:
-                stmt = stmt.where(CardModel.type_line.ilike(f"%{type_str}%"))
+                stmt = stmt.where(
+                    CardModel.type_line.ilike(contains_pattern(type_str), escape=LIKE_ESCAPE)
+                )
 
         # Apply keyword filters (AND logic - must have all keywords)
         if keywords:
             for keyword in keywords:
-                oracle_match = CardModel.oracle_text.ilike(f"%{keyword}%")
-                keywords_match = cast(CardModel.keywords, String).ilike(f'%"{keyword}"%')
+                oracle_match = CardModel.oracle_text.ilike(
+                    contains_pattern(keyword), escape=LIKE_ESCAPE
+                )
+                keywords_match = cast(CardModel.keywords, String).ilike(
+                    contains_pattern(f'"{keyword}"'), escape=LIKE_ESCAPE
+                )
                 stmt = stmt.where(or_(oracle_match, keywords_match))
 
         # Apply oracle text phrase filters (AND logic - all phrases must appear)
         if oracle_text_phrases:
             for phrase in oracle_text_phrases:
-                stmt = stmt.where(CardModel.oracle_text.ilike(f"%{phrase}%"))
+                stmt = stmt.where(
+                    CardModel.oracle_text.ilike(contains_pattern(phrase), escape=LIKE_ESCAPE)
+                )
 
         # Apply mana value range filters
         if mana_value_min is not None:
@@ -598,3 +664,102 @@ class CardRepository(BaseRepository):
             page_size=page_size,
             total_pages=total_pages,
         )
+
+
+# --- The one card-name resolver's statements -------------------------------------------------
+#
+# Built over any column set, so the async session can select the ``CardModel`` entity and the sync
+# sqlite-vec connection a few columns, and both run the same SQL.
+
+
+def _exact_name_statement(
+    columns: Sequence[Any],
+    name: str,
+    *,
+    format_filter: FormatFilter = None,
+    games: GamesFilter = None,
+) -> Select[Any]:
+    """The exact step: ``COLLATE NOCASE`` equality on ``name`` OR ``printed_name``, first by id.
+
+    One collated term per index: SQLite's OR optimisation needs an index for each term (the
+    ``ix_cards_*_nocase`` pair) or it falls back to a table scan.
+    """
+    stmt = select(*columns).where(
+        or_(
+            CardModel.name.collate("NOCASE") == name,
+            CardModel.printed_name.collate("NOCASE") == name,
+        )
+    )
+    stmt = CardRepository._apply_format_filter(stmt, format_filter)
+    stmt = CardRepository._apply_games_filter(stmt, games)
+    return stmt.order_by(CardModel.id).limit(1)
+
+
+def _partial_name_statement(
+    columns: Sequence[Any],
+    name: str,
+    *,
+    format_filter: FormatFilter = None,
+    games: GamesFilter = None,
+    limit: int = MAX_NAME_MATCHES + 1,
+) -> Select[Any]:
+    """The partial step: an escaped substring match on ``name`` OR ``printed_name``.
+
+    One card per Oracle id, ordered by name then id, at most ``limit`` rows (by default one more
+    than :data:`MAX_NAME_MATCHES`, so the caller can tell a full list from a cut one). ``columns``
+    must include ``CardModel.id`` and ``CardModel.oracle_id`` (the one-per-Oracle filter reads
+    both).
+    """
+    pattern = contains_pattern(name)
+    stmt = select(*columns).where(
+        or_(
+            CardModel.name.ilike(pattern, escape=LIKE_ESCAPE),
+            CardModel.printed_name.ilike(pattern, escape=LIKE_ESCAPE),
+        )
+    )
+    stmt = CardRepository._apply_format_filter(stmt, format_filter)
+    stmt = CardRepository._apply_games_filter(stmt, games)
+    stmt = CardRepository._apply_unique_oracle_filter(stmt)
+    return stmt.order_by(CardModel.name.collate("NOCASE"), CardModel.id).limit(limit)
+
+
+def _bucket[T](rows: Sequence[T]) -> NameResolution[T]:
+    """Turn the partial step's rows (at most ``MAX_NAME_MATCHES + 1``) into a resolution."""
+    if not rows:
+        return NameResolution()
+    if len(rows) == 1:
+        return NameResolution(card=rows[0])
+    return NameResolution(matches=list(rows[:MAX_NAME_MATCHES]), more=len(rows) > MAX_NAME_MATCHES)
+
+
+def _fetch_all(conn: sqlite3.Connection, stmt: Select[Any]) -> list[Any]:
+    """Run ``stmt`` on a plain ``sqlite3`` connection, compiled for SQLite with named params."""
+    compiled = stmt.compile(dialect=_SQLITE_NAMED)
+    return conn.execute(str(compiled), compiled.params).fetchall()
+
+
+def resolve_name_on_connection(
+    conn: sqlite3.Connection, name: str, columns: Sequence[Any]
+) -> NameResolution[Any]:
+    """:meth:`CardRepository.resolve_name` for the sync sqlite-vec connection.
+
+    The same strip, blank guard, statements and buckets, with no format or games filter (the one
+    caller, ``find_similar_cards``, filters the alternatives, not the seed). Rows come back as the
+    connection's rows of ``columns``, in that order.
+
+    Args:
+        conn: A ``sqlite3`` connection that sees the ``cards`` table.
+        name: The exact or partial card name.
+        columns: The ``CardModel`` columns to read; must include ``id`` and ``oracle_id``.
+
+    Returns:
+        A :class:`NameResolution` of rows.
+    """
+    name = name.strip()
+    if not name:
+        return NameResolution()
+
+    exact = _fetch_all(conn, _exact_name_statement(columns, name))
+    if exact:
+        return NameResolution(card=exact[0])
+    return _bucket(_fetch_all(conn, _partial_name_statement(columns, name)))

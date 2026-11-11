@@ -234,6 +234,8 @@ The tools return structured statuses, not raw exceptions — handle each:
     degraded substitute.
 - **`ambiguous`** (`find_similar_cards`, `lookup_card_by_name`): present the `matches` and ask the user to
   pick — or re-call with a specific `card_id`. Don't guess.
+  At most 10 `matches` come back, in name order; a message saying "more than 10" means the name
+  is too broad, so ask for a more specific one instead of listing them.
 - **`empty`** (`semantic_search_cards`, `search_cards`, `find_similar_cards`): no hits — relax filters
   (widen colors / CMC, drop a constraint) and retry, or say so plainly. **Never invent cards.**
 - **`not_found`** — two distinct cases, handled differently:

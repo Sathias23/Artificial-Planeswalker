@@ -269,6 +269,8 @@ The tools return structured statuses, not raw exceptions — handle each:
   a **near-perfect substitute** — you're filtering on `mana_value` anyway — so the fallback is *stronger*
   here than for a conceptual synergy search. Say so honestly.
 - **`ambiguous`** (`lookup_card_by_name`): present the `matches`, ask the user to pick. Don't guess.
+  At most 10 `matches` come back, in name order; a message saying "more than 10" means the name
+  is too broad, so ask for a more specific one instead of listing them.
 - **`empty`** (`search_cards` / `semantic_search_cards`): relax filters (widen colors/CMC) and retry, or
   say so. **Never invent cards.**
 - **`not_found`** (`lookup_card_by_name`): the name didn't resolve — fix spelling / re-query; don't retry

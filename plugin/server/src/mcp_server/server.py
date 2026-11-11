@@ -239,8 +239,10 @@ def build_server(
     ) -> CardLookupResult:
         """Look up a Magic: The Gathering card by exact or fuzzy name.
 
-        Tries an exact (case-insensitive) name match first, then falls back to a
-        partial substring match. Returns structured data the caller can act on.
+        Tries an exact (case-insensitive) match on the card's name or printed name
+        first, then falls back to a partial substring match (``%`` and ``_`` are
+        ordinary characters, not wildcards). Returns structured data the caller can
+        act on.
 
         Args:
             card_name: Exact or partial card name (e.g. "Lightning Bolt" or "bolt").
@@ -249,7 +251,9 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``found`` (single ``card``),
-            ``ambiguous`` (multiple ``matches`` to choose from), ``not_found``, or
+            ``ambiguous`` (up to 10 ``matches`` to choose from, in name order; the
+            message says "more than 10" when more matched, so refine the name),
+            ``not_found``, or
             ``error`` (the local card database could not be read or written — see ``message``).
         """
         return await _in_session(
@@ -489,9 +493,11 @@ def build_server(
 
         Pure persistence — no legality, 4-copy-limit, or deck-size checking (use
         ``validate_deck`` for that). Adding a card already in that exact location
-        returns ``status="exists"`` (quantities are not merged). A ``name`` that
-        matches multiple cards returns ``status="ambiguous"`` with candidate
-        ``matches`` — re-call with a specific ``card_id``. Stateless: pass
+        returns ``status="exists"`` (quantities are not merged). A ``name`` is matched
+        exactly (name or printed name, any case), then as a substring; one that
+        matches multiple cards returns ``status="ambiguous"`` with up to 10 candidate
+        ``matches`` in name order (the message says "more than 10" when more
+        matched) — re-call with a specific ``card_id``. Stateless: pass
         ``deck_id`` every call.
 
         Args:
@@ -545,7 +551,8 @@ def build_server(
         writes nothing. Pure persistence — no legality, copy-limit or deck-size
         checking (use ``validate_deck``). Identify the card by ``card_id`` OR
         ``name`` (exactly one); a ``name`` matching multiple cards returns
-        ``status="ambiguous"`` with candidate ``matches``. Stateless: pass
+        ``status="ambiguous"`` with up to 10 candidate ``matches`` in name order (the
+        message says "more than 10" when more matched). Stateless: pass
         ``deck_id`` every call.
 
         Args:
@@ -593,7 +600,9 @@ def build_server(
         become sideboard cards.
         The import is additive: it never clears the deck or silently merges an
         existing quantity. Each nonblank card line gets an ordered result such as
-        ``ok``, ``ambiguous``, ``not_found``, ``invalid``, or ``exists``. Every
+        ``ok``, ``ambiguous`` (up to 10 candidate ``matches`` in name order; the
+        message says "more than 10" when more matched), ``not_found``, ``invalid``,
+        or ``exists``. Every
         line is resolved first and all resolvable lines are written in one
         transaction: a line that fails to resolve never blocks the others, but
         if that single write fails nothing is added and the status is ``error``
@@ -631,7 +640,9 @@ def build_server(
     ) -> DeckCardResult:
         """Remove a card from a deck, identified by ``card_id`` OR ``name`` (exactly one).
 
-        A ``name`` matching multiple cards returns ``status="ambiguous"``;
+        A ``name`` matching multiple cards returns ``status="ambiguous"`` with up to
+        10 candidate ``matches`` in name order (the message says "more than 10" when
+        more matched);
         removing a card not present in that location returns
         ``status="not_in_deck"``. Stateless: pass ``deck_id`` every call.
 
@@ -1292,8 +1303,9 @@ def build_server(
             A result whose ``status`` is ``ok`` (``cards`` ranked nearest-first, each with a
             ``distance``, plus the resolved ``seed``), ``empty`` (seed found but no alternatives
             survived the filters), ``not_found`` (no such card, or the card isn't in the semantic
-            index yet), ``ambiguous`` (the name matched multiple cards — see ``matches``, re-call
-            with a ``card_id``), ``invalid`` (a parameter failed validation),
+            index yet), ``ambiguous`` (the name matched multiple cards — see ``matches``, up to
+            10 in name order, the message saying "more than 10" when more matched; re-call with a
+            ``card_id``), ``invalid`` (a parameter failed validation),
             ``index_unavailable`` (the semantic index has not been built yet — run the
             ``build_search_index`` tool), ``database_not_initialized`` (no card data yet — run
             the ``initialize_database`` tool), or ``error`` (the card database or the sqlite-vec

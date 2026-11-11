@@ -2,8 +2,9 @@
 
 The **second sync search tool**. Unlike
 ``semantic_search_cards`` it **never embeds** — it takes a *seed card* (by ``card_name`` or
-``card_id``), resolves it in raw SQL on ``cards`` (the async ``CardRepository`` is unreachable on
-the sync sqlite-vec connection), reads that card's **already-stored** vector back via
+``card_id``), resolves it on ``cards`` over the sync sqlite-vec connection (the async session is
+unreachable there, so the name path runs the shared resolver's statements compiled for SQLite),
+reads that card's **already-stored** vector back via
 :func:`~src.search.query.get_card_vector` (a primary-key point lookup, not an ``encode``), and
 seeds :func:`~src.search.query.hybrid_search` with it. The seed's **whole Oracle
 identity** is excluded (``exclude_oracle_id``) so the results are genuine alternatives — never the
@@ -14,8 +15,8 @@ projected to the shared :class:`~src.mcp_server.tools.semantic_search.SemanticCa
 Like ``semantic_search_cards`` this is **synchronous** over a
 :class:`~src.search.connection.ConnectionFactory` connection (the vector index is reachable only on
 the sync sqlite-vec connection) and **stateless** (D5): ``format``/``games`` and every filter are
-per-call parameters. Seed resolution mirrors ``card_lookup``'s exact-then-partial /
-0-1-2..5-6+ disambiguation *shape*, re-implemented as parameterized raw SQL.
+per-call parameters. Seed resolution by name is ``card_lookup``'s: the same statements, buckets and
+``ambiguous`` wording.
 """
 
 import json
@@ -26,11 +27,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from src.data.models.card import CardModel
+from src.data.repositories.card import resolve_name_on_connection
 from src.data.schemas.card import CardSummary
 from src.mcp_server.tools.card_search import mana_bounds_error
 from src.mcp_server.tools.messages import (
     DATABASE_NOT_INITIALIZED_MESSAGE,
     INDEX_NOT_BUILT_MESSAGE,
+    ambiguous_lookup_message,
 )
 from src.mcp_server.tools.semantic_search import SemanticCardHit
 from src.search.query import (
@@ -53,17 +57,22 @@ _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
 # also bounds the seed-printing exclusion, which consumes KNN slots before the limit is filled.
 _MAX_LIMIT = 50
 
-# Disambiguation buckets, mirroring ``card_lookup``: at most this many candidate matches, and
-# above this many ask the user to refine rather than enumerate.
-_MAX_MATCHES = 10
-_REFINE_THRESHOLD = 5
-
 # The ``cards`` columns the seed resolver reads — id + oracle_id (the exclusion key) plus the
-# lightweight ``CardSummary`` projection fields. Raw column names mirror ``index_builder`` /
-# ``card.py`` (there is no ``cards``-schema constants module; only ``card_vec`` has one).
+# lightweight ``CardSummary`` projection fields, in the order ``_summary_from_row`` reads them.
+# The name path hands them to the shared resolver; the id path's point lookup names them in SQL.
 _SEED_COLUMNS = (
-    "id, oracle_id, name, mana_cost, cmc, type_line, oracle_text, colors, rarity, set_code"
+    CardModel.id,
+    CardModel.oracle_id,
+    CardModel.name,
+    CardModel.mana_cost,
+    CardModel.cmc,
+    CardModel.type_line,
+    CardModel.oracle_text,
+    CardModel.colors,
+    CardModel.rarity,
+    CardModel.set_code,
 )
+_SEED_COLUMN_SQL = ", ".join(column.key for column in _SEED_COLUMNS)
 
 
 class SimilarCardsResult(BaseModel):
@@ -210,14 +219,15 @@ def _validation_error(
 def _resolve_seed(
     conn: sqlite3.Connection, card_name: str | None, card_id: str | None
 ) -> _SeedResolution:
-    """Resolve a seed identifier to ``(card_id, oracle_id, CardSummary)`` in raw SQL on ``cards``.
+    """Resolve a seed identifier to ``(card_id, oracle_id, CardSummary)`` on ``cards``.
 
-    By ``card_id``: a primary-key point lookup (``not_found`` if absent). By ``card_name``: an exact
-    (case-insensitive) match on ``name`` OR ``printed_name`` first (first printing by id), then a
-    partial substring fallback collapsed to one candidate per distinct ``oracle_id`` — bucketed
-    ``not_found`` (0) / ``found`` (1) / ``ambiguous`` (>1), mirroring ``card_lookup``. Every value
-    is bound as a parameter (no f-string interpolation of user input). Assumes the inputs were
-    normalized + validated (exactly one of ``card_name`` / ``card_id`` non-``None``).
+    By ``card_id``: a primary-key point lookup (``not_found`` if absent). By ``card_name``: the
+    shared resolver's statements (:func:`~src.data.repositories.card.resolve_name_on_connection`),
+    so the seed resolves exactly as ``lookup_card_by_name`` would: a ``COLLATE NOCASE`` match on
+    ``name`` OR ``printed_name`` (index-served, first printing by id), then a literal substring
+    match, one candidate per Oracle id, in name order, at most ten — bucketed ``not_found`` (0) /
+    ``found`` (1) / ``ambiguous`` (>1). Every value is bound as a parameter. Assumes the inputs
+    were normalized + validated (exactly one of ``card_name`` / ``card_id`` non-``None``).
 
     Args:
         conn: The sync sqlite-vec ``ConnectionFactory`` connection (also sees ``cards``).
@@ -228,7 +238,9 @@ def _resolve_seed(
         A :class:`_SeedResolution` describing the outcome.
     """
     if card_id is not None:
-        row = conn.execute(f"SELECT {_SEED_COLUMNS} FROM cards WHERE id = ?", (card_id,)).fetchone()
+        row = conn.execute(
+            f"SELECT {_SEED_COLUMN_SQL} FROM cards WHERE id = ?", (card_id,)
+        ).fetchone()
         if row is None:
             return _SeedResolution(
                 status="not_found",
@@ -241,67 +253,24 @@ def _resolve_seed(
             status="found", card_id=row[0], oracle_id=row[1], summary=_summary_from_row(row)
         )
 
-    # card_name path: exact (name OR printed_name), then partial fallback.
-    exact = conn.execute(
-        f"SELECT {_SEED_COLUMNS} FROM cards "
-        "WHERE lower(name) = lower(?) OR lower(printed_name) = lower(?) "
-        "ORDER BY id LIMIT 1",
-        (card_name, card_name),
-    ).fetchone()
-    if exact is not None:
+    assert card_name is not None  # guaranteed by _validation_error before call
+    resolution = resolve_name_on_connection(conn, card_name, _SEED_COLUMNS)
+    if resolution.card is not None:
+        only = resolution.card
         return _SeedResolution(
-            status="found", card_id=exact[0], oracle_id=exact[1], summary=_summary_from_row(exact)
+            status="found", card_id=only[0], oracle_id=only[1], summary=_summary_from_row(only)
         )
-
-    like = f"%{card_name}%"  # accepted LIKE-wildcard risk, mirroring CardRepository
-    rows = conn.execute(
-        f"SELECT {_SEED_COLUMNS} FROM cards "
-        "WHERE lower(name) LIKE lower(?) OR lower(printed_name) LIKE lower(?) "
-        "ORDER BY id",
-        (like, like),
-    ).fetchall()
-
-    # Collapse to one candidate per distinct oracle_id (nearest to CardRepository's unique-oracle).
-    seen_oracles: set[str] = set()
-    distinct: list[Any] = []
-    for row in rows:
-        if row[1] in seen_oracles:
-            continue
-        seen_oracles.add(row[1])
-        distinct.append(row)
-
-    if not distinct:
+    if not resolution.matches:
         return _SeedResolution(
             status="not_found",
             message=(
                 f"No card found matching '{card_name}'. Check the spelling or try a different name."
             ),
         )
-    if len(distinct) == 1:
-        only = distinct[0]
-        return _SeedResolution(
-            status="found", card_id=only[0], oracle_id=only[1], summary=_summary_from_row(only)
-        )
-
-    shown = distinct[:_MAX_MATCHES]
-    if len(distinct) > _REFINE_THRESHOLD:
-        if len(shown) < len(distinct):
-            message = (
-                f"Found {len(distinct)} cards matching '{card_name}'. Please refine your search, "
-                f"or re-call with a specific card_id; showing the first {len(shown)}."
-            )
-        else:
-            message = (
-                f"Found {len(distinct)} cards matching '{card_name}'. Please refine your search, "
-                "or re-call with a specific card_id."
-            )
-    else:
-        message = (
-            f"Found {len(distinct)} cards matching '{card_name}'. Which one did you mean? "
-            "Re-call with a specific card_id."
-        )
     return _SeedResolution(
-        status="ambiguous", matches=[_summary_from_row(row) for row in shown], message=message
+        status="ambiguous",
+        matches=[_summary_from_row(row) for row in resolution.matches],
+        message=ambiguous_lookup_message(card_name, resolution, card_id_hint=True),
     )
 
 
@@ -320,7 +289,7 @@ def find_similar_cards(
 ) -> SimilarCardsResult:
     """Find cards similar to a seed card by its **stored** vector, excluding the seed's own oracle.
 
-    Resolves the seed (``card_name`` **or** ``card_id``, exactly one) in raw SQL on ``cards``, reads
+    Resolves the seed (``card_name`` **or** ``card_id``, exactly one) on ``cards``, reads
     that card's already-stored embedding back via :func:`~src.search.query.get_card_vector` (a
     point lookup — **no embedding happens**), and seeds :func:`~src.search.query.hybrid_search` with
     it while excluding the seed's whole ``oracle_id`` so the results are genuine alternatives. Any

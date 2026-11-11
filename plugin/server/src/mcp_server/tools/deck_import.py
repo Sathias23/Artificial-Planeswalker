@@ -451,9 +451,7 @@ async def import_decklist(
             continue
 
         try:
-            card, error_status, matches = await resolve_card(
-                card_repo, card_id=None, name=item.name
-            )
+            resolution = await resolve_card(card_repo, card_id=None, name=item.name)
         except DatabaseError:
             logger.exception(
                 "import_decklist line failed: deck_id=%s line_number=%s",
@@ -463,12 +461,13 @@ async def import_decklist(
             results.append(_error_line(item))
             continue
 
-        if error_status == "ambiguous":
+        card = resolution.card
+        if resolution.status == "ambiguous":
             outcome = DeckCardResult(
                 status="ambiguous",
                 deck_id=deck_id,
-                matches=[CardSummary.model_validate(c) for c in matches],
-                message=ambiguous_message(item.name, len(matches)),
+                matches=[CardSummary.model_validate(c) for c in resolution.matches],
+                message=ambiguous_message(item.name, resolution),
             )
         elif card is None:
             outcome = DeckCardResult(

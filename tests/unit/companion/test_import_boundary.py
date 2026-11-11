@@ -704,6 +704,7 @@ _REPO_READ_METHODS = frozenset(
         "get_deck_with_cards",
         # CardRepository
         "get_by_id",
+        "resolve_name",
         "find_by_name_exact",
         "find_by_name_partial",
         "find_by_colors",
