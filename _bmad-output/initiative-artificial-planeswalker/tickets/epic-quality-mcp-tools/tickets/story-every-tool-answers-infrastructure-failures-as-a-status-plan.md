@@ -3,7 +3,7 @@ title: 'Every tool answers infrastructure failures as a status'
 type: 'bugfix'
 ticket: '2'
 created: '2026-11-10'
-status: 'review'
+status: done
 baseline_revision: '1d2ec06524d70378b4d29d96613d3a57a4aeecf2'
 route: 'full'
 route_source: 'auto'
