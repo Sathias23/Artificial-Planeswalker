@@ -8,8 +8,14 @@ from typing import Literal
 import sqlite_vec
 
 from src.paths import database_file
+from src.search.errors import VectorExtensionUnavailableError
 
 logger = logging.getLogger(__name__)
+
+#: How long a new connection waits on a competing writer's lock before SQLite answers "database is
+#: locked" (milliseconds). Matches the async engine's ``busy_timeout`` default in
+#: :func:`src.data.database.create_engine`.
+DEFAULT_BUSY_TIMEOUT_MS = 5000
 
 
 def _resolve_db_path(db_path: str | None) -> str:
@@ -61,9 +67,17 @@ class ConnectionFactory:
             ``CARDS_DATABASE_URL`` file (SQLAlchemy prefix stripped) or the central default.
         driver: Connection driver. ``"sqlite3"`` (default) uses the stdlib. ``"apsw"`` is the
             documented contingency seam and raises ``NotImplementedError``.
+        busy_timeout_ms: How long each new connection waits on a competing writer's lock, in
+            milliseconds (default :data:`DEFAULT_BUSY_TIMEOUT_MS`); applied both as the
+            ``sqlite3.connect`` timeout and as ``PRAGMA busy_timeout``. A test seam: a locked-file
+            test passes a small value so it fails fast instead of waiting five seconds.
 
     Raises:
         NotImplementedError: If ``driver`` is anything other than ``"sqlite3"``.
+
+    :meth:`get_connection` raises :class:`~src.search.errors.VectorExtensionUnavailableError` when
+    the sqlite-vec extension cannot be loaded, and ``sqlite3.DatabaseError`` when the file is
+    unreadable, locked past the busy timeout, or not a SQLite database.
 
     Example:
         >>> factory = ConnectionFactory(db_path="./data/cards.db")
@@ -73,7 +87,11 @@ class ConnectionFactory:
     """
 
     def __init__(
-        self, db_path: str | None = None, driver: Literal["sqlite3", "apsw"] = "sqlite3"
+        self,
+        db_path: str | None = None,
+        driver: Literal["sqlite3", "apsw"] = "sqlite3",
+        *,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
     ) -> None:
         if driver != "sqlite3":
             raise NotImplementedError(
@@ -82,6 +100,7 @@ class ConnectionFactory:
                 "the default and only supported driver is stdlib 'sqlite3'."
             )
         self._db_path = _resolve_db_path(db_path)
+        self._busy_timeout_ms = busy_timeout_ms
         self._local = threading.local()
 
     @property
@@ -115,19 +134,36 @@ class ConnectionFactory:
         ``foreign_keys`` are per-connection settings (the latter so every connection the project
         opens enforces the same referential integrity as the async engine's connect hook).
 
+        The extension load is the one step a working install can still fail (a Python built
+        without loadable-extension support, a missing or quarantined DLL), so its failures are
+        re-raised as :class:`~src.search.errors.VectorExtensionUnavailableError`; everything after
+        it touches the file and raises ``sqlite3.DatabaseError`` as SQLite reports it.
+
         Returns:
             A fully configured ``sqlite3.Connection``.
+
+        Raises:
+            VectorExtensionUnavailableError: If sqlite-vec cannot be loaded.
+            sqlite3.DatabaseError: If the file is unreadable, locked or not a database.
         """
-        conn = sqlite3.connect(self._db_path)  # default check_same_thread=True — keep it
+        # Default check_same_thread=True — keep it. The connect timeout is the busy wait for the
+        # pragmas below, which run before ``PRAGMA busy_timeout`` takes over.
+        conn = sqlite3.connect(self._db_path, timeout=self._busy_timeout_ms / 1000)
         try:
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
+            try:
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
+            except (AttributeError, OSError, sqlite3.Error) as exc:
+                # AttributeError: this Python's sqlite3 was built without enable_load_extension.
+                raise VectorExtensionUnavailableError(
+                    f"The sqlite-vec extension could not be loaded: {exc}"
+                ) from exc
             wal_result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
-            # Wait up to 5s for a competing writer instead of failing instantly with "database is
-            # locked": under WAL a reader never blocks, but a second writer (bulk import / index
-            # build) can, and the index build runs on this sync connection.
-            conn.execute("PRAGMA busy_timeout=5000")
+            # Wait for a competing writer instead of failing instantly with "database is locked":
+            # under WAL a reader never blocks, but a second writer (bulk import / index build)
+            # can, and the index build runs on this sync connection.
+            conn.execute(f"PRAGMA busy_timeout={int(self._busy_timeout_ms)}")
             # Same referential integrity as src.data.database.enable_foreign_keys: the pragma is
             # per connection, and this connection never opens inside a transaction here.
             conn.execute("PRAGMA foreign_keys=ON")

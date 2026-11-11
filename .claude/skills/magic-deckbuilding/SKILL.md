@@ -185,10 +185,10 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 | `analyze_mana_curve` | `deck_id` | `ok` (`distribution`, `total_lands/total_spells`, `average_cmc`, `land_ratio`, `issues`, `recommendations`) · `empty` · `deck_not_found` · `error` |
 | `detect_synergies` | `deck_id` | `ok` (`synergies[]`, `synergy_count`, `deck_cohesion`) · `empty` · `deck_not_found` · `error` |
 | `validate_deck` | `deck_id`, `format`, `games?` | `ok` (`report.is_legal` + violations + `unchecked[]`, the rules not checked) · `deck_not_found` · `invalid` · `error` |
-| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each with `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
-| `find_similar_cards` | `card_name?` \| `card_id?`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` |
-| `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
-| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, not `ok` |
+| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each with `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` · `error` |
+| `find_similar_cards` | `card_name?` \| `card_id?`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` · `error` |
+| `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` · `error` |
+| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card`) · `ambiguous` (`matches`) · `not_found` · `error` — success is **`found`**, not `ok` |
 | `add_card_to_deck` | `deck_id`, `card_id?` \| `name?`, `quantity=1`, `sideboard=False` | `ok` · `exists` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` · `error` |
 | `set_card_quantity` | `deck_id`, `quantity` (**required**; 0–250; **absolute**, `0` removes), `card_id?` \| `name?`, `sideboard=False` | `ok` (`quantity` stored) · `unchanged` · `deck_not_found` · `card_not_found` (also: card not in that board — it never adds) · `ambiguous` · `invalid` · `error` |
 | `remove_card_from_deck` | `deck_id`, `card_id?` \| `name?`, `sideboard=False` | `ok` · `not_in_deck` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` · `error` |
@@ -261,7 +261,10 @@ value:
 - **`error`** (can come from **any** tool — deck resolution, analysis, *or* a write): report it honestly
   and continue with whatever other analyses succeeded — never pretend the failed step passed. If the
   `error` is in Step-0 deck resolution (`list_decks` / `load_deck`), you have no deck to analyze — say
-  so and re-resolve or stop; don't proceed into Step 1 on a deck that never loaded.
+  so and re-resolve or stop; don't proceed into Step 1 on a deck that never loaded. An `error` from
+  `semantic_search_cards` / `find_similar_cards` whose `message` names sqlite-vec or the embedding
+  model degrades like `index_unavailable` (the fallbacks above); one that says the database is locked
+  can be retried once after a moment.
 
 ## Hard rules (do not break these)
 

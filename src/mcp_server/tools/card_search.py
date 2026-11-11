@@ -36,7 +36,10 @@ class CardSearchResult(BaseModel):
 
     Attributes:
         status: ``ok`` (``cards`` populated), ``empty`` (a valid query with no
-            matches), or ``invalid`` (a filter value failed validation).
+            matches), ``invalid`` (a filter value failed validation),
+            ``database_not_initialized`` (no card data yet — run ``initialize_database``), or
+            ``error`` (the card database could not be read — corrupt, unreadable or locked;
+            ``message`` names the cause. Answered by the tool edge in ``tools/failures.py``).
         cards: The matching cards on this page as lightweight ``CardSummary``
             rows (empty unless ``status == "ok"``).
         total_count: Total number of matches across all pages.
@@ -47,7 +50,7 @@ class CardSearchResult(BaseModel):
             adjust-your-filters hint when empty, or the bad value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid", "database_not_initialized"]
+    status: Literal["ok", "empty", "invalid", "database_not_initialized", "error"]
     cards: list[CardSummary] = []
     total_count: int = 0
     page: int = 1

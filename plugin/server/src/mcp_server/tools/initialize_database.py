@@ -24,6 +24,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
+import httpx
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,12 @@ from src.data.database import (
 )
 from src.data.importers.importer import ImportStatistics
 from src.data.importers.scryfall import import_scryfall_bulk_data
+from src.data.importers.scryfall_api import ScryfallAPIError
+from src.mcp_server.tools.failures import (
+    INFRASTRUCTURE_ERRORS,
+    failure_detail,
+    infrastructure_error_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +62,8 @@ class InitializeDatabaseResult(BaseModel):
         status: ``ok`` (first-run import — cards imported into an empty DB), ``updated`` (an
             ``update=True`` run refreshed an already-populated DB), ``already_initialized`` (cards
             were already present and ``update`` was not requested — nothing downloaded), or
-            ``error`` (the import failed; ``message`` explains).
+            ``error`` (the import failed; ``message`` names the cause, and suggests checking the
+            network only when the download was what failed).
         cards_imported: On ``ok``, the cards inserted on this run; on ``updated``, the number of
             *new* cards added (existing rows are also refreshed in place), clamped at ``0`` —
             the reconcile can delete more stale duplicate rows than the update adds. ``0`` for
@@ -109,6 +117,54 @@ def _import_notes(stats: ImportStatistics) -> str:
             "current printing was rejected this run; a later `update=true` run will retry."
         )
     return notes
+
+
+def _cause_chain(exc: BaseException) -> list[BaseException]:
+    """``exc`` and every exception it was raised from or during, outermost first (cycle-safe)."""
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _failure_message(exc: BaseException) -> str:
+    """Say why the import failed, with a network hint only when the network was the cause.
+
+    The real importer wraps every failure in ``ScryfallImportError``, so the cause chain is what
+    tells a download problem (``ScryfallAPIError`` / ``httpx.HTTPError``) from a database one or a
+    bad bulk file. A database cause is described by the driver's own text, never SQLAlchemy's
+    statement echo. The first such link, outermost first, decides: a database error raised while
+    cleaning up after a download failure (its ``__context__``) is the database's fault to report.
+
+    ``ScryfallAPIError`` alone does not mean the network failed: ``download_bulk_data`` also wraps
+    a local ``OSError`` (a full disk during the write) in it, and raises it bare for its deliberate
+    size-ceiling abort. So its own ``__cause__`` picks the hint: an ``httpx`` error gets the
+    network one, an ``OSError`` a disk one, and anything else (the ceiling) none.
+    """
+    for link in _cause_chain(exc):
+        if isinstance(link, ScryfallAPIError):
+            detail = failure_detail(link).rstrip(".")
+            if isinstance(link.__cause__, httpx.HTTPError):
+                return (
+                    f"Database initialization failed: {detail}. Check the network connection and "
+                    "try again."
+                )
+            if isinstance(link.__cause__, OSError):
+                return (
+                    f"Database initialization failed: {detail}. Check that the data directory is "
+                    "writable and has free disk space, then try again."
+                )
+            return f"Database initialization failed: {detail}."
+        if isinstance(link, httpx.HTTPError):
+            return (
+                f"Database initialization failed: {failure_detail(link).rstrip('.')}. Check the "
+                "network connection and try again."
+            )
+        if isinstance(link, INFRASTRUCTURE_ERRORS):
+            return f"Database initialization failed. {infrastructure_error_message(link)}"
+    return f"Database initialization failed: {failure_detail(exc).rstrip('.')}."
 
 
 async def _card_count(session: AsyncSession) -> int:
@@ -231,11 +287,6 @@ async def initialize_database(
                 )
         except Exception as exc:
             logger.exception("initialize_database failed")
-            return InitializeDatabaseResult(
-                status="error",
-                message=(
-                    f"Database initialization failed: {exc}. Check the connection and try again."
-                ),
-            )
+            return InitializeDatabaseResult(status="error", message=_failure_message(exc))
     finally:
         await engine.dispose()

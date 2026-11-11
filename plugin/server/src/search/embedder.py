@@ -11,6 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from src.paths import fastembed_cache_dir
+from src.search.errors import EmbeddingModelUnavailableError
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
@@ -95,7 +96,12 @@ class Embedder:
             default (never fastembed's volatile Temp default).
 
     Raises:
-        ValueError: If the resolved ``cache_dir`` path exists as a file rather than a directory.
+        ValueError: If the resolved ``cache_dir`` path exists as a file rather than a directory
+            (a configuration mistake, deliberately left unwrapped).
+        EmbeddingModelUnavailableError: If fastembed (or ONNX Runtime) cannot be imported, the
+            cache directory cannot be created, or the model cannot be loaded — fastembed raises
+            ``ValueError("Could not load model … from any source.")`` when a first download has
+            no network.
 
     Example:
         >>> emb = get_embedder()
@@ -112,12 +118,19 @@ class Embedder:
                 f"cache_dir={self._cache_dir!r} exists as a file, not a directory; "
                 "set FASTEMBED_CACHE_DIR to a writable directory path"
             )
-        # The model lazily downloads into this dir on first use; create it if absent.
-        cache_path.mkdir(parents=True, exist_ok=True)
-        logger.info("Loading fastembed model %s (cache_dir=%s)", MODEL_NAME, self._cache_dir)
         # The "lazy boundary": both the fastembed import and the one-time model load happen here,
         # on the first get_embedder() call — never at module import.
-        self._model = _load_text_embedding()(model_name=MODEL_NAME, cache_dir=self._cache_dir)
+        logger.info("Loading fastembed model %s (cache_dir=%s)", MODEL_NAME, self._cache_dir)
+        try:
+            # ImportError: fastembed / ONNX Runtime missing, or a Windows "DLL load failed".
+            text_embedding = _load_text_embedding()
+            # The model lazily downloads into this dir on first use; create it if absent.
+            cache_path.mkdir(parents=True, exist_ok=True)
+            self._model = text_embedding(model_name=MODEL_NAME, cache_dir=self._cache_dir)
+        except (ImportError, OSError, ValueError, RuntimeError) as exc:
+            raise EmbeddingModelUnavailableError(
+                f"The embedding model {MODEL_NAME} could not be loaded: {exc}"
+            ) from exc
 
     @property
     def dim(self) -> int:

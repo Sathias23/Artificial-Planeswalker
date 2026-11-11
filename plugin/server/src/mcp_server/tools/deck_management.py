@@ -117,8 +117,9 @@ class DeckCardResult(BaseModel):
             written); ``not_in_deck`` (nothing to remove); ``deck_not_found`` /
             ``card_not_found`` (pre-validation failed, no row written — for
             ``set_card_quantity`` this also covers a known card that is not in the
-            requested board); ``ambiguous`` (a partial name hit >1 card — see
-            ``matches``); ``invalid`` (bad input, e.g. both/neither of
+            requested board, and for ``add_card_to_deck`` ``deck_not_found`` also covers a
+            deck deleted between the check and the write); ``ambiguous`` (a partial name
+            hit >1 card — see ``matches``); ``invalid`` (bad input, e.g. both/neither of
             ``card_id``/``name``, or a quantity outside its bounds).
         deck_id: The targeted deck id.
         card_id: The resolved card id when known (``ok`` / ``exists`` /
@@ -673,6 +674,23 @@ async def add_card_to_deck(
     try:
         await deck_repo.add_card_to_deck(deck_id, card.id, quantity, sideboard, commander=commander)
     except IntegrityError:
+        # Three constraints can refuse the row: the (deck, card, board) key — a true duplicate —
+        # the deck foreign key (another writer deleted the deck after the pre-check above) and the
+        # card foreign key (an update's reconcile removed the card after it was resolved). The
+        # repository has rolled back, so re-read the deck and the card to tell them apart.
+        if await deck_repo.get_deck(deck_id) is None:
+            return DeckCardResult(
+                status="deck_not_found",
+                deck_id=deck_id,
+                message=f"No deck found with id '{deck_id}'.",
+            )
+        if await card_repo.get_by_id(card.id) is None:
+            return DeckCardResult(
+                status="card_not_found",
+                deck_id=deck_id,
+                card_id=card_id,
+                message=card_not_found_message(card_id=card_id, name=name),
+            )
         return DeckCardResult(
             status="exists",
             deck_id=deck_id,

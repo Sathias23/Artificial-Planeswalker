@@ -141,10 +141,10 @@ against `src/mcp_server/` ground truth.)
 | Tool | Key params | `status` values (payload on success) |
 |------|-----------|--------------------------------------|
 | `detect_synergies` | `deck_id` | `ok` (`synergies[]` each w/ `pattern_type`/`subtype`/`affected_cards`/`explanation`/`strength`; `synergy_count`; `deck_cohesion` `low`/`moderate`/`high`) · `empty` · `deck_not_found` · `error` |
-| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
-| `find_similar_cards` | `card_name?` \| `card_id?` (exactly one), `colors?`, `color_mode?`, `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` |
-| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card` w/ full `oracle_text`/`type_line`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, NOT `ok` |
-| `search_cards` | `colors?`, `color_mode?`, `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
+| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` · `error` |
+| `find_similar_cards` | `card_name?` \| `card_id?` (exactly one), `colors?`, `color_mode?`, `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` · `error` |
+| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card` w/ full `oracle_text`/`type_line`) · `ambiguous` (`matches`) · `not_found` · `error` — success is **`found`**, NOT `ok` |
+| `search_cards` | `colors?`, `color_mode?`, `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` · `error` |
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `error` |
 
@@ -249,7 +249,9 @@ The tools return structured statuses, not raw exceptions — handle each:
 - **`invalid`**: a bad parameter — read the message and fix it. Common causes: `limit > 50`, a `games`
   value outside `paper`/`arena`/`mtgo`, or `find_similar_cards` given both/neither identifier.
 - **`error`** (any tool): report it honestly, continue with whatever else succeeded, and never pretend the
-  failed step passed.
+  failed step passed. An `error` from `semantic_search_cards` / `find_similar_cards` whose `message` names
+  sqlite-vec or the embedding model degrades like `index_unavailable` (the fallbacks above); one that says
+  the database is locked can be retried once after a moment.
 
 ## Hard rules (do not break these)
 

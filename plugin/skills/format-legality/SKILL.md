@@ -329,9 +329,9 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 | `validate_deck` | `deck_id`, `format` (default `"standard"` — **pass an explicit valid key**; case-insensitive), `games?` (`paper`/`arena`/`mtgo`) | `ok` (`report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, `violations[]` each `{rule, card_name?, detail}`, `unchecked[]` each `{rule, detail}`) · `deck_not_found` · `invalid` (bad `games` value) · `error` |
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + card summaries) · `not_found` · `error` |
-| `lookup_card_by_name` | `card_name`, `format?` (a **legality filter** — omit it when investigating an illegal card), `games?` | **`found`** (`card` w/ full `legalities` dict + `type_line`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, NOT `ok` |
-| `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
-| `semantic_search_cards` | `query`, `colors?`, `color_mode?`, `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
+| `lookup_card_by_name` | `card_name`, `format?` (a **legality filter** — omit it when investigating an illegal card), `games?` | **`found`** (`card` w/ full `legalities` dict + `type_line`) · `ambiguous` (`matches`) · `not_found` · `error` — success is **`found`**, NOT `ok` |
+| `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` · `error` |
+| `semantic_search_cards` | `query`, `colors?`, `color_mode?`, `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` · `error` |
 
 **`validate_deck` report specifics (carry these exactly):**
 
@@ -452,6 +452,11 @@ The tools return structured statuses, not raw exceptions — handle each:
   so. **Never invent cards.**
 - **`invalid`** (search tools): a bad parameter — read the message and fix. Common causes: `limit > 50`, or
   a `games` value outside `paper`/`arena`/`mtgo`.
+- **`error`** (any tool, lookup and search included): the local card database could not be used, and the
+  `message` describes the failure. Report it honestly and never present a legality verdict you could not check.
+  An `error` from `semantic_search_cards` whose `message` names sqlite-vec or the embedding model degrades
+  like `index_unavailable` (fall back to `search_cards`); one that says the database is locked can be
+  retried once after a moment.
 
 ## Hard rules (do not break these)
 

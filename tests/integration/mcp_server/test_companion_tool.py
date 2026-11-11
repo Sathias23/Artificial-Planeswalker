@@ -232,14 +232,21 @@ class _ClientStub:
     Recording the *requests* rather than a call count is deliberate: "the companion was not
     contacted" and "the companion was contacted with the wrong deck" are different failures, and
     only a recorded argument list distinguishes them.
+
+    Given a ``session`` to watch, it also records ``session.in_transaction()`` at call time, so a
+    test can prove the helper released its read transaction before the HTTP round trip began.
     """
 
-    def __init__(self, outcome: PushOutcome) -> None:
+    def __init__(self, outcome: PushOutcome, session: Any = None) -> None:
         self.outcome = outcome
+        self.session = session
         self.calls: list[ActiveDeckRequest] = []
+        self.in_transaction: list[bool] = []
 
     async def __call__(self, request: ActiveDeckRequest, **kwargs: object) -> PushOutcome:
         self.calls.append(request)
+        if self.session is not None:
+            self.in_transaction.append(self.session.in_transaction())
         return self.outcome
 
 
@@ -247,8 +254,8 @@ class _ClientStub:
 def client_stub(monkeypatch):
     """Yield a factory that installs a :class:`_ClientStub` answering a chosen outcome."""
 
-    def install(outcome: PushOutcome) -> _ClientStub:
-        stub = _ClientStub(outcome)
+    def install(outcome: PushOutcome, session: Any = None) -> _ClientStub:
+        stub = _ClientStub(outcome, session)
         monkeypatch.setattr(companion, "_client_set_active_deck", stub)
         return stub
 
@@ -304,6 +311,23 @@ class TestAnExistingDeckIsDelegated:
             "the leaf takes a concrete, already-valid instance and re-validates nothing (c6-1 Q5)"
         )
         assert result.status == "displayed"
+
+    async def test_the_read_transaction_is_released_before_the_companion_is_called(
+        self, session, client_stub
+    ):
+        """The deck read must not hold its transaction open through the HTTP round trip.
+
+        The companion call can take up to the leaf's whole-call deadline (10 s); a helper that
+        closed its session only after the call (or never) would keep a read transaction, and its
+        pooled connection, open for all of it. The stub reads ``in_transaction()`` at call time.
+        """
+        stub = client_stub(PushOutcome(outcome="displayed", clients=1), session=session)
+        created = await create_deck(session, name="Burn")
+
+        result = await set_active_deck(session, deck_id=created.deck.id)
+
+        assert result.status == "displayed"
+        assert stub.in_transaction == [False], "the session was released before the companion call"
 
     async def test_the_result_names_the_deck_so_the_agent_can_confirm_it(
         self, session, client_stub

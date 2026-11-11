@@ -11,11 +11,17 @@ hashes for idempotent, incremental re-builds, the reusable hybrid query path
 post-filter + oracle de-dup) that the semantic-search tools consume, and the
 seed-vector read-back (:func:`get_card_vector` — a primary-key point lookup that deserializes a
 stored embedding) that lets ``find_similar_cards`` seed :func:`hybrid_search` from a
-card it already has (no re-embed).
+card it already has (no re-embed). The named load failures (:class:`SearchBackendUnavailableError`
+and its two subclasses) let the MCP tool edge answer a missing extension or model as a status.
 """
 
 from src.search.connection import ConnectionFactory
 from src.search.embedder import EMBEDDING_DIM, Embedder, get_embedder
+from src.search.errors import (
+    EmbeddingModelUnavailableError,
+    SearchBackendUnavailableError,
+    VectorExtensionUnavailableError,
+)
 from src.search.index_builder import (
     BuildStatistics,
     build_card_embeddings,
@@ -41,6 +47,9 @@ __all__ = [
     "CardHit",
     "ConnectionFactory",
     "Embedder",
+    "EmbeddingModelUnavailableError",
+    "SearchBackendUnavailableError",
+    "VectorExtensionUnavailableError",
     "build_card_embeddings",
     "clear_card_embedding_meta",
     "compose_card_text",

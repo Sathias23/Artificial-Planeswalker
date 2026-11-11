@@ -697,15 +697,16 @@ async def assess_deck_power(
             ),
         )
 
-    if not await is_database_initialized(session):
-        return AssessDeckPowerResult(
-            status="database_not_initialized",
-            deck_id=deck_id,
-            summary=DATABASE_NOT_INITIALIZED_MESSAGE,
-        )
-
     repo = DeckRepository(session)
     try:
+        # The readiness probe sits inside the arm too: a corrupt or locked file raises here
+        # first, and on compare_deck_power's shared session an escape would skip side B.
+        if not await is_database_initialized(session):
+            return AssessDeckPowerResult(
+                status="database_not_initialized",
+                deck_id=deck_id,
+                summary=DATABASE_NOT_INITIALIZED_MESSAGE,
+            )
         deck = await repo.get_deck_with_cards(deck_id)
     except DatabaseError:
         logger.exception("assess_deck_power failed for deck_id=%s", deck_id)

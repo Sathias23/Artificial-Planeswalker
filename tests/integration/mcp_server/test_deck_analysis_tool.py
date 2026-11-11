@@ -15,6 +15,7 @@ reachable without editing the cross-story seed.
 from pathlib import Path
 
 import pytest
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
@@ -622,3 +623,41 @@ async def test_validate_deck_unknown_format_lists_nothing(session: AsyncSession)
     ]
     assert result.report.unchecked == []
     assert result.message == "Deck has 1 issue for potato legality."
+
+
+# --- the DatabaseError arm of each helper ---
+
+
+@pytest.mark.parametrize(
+    ("helper", "message"),
+    [
+        (analyze_mana_curve, "A database error occurred analyzing the deck's mana curve."),
+        (detect_synergies, "A database error occurred detecting deck synergies."),
+        (validate_deck, "A database error occurred validating the deck."),
+    ],
+    ids=["analyze_mana_curve", "detect_synergies", "validate_deck"],
+)
+async def test_a_database_error_loading_the_deck_is_status_error(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, helper, message: str
+) -> None:
+    """A ``DatabaseError`` from the deck load is the helper's own ``error``, never a raise.
+
+    Patched where the compare suite patches it (``DeckRepository.get_deck_with_cards``); the
+    recorded call proves the planted failure was reached rather than short-circuited, and the
+    exact message proves it was this helper's arm that answered.
+    """
+    deck_id = await _make_deck(session, [("card-shock", 4, False)])
+    calls: list[str] = []
+
+    async def boom(self: DeckRepository, deck_id: str) -> object:
+        calls.append(deck_id)
+        raise DatabaseError("SELECT deck", None, Exception("database is locked"))
+
+    monkeypatch.setattr(DeckRepository, "get_deck_with_cards", boom)
+
+    result = await helper(session, deck_id=deck_id)
+
+    assert calls == [deck_id]
+    assert result.status == "error"
+    assert result.deck_id == deck_id
+    assert result.message == message

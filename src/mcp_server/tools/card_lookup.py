@@ -27,14 +27,17 @@ class CardLookupResult(BaseModel):
     """Structured result of a card lookup.
 
     Attributes:
-        status: ``found`` (``card`` populated), ``not_found`` (no match), or
-            ``ambiguous`` (multiple candidates in ``matches``).
+        status: ``found`` (``card`` populated), ``not_found`` (no match),
+            ``ambiguous`` (multiple candidates in ``matches``), ``database_not_initialized`` (no
+            card data yet — run ``initialize_database``), or ``error`` (the card database could not
+            be read — corrupt, unreadable or locked; ``message`` names the cause. Answered by the
+            tool edge in ``tools/failures.py``).
         card: The matched card when ``status == "found"``, else ``None``.
         matches: Candidate cards when ``status == "ambiguous"``, else empty.
         message: Human-facing summary suitable for surfacing to the user.
     """
 
-    status: Literal["found", "not_found", "ambiguous", "database_not_initialized"]
+    status: Literal["found", "not_found", "ambiguous", "database_not_initialized", "error"]
     card: Card | None = None
     matches: list[Card] = []
     message: str
