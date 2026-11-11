@@ -10,6 +10,7 @@ from typing import NamedTuple
 
 import sqlite_vec
 
+from src.data.import_state import is_import_in_progress_sync
 from src.search.embedder import EMBEDDING_DIM, Embedder
 from src.search.schema import (
     CARD_EMBEDDING_META_TABLE,
@@ -74,7 +75,8 @@ class BuildStatistics:
 
     Distinguishes the three classification outcomes the incremental builder produces —
     ``embedded_new`` (no stored hash), ``embedded_changed`` (stored hash differed), and
-    ``skipped`` (hash unchanged) — plus ``pruned`` (orphan vectors removed when ``prune=True``).
+    ``skipped`` (hash unchanged) — plus ``pruned`` (orphan vectors whose card is gone, removed at
+    the end of every build unless a first-run import is still in progress).
     ``processed`` is every card read from ``cards`` (= new + changed + skipped). ``refreshed``
     counts the subset of ``skipped`` whose filter metadata (``mana_value`` / colour flags) was
     rewritten in place because ``colors`` or ``cmc`` changed while the text did not.
@@ -250,7 +252,6 @@ def build_card_embeddings(
     *,
     batch_size: int = 1000,
     limit: int | None = None,
-    prune: bool = False,
 ) -> BuildStatistics:
     """Build (or incrementally update) the ``card_vec`` semantic index from the ``cards`` table.
 
@@ -269,6 +270,12 @@ def build_card_embeddings(
     current vector is written. An interruption between chunks leaves completed chunks durable
     and the index converges with no duplicates or orphan hashes on the next run.
 
+    Every build then **prunes**: it removes the ``card_vec``/``card_embedding_meta`` rows whose
+    ``card_id`` is no longer in ``cards`` (cards an update's reconcile removed), so those
+    vectors stop taking KNN slots. It never prunes while the first-run import marker is set
+    (:func:`~src.data.import_state.is_import_in_progress_sync`): a half-imported ``cards``
+    table would make every not-yet-imported card's vector look orphaned.
+
     Both collaborators are **injected** so unit tests can pass a ``tmp_path`` DB connection and a
     fake embedder (no model load / no network); the CLI is the composition root that wires the
     real :class:`~src.search.connection.ConnectionFactory` connection and
@@ -283,9 +290,8 @@ def build_card_embeddings(
             the new/changed subset (``batch_size`` is honoured by chunking the read here, not
             by modifying ``Embedder``).
         batch_size: Cards read (and upper-bounded per ``encode_batch`` call) per chunk.
-        limit: If set, only the first ``limit`` cards are processed (fast dev/test runs).
-        prune: If ``True``, after the build remove orphan ``card_vec``/``card_embedding_meta`` rows
-            whose ``card_id`` is no longer in ``cards`` (e.g. cards dropped by a later import).
+        limit: If set, only the first ``limit`` cards are processed (fast dev/test runs). The
+            prune still runs: it removes only rows whose card is gone, never unprocessed ones.
 
     Returns:
         A :class:`BuildStatistics` with processed / new / changed / skipped / refreshed / pruned
@@ -343,7 +349,9 @@ def build_card_embeddings(
             stats.cards_per_second(),
         )
 
-    if prune:
+    if is_import_in_progress_sync(conn):
+        logger.info("Skipped the orphan-vector prune: a first-run card import is in progress")
+    else:
         _prune_orphans(conn, stats)
 
     logger.info(stats.summary())

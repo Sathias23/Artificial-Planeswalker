@@ -137,7 +137,7 @@ async def test_initialize_database_surfaces_reject_and_stale_diagnostics(
     )
 
 
-async def test_initialize_database_update_clamps_negative_added_and_recommends_prune(
+async def test_initialize_database_update_clamps_negative_added_and_recommends_a_rebuild(
     tmp_path, monkeypatch
 ) -> None:
     """Reconcile deletions can shrink the total: ``cards_imported`` clamps at 0, msg explains."""
@@ -164,7 +164,11 @@ async def test_initialize_database_update_clamps_negative_added_and_recommends_p
     assert updated.cards_imported == 0  # 1 total - 2 before = -1, clamped
     assert updated.cards_total == 1
     assert "Removed 1 stale duplicate row(s) during reconcile." in updated.message
-    assert "prune=true" in updated.message  # deleted rows leave vectors to prune
+    # Deleted rows leave vectors behind; a plain re-build drops them, so no parameter is named.
+    assert "re-run `build_search_index` to index the new cards and drop the vectors" in (
+        updated.message
+    )
+    assert "prune" not in updated.message
 
 
 async def test_initialize_database_surfaces_reconcile_failure_warning(

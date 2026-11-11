@@ -71,7 +71,8 @@ def main() -> int:
     )
     parser = argparse.ArgumentParser(
         description="Build the card_vec semantic index from the cards table (idempotent, "
-        "incremental). Re-runs re-embed only new/changed cards via a per-card content hash.",
+        "incremental). Re-runs re-embed only new/changed cards via a per-card content hash, "
+        "and every run removes the vectors of cards no longer in the cards table.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -103,11 +104,6 @@ Examples:
         help="NFR10 migration: drop+recreate card_vec and clear content hashes, then full "
         "re-embed. Required after a model or EMBEDDING_DIM change (the content hash alone "
         "cannot detect those — it would silently skip every card).",
-    )
-    parser.add_argument(
-        "--prune",
-        action="store_true",
-        help="After building, remove orphan vectors whose card_id is no longer in cards.",
     )
     args = parser.parse_args()
 
@@ -147,7 +143,6 @@ Examples:
             embedder,
             batch_size=args.batch_size,
             limit=args.limit,
-            prune=args.prune,
         )
 
         print("\n" + "=" * 70)
