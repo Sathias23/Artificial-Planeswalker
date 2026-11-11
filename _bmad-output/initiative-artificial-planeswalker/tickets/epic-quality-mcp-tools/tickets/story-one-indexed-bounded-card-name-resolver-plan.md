@@ -3,7 +3,7 @@ title: 'One indexed, bounded card-name resolver'
 type: 'bugfix'
 ticket: '6'
 created: '2026-11-11'
-status: 'review'
+status: done
 baseline_revision: 'e1dbe89453bed88243675d816d5115addde5d74e'
 route: 'full'
 route_source: 'auto'
