@@ -3,7 +3,7 @@ title: 'One indexed, bounded card-name resolver'
 type: 'bugfix'
 ticket: '6'
 created: '2026-11-11'
-status: 'in-progress'
+status: 'review'
 baseline_revision: 'e1dbe89453bed88243675d816d5115addde5d74e'
 route: 'full'
 route_source: 'auto'
@@ -60,11 +60,11 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tests/integration/mcp_server/test_card_name_resolution.py` (new, commit 1) -- B2-P5 printed name on all six name tools; B9-P14 11-match cap, whitespace name, Arena-only lookup; B9-P16 printed-name seed, 11-oracle partial, blank-format port. Green on the old code.
-- [ ] `base.py`, `card.py`, `deck.py` -- resolver, builders, escaping.
-- [ ] `messages.py`, `card_lookup.py`, `deck_management.py`, `deck_import.py`, `find_similar.py` -- route through the resolver; shared wording.
-- [ ] same test file -- bug tests: "more than 10" + rows read ≤ 11 (async: ORM load count; sync: per-statement row count), `50%` literal on lookup, deck add, search_cards and find_similar, EXPLAIN on find_similar's traced seed SQL; update the pins' message assertions.
-- [ ] `server.py`, four skills -- wording; `uv run python -m scripts.build_plugin`.
+- [x] `tests/integration/mcp_server/test_card_name_resolution.py` (new, commit 1) -- B2-P5 printed name on all six name tools; B9-P14 11-match cap, whitespace name, Arena-only lookup; B9-P16 printed-name seed, 11-oracle partial, blank-format port. Green on the old code.
+- [x] `base.py`, `card.py`, `deck.py` -- resolver, builders, escaping.
+- [x] `messages.py`, `card_lookup.py`, `deck_management.py`, `deck_import.py`, `find_similar.py` -- route through the resolver; shared wording.
+- [x] same test file -- bug tests: "more than 10" + rows read ≤ 11 (async: ORM load count; sync: per-statement row count), `50%` literal on lookup, deck add, search_cards and find_similar, EXPLAIN on find_similar's traced seed SQL; update the pins' message assertions.
+- [x] `server.py`, four skills -- wording; `uv run python -m scripts.build_plugin`.
 
 **Acceptance Criteria:**
 - Given the resolver routed, when `grep` runs over `src/` for `find_by_name_partial`, `lower(name)`, `_MAX_MATCHES`, `_REFINE_THRESHOLD` and `ilike(`/`.like(` on user text, then each hit is the resolver or an escaped/validated site listed in Implementation Notes.
@@ -90,6 +90,99 @@ Handoff for 2.1: `await CardRepository(session).resolve_name(name, format_filter
 - `uv run python -m scripts.build_plugin` then `git status --short plugin/` -- committed, no drift
 
 ## Implementation Notes
+
+Commits on `fix/quality-5-6-card-name-resolver`: `a4abeae` (commit 1, the pins, green on the old
+code: B2-P5 printed name on all six name tools, B9-P14 11-match cap / whitespace name / Arena-only
+lookup, B9-P16 printed-name seed / 11-oracle partial / per-oracle collapse / blank-format port) and
+`df47b6b` (the resolver, the escaping, the shared wording, the bug tests, docstrings, skills,
+`plugin/` rebuilt).
+
+Choices the plan left open:
+
+- `resolve_name` runs its exact step through `find_by_name_exact` (which builds its SQL with
+  `_exact_name_statement`), so the existing per-line `DatabaseError` test in
+  `test_deck_import_tool.py`, which patches `find_by_name_exact`, still drives the import's error arm.
+- `find_by_name_partial` keeps its positional signature and gains a keyword `limit`
+  (default `MAX_NAME_MATCHES`); no tool calls it any more, only `scripts/validate_data_layer.py`.
+- `lookup_card` now strips `card_name` before resolving and echoing it (the resolver strips anyway;
+  stripping first keeps the echoed name and the resolved name the same). This lands the name half of
+  M5 incidentally; `games`/`format` validation (5.4) is untouched.
+- `NameResolution.status` is used by the deck tools; lookup and find_similar branch on `card` /
+  `matches` directly (same thing, reads clearer next to the field use).
+- `test_import_boundary.py`'s pinned read-method set gains `resolve_name` (the guard requires every
+  public repository method to be classified).
+- Wording: lookup / find_similar share `ambiguous_lookup_message` (2-5 "Which one did you mean?",
+  6-10 "Please refine your search.", cut list "Found more than 10 cards matching 'x'. Please refine
+  your search; showing the first 10.", with ", or re-call with a specific card_id" for find_similar).
+  The deck tools keep their own shape: "'x' matches more than 10 cards. Re-call with a specific
+  card_id, or refine the name."
+- Rows-read guard, async seam: a `CardModel` mapper `load` listener counts ORM instances built
+  (≤ 11 for a 30-match query). Sync seam: the server is built over a tracing connection factory whose
+  connections record each statement and the rows its cursor handed back; the same trace feeds the
+  EXPLAIN test (the exact-seed statement, re-planned with its own params on the real schema).
+
+AC 1 grep (`find_by_name_partial`, `lower(name)`, `_MAX_MATCHES`, `_REFINE_THRESHOLD`, `ilike(`,
+`.like(` over `src/`), every hit classified:
+
+- resolver: `card.py` `_partial_name_statement` (name / printed_name `ilike`, escaped),
+  `find_by_name_partial` (definition + docstring examples).
+- escaped user text: `_apply_games_filter`, `find_by_type`, `search_by_keywords` (oracle text +
+  keywords array), `search_advanced` types / keywords / oracle phrases, `deck.py`
+  `find_deck_by_name`; `base.py` line 5 is the `LIKE_ESCAPE` comment.
+- validated, not user text: `search_advanced` colour `like`s (four, colour codes checked against
+  WUBRG by `card_search._validation_error`) and rarity `ilike`s (checked against the rarity
+  vocabulary there); `find_by_colors`' colour `like` (script-only method, 5.1 deletes it, no tool
+  reaches it).
+- `lower(name)`, `_MAX_MATCHES`, `_REFINE_THRESHOLD`: no hits.
+
+Verification:
+
+- `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src/`,
+  `uv run mypy src/ --platform win32`: clean. `uv run pytest`: 3538 passed, 2 skipped.
+- `uv run python -m scripts.build_plugin` then `git status --short plugin/`: committed in `df47b6b`,
+  no drift (the pre-commit rebuild hook passed on the commit).
+
+Probe-harness proofs (each plant applied to the committed, clean tree by a script, reverted with
+`git checkout -- <file>`, revert checked with `git diff --exit-code`; harness exit 0 = every
+`--expect-red` met):
+
+cap removed (`_partial_name_statement` without `.limit(limit)`):
+```
+full suite (-m 'not integration'): 3513 collected, 2 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_two_letter_lookup_says_more_than_ten_and_reads_at_most_eleven_rows
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_two_letter_seed_says_more_than_ten_and_reads_at_most_eleven_rows
+```
+escape removed (`contains_pattern` returns `f"%{text}%"`):
+```
+full suite (-m 'not integration'): 3513 collected, 2 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_percent_sign_in_a_name_or_phrase_is_literal
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_an_underscore_in_a_name_is_literal
+```
+NOCASE seed match removed (`_exact_name_statement` back to `lower(name) = lower(?)` on both terms;
+one builder now, so the async exact path's existing EXPLAIN test goes red with it):
+```
+full suite (-m 'not integration'): 3513 collected, 2 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_find_similar_seed_exact_match_is_an_index_search
+  RED    tests/unit/data/test_card_repository.py::TestFindByNameExact::test_mixed_case_lookup_is_an_index_search
+```
+`more` wording removed (`count = str(shown)` in `ambiguous_lookup_message` and `ambiguous_message`):
+```
+full suite (-m 'not integration'): 3513 collected, 5 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_lookup_caps_an_eleven_match_query_at_ten
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_find_similar_caps_an_eleven_oracle_partial_at_ten
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_two_letter_lookup_says_more_than_ten_and_reads_at_most_eleven_rows
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_deck_tool_says_more_than_ten_for_a_cut_candidate_list
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_two_letter_seed_says_more_than_ten_and_reads_at_most_eleven_rows
+```
+
+Optional real-database timing (the developer's `cards.db`, 39,503 cards, opened `mode=ro`, both
+NOCASE indexes present; the seed resolver's old SQL against the shared statements compiled for the
+sync seam; median ms, rows returned):
+
+- exact seed "lightning bolt": old 182.8 ms → new 0.02 ms (1 row each).
+- partial "el": old 275.9 ms, 3,676 rows → new 252.6 ms, 11 rows. A leading-`%` LIKE still scans;
+  the gain is the rows read and validated, not the scan.
+- partial "zq": old 227.3 ms → new 179.4 ms (1 row each).
 
 ## Plan Change Log
 
