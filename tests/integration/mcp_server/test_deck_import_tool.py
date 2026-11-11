@@ -1,15 +1,19 @@
 """Integration tests for bulk Arena deck import."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
+from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.types import TextContent
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
-from src.data.repositories.card import CardRepository
+from src.data.repositories.card import CardRepository, NameResolution
 from src.data.repositories.deck import DeckRepository
+from src.mcp_server.server import build_server
 from src.mcp_server.tools.deck_import import import_decklist
 from src.mcp_server.tools.deck_management import add_card_to_deck, create_deck, load_deck
 
@@ -49,6 +53,34 @@ async def _seed_bulk_cards(session_factory: async_sessionmaker[AsyncSession], co
     async with session_factory() as session:
         session.add_all(_bulk_card(i) for i in range(count))
         await session.commit()
+
+
+async def _seed_island(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Add one Island row: an oracle identity many Arena printings resolve to."""
+    async with session_factory() as session:
+        session.add(
+            CardModel(
+                id="card-island",
+                name="Island",
+                printed_name=None,
+                oracle_id="oracle-island",
+                mana_cost="",
+                cmc=0.0,
+                type_line="Basic Land — Island",
+                oracle_text="({T}: Add {U}.)",
+                rarity="common",
+                set_code="ELD",
+                set_name="Throne of Eldraine",
+                collector_number="254",
+                colors=[],
+                color_identity=[],
+                legalities={"standard": "legal", "commander": "legal"},
+            )
+        )
+        await session.commit()
+
+
+_MIXED_ISLANDS = "Deck\n2 Island (ELD) 250\n2 Island (THB) 251\n"
 
 
 def _hundred_line_export(*, unknown_last: bool = False) -> str:
@@ -119,13 +151,102 @@ async def test_import_decklist_hundred_lines_is_one_commit_and_one_reload(
     assert sum(1 for entry in loaded.deck.cards if entry.commander) == 1
 
 
-async def test_import_decklist_same_card_twice_in_one_board_is_exists_on_the_second_line(
+async def test_import_decklist_same_card_twice_in_one_board_sums_into_one_row(
     seeded_card_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """In-memory duplicate detection reproduces the per-line ``exists`` of a sequential import."""
+    """Two lines naming one card for one board are both ``ok`` and write one summed row."""
     deck_id = await _create_saved_deck(seeded_card_db)
     spy = _WriteSpy(monkeypatch)
     arena_export = "Deck\n1 Lightning Bolt (M11) 149\n2 Lightning Bolt (M11) 149\n"
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        counts = (spy.commits, spy.bulk_writes)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert [line.status for line in result.results] == ["ok", "ok"]
+    assert [line.quantity for line in result.results] == [1, 2]
+    assert result.results[1].message == (
+        "Line 3: Added 2 copies of 'Lightning Bolt' to the mainboard "
+        "(3 copies in all from lines 2, 3)."
+    )
+    assert (result.imported_lines, result.imported_copies) == (2, 3)
+    assert counts == (1, 1)
+    assert loaded.deck is not None
+    assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [
+        ("Lightning Bolt", 3)
+    ]
+
+
+async def test_import_decklist_mixed_printings_of_one_card(seeded_card_db) -> None:
+    """Two Arena printings of Island resolve to one oracle row and sum into it (B8-D1)."""
+    await _seed_island(seeded_card_db)
+    deck_id = await _create_saved_deck(seeded_card_db)
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=_MIXED_ISLANDS)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert [line.status for line in result.results] == ["ok", "ok"]
+    assert [line.card_id for line in result.results] == ["card-island", "card-island"]
+    assert [line.quantity for line in result.results] == [2, 2]
+    assert [line.set_code for line in result.results] == ["ELD", "THB"]
+    assert result.imported_lines == 2
+    assert result.imported_copies == 4
+    assert loaded.deck is not None
+    assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [("Island", 4)]
+
+
+async def test_import_decklist_same_card_in_two_boards_is_two_rows(seeded_card_db) -> None:
+    """Summing never crosses boards: a Deck and a Sideboard Island are separate rows."""
+    await _seed_island(seeded_card_db)
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = "Deck\n2 Island (ELD) 250\n\nSideboard\n1 Island (THB) 251\n"
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert [line.status for line in result.results] == ["ok", "ok"]
+    assert result.results[1].message == "Line 5: Added 1 copy of 'Island' to the sideboard."
+    assert (result.imported_lines, result.imported_copies) == (2, 3)
+    assert loaded.deck is not None
+    cards = {(entry.card.name, entry.sideboard): entry.quantity for entry in loaded.deck.cards}
+    assert cards == {("Island", False): 2, ("Island", True): 1}
+
+
+async def test_import_decklist_commander_and_deck_lines_sum_into_the_commander_row(
+    seeded_card_db,
+) -> None:
+    """A card under Commander and Deck shares the mainboard row: summed, flagged commander."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = "Commander\n1 Counterspell (DMR) 50\n\nDeck\n2 Counterspell (DMR) 50\n"
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert [line.status for line in result.results] == ["ok", "ok"]
+    assert [line.commander for line in result.results] == [True, False]
+    assert loaded.deck is not None
+    assert [
+        (entry.card.name, entry.quantity, entry.sideboard, entry.commander)
+        for entry in loaded.deck.cards
+    ] == [("Counterspell", 3, False, True)]
+
+
+async def test_import_decklist_lines_summing_past_the_cap_are_all_invalid(
+    seeded_card_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """200 + 51 Islands in one board: both lines refused whole, the other card still imports."""
+    await _seed_island(seeded_card_db)
+    deck_id = await _create_saved_deck(seeded_card_db)
+    spy = _WriteSpy(monkeypatch)
+    arena_export = "Deck\n200 Island (ELD) 250\n4 Lightning Bolt (M11) 149\n51 Island (THB) 251\n"
 
     async with seeded_card_db() as session:
         result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
@@ -133,12 +254,103 @@ async def test_import_decklist_same_card_twice_in_one_board_is_exists_on_the_sec
         loaded = await load_deck(session, deck_id=deck_id)
 
     assert result.status == "partial"
-    assert [line.status for line in result.results] == ["ok", "exists"]
-    assert "already in the mainboard" in result.results[1].message
+    assert [line.status for line in result.results] == ["invalid", "ok", "invalid"]
+    expected = (
+        "'Island' totals 251 copies in the mainboard across lines 2, 4, more than the 250 "
+        "one card can have; none of them were added."
+    )
+    assert result.results[0].message == f"Line 2: {expected}"
+    assert result.results[2].message == f"Line 4: {expected}"
+    assert (result.imported_lines, result.imported_copies) == (1, 4)
     assert commits == 1
     assert loaded.deck is not None
     assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [
-        ("Lightning Bolt", 1)
+        ("Lightning Bolt", 4)
+    ]
+
+
+async def test_import_decklist_card_already_in_deck_named_twice_is_exists_on_both_lines(
+    seeded_card_db,
+) -> None:
+    """``exists`` is for rows the deck already held: every line naming one answers it."""
+    await _seed_island(seeded_card_db)
+    deck_id = await _create_saved_deck(seeded_card_db)
+    async with seeded_card_db() as session:
+        added = await add_card_to_deck(session, deck_id=deck_id, name="Island", quantity=7)
+        assert added.status == "ok"
+
+        result = await import_decklist(session, deck_id=deck_id, arena_export=_MIXED_ISLANDS)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "partial"
+    assert [line.status for line in result.results] == ["exists", "exists"]
+    assert all("already in the mainboard" in line.message for line in result.results)
+    assert (result.imported_lines, result.imported_copies) == (0, 0)
+    assert loaded.deck is not None
+    assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [("Island", 7)]
+
+
+async def test_import_decklist_unexpected_resolver_status_is_an_mcp_error(
+    seeded_card_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resolver status the import does not handle is a bug: ``isError``, nothing written.
+
+    Only the *second* line's card answers the unknown status, so the first line has already
+    resolved ``found`` when the import fails: an import that wrote each valid card as it went
+    would leave Lightning Bolt in the deck (Greptile, PR #130).
+    """
+    real_status = NameResolution.status
+
+    def status(self: NameResolution[Any]) -> str:
+        if self.card is not None and self.card.name == "Counterspell":
+            return "retired"
+        return real_status.fget(self)
+
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "Arena Import"})
+        deck_id = created.structuredContent["deck"]["id"]
+        with monkeypatch.context() as patch:
+            patch.setattr(NameResolution, "status", property(status))
+            imported = await client.call_tool(
+                "import_decklist",
+                {
+                    "deck_id": deck_id,
+                    "arena_export": "Deck\n4 Lightning Bolt (M11) 149\n2 Counterspell (DMR) 50",
+                },
+            )
+        loaded = await client.call_tool("load_deck", {"deck_id": deck_id})
+
+    assert imported.isError is True
+    text = " ".join(block.text for block in imported.content if isinstance(block, TextContent))
+    assert "unhandled status 'retired'" in text
+    assert loaded.structuredContent["deck"]["cards"] == []
+
+
+@pytest.mark.parametrize(
+    ("quantity", "message"),
+    [("0", "quantity must be >= 1 (got 0)."), ("251", "quantity must be between 1 and 250.")],
+)
+async def test_import_decklist_out_of_bounds_line_is_invalid_and_the_next_line_imports(
+    seeded_card_db, quantity: str, message: str
+) -> None:
+    """A per-line quantity outside 1..250 is ``invalid``; the following line still lands."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = f"Deck\n{quantity} Lightning Bolt (M11) 149\n2 Counterspell (DMR) 50\n"
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "partial"
+    assert [line.status for line in result.results] == ["invalid", "ok"]
+    assert result.results[0].message == f"Line 2: {message}"
+    assert result.results[0].quantity == int(quantity)
+    assert result.imported_lines == 1
+    assert result.imported_copies == 2
+    assert loaded.deck is not None
+    assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [
+        ("Counterspell", 2)
     ]
 
 
