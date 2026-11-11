@@ -53,3 +53,9 @@ Fix findings Brad dropped at the board review; ids are those stamped in `review-
 - source_plan: `_bmad-output/initiative-artificial-planeswalker/tickets/epic-codebase-quality-pass/tickets/story-ci-runs-the-recall-eval-the-windows-halves-and-bounded-jobs-plan.md`
   summary: "The pre-commit `mypy` hook (`files: ^src/`, filenames passed) skips a commit that only deletes a `src/` module, the same `--diff-filter=ACMRTUXB` gap T2-P8 fixed for `build-plugin-sync`, so a deletion that breaks an import elsewhere passes locally and fails CI's mypy step. For story 4.65, whose D10 rewrite makes it a `pass_filenames: false` `uv run mypy src/` hook: give it `always_run: true` too."
   evidence: "Found grepping the T2-P8 pattern across `.pre-commit-config.yaml` in story 4.4. Costs a CI round, not a bad merge (CI runs mypy on both platforms). Left to 4.65 because that story replaces the hook; ruff, ruff-format, no-local-machine-paths and ui-prettier-check cannot fail on a deletion."
+
+## Deferred from: story 7.6 (Assessment dimensions are pinned before they change), 2026-11-12
+
+- source_plan: `_bmad-output/initiative-artificial-planeswalker/tickets/epic-quality-analysis/tickets/story-assessment-dimensions-are-pinned-before-they-change-plan.md`
+  summary: "`dimension_vector`'s docstring (`src/logic/assessment/dimensions.py`) still says the curves' tests \"verify shape, clamps, and the monotone directions only\"; since 7.6 the suite pins exact `mana_efficiency`, `resilience`, `card_advantage` and `combo_potential` values. Fix the sentence with the next story that edits `dimensions.py` (7.5 or 7.8), rebuilding `plugin/` in that PR."
+  evidence: "Found by 7.6's quick review lens; verified against the docstring at baseline `fb82633`. 7.6 is tests-only by intent (no `src/` or docstring change), so the stale sentence could not be corrected there. Low: it misleads a contributor about which pins exist, it does not change behaviour."
