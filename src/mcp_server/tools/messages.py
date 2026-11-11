@@ -11,7 +11,7 @@ does the note both semantic tools append when a filtered search stopped at the w
 from typing import Any
 
 from src.data.repositories.card import MAX_NAME_MATCHES, NameResolution
-from src.search.query import _MAX_OVER_FETCH_K
+from src.search.query import MAX_OVER_FETCH_K
 
 #: Surfaced by every relational + semantic tool when the ``cards`` table is missing or empty.
 #: Names the ``initialize_database`` tool (the in-client, consent-gated card import).
@@ -64,7 +64,7 @@ def semantic_cap_note(matched: int) -> str:
 
     Appended to an ``ok`` or ``empty`` message when :func:`~src.search.query.hybrid_search`
     reports ``cap_reached``: the filters left fewer than ``limit`` hits among the nearest
-    :data:`~src.search.query._MAX_OVER_FETCH_K` vectors, so more matches may exist further out.
+    :data:`~src.search.query.MAX_OVER_FETCH_K` vectors, so more matches may exist further out.
 
     Args:
         matched: How many hits survived the filters (``0`` for an ``empty`` result).
@@ -74,6 +74,6 @@ def semantic_cap_note(matched: int) -> str:
     """
     count = "None" if matched == 0 else f"Only {matched}"
     return (
-        f" {count} of the nearest {_MAX_OVER_FETCH_K:,} cards matched the filters; "
+        f" {count} of the nearest {MAX_OVER_FETCH_K:,} cards matched the filters; "
         "`search_cards` filters the whole database, so use it for the full filtered set."
     )

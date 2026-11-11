@@ -14,7 +14,7 @@ The serve-time read path for the semantic index. A single hybrid query (research
 
 The window widens once: the first KNN takes the nearest ``over_fetch_k`` (200) vectors. When that
 leaves fewer than ``limit`` hits *and* the KNN filled ``k`` (so more matches may lie further out),
-it runs again at :data:`_MAX_OVER_FETCH_K` (4,096, the largest ``k`` vec0 accepts on sqlite-vec
+it runs again at :data:`MAX_OVER_FETCH_K` (4,096, the largest ``k`` vec0 accepts on sqlite-vec
 0.1.9). A window that fills ``limit``, or a KNN the metadata pre-filter exhausted, runs exactly one
 KNN. :class:`HybridHits` says when even the widest window came back full and short.
 
@@ -60,7 +60,7 @@ _COLOR_LETTER_TO_COL: dict[str, str] = {col.rsplit("_", 1)[1].upper(): col for c
 
 #: The largest KNN ``k`` vec0 accepts: measured on sqlite-vec 0.1.9, ``k=4097`` raises "k value in
 #: knn query too large". :func:`hybrid_search` never binds a larger ``k``.
-_MAX_OVER_FETCH_K = 4096
+MAX_OVER_FETCH_K = 4096
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ class HybridHits(list[CardHit]):
     """The :class:`CardHit` list :func:`hybrid_search` returns, plus whether it stopped at the cap.
 
     A plain ``list`` to every existing caller; ``cap_reached`` is the one extra fact. It is ``True``
-    only when the widest KNN (``k`` = :data:`_MAX_OVER_FETCH_K`) also came back full and the
+    only when the widest KNN (``k`` = :data:`MAX_OVER_FETCH_K`) also came back full and the
     filters still left fewer than ``limit`` hits, so matches may exist beyond the nearest 4,096
     vectors. It is ``False`` when the result filled ``limit`` or the KNN ran out of candidates.
 
@@ -306,7 +306,7 @@ def hybrid_search(
     the colour flag columns). The first KNN over-fetches ``over_fetch_k`` candidates so the
     JOIN-side legality/games trim, orphan vectors and the oracle-id de-dup can pare the set down to
     ``limit``. If they leave fewer than ``limit`` hits and that KNN returned all ``k`` rows it asked
-    for, the query runs once more at :data:`_MAX_OVER_FETCH_K` (4,096); a KNN that returned fewer
+    for, the query runs once more at :data:`MAX_OVER_FETCH_K` (4,096); a KNN that returned fewer
     than ``k`` rows has no further candidates, so it is never repeated. Results are ordered
     nearest-first by raw vec0 distance, then collapsed to one hit per ``oracle_id`` (the nearest
     printing wins), then truncated to ``limit``.
@@ -320,7 +320,7 @@ def hybrid_search(
             serialized via ``sqlite_vec.serialize_float32``.
         limit: Maximum number of de-duplicated hits to return (default 10).
         over_fetch_k: The first KNN's ``k`` (default 200), the initial window; a short, full
-            window is retried once at :data:`_MAX_OVER_FETCH_K`. Clamped to that cap, so no KNN
+            window is retried once at :data:`MAX_OVER_FETCH_K`. Clamped to that cap, so no KNN
             binds a larger ``k``. Never emit an unbounded ``vec0`` scan.
         mana_value_min: Inclusive minimum mana value; **floored** to an int (the column is
             ``int(cmc)``) before binding. ``None`` omits the lower bound.
@@ -400,7 +400,7 @@ def hybrid_search(
         f"ORDER BY knn.distance"
     )
 
-    k = min(over_fetch_k, _MAX_OVER_FETCH_K)
+    k = min(over_fetch_k, MAX_OVER_FETCH_K)
     while True:
         params: list[object] = [qvec_blob, k, *inner_params, *outer_params]
         rows = conn.execute(sql, params).fetchall()
@@ -414,14 +414,12 @@ def hybrid_search(
             len(hits),
             limit,
         )
-        if len(hits) >= limit or not window_full or k >= _MAX_OVER_FETCH_K:
+        if len(hits) >= limit or not window_full or k >= MAX_OVER_FETCH_K:
             break
-        k = _MAX_OVER_FETCH_K
+        k = MAX_OVER_FETCH_K
 
     # Short at the cap with the window still full: matches may lie beyond the nearest 4,096.
-    return HybridHits(
-        hits, cap_reached=len(hits) < limit and window_full and k >= _MAX_OVER_FETCH_K
-    )
+    return HybridHits(hits, cap_reached=len(hits) < limit and window_full and k >= MAX_OVER_FETCH_K)
 
 
 def _dedup_hits(rows: list[Any], *, limit: int, exclude_oracle_id: str | None) -> list[CardHit]:

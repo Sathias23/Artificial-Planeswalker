@@ -33,7 +33,7 @@ from src.search import (
 )
 from src.search.embedder import EMBEDDING_DIM
 from src.search.query import (
-    _MAX_OVER_FETCH_K,
+    MAX_OVER_FETCH_K,
     CardHit,
     get_card_vector,
     hybrid_search,
@@ -377,7 +377,7 @@ def test_over_fetch_k_is_the_first_window_and_a_short_full_one_widens_to_the_cap
             conn, _qvec(fake, name="Card 0", oracle_text="Text 0"), over_fetch_k=2, limit=10
         )
 
-    assert ks == [2, _MAX_OVER_FETCH_K]
+    assert ks == [2, MAX_OVER_FETCH_K]
     assert len(hits) == 5
     assert hits.cap_reached is False  # the cap query returned 5 rows, not 4,096
     factory.close()
@@ -396,7 +396,7 @@ def test_over_fetch_k_above_the_cap_binds_the_cap(tmp_path) -> None:
             conn, _qvec(fake, name="Card 0", oracle_text="Text 0"), over_fetch_k=10_000
         )
 
-    assert ks == [_MAX_OVER_FETCH_K]
+    assert ks == [MAX_OVER_FETCH_K]
     assert [h.card_id for h in hits] == ["id-0"]
     factory.close()
 
@@ -432,7 +432,7 @@ def test_starved_format_filter_widens_once_and_fills_nearest_first(tmp_path) -> 
         hits = hybrid_search(conn, embedder.query_vector, limit=10, format_legal="standard")
 
     assert [h.card_id for h in hits] == sorted(legal)  # all ten, nearest (lowest rank) first
-    assert ks == [200, _MAX_OVER_FETCH_K]
+    assert ks == [200, MAX_OVER_FETCH_K]
     assert hits.cap_reached is False
     factory.close()
 
@@ -495,7 +495,7 @@ def test_orphan_vectors_filling_the_first_window_widen_it(tmp_path) -> None:
         hits = hybrid_search(conn, embedder.query_vector, limit=10)
 
     assert [h.card_id for h in hits] == sorted(ranks)[200:210]
-    assert ks == [200, _MAX_OVER_FETCH_K]
+    assert ks == [200, MAX_OVER_FETCH_K]
     factory.close()
 
 
@@ -513,7 +513,7 @@ def test_matches_past_the_cap_stop_at_4096_and_report_cap_reached(tmp_path) -> N
 
     assert hits == []
     assert hits.cap_reached is True
-    assert ks == [200, _MAX_OVER_FETCH_K]  # one retry, and never a k above the cap
+    assert ks == [200, MAX_OVER_FETCH_K]  # one retry, and never a k above the cap
     factory.close()
 
 
