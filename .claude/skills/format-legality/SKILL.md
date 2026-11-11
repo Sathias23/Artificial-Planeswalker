@@ -442,6 +442,8 @@ The tools return structured statuses, not raw exceptions — handle each:
   union-of-printings import — suggest one refresh (`initialize_database` with `update=true`, or
   `scripts/import_scryfall_data.py`), after which `games` reflects all printings.
 - **`lookup_card_by_name` `ambiguous`** — present the `matches`, ask the user to pick. Don't guess.
+  At most 10 `matches` come back, in name order; a message saying "more than 10" means the name
+  is too broad, so ask for a more specific one instead of listing them.
 - **`lookup_card_by_name` `not_found`** — the name didn't resolve — fix spelling / re-query; don't retry the
   same string. (If you passed `format`, drop it — the filter may be hiding the card.)
 - **`index_unavailable`** (semantic search only, if used for replacements): tell the user the semantic index

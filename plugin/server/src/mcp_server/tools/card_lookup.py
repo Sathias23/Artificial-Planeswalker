@@ -1,10 +1,10 @@
 """Structured card-lookup logic for the ``lookup_card_by_name`` MCP tool.
 
-Ports the legacy exact-then-partial matching and disambiguation buckets
-(0 / 1 / 2-5 / 6+) from the original PydanticAI agent's card-lookup tool while dropping all
-presentation concerns (HTML formatting, Chainlit UI elements, RunContext, and
-session-state filtering). Returns a structured Pydantic result so FastMCP can
-serialize machine-readable fields plus a human-facing message.
+Resolves the name through the shared resolver (``CardRepository.resolve_name``) and words the
+disambiguation buckets (0 / 1 / 2-5 / 6-10 / more than 10) ported from the original PydanticAI
+agent's card-lookup tool, while dropping all presentation concerns (HTML formatting, Chainlit UI
+elements, RunContext, and session-state filtering). Returns a structured Pydantic result so
+FastMCP can serialize machine-readable fields plus a human-facing message.
 """
 
 from typing import Literal
@@ -15,12 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.schemas.card import Card
-from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
-
-# Maximum number of candidate cards returned for an ambiguous query.
-_MAX_MATCHES = 10
-# Above this many partial matches, ask the user to refine rather than choose.
-_REFINE_THRESHOLD = 5
+from src.mcp_server.tools.messages import (
+    DATABASE_NOT_INITIALIZED_MESSAGE,
+    ambiguous_lookup_message,
+)
 
 
 class CardLookupResult(BaseModel):
@@ -28,7 +26,8 @@ class CardLookupResult(BaseModel):
 
     Attributes:
         status: ``found`` (``card`` populated), ``not_found`` (no match),
-            ``ambiguous`` (multiple candidates in ``matches``), ``database_not_initialized`` (no
+            ``ambiguous`` (multiple candidates in ``matches``, in name order, at most 10; the
+            message says "more than 10" when more matched), ``database_not_initialized`` (no
             card data yet — run ``initialize_database``), or ``error`` (the card database could not
             be read — corrupt, unreadable or locked; ``message`` names the cause. Answered by the
             tool edge in ``tools/failures.py``).
@@ -51,9 +50,10 @@ async def lookup_card(
 ) -> CardLookupResult:
     """Look up a card by exact-or-fuzzy name and return a structured result.
 
-    Tries an exact (case-insensitive) match first, then falls back to a partial
-    substring match, bucketing the outcome: no match, single match, a small set
-    to disambiguate (2-5), or a large set that warrants refining (6+).
+    Tries an exact (case-insensitive) match on the name or printed name first, then falls back to
+    a literal substring match, bucketing the outcome: no match, single match, a small set to
+    disambiguate (2-5), or a large set that warrants refining (6 or more; past 10 the message says
+    "more than 10" and ``matches`` holds the first 10 by name).
 
     Args:
         session: Async database session to query against.
@@ -78,15 +78,14 @@ async def lookup_card(
             status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
         )
 
-    repo = CardRepository(session)
-
-    exact = await repo.find_by_name_exact(card_name, format_filter=format, games=games)
-    if exact is not None:
-        return CardLookupResult(status="found", card=exact, message=f"Found '{exact.name}'.")
-
-    matches = await repo.find_by_name_partial(card_name, format_filter=format, games=games)
-
-    if not matches:
+    card_name = card_name.strip()
+    resolution = await CardRepository(session).resolve_name(
+        card_name, format_filter=format, games=games
+    )
+    if resolution.card is not None:
+        found = resolution.card
+        return CardLookupResult(status="found", card=found, message=f"Found '{found.name}'.")
+    if not resolution.matches:
         return CardLookupResult(
             status="not_found",
             message=(
@@ -94,22 +93,8 @@ async def lookup_card(
                 "Check the spelling or try a different search term."
             ),
         )
-
-    if len(matches) == 1:
-        only = matches[0]
-        return CardLookupResult(status="found", card=only, message=f"Found '{only.name}'.")
-
-    shown = matches[:_MAX_MATCHES]
-    if len(matches) > _REFINE_THRESHOLD:
-        if len(shown) < len(matches):
-            message = (
-                f"Found {len(matches)} cards matching '{card_name}'. "
-                f"Please refine your search; showing the first {len(shown)}."
-            )
-        else:
-            message = (
-                f"Found {len(matches)} cards matching '{card_name}'. Please refine your search."
-            )
-    else:
-        message = f"Found {len(matches)} cards matching '{card_name}'. Which one did you mean?"
-    return CardLookupResult(status="ambiguous", matches=shown, message=message)
+    return CardLookupResult(
+        status="ambiguous",
+        matches=resolution.matches,
+        message=ambiguous_lookup_message(card_name, resolution, card_id_hint=False),
+    )

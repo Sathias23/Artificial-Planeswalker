@@ -243,6 +243,8 @@ value:
 - **`ambiguous`** (`find_similar_cards`, `lookup_card_by_name`, `add_card_to_deck`,
   `set_card_quantity`, `remove_card_from_deck`): present the `matches` and ask the user to pick — or
   re-call with a specific `card_id`. Don't guess.
+  At most 10 `matches` come back, in name order; a message saying "more than 10" means the name
+  is too broad, so ask for a more specific one instead of listing them.
 - **`empty`** (`semantic_search_cards`, `search_cards`, `find_similar_cards`): no results — relax the
   filters (widen colors/CMC, drop a constraint) and retry, or tell the user plainly. **Never invent
   cards** to fill a gap.

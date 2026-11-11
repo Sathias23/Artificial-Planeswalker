@@ -38,16 +38,13 @@ from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import is_database_initialized
-from src.data.repositories.card import CardRepository
+from src.data.repositories.card import CardRepository, NameResolution
 from src.data.repositories.deck import _UNSET, DeckRepository
 from src.data.schemas.card import Card, CardSummary
 from src.data.schemas.deck import MAX_CARD_QUANTITY, DeckDetail, DeckSummary
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
-
-# Maximum number of candidate cards returned for an ambiguous name resolution.
-_MAX_MATCHES = 10
 
 # Ceilings on the LLM-supplied arguments (nothing at the MCP boundary bounds them otherwise).
 # ``MAX_CARD_QUANTITY`` (the copy cap) lives in ``src.data.schemas.deck`` so the importer's
@@ -208,12 +205,14 @@ def _location(sideboard: bool) -> str:
     return "sideboard" if sideboard else "mainboard"
 
 
-def ambiguous_message(name: str, match_count: int) -> str:
-    """The ``ambiguous`` message shared by ``add_card_to_deck`` and ``import_decklist``."""
-    return (
-        f"'{name}' matches {match_count} cards. "
-        "Re-call with a specific card_id, or refine the name."
-    )
+def ambiguous_message(name: str, resolution: NameResolution[Card]) -> str:
+    """The ``ambiguous`` message the three deck card tools and ``import_decklist`` share.
+
+    Says "more than N" when the candidate list was cut, rather than the cut length as a count.
+    """
+    shown = len(resolution.matches)
+    count = f"more than {shown}" if resolution.more else str(shown)
+    return f"'{name}' matches {count} cards. Re-call with a specific card_id, or refine the name."
 
 
 def card_not_found_message(*, card_id: str | None, name: str | None) -> str:
@@ -238,36 +237,22 @@ def card_added_message(card_name: str, quantity: int, *, sideboard: bool) -> str
 
 async def resolve_card(
     card_repo: CardRepository, *, card_id: str | None, name: str | None
-) -> tuple[Card | None, str | None, list[Card]]:
-    """Resolve a card by ``card_id`` OR ``name`` for the add/remove/import helpers.
+) -> NameResolution[Card]:
+    """Resolve a card by ``card_id`` OR ``name`` for the add/set/remove/import helpers.
 
-    The ``card_id`` path is a point lookup; the ``name`` path mirrors
-    ``lookup_card_by_name``'s exact→partial bucketing (0 / 1 / >1). The caller
+    The ``card_id`` path is a point lookup; the ``name`` path is the shared resolver
+    (``CardRepository.resolve_name``, the one ``lookup_card_by_name`` uses). The caller
     guarantees exactly one of ``card_id`` / ``name`` is set before calling.
 
     Returns:
-        A ``(card, error_status, matches)`` triple. On success ``card`` is set and
-        ``error_status`` is ``None``; on failure ``card`` is ``None`` and
-        ``error_status`` is ``"card_not_found"`` or ``"ambiguous"`` (with
-        ``matches`` populated, capped at ``_MAX_MATCHES``).
+        A :class:`NameResolution`: ``card`` set on success; ``matches`` set (at most 10, ``more``
+        saying whether more matched) when the name is ambiguous; neither when nothing matched.
     """
     if card_id is not None:
-        card = await card_repo.get_by_id(card_id)
-        if card is None:
-            return None, "card_not_found", []
-        return card, None, []
+        return NameResolution(card=await card_repo.get_by_id(card_id))
 
     assert name is not None  # guaranteed by _selector_error before call
-    exact = await card_repo.find_by_name_exact(name)
-    if exact is not None:
-        return exact, None, []
-
-    matches = await card_repo.find_by_name_partial(name)
-    if not matches:
-        return None, "card_not_found", []
-    if len(matches) == 1:
-        return matches[0], None, []
-    return None, "ambiguous", matches[:_MAX_MATCHES]
+    return await card_repo.resolve_name(name)
 
 
 async def list_decks(session: AsyncSession, *, format: str | None = None) -> DeckListResult:
@@ -654,14 +639,15 @@ async def add_card_to_deck(
             message=f"No deck found with id '{deck_id}'.",
         )
 
-    card, error_status, matches = await resolve_card(card_repo, card_id=card_id, name=name)
-    if error_status == "ambiguous":
+    resolution = await resolve_card(card_repo, card_id=card_id, name=name)
+    card = resolution.card
+    if resolution.status == "ambiguous":
         assert name is not None  # only the name path can be ambiguous
         return DeckCardResult(
             status="ambiguous",
             deck_id=deck_id,
-            matches=[CardSummary.model_validate(c) for c in matches],
-            message=ambiguous_message(name, len(matches)),
+            matches=[CardSummary.model_validate(c) for c in resolution.matches],
+            message=ambiguous_message(name, resolution),
         )
     if card is None:
         return DeckCardResult(
@@ -788,14 +774,15 @@ async def set_card_quantity(
             message=f"No deck found with id '{deck_id}'.",
         )
 
-    card, error_status, matches = await resolve_card(card_repo, card_id=card_id, name=name)
-    if error_status == "ambiguous":
+    resolution = await resolve_card(card_repo, card_id=card_id, name=name)
+    card = resolution.card
+    if resolution.status == "ambiguous":
         assert name is not None  # only the name path can be ambiguous
         return DeckCardResult(
             status="ambiguous",
             deck_id=deck_id,
-            matches=[CardSummary.model_validate(c) for c in matches],
-            message=ambiguous_message(name, len(matches)),
+            matches=[CardSummary.model_validate(c) for c in resolution.matches],
+            message=ambiguous_message(name, resolution),
         )
     if card is None:
         return DeckCardResult(
@@ -912,27 +899,25 @@ async def remove_card_from_deck(
             message=f"No deck found with id '{deck_id}'.",
         )
 
-    card, error_status, matches = await resolve_card(card_repo, card_id=card_id, name=name)
-    if error_status == "ambiguous":
+    resolution = await resolve_card(card_repo, card_id=card_id, name=name)
+    card = resolution.card
+    if resolution.status == "ambiguous":
+        assert name is not None  # only the name path can be ambiguous
         return DeckCardResult(
             status="ambiguous",
             deck_id=deck_id,
-            matches=[CardSummary.model_validate(c) for c in matches],
-            message=(
-                f"'{name}' matches {len(matches)} cards. "
-                "Re-call with a specific card_id, or refine the name."
-            ),
+            matches=[CardSummary.model_validate(c) for c in resolution.matches],
+            message=ambiguous_message(name, resolution),
         )
     if card is None:
-        identifier = f"card_id '{card_id}'" if card_id is not None else f"name '{name}'"
         return DeckCardResult(
             status="card_not_found",
             deck_id=deck_id,
             card_id=card_id,
-            message=f"No card found for {identifier}.",
+            message=card_not_found_message(card_id=card_id, name=name),
         )
 
-    location = "sideboard" if sideboard else "mainboard"
+    location = _location(sideboard)
     try:
         removed = await deck_repo.remove_card_from_deck(deck_id, card.id, sideboard)
     except DatabaseError:

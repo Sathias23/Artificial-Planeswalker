@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from src.data.models.card import CardModel
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
-from src.data.repositories.base import BaseRepository
+from src.data.repositories.base import LIKE_ESCAPE, BaseRepository, contains_pattern
 from src.data.schemas.card import Card
 from src.data.schemas.deck import Deck, DeckCard, DeckCardEntry, DeckSummary
 
@@ -435,8 +435,9 @@ class DeckRepository(BaseRepository):
     async def find_deck_by_name(self, name: str) -> Deck | None:
         """Find a deck by case-insensitive partial name match.
 
-        Searches for decks where the name contains the query string,
-        case-insensitively. Returns the first match if multiple decks match.
+        Searches for decks where the name contains the query string, case-insensitively and
+        literally (``%`` and ``_`` match themselves). Returns the first match if multiple decks
+        match.
 
         Args:
             name: Name query string (partial match supported)
@@ -448,7 +449,9 @@ class DeckRepository(BaseRepository):
             deck = await repo.find_deck_by_name("mono red")
             # Matches "Mono Red Aggro", "mono red control", etc.
         """
-        stmt = select(DeckModel).where(DeckModel.name.ilike(f"%{name}%"))
+        stmt = select(DeckModel).where(
+            DeckModel.name.ilike(contains_pattern(name), escape=LIKE_ESCAPE)
+        )
         result = await self.session.execute(stmt)
         deck_model = result.scalar_one_or_none()
 
