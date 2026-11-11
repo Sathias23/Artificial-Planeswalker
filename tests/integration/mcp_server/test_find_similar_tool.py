@@ -223,6 +223,43 @@ def test_filters_compose_with_similarity(tmp_path) -> None:
     factory.close()
 
 
+def test_limit_is_forwarded_to_the_search(tmp_path) -> None:
+    """Four alternatives survive every filter; ``limit=2`` returns two of them, not all four."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "seed", name="Seed Card", oracle_text="Z.")
+    for i in range(4):
+        _seed_card(conn, f"alt-{i}", name=f"Alt {i}", oracle_text=f"Text {i}.")
+    build_card_embeddings(conn, fake)
+
+    result = find_similar_cards(conn, card_name="Seed Card", limit=2)
+
+    assert result.status == "ok"
+    assert result.total_count == 2
+    assert len(result.cards) == 2
+    assert "seed" not in {h.card.id for h in result.cards}
+    factory.close()
+
+
+def test_color_mode_is_forwarded_to_the_search(tmp_path) -> None:
+    """``all`` with W+U drops the mono-white alternative that ``any`` keeps."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "seed", name="Seed Card", oracle_text="Z.", colors=["W", "U"])
+    _seed_card(conn, "wu", name="Azorius Card", oracle_text="WU.", colors=["W", "U"])
+    _seed_card(conn, "w", name="White Card", oracle_text="W.", colors=["W"])
+    build_card_embeddings(conn, fake)
+
+    every = find_similar_cards(conn, card_name="Seed Card", colors=["W", "U"], color_mode="all")
+    either = find_similar_cards(conn, card_name="Seed Card", colors=["W", "U"], color_mode="any")
+
+    assert {h.card.id for h in every.cards} == {"wu"}
+    assert {h.card.id for h in either.cards} == {"wu", "w"}
+    factory.close()
+
+
 def test_empty_when_filters_exclude_all_alternatives(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
