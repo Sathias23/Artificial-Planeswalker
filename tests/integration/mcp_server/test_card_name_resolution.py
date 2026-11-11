@@ -577,6 +577,38 @@ async def test_an_underscore_in_a_name_is_literal(world: World) -> None:
     assert answer["card"]["id"] == "c-under"
 
 
+async def test_a_backslash_before_a_wildcard_is_literal_on_both_resolver_paths(
+    world: World,
+) -> None:
+    r"""``A\_Z`` names only the card containing ``A\_Z``, through the async and the sync resolver.
+
+    Each near miss catches one way the escape can go wrong: an undoubled backslash leaves ``_`` a
+    wildcard (``A\QZ`` matches too), and no escaping at all reads ``\_`` as a literal underscore
+    (``A_Z`` matches instead). Greptile, PR #129.
+    """
+    await world.seed(
+        [
+            _card("c-slash", r"Glyph A\_Z Rune"),
+            _card("c-slash-any", r"Glyph A\QZ Rune"),
+            _card("c-under", "Glyph A_Z Rune"),
+        ],
+        index=True,
+    )
+
+    lookup, similar = await _call_many(
+        world.server(),
+        [
+            ("lookup_card_by_name", {"card_name": r"a\_z"}),
+            ("find_similar_cards", {"card_name": r"a\_z"}),
+        ],
+    )
+
+    assert lookup["status"] == "found", lookup["message"]
+    assert lookup["card"]["id"] == "c-slash"
+    assert similar["status"] == "ok", similar["message"]
+    assert similar["seed"]["id"] == "c-slash"
+
+
 async def test_wildcards_in_types_keywords_and_games_are_literal(world: World) -> None:
     """``search_cards`` types/keywords and lookup's ``games`` match ``%``/``_`` as themselves.
 

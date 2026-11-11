@@ -208,3 +208,16 @@ Both routed **patch**; no loopback.
 |---|---------|---------|-------|-------------------|
 | 1 | Escape proven only at `contains_pattern`; a call site that drops `escape=LIKE_ESCAPE` or reverts to `f"%{x}%"` passes the suite | medium | patch | Verified: `search_cards` passes `types` and `keywords` unvalidated (`card_search._validation_error` checks colours, rarity, games, mana, paging only), and `lookup_card` passes `games` unvalidated; no test sends `%`/`_` through those sites. Action: one entry-point test over `search_cards` types/keywords and lookup `games=["%"]`. |
 | 2 | `find_deck_by_name`'s rewritten docstring still says "Returns the first match if multiple decks match" | low | patch | Verified: body calls `scalar_one_or_none()` over an unordered `ILIKE`, which raises `MultipleResultsFound` on two matches (`scripts/view_deck.py:46` avoids it for that reason). Direct docstring correction; no behaviour change (5.1 deletes the method). |
+
+Pass 2 (Greptile, PR #129, 4/5): 1 finding, P2, routed **patch**.
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | The backslash escape in `contains_pattern` has no test; only `%` and `_` alone are covered | low | patch | Verified: no test sends a `\` through a resolver. Action: `test_a_backslash_before_a_wildcard_is_literal_on_both_resolver_paths` sends `a\_z` through `lookup_card_by_name` (async) and `find_similar_cards` (sync) against `A\_Z`, `A\QZ` and `A_Z` near misses. |
+
+Backslash doubling removed from `contains_pattern` (tree staged first, reverted with
+`git checkout`, `git diff --exit-code` clean):
+```
+full suite (-m 'not integration'): 3515 collected, 1 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_card_name_resolution.py::test_a_backslash_before_a_wildcard_is_literal_on_both_resolver_paths
+```
