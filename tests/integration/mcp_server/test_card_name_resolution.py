@@ -39,6 +39,8 @@ def _card(
     oracle_text: str | None = None,
     games: Sequence[str] = ("paper", "arena"),
     legalities: dict[str, str] | None = None,
+    type_line: str = "Creature — Test",
+    keywords: Sequence[str] = (),
 ) -> CardModel:
     """A minimal valid card; ``oracle_text`` defaults to one naming the card (distinct vectors)."""
     return CardModel(
@@ -48,7 +50,7 @@ def _card(
         oracle_id=oracle_id if oracle_id is not None else f"oracle-{card_id}",
         mana_cost="{1}{R}",
         cmc=2.0,
-        type_line="Creature — Test",
+        type_line=type_line,
         oracle_text=oracle_text if oracle_text is not None else f"{name} does a thing.",
         rarity="common",
         set_code="TST",
@@ -56,7 +58,7 @@ def _card(
         collector_number="1",
         colors=["R"],
         color_identity=["R"],
-        keywords=[],
+        keywords=list(keywords),
         legalities=legalities if legalities is not None else {"standard": "legal"},
         games=list(games),
     )
@@ -573,6 +575,33 @@ async def test_an_underscore_in_a_name_is_literal(world: World) -> None:
 
     assert answer["status"] == "found", answer["message"]
     assert answer["card"]["id"] == "c-under"
+
+
+async def test_wildcards_in_types_keywords_and_games_are_literal(world: World) -> None:
+    """``search_cards`` types/keywords and lookup's ``games`` match ``%``/``_`` as themselves.
+
+    Unescaped, ``f%l`` would match "Halfling", ``Ward_2`` would match "WardX2", and ``%`` as a
+    game would match any card's games array.
+    """
+    await world.seed(
+        [
+            _card("c-pct", "Glyph Keeper", type_line="Creature — Half%ling", keywords=["Ward_2"]),
+            _card("c-plain", "Glyph Warden", type_line="Creature — Halfling", keywords=["WardX2"]),
+        ]
+    )
+
+    types, keywords, games = await _call_many(
+        world.server(),
+        [
+            ("search_cards", {"types": ["f%l"]}),
+            ("search_cards", {"keywords": ["Ward_2"]}),
+            ("lookup_card_by_name", {"card_name": "Glyph Keeper", "games": ["%"]}),
+        ],
+    )
+
+    assert [card["id"] for card in types["cards"]] == ["c-pct"], types["message"]
+    assert [card["id"] for card in keywords["cards"]] == ["c-pct"], keywords["message"]
+    assert games["status"] == "not_found", games["message"]
 
 
 # --- find_similar's exact seed match is index-served -----------------------------------------

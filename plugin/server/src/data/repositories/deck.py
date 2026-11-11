@@ -436,14 +436,14 @@ class DeckRepository(BaseRepository):
         """Find a deck by case-insensitive partial name match.
 
         Searches for decks where the name contains the query string, case-insensitively and
-        literally (``%`` and ``_`` match themselves). Returns the first match if multiple decks
-        match.
+        literally (``%`` and ``_`` match themselves). Raises ``MultipleResultsFound`` when more
+        than one deck matches.
 
         Args:
             name: Name query string (partial match supported)
 
         Returns:
-            First matching Deck schema if found, None otherwise
+            The matching Deck schema if exactly one deck matches, None if none does
 
         Example:
             deck = await repo.find_deck_by_name("mono red")
