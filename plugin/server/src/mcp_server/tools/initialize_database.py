@@ -137,9 +137,27 @@ def _failure_message(exc: BaseException) -> str:
     bad bulk file. A database cause is described by the driver's own text, never SQLAlchemy's
     statement echo. The first such link, outermost first, decides: a database error raised while
     cleaning up after a download failure (its ``__context__``) is the database's fault to report.
+
+    ``ScryfallAPIError`` alone does not mean the network failed: ``download_bulk_data`` also wraps
+    a local ``OSError`` (a full disk during the write) in it, and raises it bare for its deliberate
+    size-ceiling abort. So its own ``__cause__`` picks the hint: an ``httpx`` error gets the
+    network one, an ``OSError`` a disk one, and anything else (the ceiling) none.
     """
     for link in _cause_chain(exc):
-        if isinstance(link, (ScryfallAPIError, httpx.HTTPError)):
+        if isinstance(link, ScryfallAPIError):
+            detail = failure_detail(link).rstrip(".")
+            if isinstance(link.__cause__, httpx.HTTPError):
+                return (
+                    f"Database initialization failed: {detail}. Check the network connection and "
+                    "try again."
+                )
+            if isinstance(link.__cause__, OSError):
+                return (
+                    f"Database initialization failed: {detail}. Check that the data directory is "
+                    "writable and has free disk space, then try again."
+                )
+            return f"Database initialization failed: {detail}."
+        if isinstance(link, httpx.HTTPError):
             return (
                 f"Database initialization failed: {failure_detail(link).rstrip('.')}. Check the "
                 "network connection and try again."

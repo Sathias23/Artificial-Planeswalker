@@ -83,6 +83,7 @@ from src.mcp_server.tools.companion import (
 )
 from src.mcp_server.tools.companion import companion_status as _companion_status_helper
 from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
+from src.mcp_server.tools.companion import set_active_deck_error as _set_active_deck_error
 from src.mcp_server.tools.companion import show_groups as _show_groups_helper
 from src.mcp_server.tools.companion import show_suggestions as _show_suggestions_helper
 from src.mcp_server.tools.companion import show_swaps as _show_swaps_helper
@@ -747,7 +748,7 @@ def build_server(
         return await _in_session(
             "companion_set_active_deck",
             lambda session: _set_active_deck_helper(session, deck_id=deck_id),
-            lambda message: SetActiveDeckResult(status="error", message=message),
+            lambda message: _set_active_deck_error(deck_id, message),
         )
 
     @mcp.tool()

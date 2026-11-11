@@ -662,11 +662,21 @@ async def test_a_non_network_import_failure_names_its_cause_without_a_network_hi
     assert "network" not in result.message.lower()
 
 
+def _api_error(text: str, cause: BaseException | None) -> ScryfallAPIError:
+    """A ``ScryfallAPIError`` chained the way ``download_bulk_data`` raises it (``from e``)."""
+    error = ScryfallAPIError(text)
+    error.__cause__ = cause
+    return error
+
+
 @pytest.mark.parametrize(
     "failure",
     [
         pytest.param(httpx.ConnectError("Name or service not known"), id="httpx"),
-        pytest.param(ScryfallAPIError("Failed to download bulk data after 3 attempts"), id="api"),
+        pytest.param(
+            _api_error("Failed to download bulk data after 3 attempts", httpx.ConnectError("down")),
+            id="api",
+        ),
     ],
 )
 async def test_a_network_import_failure_keeps_the_network_hint(
@@ -687,6 +697,67 @@ async def test_a_network_import_failure_keeps_the_network_hint(
     assert str(failure) in result.message
     assert "network" in result.message.lower()
     assert ".." not in result.message
+
+
+@pytest.mark.parametrize(
+    ("failure", "hint"),
+    [
+        pytest.param(
+            _api_error(
+                "Failed to download bulk data after 3 attempts: [Errno 28] No space left on device",
+                OSError(28, "No space left on device"),
+            ),
+            "free disk space",
+            id="disk-full",
+        ),
+        pytest.param(
+            _api_error(
+                "Download exceeded the 4,294,967,296-byte ceiling (content-length was absent or "
+                "wrong); aborting",
+                None,
+            ),
+            None,
+            id="size-ceiling",
+        ),
+    ],
+)
+async def test_a_local_download_failure_gets_no_network_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: ScryfallAPIError, hint: str | None
+) -> None:
+    """``download_bulk_data`` wraps a local ``OSError`` and its own size abort in
+    ``ScryfallAPIError`` too; neither is the network's fault (Greptile, PR #128)."""
+    _point_initialize_database_at(monkeypatch, tmp_path / "init.db")
+
+    async def importer(session: AsyncSession, *, bulk_type: str = "default_cards") -> None:
+        raise ScryfallImportError(f"Scryfall import failed: {failure}") from failure
+
+    result = await initialize_database(import_fn=importer)
+
+    assert result.status == "error"
+    assert str(failure).rstrip(".") in result.message
+    assert "network" not in result.message.lower()
+    if hint is None:
+        assert result.message.endswith("aborting.")
+    else:
+        assert hint in result.message
+
+
+async def test_a_locked_file_keeps_the_deck_id_on_set_active_deck(locked_db) -> None:
+    """The edge's ``error`` echoes the requested id, as ``SetActiveDeckResult`` promises for every
+    status (Greptile, PR #128)."""
+    db_path, session_factory, deck_id = locked_db
+    server = server_module.build_server(
+        session_factory=session_factory,
+        connection_factory=ConnectionFactory(db_path=str(db_path), busy_timeout_ms=0),
+    )
+
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("companion_set_active_deck", {"deck_id": deck_id})
+
+    assert not result.isError
+    assert result.structuredContent is not None
+    assert result.structuredContent["status"] == "error"
+    assert result.structuredContent["deck_id"] == deck_id
 
 
 async def test_a_database_error_cleaning_up_after_a_network_failure_blames_the_database(

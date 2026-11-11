@@ -225,3 +225,11 @@ After the review patches (`ce9cdb9`): ruff, ruff format, mypy (both platforms) c
 | 4 | `server.py` module docstring and the skill `error` notes promise a message naming the cause, but helper-arm catches (analysis, deck writes, assess/compare) return generic text | low | patch | Confirmed for the arms. Wording only: the docstring distinguishes edge-caught from helper-caught failures, and two skills say the message "describes the failure". The conditional "locked → retry once" advice stands. `plugin/` rebuilt. |
 
 Pass 1 outcome: four patches applied by the implementer in `ce9cdb9`, nothing rejected, nothing deferred, no loopback.
+
+**Pass 2 (Greptile on PR #128, two P2s):** both confirmed and patched (2026-11-11).
+1. *Errors lose the deck id* — the edge's `companion_set_active_deck` error factory built `SetActiveDeckResult` without `deck_id`, breaking the model's echo-on-every-status promise. Fix: `set_active_deck_error()` in `tools/companion.py` echoes the bounded id (`_truncate_for_echo`), and `server.py` uses it. Swept the other 21 edge factories: every result model that echoes an id on every status already passes it (`view_deck` sets `deck_id` only on `ok`, by contract).
+2. *Disk failures get network advice* — `download_bulk_data` also wraps a local `OSError` and raises bare for its size ceiling, both as `ScryfallAPIError`. Fix: `_failure_message` reads the `ScryfallAPIError`'s own `__cause__`: `httpx` → network hint, `OSError` → disk hint, anything else → none. The existing `api` network-hint case now chains an `httpx` cause the way the real client does.
+
+Gate: ruff, format, mypy both platforms, pytest 3512 passed, 2 skipped; `plugin/` rebuilt. Probes (each reverted clean via `git diff --exit-code`):
+- plant: server factory back to no `deck_id` → `full suite (-m 'not integration'): 3487 collected, 1 failed, 0 errored, exit 1`, red on `test_a_locked_file_keeps_the_deck_id_on_set_active_deck`.
+- plant: `ScryfallAPIError` branch always gives the network hint → `full suite (-m 'not integration'): 3487 collected, 2 failed, 0 errored, exit 1`, red on `test_a_local_download_failure_gets_no_network_hint[disk-full]` and `[size-ceiling]`.

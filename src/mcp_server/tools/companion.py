@@ -146,6 +146,16 @@ and the count.
 """
 
 
+def set_active_deck_error(deck_id: str, message: str) -> SetActiveDeckResult:
+    """The ``error`` answer for a failure caught at the tool edge (``tools/failures.py``).
+
+    Echoes the bounded ``deck_id`` like every status :func:`set_active_deck` returns itself, so a
+    caller can still pair the result to its request when the readiness probe or the session is
+    what failed.
+    """
+    return SetActiveDeckResult(status="error", deck_id=_truncate_for_echo(deck_id), message=message)
+
+
 async def set_active_deck(session: AsyncSession, *, deck_id: str) -> SetActiveDeckResult:
     """Point the companion's display at a saved deck.
 
