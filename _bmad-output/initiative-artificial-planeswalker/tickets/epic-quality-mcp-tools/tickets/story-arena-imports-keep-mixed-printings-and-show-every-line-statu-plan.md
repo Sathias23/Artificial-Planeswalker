@@ -3,7 +3,7 @@ title: 'Arena imports keep mixed printings and show every line status'
 type: 'bugfix'
 ticket: '9'
 created: '2026-11-11'
-status: 'review'
+status: done
 baseline_revision: '8b60a1452ebc8029a4e02641a7ef8a3245354eaf'
 route: 'full'
 route_source: 'auto'
