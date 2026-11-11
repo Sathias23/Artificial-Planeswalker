@@ -37,7 +37,7 @@ from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power,
 )
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
-from tests.fixtures.assessment_db import assessment_core_cards, make_deck
+from tests.fixtures.assessment_db import assessment_card, assessment_core_cards, make_deck
 from tests.fixtures.combo_snapshot import (
     seed_snapshot as _seed_snapshot,
 )
@@ -629,6 +629,51 @@ async def test_diff_lists_sorted_bytewise(session: AsyncSession) -> None:
     assert reverse.comparison is not None
     assert reverse.comparison.game_changers_removed == ("Aura Shards", "Bolas's Citadel")
     assert reverse.comparison.combos_removed == ("1-1", "2-2")
+
+
+async def test_structural_gap_diffs_point_the_right_way(session: AsyncSession) -> None:
+    """A gap only deck B has is "added"; a gap only deck A has is "removed".
+
+    Deck A is draw-rich with no interaction, deck B the reverse, and the rest of the two decks
+    match, so exactly one gap token moves each way. Both lists must also equal the set
+    differences of two direct assessments, in sorted order.
+    """
+    session.add_all(
+        [
+            assessment_card(
+                "card-draw", "Gap Draw Spell", type_line="Sorcery", oracle_text="Draw two cards."
+            ),
+            assessment_card(
+                "card-removal",
+                "Gap Removal Spell",
+                type_line="Instant",
+                oracle_text="Destroy target creature.",
+            ),
+        ]
+    )
+    await session.commit()
+    deck_a = await make_deck(
+        session, [*_BASE_ROWS, ("card-draw", 8, False, False)], name="Draw-rich A"
+    )
+    deck_b = await make_deck(
+        session, [*_BASE_ROWS, ("card-removal", 8, False, False)], name="Interaction-rich B"
+    )
+
+    direct_a = await assess_deck_power(session, deck_id=deck_a)
+    direct_b = await assess_deck_power(session, deck_id=deck_b)
+    assert direct_a.assessment is not None and direct_b.assessment is not None
+    gaps_a = set(direct_a.assessment.flags.structural_gaps)
+    gaps_b = set(direct_b.assessment.flags.structural_gaps)
+
+    result = await compare_deck_power(session, deck_id_a=deck_a, deck_id_b=deck_b)
+
+    assert result.status == "ok"
+    comparison = result.comparison
+    assert comparison is not None
+    assert comparison.structural_gaps_added == ("card_draw_below_baseline",)
+    assert comparison.structural_gaps_removed == ("interaction_below_baseline",)
+    assert comparison.structural_gaps_added == tuple(sorted(gaps_b - gaps_a))
+    assert comparison.structural_gaps_removed == tuple(sorted(gaps_a - gaps_b))
 
 
 # --- determinism (AC 6/7) ---

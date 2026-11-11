@@ -482,6 +482,47 @@ class TestColoredSources:
         signals = by_color(compute_pip_signals([make_deck_card(sol_ring)], formula="sixty_card"))
         assert all(signals[color].source_count == 0 for color in "WUBRG")
 
+    def test_multi_face_land_reads_each_face_for_sources(self) -> None:
+        # A two-faced land stores an empty top-level oracle text; each face's mana ability
+        # still makes it a source, counted once per copy.
+        pathway = make_card(
+            name="White Face // Blue Face",
+            type_line="Land // Land",
+            mana_cost="",
+            cmc=0.0,
+            oracle_text="",
+            card_faces=[
+                {"name": "White Face", "oracle_text": "{T}: Add {W}."},
+                {"name": "Blue Face", "oracle_text": "{T}: Add {U}."},
+            ],
+        )
+        signals = by_color(
+            compute_pip_signals([make_deck_card(pathway, quantity=3)], formula="sixty_card")
+        )
+        assert signals["W"].source_count == 3
+        assert signals["U"].source_count == 3
+        assert all(signals[color].source_count == 0 for color in "BRG")
+
+    def test_multi_face_land_with_a_null_face_text_reads_it_as_empty(self) -> None:
+        # Scryfall can send a face's oracle_text as null; that face contributes nothing and the
+        # read must not raise.
+        land = make_card(
+            name="White Face // Blank Face",
+            type_line="Land // Land",
+            mana_cost="",
+            cmc=0.0,
+            oracle_text="",
+            card_faces=[
+                {"name": "White Face", "oracle_text": "{T}: Add {W}."},
+                {"name": "Blank Face", "oracle_text": None},
+            ],
+        )
+        signals = by_color(
+            compute_pip_signals([make_deck_card(land, quantity=2)], formula="sixty_card")
+        )
+        assert signals["W"].source_count == 2
+        assert all(signals[color].source_count == 0 for color in "UBRG")
+
 
 class TestPipAdequacy:
     def test_sixty_card_anchors_match_published_values(self) -> None:
