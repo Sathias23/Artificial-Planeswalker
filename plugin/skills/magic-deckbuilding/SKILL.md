@@ -51,22 +51,24 @@ You need either a saved `deck_id` or a pasted decklist.
   `mcp__artificial-planeswalker__load_deck` (`deck_id`).
 - **Pasted decklist:** you can analyze it *in conversation* without persisting. Persisting it
   (`create_deck`, then `import_decklist` or one `add_card_to_deck` per line) is an **explicit
-  action that needs the user's consent** — offer it, don't assume it. Note: `analyze_mana_curve`, `detect_synergies`, and
-  `validate_deck` operate on a **saved `deck_id`**, so to use them on a pasted list you must first get
-  consent to save it; otherwise reason from the list yourself and use the search tools for candidates.
+  action that needs the user's consent** — offer it, don't assume it. Note: `analyze_mana_curve`,
+  `detect_synergies`, and `validate_deck` operate on a **saved `deck_id`**, so to use them on a
+  pasted list you must first get consent to save it; otherwise reason from the list yourself and
+  use the search tools for candidates.
 - **Persisting can partially fail, line by line.** An MTG Arena export (`4 Card Name (SET) 123`
   lines under `Commander` / `Deck` / `Sideboard` / `Companion`) saves in one call with
   `mcp__artificial-planeswalker__import_decklist` (`deck_id` of a deck from `create_deck`,
   `arena_export`). Each line answers `ok`, `ambiguous` (see its `matches`), `not_found`, `invalid`
-  (malformed, or more than 250 copies of one card), `exists` (the card was already in that board of
-  the deck — its quantity is unchanged; use `set_card_quantity`) or `error`; lines naming the same
-  card twice (two printings of a basic land) are summed into one row. Any other list is saved one
-  `add_card_to_deck` call at a time, and any line can return `ambiguous`
-  (name matches >1 card — disambiguate or re-call with `card_id`), `card_not_found` (typo/unknown —
-  fix or drop it with the user), or `error`. **Resolve every line before you run Step 1** — never let
-  a half-saved deck flow into `analyze_mana_curve`/`validate_deck`, or the curve/legality advice is
-  computed on a deck silently missing cards. If any card can't be added, name them and confirm with
-  the user before analyzing.
+  (malformed, or a quantity outside 1 to 250), `exists` (the card was already in that board of the
+  deck — its quantity is unchanged; use `set_card_quantity`) or `error`. Lines naming the same card
+  for the same board (two printings of a basic land) are summed into one row; a Deck and a Sideboard
+  copy stay two rows. If that sum passes 250, every one of that card's lines is `invalid` and none
+  of its copies is added. Any other list is saved one `add_card_to_deck` call at a time, and any
+  line can return `ambiguous` (name matches >1 card — disambiguate or re-call with `card_id`),
+  `card_not_found` (typo/unknown — fix or drop it with the user), or `error`. **Resolve every line
+  before you run Step 1** — never let a half-saved deck flow into
+  `analyze_mana_curve`/`validate_deck`, or the curve/legality advice is computed on a deck silently
+  missing cards. If any card can't be added, name them and confirm with the user before analyzing.
 
 ### Step 1 — Analyze (read the deck's actual state)
 

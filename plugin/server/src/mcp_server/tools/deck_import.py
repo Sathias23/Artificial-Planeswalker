@@ -84,10 +84,15 @@ class DeckImportLineResult(BaseModel):
 class DeckImportResult(BaseModel):
     """Structured result of importing an Arena export into a saved deck.
 
-    ``status`` is ``ok`` when every line answered ``ok`` and ``partial`` when any
-    did not. ``imported_lines`` counts the lines answered ``ok`` and
-    ``imported_copies`` sums their quantities, so two printings of one card
-    imported together count as two lines.
+    ``status`` is one of six values. ``invalid`` means the request itself was
+    rejected (blank ``deck_id`` or export, too long, more than 250 card lines,
+    or no parseable card line); ``deck_not_found`` and ``database_not_initialized``
+    mean no line was resolved; ``error`` means the card database could not be
+    read or the single bulk write failed, so nothing was added. Once the lines
+    were resolved and written, ``status`` is ``ok`` when every line answered
+    ``ok`` and ``partial`` when any did not. ``imported_lines`` counts the lines
+    answered ``ok`` and ``imported_copies`` sums their quantities, so two
+    printings of one card imported together count as two lines.
     """
 
     status: Literal[
