@@ -24,6 +24,7 @@ from src.mcp_server.tools.card_search import mana_bounds_error
 from src.mcp_server.tools.messages import (
     DATABASE_NOT_INITIALIZED_MESSAGE,
     INDEX_NOT_BUILT_MESSAGE,
+    semantic_cap_note,
 )
 from src.search.embedder import Embedder
 from src.search.query import (
@@ -41,8 +42,8 @@ logger = logging.getLogger(__name__)
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
 
-# Upper bound on ``limit``: kept well under ``hybrid_search``'s ``over_fetch_k`` (200) so the
-# over-fetch can never be starved by the requested ``limit``.
+# Upper bound on ``limit``: kept well under ``hybrid_search``'s first KNN window (200 vectors,
+# widened once to 4,096 when the filters leave it short), so ``limit`` never starves the over-fetch.
 _MAX_LIMIT = 50
 
 
@@ -248,6 +249,9 @@ def semantic_search_cards(
         games=games,
     )
 
+    # The search stopped at its widest window with the filters still short: say so, so the caller
+    # knows to reach for ``search_cards`` rather than read the short list as the whole answer.
+    cap_note = semantic_cap_note(len(hits)) if hits.cap_reached else ""
     if not hits:
         return SemanticSearchResult(
             status="empty",
@@ -256,6 +260,7 @@ def semantic_search_cards(
             message=(
                 "No cards matched the query and filters. Try a broader description or relax the "
                 "filters (e.g. widen the mana range, drop a color, or remove the format filter)."
+                f"{cap_note}"
             ),
         )
 
@@ -282,5 +287,7 @@ def semantic_search_cards(
         cards=cards,
         total_count=len(cards),
         query=query,
-        message=f"Found {len(cards)} cards semantically matching the query (nearest first).",
+        message=(
+            f"Found {len(cards)} cards semantically matching the query (nearest first).{cap_note}"
+        ),
     )
