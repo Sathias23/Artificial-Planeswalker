@@ -155,6 +155,9 @@ or "active deck."
 Notes that bite if ignored:
 - **`semantic_search_cards.limit` / `find_similar_cards.limit` hard-cap at 50** → `limit > 50` returns
   `status="invalid"` (a real error). Request a generous-but-≤50 `limit` and filter down yourself.
+- **An `ok` can hold fewer than `limit`** when a narrow filter (`format`, `games`) runs out of
+  matches among the nearest 4,096 cards; the `message` then says so. Use `search_cards` for the
+  full filtered set.
 - **`search_cards.page_size` is *silently clamped* to 50, not rejected** — unlike the semantic `limit`,
   `page_size > 50` does **not** error; you just get 50 (and may mis-page). Request ≤50 and page through.
   (Don't imply the two behave the same: one hard-rejects, one silently clamps.)

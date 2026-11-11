@@ -1215,7 +1215,10 @@ def build_server(
 
         Embeds your natural-language ``query`` and finds the nearest cards by vector similarity,
         then composes any optional relational filters into the **same hybrid query** — so one call
-        answers things like *"semantically like Glorybringer, Standard-legal red 4-drops"*. Results
+        answers things like *"semantically like Glorybringer, Standard-legal red 4-drops"*. The
+        filters are applied to the nearest cards by meaning, widened up to the nearest 4,096 when
+        results run short; a filter with fewer matches than that can return fewer than ``limit``,
+        and the ``message`` then says so (``search_cards`` filters the whole database). Results
         are ranked nearest-first, de-duplicated to one entry per card, and returned as lightweight
         summaries (each with a ``distance`` relevance signal) — use ``lookup_card_by_name`` for full
         detail. Prefer this over ``search_cards`` when the intent is conceptual ("aggressive red
@@ -1286,7 +1289,10 @@ def build_server(
         stored semantic vector and returns the nearest *other* cards by meaning, then composes any
         optional relational filters into the **same hybrid query**. The seed itself — and every
         other printing of it — is excluded, so results are genuine **alternatives, not the seed
-        echoed back**: use it for "more cards like this", replacements, or synergy pieces. Results
+        echoed back**: use it for "more cards like this", replacements, or synergy pieces. The
+        filters are applied to the nearest cards by meaning, widened up to the nearest 4,096 when
+        results run short; a filter with fewer matches than that can return fewer than ``limit``,
+        and the ``message`` then says so (``search_cards`` filters the whole database). Results
         are ranked nearest-first, de-duplicated to one entry per card, and returned as lightweight
         summaries (each with a ``distance`` relevance signal) — use ``lookup_card_by_name`` for full
         detail. Prefer this over ``semantic_search_cards`` when you have a specific card in hand
@@ -1386,8 +1392,10 @@ def build_server(
         indexes every card (~5 minutes). Until it has run, those two tools return
         ``index_unavailable``. Idempotent and incremental — re-running only re-embeds cards whose
         text changed (a card whose colours or mana value alone changed has its search filters
-        refreshed without re-embedding), so it is cheap to repeat. If the card data hasn't been
-        imported yet it returns ``database_not_initialized`` (run ``initialize_database`` first).
+        refreshed without re-embedding), so it is cheap to repeat. Each build also removes the
+        vectors of cards no longer in the database (after an ``initialize_database`` update has
+        dropped rows). If the card data hasn't been imported yet it returns
+        ``database_not_initialized`` (run ``initialize_database`` first).
 
         Args:
             rebuild: Drop and fully rebuild the index from scratch (use after the embedding model
@@ -1395,8 +1403,8 @@ def build_server(
 
         Returns:
             A result whose ``status`` is ``ok`` (index built — see ``cards_indexed`` /
-            ``cards_skipped`` / ``cards_refreshed``), ``database_not_initialized`` (import the
-            cards first), or ``error``.
+            ``cards_skipped`` / ``cards_refreshed`` / ``cards_pruned``),
+            ``database_not_initialized`` (import the cards first), or ``error``.
         """
         # Off the loop: the whole build (connection, embedder resolution, embedding) runs in a
         # worker thread so other tool calls are answered while it works.

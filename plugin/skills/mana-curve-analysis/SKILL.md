@@ -181,6 +181,9 @@ is no remembered format or "active deck."
 - **`semantic_search_cards.limit` hard-caps at 50** → `limit > 50` returns `status="invalid"` (a real
   error). **`search_cards.page_size` is *silently clamped* to 50, not rejected** — don't imply the two
   behave the same (one hard-rejects, one clamps; request ≤50 either way).
+- **An `ok` can hold fewer than `limit`** when a narrow filter (`format`, `games`) runs out of
+  matches among the nearest 4,096 cards; the `message` then says so. Use `search_cards` for the
+  full filtered set.
 - **`lookup_card_by_name` success is `found`, not `ok`** — the one tool whose success sentinel differs;
   don't apply the "assume `ok`" reflex or a good lookup reads as a miss.
 - **Valid `games` are exactly `paper` / `arena` / `mtgo`** — any other value (`"mtga"`, `"online"`, …)

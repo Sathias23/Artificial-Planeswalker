@@ -204,6 +204,9 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 Notes that bite if ignored:
 - **`limit` on the semantic tools is hard-capped at 50.** Asking for more returns `status="invalid"`
   (a real error you must fix) — request a generous-but-≤50 `limit` and filter down yourself.
+- **An `ok` can hold fewer than `limit`** when a narrow filter (`format`, `games`) runs out of
+  matches among the nearest 4,096 cards; the `message` then says so. Use `search_cards` for the
+  full filtered set.
 - **`search_cards.page_size` is *silently clamped* to 50, not rejected** — unlike the semantic `limit`,
   `page_size > 50` does **not** error; you just get 50 (and may mis-page). Request ≤50 and page through.
 - **`lookup_card_by_name` signals success as `found`, NOT `ok`** — it's the one tool whose success
