@@ -51,6 +51,34 @@ async def _seed_bulk_cards(session_factory: async_sessionmaker[AsyncSession], co
         await session.commit()
 
 
+async def _seed_island(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Add one Island row: an oracle identity many Arena printings resolve to."""
+    async with session_factory() as session:
+        session.add(
+            CardModel(
+                id="card-island",
+                name="Island",
+                printed_name=None,
+                oracle_id="oracle-island",
+                mana_cost="",
+                cmc=0.0,
+                type_line="Basic Land — Island",
+                oracle_text="({T}: Add {U}.)",
+                rarity="common",
+                set_code="ELD",
+                set_name="Throne of Eldraine",
+                collector_number="254",
+                colors=[],
+                color_identity=[],
+                legalities={"standard": "legal", "commander": "legal"},
+            )
+        )
+        await session.commit()
+
+
+_MIXED_ISLANDS = "Deck\n2 Island (ELD) 250\n2 Island (THB) 251\n"
+
+
 def _hundred_line_export(*, unknown_last: bool = False) -> str:
     """A Commander list: one commander line plus 99 deck lines (the last optionally unknown)."""
     lines = ["Commander", "1 Bulk Card 000 (TST) 0", "", "Deck"]
@@ -139,6 +167,50 @@ async def test_import_decklist_same_card_twice_in_one_board_is_exists_on_the_sec
     assert loaded.deck is not None
     assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [
         ("Lightning Bolt", 1)
+    ]
+
+
+async def test_import_decklist_mixed_printings_of_one_card(seeded_card_db) -> None:
+    """Two Arena printings of Island resolve to one oracle row (B8-D1)."""
+    await _seed_island(seeded_card_db)
+    deck_id = await _create_saved_deck(seeded_card_db)
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=_MIXED_ISLANDS)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "partial"
+    assert [line.status for line in result.results] == ["ok", "exists"]
+    assert result.imported_lines == 1
+    assert result.imported_copies == 2
+    assert loaded.deck is not None
+    assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [("Island", 2)]
+
+
+@pytest.mark.parametrize(
+    ("quantity", "message"),
+    [("0", "quantity must be >= 1 (got 0)."), ("251", "quantity must be between 1 and 250.")],
+)
+async def test_import_decklist_out_of_bounds_line_is_invalid_and_the_next_line_imports(
+    seeded_card_db, quantity: str, message: str
+) -> None:
+    """A per-line quantity outside 1..250 is ``invalid``; the following line still lands."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = f"Deck\n{quantity} Lightning Bolt (M11) 149\n2 Counterspell (DMR) 50\n"
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "partial"
+    assert [line.status for line in result.results] == ["invalid", "ok"]
+    assert result.results[0].message == f"Line 2: {message}"
+    assert result.results[0].quantity == int(quantity)
+    assert result.imported_lines == 1
+    assert result.imported_copies == 2
+    assert loaded.deck is not None
+    assert [(entry.card.name, entry.quantity) for entry in loaded.deck.cards] == [
+        ("Counterspell", 2)
     ]
 
 
