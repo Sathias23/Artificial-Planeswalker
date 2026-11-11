@@ -3,7 +3,7 @@ title: 'Filtered semantic searches come back full'
 type: 'bugfix'
 ticket: '11'
 created: '2026-11-11'
-status: 'review'
+status: done
 baseline_revision: '4321f054175cb1933180bb42129133ef7ad4b119'
 route: 'full'
 route_source: 'auto'
