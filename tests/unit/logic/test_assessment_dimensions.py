@@ -6,6 +6,12 @@ monotone SWAP directions only (deck size held constant so hypergeometric denomin
 properties are Story 5.9's). Exact pins are reserved for derived facts: the Bracket floor
 gates, the Game Changer three-state read, and the empty-deck ``combo_potential == 0``
 anchor. The curve numbers themselves are Story 5.9's to tune (NFR8).
+
+Quality story 7.6 adds exact value pins on purpose, so the accuracy fixes that follow cannot move
+a rule silently: ``mana_efficiency`` on fixed screw and flood decks under both profiles
+(:class:`TestRangeOnlyDimensionPins`), ``resilience`` and ``card_advantage`` on one fixed deck per
+profile, and the ``almost_included`` half credit (25 against 66 included). They pin today's
+behaviour, not a judgement that it is right; a deliberate retune updates them in the same change.
 """
 
 import dataclasses
@@ -621,6 +627,29 @@ class TestMonotoneDirections:
             f"{before} -> {after}"
         )
 
+    def test_lower_average_mana_value_strictly_raises_speed(self, profile: FormatProfile) -> None:
+        # Ten cmc-4 fillers swapped for ten cmc-1 at a fixed deck size: no ramp, no combo, so
+        # the average-mana-value term is the only speed input that moves.
+        lands = [make_deck_card(_land(), quantity=15)]
+        slow = [
+            make_deck_card(_vanilla(name=f"Heavy {i}", cmc=4.0, mana_cost="{4}")) for i in range(10)
+        ]
+        fast = [
+            make_deck_card(_vanilla(name=f"Light {i}", cmc=1.0, mana_cost="{1}")) for i in range(10)
+        ]
+        before = dimension_vector(
+            slow + _filler_rows(10) + lands, matched_combos=(), profile=profile
+        ).speed
+        after = dimension_vector(
+            fast + _filler_rows(10) + lands, matched_combos=(), profile=profile
+        ).speed
+        assert 0 < before < 100 and 0 < after < 100, (
+            f"both speeds must sit off the clamps so the direction is real: {before}, {after}"
+        )
+        assert after > before, (
+            f"lowering average mana value must strictly raise speed: {before} -> {after}"
+        )
+
     def test_earlier_included_combo_never_lowers_speed_or_combo_potential(
         self, profile: FormatProfile
     ) -> None:
@@ -650,6 +679,118 @@ class TestMonotoneDirections:
             f"an included combo must score combo_potential >= the same combo almost_included: "
             f"{included} vs {almost}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Quality 7.6 — exact pins on the dimensions that were only range-checked
+# ---------------------------------------------------------------------------
+
+
+def _forest() -> Any:
+    """A basic Forest: one green source, no pip demand."""
+    return make_card(
+        name="Forest",
+        cmc=0.0,
+        mana_cost="",
+        type_line="Basic Land — Forest",
+        oracle_text="({T}: Add {G}.)",
+    )
+
+
+def _mana_deck(*, forests: int, barren: int, fillers: int) -> list[DeckCard]:
+    """``fillers`` colourless 2-drops, one ``{G}`` 1-drop, and the given land split."""
+    return _filler_rows(fillers) + [
+        make_deck_card(_vanilla(name="Green One-Drop", cmc=1.0, mana_cost="{G}")),
+        make_deck_card(_forest(), quantity=forests),
+        make_deck_card(_land(), quantity=barren),
+    ]
+
+
+def _resilience_deck() -> list[DeckCard]:
+    """1 wincon, 1 instant + 2 sorcery interaction, 3 draw, 2 tutors, 10 vanilla, 10 lands."""
+    return [
+        make_deck_card(_wincon()),
+        make_deck_card(_interaction(name="Instant Answer")),
+        make_deck_card(_interaction(name="Sorcery Answer 1", type_line="Sorcery")),
+        make_deck_card(_interaction(name="Sorcery Answer 2", type_line="Sorcery")),
+        make_deck_card(_draw(name="Draw 1")),
+        make_deck_card(_draw(name="Draw 2")),
+        make_deck_card(_draw(name="Draw 3")),
+        make_deck_card(_tutor(name="Tutor 1")),
+        make_deck_card(_tutor(name="Tutor 2")),
+        *_filler_rows(10),
+        make_deck_card(_land(), quantity=10),
+    ]
+
+
+class TestRangeOnlyDimensionPins:
+    """Exact values for four dimensions that were only range-checked or left unpinned.
+
+    The four are ``mana_efficiency``, ``resilience``, ``card_advantage`` and
+    ``combo_potential``.
+
+    Each case pins one rule: the screw cases need the absolute land delta and the pip-deficit
+    penalty, the flood cases need the absolute land delta, and the resilience deck puts a
+    different count on each of its blend inputs so a swapped argument changes the value. The
+    ``combo_potential`` case pins the half-credit rule: an ``almost_included`` record earns half
+    its included credit (25 against 66 included for the same two-card infinite).
+    """
+
+    @pytest.mark.parametrize(
+        ("profile_name", "forests", "barren", "fillers", "expected"),
+        [
+            pytest.param("COMMANDER_PROFILE", 20, 13, 60, 75, id="screw-commander"),
+            pytest.param("STANDARD_PROFILE", 12, 6, 30, 74, id="screw-standard"),
+            pytest.param("COMMANDER_PROFILE", 24, 18, 60, 86, id="flood-commander"),
+            pytest.param("STANDARD_PROFILE", 20, 15, 60, 42, id="flood-standard"),
+        ],
+    )
+    def test_mana_efficiency_value(
+        self, profile_name: str, forests: int, barren: int, fillers: int, expected: int
+    ) -> None:
+        deck = _mana_deck(forests=forests, barren=barren, fillers=fillers)
+        vector = dimension_vector(deck, matched_combos=(), profile=_PROFILES[profile_name])
+        assert vector.mana_efficiency == expected, (
+            f"mana_efficiency for {forests} Forests + {barren} colourless lands + {fillers} "
+            f"fillers under {profile_name} must be {expected}, got {vector.mana_efficiency}"
+        )
+
+    @pytest.mark.parametrize(
+        ("profile_name", "expected"),
+        [("COMMANDER_PROFILE", 38), ("STANDARD_PROFILE", 46)],
+    )
+    def test_resilience_value(self, profile_name: str, expected: int) -> None:
+        vector = dimension_vector(
+            _resilience_deck(), matched_combos=(), profile=_PROFILES[profile_name]
+        )
+        assert vector.resilience == expected, (
+            f"resilience under {profile_name} must be {expected}, got {vector.resilience}"
+        )
+
+    @pytest.mark.parametrize(
+        ("profile_name", "expected"),
+        [("COMMANDER_PROFILE", 30), ("STANDARD_PROFILE", 46)],
+    )
+    def test_card_advantage_value(self, profile_name: str, expected: int) -> None:
+        vector = dimension_vector(
+            _resilience_deck(), matched_combos=(), profile=_PROFILES[profile_name]
+        )
+        assert vector.card_advantage == expected, (
+            f"card_advantage under {profile_name} must be {expected}, got {vector.card_advantage}"
+        )
+
+    def test_almost_included_earns_half_credit(self, profile: FormatProfile) -> None:
+        # One two-card infinite, pieces cmc 1 (earliest turn 2): included earns 50 credit plus
+        # (10 - 2) * 2 earliness; almost_included earns half the credit and no earliness.
+        deck = _piece_rows(1.0) + _filler_rows(10)
+        almost = dimension_vector(
+            deck, matched_combos=(make_combo_record(bucket="almost_included"),), profile=profile
+        ).combo_potential
+        included = dimension_vector(
+            deck, matched_combos=(make_combo_record(bucket="included"),), profile=profile
+        ).combo_potential
+        assert almost == 25, f"an almost_included two-card infinite must score 25, got {almost}"
+        assert included == 66, f"the same combo included must score 66, got {included}"
 
 
 # ---------------------------------------------------------------------------
