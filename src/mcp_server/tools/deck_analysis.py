@@ -45,7 +45,11 @@ class ManaCurveResult(BaseModel):
     The analysis fields are flattened from the logic's ``ManaCurveAnalysis``
     dataclass (D-1.6e) rather than nested. ``total_lands``, ``total_spells``,
     ``distribution`` and ``colour_pips`` come from ``src.logic.card_statistics``'s
-    ``deck_statistics`` — the same figures the companion's deck view draws.
+    ``deck_statistics``. ``distribution`` and ``colour_pips`` are what the companion's
+    curve and colour panels draw; ``total_lands``/``total_spells`` use the same rule as the
+    deck payload's ``statistics``. The companion's deck-list type groups (e.g. "Lands") file
+    a card by its first matching type group, so they can differ from ``total_lands`` (an
+    Artifact Land or Dryad Arbor counts as a land here but is grouped elsewhere there).
     ``distribution`` and ``playable_cards_by_turn`` map bucket/turn to a count — note
     JSON serializes their integer keys as strings at the MCP client boundary.
 
@@ -147,8 +151,10 @@ async def analyze_mana_curve(session: AsyncSession, *, deck_id: str) -> ManaCurv
     curve analysis — the seven-bucket distribution (``"1"`` … ``"7"``, a 0-cost spell in
     ``"1"``, ``"7"`` meaning 7 or more), land/spell counts (a card is a land when its
     front face is), colour pips per colour, average CMC, turn-by-turn playability,
-    land ratio, and any detected issues with recommendations. The counts, distribution
-    and colour pips are the same figures the companion's deck view shows. Use
+    land ratio, and any detected issues with recommendations. The distribution and colour
+    pips are what the companion's curve and colour panels draw; the land/spell counts use
+    the same rule as the deck payload's statistics, though the companion's deck-list
+    "Lands" group (by first matching type group) can differ from them. Use
     ``load_deck`` for the deck's card list, or ``lookup_card_by_name`` for full detail on
     a card.
 
@@ -200,8 +206,8 @@ async def analyze_mana_curve(session: AsyncSession, *, deck_id: str) -> ManaCurv
         )
 
     analysis = _logic_analyze_mana_curve(all_cards)
-    # The counts, curve and pips come from the shared rules, so the companion's deck detail
-    # (which serves the same ``deck_statistics``) cannot report different figures.
+    # The counts, curve and pips come from the shared rules; the companion's deck detail
+    # serves the same ``deck_statistics``, and its curve and colour panels draw them.
     statistics = deck_statistics(deck.deck_cards)
     return ManaCurveResult(
         status="ok",

@@ -79,8 +79,9 @@ only** — they never modify the deck.
    seven buckets `"1"` … `"7"`, `"7"` = 7 or more, 0-cost spells in `"1"`), `total_lands`/`total_spells`
    (a card is a land by its **front face**, so a `Sorcery // Land` MDFC is a spell), `colour_pips`
    (W, U, B, R, G, C pip demand), `average_cmc`, `land_ratio`, `issues`, `recommendations`, and the
-   turn-by-turn playability. This is your evidence for **curve gaps** and **land-count** problems, and
-   the same figures the companion's curve and colour panels show.
+   turn-by-turn playability. This is your evidence for **curve gaps** and **land-count** problems;
+   `distribution` and `colour_pips` are what the companion's curve and colour panels draw (its deck-list
+   "Lands" group files by first matching type group and can differ from `total_lands`).
 2. `mcp__artificial-planeswalker__detect_synergies` (`deck_id`) → read `synergies[]` (each names the
    cards involved), `synergy_count`, and `deck_cohesion` (`low`/`moderate`/`high`). Low cohesion is
    your evidence for **missing-synergy** swaps; the named synergies tell you what the deck is *trying*

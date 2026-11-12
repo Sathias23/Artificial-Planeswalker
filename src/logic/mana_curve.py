@@ -73,25 +73,32 @@ def analyze_mana_curve(cards: list[Card]) -> ManaCurveAnalysis:
         raise ValueError("Cannot analyze mana curve of empty deck")
 
     # Separate lands from spells (the shared front-face land rule)
-    spells = [c for c in cards if not is_land(c)]
+    lands = [c for c in cards if is_land(c)]
+    spells = [c for c in cards if c not in lands]
 
+    total_lands = len(lands)
     total_spells = len(spells)
-    total_lands = len(cards) - total_spells
     total_cards = total_lands + total_spells
 
     # Build the shared seven-bucket distribution (all seven keys, zeros kept)
     distribution: dict[int, int] = dict.fromkeys(CURVE_BUCKETS, 0)
+    cmc_sum = 0.0
+
     for spell in spells:
-        distribution[mana_value_bucket(spell.cmc)] += 1
+        cmc = spell.cmc if spell.cmc is not None else 0
+        distribution[mana_value_bucket(cmc)] += 1
+        cmc_sum += cmc
 
     # Calculate average CMC (excluding lands), on the exact cmc
-    cmc_sum = sum(spell.cmc for spell in spells)
     average_cmc = cmc_sum / total_spells if total_spells > 0 else 0.0
 
     # Calculate playable cards per turn (assuming 1 land/turn on the play), on the exact cmc
     playable_by_turn: dict[int, int] = {}
     for turn in range(1, 8):  # Analyze turns 1-7
-        playable_by_turn[turn] = sum(1 for spell in spells if spell.cmc <= turn)
+        playable_count = sum(
+            1 for spell in spells if (spell.cmc if spell.cmc is not None else 0) <= turn
+        )
+        playable_by_turn[turn] = playable_count
 
     # Calculate land ratio
     land_ratio = (total_lands / total_cards * 100) if total_cards > 0 else 0.0
@@ -271,7 +278,8 @@ def generate_contextual_feedback(deck_cards: list[Card], added_card: Card) -> Cu
         return None
 
     # Separate lands from spells for analysis (the shared front-face land rule)
-    spells = [c for c in deck_cards if not is_land(c)]
+    lands = [c for c in deck_cards if is_land(c)]
+    spells = [c for c in deck_cards if c not in lands]
 
     total_cards = len(deck_cards)
     total_spells = len(spells)

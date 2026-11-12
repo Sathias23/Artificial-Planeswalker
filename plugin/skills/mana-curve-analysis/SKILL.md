@@ -183,9 +183,12 @@ is no remembered format or "active deck."
   colours (so the counts can sum past the symbols printed), Phyrexian `{U/P}` credits its colour, `{2/R}`
   credits red, and generic / `{X}` credit nothing. It is **demand**, not sources — compare it with the
   lands' colours yourself.
-- **The companion shows the same numbers.** The companion app's mana-curve and colour panels draw the
-  deck's `total_lands`, `distribution` and `colour_pips` from the same function, so when the user reads
-  the browser view, cite these figures rather than re-counting.
+- **The companion's curve and colour panels show the same numbers.** They draw `distribution` and
+  `colour_pips` as the tool reports them, so cite these figures rather than re-counting. `total_lands` /
+  `total_spells` use the same rule as the deck payload's statistics, but the companion's deck-list type
+  groups (e.g. "Lands") file each card under its first matching type group, so an Artifact Land or Dryad
+  Arbor counts in `total_lands` while sitting under "Artifacts" or "Creatures" there — the group header
+  can differ.
 - **`mana_value_min/max` on the search tools is your curve-targeting filter** — use it to fetch exactly the
   slot you're filling (e.g. `mana_value_max=2` for early plays, `mana_value_min=1, mana_value_max=2` for a
   pure 2-drop).

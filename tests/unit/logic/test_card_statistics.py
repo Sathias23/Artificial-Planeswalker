@@ -72,6 +72,7 @@ class TestFrontFaceTypeLine:
         ("Land // Legendary Creature — Demon", True),
         ("Sorcery // Land", False),
         ("Creature — Elemental // Land", False),
+        ("Artifact — Equipment // Land", False),
         ("Legendary Enchantment — Aura // Legendary Land", False),
         ("Artifact Creature — Lander", False),
         ("Token Artifact — Lander", False),
@@ -161,6 +162,7 @@ def test_curve_buckets_match_the_payload_tuple_arity() -> None:
         ("{U/P}", _pips(U=1)),  # Phyrexian is a modifier
         ("{G/W/P}", _pips(G=1, W=1)),
         ("{2/R}", _pips(R=1)),  # a generic-hybrid credits its colour
+        ("{2/W}", _pips(W=1)),
         ("{C}", _pips(C=1)),  # colourless is a colour here
         ("{C/P}", _pips(C=1)),
         ("{2}", _pips()),  # generic credits nothing
@@ -253,6 +255,57 @@ def test_a_land_face_behind_a_spell_counts_its_front_face_pips() -> None:
     assert (statistics.land_count, statistics.spell_count) == (0, 1)
     assert statistics.curve == (0, 1, 0, 0, 0, 0, 0)
     assert dict((e.colour, e.count) for e in statistics.colour_pips)["G"] == 1
+
+
+def test_an_omen_counts_only_its_front_half() -> None:
+    # A split-shape cost: the creature half is what you cast; the Omen half is a separate cast.
+    omen = make_card(
+        card_fields(
+            "card-omen",
+            "Marang River Regent // Coil and Catch",
+            type_line="Creature — Dragon // Instant — Omen",
+            mana_cost="{4}{U}{U} // {3}{U}",
+            cmc=6.0,
+        )
+    )
+    statistics = deck_statistics([make_deck_card(omen)])
+    pips = dict((e.colour, e.count) for e in statistics.colour_pips)
+    assert pips["U"] == 2
+
+
+def test_a_pathway_land_is_a_land_with_no_pips() -> None:
+    pathway = make_card(
+        card_fields(
+            "card-pathway",
+            "Barkchannel Pathway // Tidechannel Pathway",
+            type_line="Land // Land",
+            mana_cost="",
+            card_faces=[
+                {"name": "Barkchannel Pathway", "mana_cost": "", "type_line": "Land"},
+                {"name": "Tidechannel Pathway", "mana_cost": "", "type_line": "Land"},
+            ],
+        )
+    )
+    statistics = deck_statistics([make_deck_card(pathway, quantity=2)])
+    assert (statistics.land_count, statistics.spell_count) == (2, 0)
+    assert all(entry.count == 0 for entry in statistics.colour_pips)
+
+
+def test_a_land_front_with_an_adventure_cost_is_a_land_and_its_cost_counts_nowhere() -> None:
+    # The top-level cost is the Adventure half's; the card is a land by its front face.
+    midgar = make_card(
+        card_fields(
+            "card-midgar",
+            "Midgar, City of Mako // Reactor Raid",
+            type_line="Land — Town // Sorcery — Adventure",
+            mana_cost="{2}{B}",
+            cmc=0.0,
+        )
+    )
+    statistics = deck_statistics([make_deck_card(midgar)])
+    assert (statistics.land_count, statistics.spell_count) == (1, 0)
+    assert statistics.curve == (0, 0, 0, 0, 0, 0, 0)
+    assert all(entry.count == 0 for entry in statistics.colour_pips)
 
 
 def test_a_lands_cost_is_never_counted() -> None:

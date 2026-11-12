@@ -3,10 +3,12 @@
  *
  * The card RULES — which face's cost counts, what a hybrid, Phyrexian or generic-hybrid symbol
  * credits, that lands and the sideboard are excluded and the commander included — moved to Python
- * with the counts themselves: `tests/unit/logic/test_card_statistics.py` holds every case this
- * file used to (the Omen dragons, the Pathway lands, `{G/W/P}`, `{2/W}`, `{C}`, `{S}`, the
- * Landers). What is left to test here is presentation: which colours become segments, their
- * order, and the rounded percentage each one prints.
+ * with the counts themselves: `tests/unit/logic/test_card_statistics.py` holds the rule cases —
+ * an Omen's split cost (front half only), a `Land // Land` Pathway, a `Land — Town // Sorcery —
+ * Adventure` card whose top-level cost is the Adventure's, `{W/U}`, `{G/W/P}`, `{U/P}`, `{2/W}`,
+ * `{C}`, `{S}`, the Landers, the commander and the sideboard. What is left to test here is
+ * presentation: which colours become segments, their order, and the rounded percentage each one
+ * prints.
  *
  * A `.ts`, not a `.tsx`: no JSX below. The rendered half lives in `ColourDistribution.test.tsx`.
  */

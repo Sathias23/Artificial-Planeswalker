@@ -3,8 +3,8 @@
  *
  * The card RULES — which cards are lands, which bucket a mana value falls in, which boards count —
  * moved to Python with the counts themselves: `tests/unit/logic/test_card_statistics.py` holds
- * every case this file used to (the MDFC lands, the Landers, the 0-drop and the 12-drop, the
- * commander and the sideboard). What is left to test here is presentation: pairing each count
+ * the rule cases (the four live MDFC type lines, the Landers, Dryad Arbor, the 0-drop, the 0.5
+ * and the 12-drop, the commander and the sideboard). What is left to test here is presentation: pairing each count
  * with its bucket, the total, the scale, and that the seven-entry shape on this side is the
  * seven-entry shape the server sends.
  */
