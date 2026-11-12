@@ -223,6 +223,14 @@ class TestUrlAllowList:
         # …but a non-default port is a different endpoint and is not on the list.
         assert images.is_fetchable("https://cards.scryfall.io:8443/x.jpg") is False
 
+    @pytest.mark.parametrize(
+        "url", ["https://cards.scryfall.io:99999/x", "https://cards.scryfall.io:abc/x"]
+    )
+    def test_a_port_that_will_not_parse_raises(self, url: str) -> None:
+        """PINNED (moves in 8.1): ``parts.port`` is read outside the ``try``."""
+        with pytest.raises(ValueError):
+            images.is_fetchable(url)
+
 
 # ---------------------------------------------------------------------------------------------
 # AC 11, AC 13, AC 14: the fetch itself
@@ -1238,6 +1246,34 @@ class TestTheCacheReadAndWrite:
             "the stale sibling survived and, probed first, would shadow the fresh entry forever"
         )
         assert (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").is_file()
+
+    async def test_a_failed_replace_deletes_the_sibling(self, tmp_path, monkeypatch) -> None:
+        """PINNED (moves in 8.1): the sibling is unlinked before ``os.replace``, so a replace
+        that fails for a reason other than the same-key race leaves no servable copy at all."""
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/jpeg",
+            body=b"\xff\xd8\xff\xe0-placeholder",
+        )
+
+        def fail(*args, **kwargs):
+            raise OSError("the disk is full")
+
+        monkeypatch.setattr(images.os, "replace", fail)
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/png",
+            body=b"\x89PNG\r\n\x1a\n-the-real-art",
+        )
+
+        assert not (tmp_path / "image_cache" / "00" / _CARD / "png_0.jpg").exists()
+        assert await cache.read(_CARD, "png", 0) is None
+        assert cache._consecutive_write_failures == 1
 
 
 class TestTheWriteIsAtomic:

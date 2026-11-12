@@ -20,10 +20,14 @@ wrong-but-JSON answer is precisely the shape that slips through on a binary endp
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from src.companion.app import images
 from src.companion.app.main import build_app
@@ -110,6 +114,29 @@ def cdn(monkeypatch):
         lambda **kwargs: real(transport=httpx.MockTransport(recorder.handle)),
     )
     return recorder
+
+
+@contextmanager
+def _statements() -> Iterator[list[str]]:
+    """Record every SQL statement any engine in this process sends while the block runs.
+
+    A class-level ``before_cursor_execute`` listener on ``Engine``, so it sees the companion's
+    lazily created engine without the test reaching for it (a warm hit may never create one).
+    Removed in ``finally``, so a failing assertion cannot leak it into the next test.
+
+    Yields:
+        The statements, in the order they were sent; empty means the database was not touched.
+    """
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:
+        seen.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        yield seen
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
 
 
 # =============================================================================================
@@ -484,6 +511,15 @@ class TestTheOutboundRequest:
         assert "Artificial-Planeswalker" in agent
         assert "github.com/Sathias23" in agent
         assert cdn.headers[0]["accept"].startswith("image/")
+
+    async def test_the_request_carries_httpx_default_accept_encoding(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """PINNED (moves in 8.1): the client asks for a compressed body it will then inflate."""
+        async with lifespan_client(build_app()) as client:
+            await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert cdn.headers[0]["accept-encoding"] == "gzip, deflate"
 
     async def test_a_row_pointing_off_the_allow_list_is_a_fetch_failure_never_a_fetch(
         self, ready_db, lifespan_client, cdn, monkeypatch
@@ -1044,6 +1080,38 @@ class TestTheBurstDoesNotOutlastTheConnectionPool:
     pool timeout and raise ``sqlalchemy.exc.TimeoutError`` — which is **not** a ``DatabaseError``
     and would therefore surface as ``500 internal_error``, not ``503``. Ledgered on **c4-1**.
     """
+
+    async def test_a_request_queued_at_the_pacer_holds_a_pool_connection(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        """PINNED (moves in 8.1): six requests inside the route hold six connections, four of them
+        parked upstream and two waiting their turn at the pacer."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            burst = [
+                asyncio.create_task(
+                    client.get(
+                        _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": size}
+                    )
+                )
+                for size in ("small", "normal", "large", "png", "art_crop", "border_crop")
+            ]
+            await _until(
+                lambda: len(stalled_cdn.requested) >= images.FETCH_CONCURRENCY,
+                what="the burst to fill the concurrency cap",
+            )
+            pool = app.state.database.engine.sync_engine.pool
+            await _until(lambda: pool.checkedout() == 6, what="all six requests to hold a session")
+            held = pool.checkedout()
+            requested = len(stalled_cdn.requested)
+            completed = stalled_cdn.completed
+            stalled_cdn.release.set()
+            responses = await asyncio.gather(*burst)
+
+        assert held == 6
+        assert requested == images.FETCH_CONCURRENCY
+        assert completed == 0
+        assert [r.status_code for r in responses] == [200] * 6
 
     async def test_a_full_deck_sized_burst_completes_without_a_pool_timeout(
         self, image_shapes, lifespan_client, monkeypatch
@@ -1699,6 +1767,24 @@ class TestTheWarmAnswerMatchesTheColdOne:
         # …and no CDN request either, which is what makes this a WARM hit rather than a second
         # cold one that happened to skip the row.
         assert len(cdn.requested) == 1
+
+    async def test_a_warm_hit_still_runs_the_readiness_probe(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """PINNED (moves in 8.1): ``DbSession`` probes readiness before the disk read is reached."""
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            cold = await client.get(path)
+            with _statements() as seen:
+                warm = await client.get(path)
+
+        assert cold.status_code == warm.status_code == 200
+        assert len(cdn.requested) == 1, "the second request fetched, so it was not a warm hit"
+        # The readiness probe (no `import_state` table here, so three statements, not four) and
+        # nothing else: the row read is already skipped on a warm hit, the probe is not.
+        assert len(seen) == 3, seen
+        assert all("sqlite_master" in sql or "EXISTS" in sql for sql in seen), seen
 
     async def test_a_warm_tile_survives_its_card_row_being_deleted(
         self, image_shapes, lifespan_client, cdn
