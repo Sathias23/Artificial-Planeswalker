@@ -309,7 +309,8 @@ async def read_card_image(
             did not deliver one **or when this key is inside the backoff window a recent failure
             opened** — the same token and the same response, deliberately, so a client cannot
             tell a remembered failure from a fresh one and has no reason to;
-            ``database_not_initialized`` when a disk-cache miss finds the database not ready;
+            ``database_not_initialized`` when a disk-cache miss finds the database not ready
+            (and ``database_unavailable``, through the app-wide handler, when it is unusable);
             ``internal_error`` if the lifespan never ran.
     """
     # THE DISK CACHE IS THE FIRST THING THIS ROUTE CONSULTS, ahead of any database work: no

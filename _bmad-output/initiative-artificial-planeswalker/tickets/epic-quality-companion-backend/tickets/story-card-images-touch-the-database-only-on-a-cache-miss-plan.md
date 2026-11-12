@@ -8,9 +8,9 @@ baseline_revision: '4fc5aa2b6ea4a10ba331371b8164bcde12b5d678'
 route: 'full'
 route_source: 'auto'
 risk: 'medium'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick']
 review_loop_iteration: 0
 context:
   - '{project-root}/AGENTS.md'
@@ -123,6 +123,19 @@ Residue and risks for review:
 ## Plan Change Log
 
 ## Review Triage Log
+
+Pass 1 (lens `quick`, 2026-11-13): 6 findings — high 0, medium 0, low 5, false 0, maybe-false 0, plus 1 rejected as a plan edit. Four **patch**, two rejected, none deferred; no loopback. The lens read the diff without `plugin/` (a generated copy; it checked the three companion files are byte-identical to `src/`).
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | `_read_cached` still calls an unbounded `read_bytes()`, so a file that grows between `stat` and the read is buffered whole before the post-read check rejects it | low | rejected | Real, but only a file that is growing under the cache root while being read reaches it. B12-P4 asked for exactly the `stat` check before `read_bytes()`, and that check is in. A bounded `open().read(n)` would also mean reworking the `read_bytes` spy and explode tests. Unlikely in everyday use, and the fix is more than a direct correction. |
+| 2 | `read_card_image`'s `Raises:` names `database_not_initialized` for a miss but omits `database_unavailable`, which a `DatabaseError` inside `ready_session` answers, while the `Warning:` names both | low | patch | Verified: `errors.database_error_handler` answers it. The line now names both. `Raises:` falls after the wire cut, so `gen:api` leaves `openapi.json` unchanged. |
+| 3 | `main.py:323` says `database_not_initialized` "is a property of `deps.get_session`, so every data route inherits it", but the image route now reaches `ready_session` directly | low | patch | Verified, and caused by this change. The comment now names `ready_session` and both ways in. `errors.py:89` (`get_session` as a dependency that raises the token) is still true, because `get_session` wraps `ready_session`, so it is left alone. |
+| 4 | Probe-table row 1 lists the pool test among its reds without explaining why | — | rejected | The fix would be an edit to this build's plan, which triage rejects. The plant reddened its own target test (`test_a_warm_hit_runs_no_sql_and_checks_out_no_connection`); the extra red does not weaken that proof. |
+| 5 | `TestACancelledRequestIsNotAFailure`'s docstring breaks a sentence mid-line | low | patch | Verified. Reflowed to the 100-column limit. |
+| 6 | `test_a_warm_hit_runs_no_sql_and_checks_out_no_connection`'s message on `len(cdn.requested) == 2` blames only the warm request | low | patch | Verified: the count is the cold fetch plus the `size=large` miss. The message now names both ways the count can be wrong. |
+
+After the patches: `ruff check .` and `ruff format --check .` clean; `mypy src/` and `mypy src/ --platform win32` no issues; `uv run pytest` 3697 passed, 2 skipped; `scripts.build_plugin` rebuilt `plugin/`; `npm run gen:api` gives no drift; `npm run format:check` clean.
 
 ## Design Notes
 

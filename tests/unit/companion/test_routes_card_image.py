@@ -1923,7 +1923,10 @@ class TestTheWarmAnswerMatchesTheColdOne:
                 event.remove(pool, "checkout", on_checkout)
 
         assert cold.status_code == warm.status_code == miss.status_code == 200
-        assert len(cdn.requested) == 2, "the warm request fetched, so it was not a warm hit"
+        assert len(cdn.requested) == 2, (
+            "expected exactly two fetches, the cold request and the size=large miss: one more "
+            "means the warm request fetched, one fewer means the miss did not"
+        )
         assert warm_sql == [], warm_sql
         assert warm_checkouts == 0
         # Non-vacuity: the miss runs the readiness probe and the row read on one connection.
@@ -2639,11 +2642,10 @@ class TestACancelledRequestIsNotAFailure:
     **The cancellation is parked MID-FETCH, and that placement is the test** (review 2026-08-02).
     The first draft cancelled after one bare yield, which lands the ``CancelledError`` at one of
     the route's first awaits — the disk read or the database read — before the ``try`` block is
-    ever entered, with the
-    CDN in success mode: a zero that would survive a record-on-``BaseException`` mutation, proving
-    nothing about the catch. ``stalled_cdn`` holds the fetch open so the cancel arrives inside
-    ``fetch_image``, and the recorded upstream request is the positive observation that there was
-    genuinely something in flight to mis-record.
+    ever entered, with the CDN in success mode: a zero that would survive a
+    record-on-``BaseException`` mutation, proving nothing about the catch. ``stalled_cdn`` holds
+    the fetch open so the cancel arrives inside ``fetch_image``, and the recorded upstream request
+    is the positive observation that there was genuinely something in flight to mis-record.
     """
 
     async def test_a_cancelled_request_leaves_no_entry_behind(
