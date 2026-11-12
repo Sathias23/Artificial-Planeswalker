@@ -8,9 +8,9 @@ baseline_revision: '06190977325b2e3c3c47868e328c29054e1aef45'
 route: 'full'
 route_source: 'auto'
 risk: 'high'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick']
 review_loop_iteration: 0
 context:
   - '{project-root}/AGENTS.md'
@@ -132,6 +132,20 @@ Residue and risks for review:
 ## Plan Change Log
 
 ## Review Triage Log
+
+Pass 1 (lens `quick`, 2026-11-12): 7 findings — high 0, medium 1, low 4, false 1, maybe-false 0. Three **patch**, one **defer**, three rejected; no loopback. The lens read the diff without `plugin/` and the minified static bundle (generated copies, drift-checked).
+
+| # | Finding | Verdict | Route | Evidence / action |
+|---|---------|---------|-------|-------------------|
+| 1 | Tool docstrings, both skills and `docs/companion.md` say the companion shows the same land count, but no UI code reads `statistics.land_count`; the visible "Lands" group header comes from `groupOf` (Artifact Land under Artifacts, Dryad Arbor under Creatures) | medium | patch | Verified: `ui/src` reads only `statistics.curve` and `statistics.colour_pips`. An agent citing `total_lands` beside a different "Lands" header contradicts the docs. Fixed in `dce3170`: the claim is now only that `distribution` and `colour_pips` are what the panels draw, `total_lands`/`total_spells` share the payload's rule, and type-group headers can differ; double blank line removed; `plugin/` rebuilt. |
+| 2 | AC 3 grep: `generate_contextual_feedback` and its helpers keep `int(cmc)` buckets | low | defer | Verified; pre-existing, and the function has no caller in `src/` (its land rule did move to `is_land`). Routing it through `mana_value_bucket` would print bucket numbers as mana values in its messages. Appended to `deferred-work.md`. |
+| 3 | `analyze_mana_curve`'s one-pass land/spell split and dropped `cmc is None` arms build story 33's deferred mana-curve polish, which the Never clause forbids | low | patch | Verified against `deferred-work.md` (story 33 entry). Fixed in `dce3170`: baseline shape restored with only the rule swapped (`lands = [... is_land(c)]`, `c not in lands`, the `cmc is None` arms back), also in `generate_contextual_feedback`; behaviour unchanged. |
+| 4 | Decision 1 says `average_cmc` and `playable_cards_by_turn` "stay" on the exact `cmc`, but the baseline used `int(cmc)` | low | rejected | Verified the baseline floored. The code matches the decision as written (exact `cmc`); the two differ only for fractional `cmc` (Little Girl, 0.5, the corpus's only one). Exact `cmc` is needed for `playable_cards_by_turn` once `distribution` caps at 7. Reported to Brad rather than changed. |
+| 5 | `has_land_face` moves the classifier on two non-MDFC shapes (`Card // Card` first-face land loses `ramp`; a `Lander` card with land-search text gains it) | false | rejected | Decision 3 specifies `has_land_face` as "any face, whole word", which entails both moves, and both are corrections (a land is never ramp; "Lander" is not "land"). Pinned by `test_card_statistics_baseline.py::test_classifier_land_exclusion`. Scoring math is unchanged; only its inputs follow the rule. |
+| 6 | `colours.test.ts` header claims the Python file holds every deleted UI case (Omen, Pathway, `{2/W}`, Land//Adventure), but it did not | low | patch | Verified. Fixed in `dce3170`: the four cases plus an `Artifact — Equipment // Land` row added to `test_card_statistics.py`; both UI headers now list exactly what it holds. |
+| 7 | `readDeck`'s new guard accepts a `curve` array of any length, so a short one would draw `NaN` heights | low | rejected | Verified in principle, but the bundle ships with its own backend, whose schema pins `minItems`/`maxItems` 7, so a short curve is unlikely in everyday use and the fix adds a guard. |
+
+After the patches: `ruff check .`, `ruff format --check .`, `mypy src/` and `mypy src/ --platform win32` clean; `uv run pytest` 3679 passed, 2 skipped; UI lint, format:check, typecheck, `npm test` 1826 passed, `test:gates` 39 passed, build, `gen:api`/`gen:types` and `scripts.build_plugin` leave no drift.
 
 ## Design Notes
 
