@@ -28,8 +28,10 @@ in :mod:`src.companion.app.images`, which is where the spine's Structural Seed d
 which is what lets the resolver be unit-tested without a request. This module holds the wire
 contract: the path, the parameters, the status vocabulary and the cache headers.
 
-The session and both ``503`` paths arrive with :data:`~src.companion.app.deps.DbSession`, and
-every token's status lives in :mod:`src.companion.app.errors`.
+The card route's session and both ``503`` paths arrive with
+:data:`~src.companion.app.deps.DbSession`; the image route enters
+:func:`~src.companion.app.deps.ready_session` itself, on a disk-cache miss only. Every token's
+status lives in :mod:`src.companion.app.errors`.
 
 Bodies are unwrapped (AD-16): the card itself, or the image bytes themselves — no
 ``status``/``card`` envelope, and emphatically no ``{"image": "base64…"}``.
@@ -40,7 +42,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Query, Request, Response
 
-from src.companion.app.deps import DbSession
+from src.companion.app.deps import DbSession, ready_session
 from src.companion.app.errors import CompanionError, error_responses
 from src.companion.app.images import (
     DEFAULT_IMAGE_SIZE,
@@ -244,7 +246,6 @@ def _image_response(body: bytes, content_type: str) -> Response:
 async def read_card_image(
     request: Request,
     scryfall_id: CardId,
-    session: DbSession,
     size: Annotated[ImageSize, Query()] = DEFAULT_IMAGE_SIZE,
     face: Annotated[int, Query(ge=0)] = 0,
 ) -> Response:
@@ -273,11 +274,12 @@ async def read_card_image(
     one bad minute cannot leave a permanently broken tile in an open tab.
 
     Warning:
-        The ``400`` for a malformed id or an unrecognised ``size`` is not unconditional.
-        Dependencies resolve before parameter validation is reported, so ``?size=bogus`` sent
-        while the database is unusable answers ``503`` (``database_not_initialized`` or
-        ``database_unavailable``), not ``400``. A caller that retries on 503 must not assume the
-        request can ever succeed: a bad parameter stays bad whatever the database does.
+        Whether the database is consulted depends on what this backend has already stored. An
+        image it served earlier and kept in its disk cache is answered from there without
+        reading the database, so it can be ``200`` while the database is unusable; any other
+        request needs the card's row and answers ``503`` (``database_not_initialized`` or
+        ``database_unavailable``) until the database is ready. A malformed id or an unrecognised
+        ``size`` is ``400`` whatever the database state.
 
     Args:
         scryfall_id: The Scryfall printing uuid — the same identifier and the same constraint as
@@ -295,8 +297,8 @@ async def read_card_image(
             overwhelming case but not the only one, and a closed pair would answer ``400`` where
             "this card simply has fewer faces" is a ``404``. The bound is the resolved list's
             length, so it lives here rather than in the type.
-        request: The live request; the shared outbound client is read from its app.
-        session: The request-scoped database session (see ``DbSession``).
+        request: The live request; the disk cache, the database holder, the shared outbound
+            client and the pacer are all read from its app.
 
     Returns:
         The image bytes, with the upstream's ``Content-Type`` and a long-lived ``Cache-Control``.
@@ -307,19 +309,22 @@ async def read_card_image(
             did not deliver one **or when this key is inside the backoff window a recent failure
             opened** — the same token and the same response, deliberately, so a client cannot
             tell a remembered failure from a fresh one and has no reason to;
+            ``database_not_initialized`` when a disk-cache miss finds the database not ready;
             ``internal_error`` if the lifespan never ran.
     """
-    # THE DISK CACHE IS THE FIRST THING THIS ROUTE CONSULTS, ahead of the database read below.
+    # THE DISK CACHE IS THE FIRST THING THIS ROUTE CONSULTS, ahead of any database work: no
+    # session, no readiness probe, not even the engine's file check.
     #
     # A key only enters the cache through the write at the bottom of this function, which is
     # reachable only after `card_not_found`, `no_image_data` and the size lookup have all passed
     # — so every cached key was validated on the way in, and re-validating it on the way out buys
-    # nothing but a database read per warm tile. On a 99-tile warm deck that is 99 row reads to
-    # confirm what the file on disk already proves.
+    # nothing but a database round trip per warm tile. On a 99-tile warm deck that is 99 probes
+    # and 99 row reads to confirm what the file on disk already proves.
     #
-    # The one behaviour this trades away, stated rather than hidden: a card whose row is deleted
+    # The behaviours this trades away, stated rather than hidden: a card whose row is deleted
     # while its tile is still cached is answered `200` from disk instead of `404 card_not_found`
-    # until the cache is cleared. Accepted — the row is still consulted on every MISS, so no new
+    # until the cache is cleared, and a cached tile is `200` while the database is absent or
+    # unusable rather than `503`. Accepted — the row is still consulted on every MISS, so no new
     # key can enter the cache unvalidated.
     #
     # It is also read BEFORE the pacer (NFR-06). A check inside `pacer.slot()` would cache
@@ -328,16 +333,23 @@ async def read_card_image(
     # all. `test_routes_card_image.py` measures that on the injected clock — a warm burst
     # advances it by ZERO spacing intervals where the cold burst advances it by 98 — rather than
     # asserting this comment.
-    #
-    # `DbSession` is still a dependency of this handler, so a warm hit against an unusable
-    # database is still `503`: dependencies resolve before any line here runs.
     cache = image_cache(request.app)
     if cache is not None:
         cached = await cache.read(scryfall_id, size, face)
         if cached is not None:
             return _image_response(*cached)
 
-    card = await CardRepository(session).get_by_id(scryfall_id)
+    # A MISS opens a session for the row read alone, and closes it once the row is read. Everything
+    # below — the negative cache, the pacer's queue and the CDN fetch — runs with no connection
+    # checked out, so a deck-sized burst queued at the pacer holds none of the pool. A session held
+    # across that wait (a `DbSession` parameter, or this `async with` widened over the fetch) would
+    # let a queue of tiles exhaust the pool, whose timeout surfaces as `500`, not `503`.
+    #
+    # It still runs the readiness probe, so a schema-only or empty database is `503
+    # database_not_initialized` rather than `404 card_not_found`: a permanent token for a
+    # transient state.
+    async with ready_session(request) as session:
+        card = await CardRepository(session).get_by_id(scryfall_id)
     if card is None:
         raise CompanionError("card_not_found")
 
@@ -378,10 +390,10 @@ async def read_card_image(
     # bounds every one after it, which is what EXPERIENCE.md's "no request storms" means here.
     #
     # What a remembered answer still costs, also stated: everything ABOVE this line — a database
-    # session, the card read and the face resolution — runs on every request that MISSES the disk
-    # cache, remembered or not, because the token fidelity of `card_not_found` and `no_image_data`
-    # requires the row before the failure history may speak. "Answered from memory" is true of the
-    # CDN, not of the DB. A warm hit skips all of it.
+    # session (already closed by here), the card read and the face resolution — runs on every
+    # request that MISSES the disk cache, remembered or not, because the token fidelity of
+    # `card_not_found` and `no_image_data` requires the row before the failure history may speak.
+    # "Answered from memory" is true of the CDN, not of the DB. A warm hit skips all of it.
     remembered = negative_cache(request.app)
     if remembered is not None and remembered.is_backing_off(scryfall_id, size, face):
         # DEBUG, not INFO, and the asymmetry with the record site below is the point: a hit costs
@@ -403,7 +415,7 @@ async def read_card_image(
     if client is None or pacer is None:
         # Unreachable on every supported path — the lifespan always runs before a request is
         # served — but a missing client or pacer is a wiring bug, not a CDN failure, and must not
-        # be laundered into image_fetch_failed. Same reasoning as deps.get_session's missing
+        # be laundered into image_fetch_failed. Same reasoning as deps.ready_session's missing
         # holder. One guard for both because they are created on consecutive lifespan lines and
         # either being absent means the same thing: startup did not happen.
         logger.error(
@@ -457,7 +469,7 @@ async def read_card_image(
         raise
 
     # One INFO line per PAID network exchange, and its gate is the `fetch_image` call itself —
-    # the same gate as the failure line below, so the two lines partition every real CDN fetch
+    # the same gate as the failure line above, so the two lines partition every real CDN fetch
     # between them. This is CM-2's observation seam: the unit tests prove once-per-key on
     # a recorder, but a real session had no way to show it — a successful fetch logged nothing,
     # so `companion.log` could not distinguish "served warm" from "fetched again". Grouping these

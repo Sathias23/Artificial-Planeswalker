@@ -205,11 +205,12 @@ export interface paths {
          *     one bad minute cannot leave a permanently broken tile in an open tab.
          *
          *     Warning:
-         *         The ``400`` for a malformed id or an unrecognised ``size`` is not unconditional.
-         *         Dependencies resolve before parameter validation is reported, so ``?size=bogus`` sent
-         *         while the database is unusable answers ``503`` (``database_not_initialized`` or
-         *         ``database_unavailable``), not ``400``. A caller that retries on 503 must not assume the
-         *         request can ever succeed: a bad parameter stays bad whatever the database does.
+         *         Whether the database is consulted depends on what this backend has already stored. An
+         *         image it served earlier and kept in its disk cache is answered from there without
+         *         reading the database, so it can be ``200`` while the database is unusable; any other
+         *         request needs the card's row and answers ``503`` (``database_not_initialized`` or
+         *         ``database_unavailable``) until the database is ready. A malformed id or an unrecognised
+         *         ``size`` is ``400`` whatever the database state.
          */
         get: operations["read_card_image_api_card_image__scryfall_id__get"];
         put?: never;

@@ -226,10 +226,14 @@ class TestUrlAllowList:
     @pytest.mark.parametrize(
         "url", ["https://cards.scryfall.io:99999/x", "https://cards.scryfall.io:abc/x"]
     )
-    def test_a_port_that_will_not_parse_raises(self, url: str) -> None:
-        """PINNED (moves in 8.1): ``parts.port`` is read outside the ``try``."""
-        with pytest.raises(ValueError):
-            images.is_fetchable(url)
+    def test_a_port_that_will_not_parse_is_refused_not_raised(self, url: str) -> None:
+        """MOVED in 8.1 (was ``test_a_port_that_will_not_parse_raises``, a ``ValueError``).
+
+        ``urlsplit`` parses the port lazily, so ``parts.port`` raises for these two even though
+        ``urlsplit`` itself did not. Read outside the ``try`` it escaped the route as ``500``; it is
+        a refusal like any other unparseable URL.
+        """
+        assert images.is_fetchable(url) is False
 
 
 # ---------------------------------------------------------------------------------------------
@@ -472,6 +476,60 @@ class TestFetchImage:
 
         assert raised.value.reason == "image_fetch_failed"
         assert read == []
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "GZIP", "identity, gzip"])
+    async def test_an_encoded_body_is_refused_before_it_is_read(self, encoding: str) -> None:
+        """The request asks for ``identity``; an upstream that encodes anyway is refused unread,
+        because decoding would inflate the body past the ceiling before the count saw it."""
+        read: list[bool] = []
+
+        async def never_read():
+            read.append(True)
+            yield b"x"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=never_read(),
+                headers={"content-type": "image/jpeg", "content-encoding": encoding},
+            )
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, _SIX["normal"], _pacer())
+
+        assert raised.value.reason == "image_fetch_failed"
+        assert read == []
+
+    @pytest.mark.parametrize("encoding", ["identity", " Identity "])
+    async def test_an_identity_encoding_is_served(self, encoding: str) -> None:
+        """NON-VACUITY for the refusal above: the one coding asked for is accepted."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=streamed(b"\xff\xd8-plain"),
+                headers={"content-type": "image/jpeg", "content-encoding": encoding},
+            )
+
+        async with _client(handler) as client:
+            body, _ = await images.fetch_image(client, _SIX["normal"], _pacer())
+
+        assert body == b"\xff\xd8-plain"
+
+    async def test_the_request_asks_for_an_unencoded_body(self) -> None:
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200, content=streamed(b"x"), headers={"content-type": "image/jpeg"}
+            )
+
+        async with _client(handler) as client:
+            await images.fetch_image(client, _SIX["normal"], _pacer())
+
+        assert seen[0].headers["accept-encoding"] == "identity"
 
     async def test_an_oversized_streamed_body_is_abandoned_mid_stream(self, monkeypatch) -> None:
         # The ceiling is enforced WHILE streaming (review 2026-08-01): the first cut ran len()
@@ -1263,9 +1321,16 @@ class TestTheCacheReadAndWrite:
         )
         assert (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").is_file()
 
-    async def test_a_failed_replace_deletes_the_sibling(self, tmp_path, monkeypatch) -> None:
-        """PINNED (moves in 8.1): the sibling is unlinked before ``os.replace``, so a replace
-        that fails for a reason other than the same-key race leaves no servable copy at all."""
+    async def test_a_failed_replace_leaves_the_sibling_servable(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """MOVED in 8.1 (was ``test_a_failed_replace_deletes_the_sibling``).
+
+        The sibling used to be unlinked before ``os.replace``, so a replace that failed for a
+        reason other than the same-key race left no servable copy at all. It is now unlinked only
+        after this write's own replace lands: a failed rewrite keeps serving the older entry, and
+        the failure is still counted toward the write latch.
+        """
         cache = _cache(tmp_path)
         await cache.write(
             card_id=_CARD,
@@ -1287,8 +1352,9 @@ class TestTheCacheReadAndWrite:
             body=b"\x89PNG\r\n\x1a\n-the-real-art",
         )
 
-        assert not (tmp_path / "image_cache" / "00" / _CARD / "png_0.jpg").exists()
-        assert await cache.read(_CARD, "png", 0) is None
+        assert (tmp_path / "image_cache" / "00" / _CARD / "png_0.jpg").is_file()
+        assert not (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").exists()
+        assert await cache.read(_CARD, "png", 0) == (b"\xff\xd8\xff\xe0-placeholder", "image/jpeg")
         assert cache._consecutive_write_failures == 1
 
 
@@ -1752,6 +1818,24 @@ class TestAnUnwritableRootStopsWarningEventually:
         )
 
 
+@pytest.fixture
+def read_bytes_calls(monkeypatch) -> list[Path]:
+    """Spy on ``Path.read_bytes``: every path read whole, in order, while still reading it.
+
+    Returns:
+        The live list of paths ``read_bytes`` was called on.
+    """
+    calls: list[Path] = []
+    original = Path.read_bytes
+
+    def spy(self: Path) -> bytes:
+        calls.append(self)
+        return original(self)
+
+    monkeypatch.setattr(images.Path, "read_bytes", spy)
+    return calls
+
+
 class TestACacheFailureIsNeverARequestFailure:
     """AC 9: every failure degrades to *fetch it* and logs. No new reason token, no exception."""
 
@@ -1813,27 +1897,67 @@ class TestACacheFailureIsNeverARequestFailure:
 
         assert await cache.read(_CARD, "normal", 0) is None
 
-    async def test_a_truncated_entry_is_a_miss_rather_than_an_empty_picture(self, tmp_path) -> None:
+    async def test_a_truncated_entry_is_a_miss_rather_than_an_empty_picture(
+        self, tmp_path, read_bytes_calls
+    ) -> None:
         """Zero bytes is not a picture (c3-5's Greptile P1, in the cache's costume). Temp +
         replace makes this unreachable through this module's own write path - but the file is on
-        the user's disk and this module is not the only thing that can touch it."""
+        the user's disk and this module is not the only thing that can touch it. Refused from
+        ``stat``, so the entry is never opened for reading."""
         cache = _cache(tmp_path)
         entry = tmp_path / "image_cache" / "00" / _CARD / "normal_0.jpg"
         entry.parent.mkdir(parents=True, exist_ok=True)
         entry.write_bytes(b"")
 
         assert await cache.read(_CARD, "normal", 0) is None
+        assert entry not in read_bytes_calls
 
-    async def test_an_oversized_entry_is_a_miss_not_a_served_body(self, tmp_path) -> None:
+    async def test_an_oversized_entry_is_a_miss_not_a_served_body(
+        self, tmp_path, read_bytes_calls
+    ) -> None:
         """The warm path enforces the same ceiling the fetch path enforces on the wire (review
         2026-08-01). Nothing this cache's own writer stores can exceed ``_MAX_IMAGE_BYTES`` —
         the fetch refuses the body first — so an oversized file is by definition not this app's
         work, and it is not loaded whole into memory and stamped ``immutable`` for a year.
+
+        Refused from ``stat`` (8.1): the spy proves ``read_bytes`` never ran for it, which is
+        what "not loaded whole into memory" means.
         """
         cache = _cache(tmp_path)
         entry = tmp_path / "image_cache" / "00" / _CARD / "normal_0.jpg"
         entry.parent.mkdir(parents=True, exist_ok=True)
         entry.write_bytes(b"\xff" * (images._MAX_IMAGE_BYTES + 1))
+
+        assert await cache.read(_CARD, "normal", 0) is None
+        assert entry not in read_bytes_calls
+
+    async def test_the_spy_does_see_a_servable_entry_being_read(
+        self, tmp_path, read_bytes_calls
+    ) -> None:
+        """NON-VACUITY for the two ``not in read_bytes_calls`` assertions above."""
+        cache = _cache(tmp_path)
+        entry = tmp_path / "image_cache" / "00" / _CARD / "normal_0.jpg"
+        entry.parent.mkdir(parents=True, exist_ok=True)
+        entry.write_bytes(b"\xff\xd8-fine")
+
+        assert await cache.read(_CARD, "normal", 0) == (b"\xff\xd8-fine", "image/jpeg")
+        assert read_bytes_calls == [entry]
+
+    async def test_an_entry_that_grows_past_the_ceiling_after_its_stat_is_still_a_miss(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The checks run again on the bytes, because the file can change between the ``stat``
+        and the read: the size check is a cheap pre-filter, not the only gate."""
+        cache = _cache(tmp_path)
+        entry = tmp_path / "image_cache" / "00" / _CARD / "normal_0.jpg"
+        entry.parent.mkdir(parents=True, exist_ok=True)
+        entry.write_bytes(b"\xff\xd8-small-at-stat-time")
+        monkeypatch.setattr(images, "_MAX_IMAGE_BYTES", 64)
+
+        def grown(self):
+            return b"\xff" * 65
+
+        monkeypatch.setattr(images.Path, "read_bytes", grown)
 
         assert await cache.read(_CARD, "normal", 0) is None
 

@@ -54,6 +54,10 @@ _ALLOWED_SCHEME = "https"
 _ACCEPT = "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8"
 """What this route wants back. Scryfall expects consumers to send one."""
 
+_IDENTITY = "identity"
+"""The only ``Content-Encoding`` accepted, and the one ``Accept-Encoding`` sent. Images are already
+compressed, so a coding buys nothing, and an encoded body would be inflated past the byte count."""
+
 _IMAGE_CONTENT_TYPE_PREFIX = "image/"
 
 _SVG_MEDIA_TYPE = "image/svg+xml"
@@ -71,8 +75,11 @@ is deliberately outside it: it bounds a conversation with an upstream; a queued 
 
 _MAX_IMAGE_BYTES = 16 * 1024 * 1024
 """An upper bound on what this backend will buffer from an upstream it does not control (the
-largest stored size is ~1 MB). Enforced while streaming: a declared ``Content-Length`` over it is
-refused before a byte is read, and the running total abandons the fetch at the ceiling."""
+largest stored size is ~1 MB). Enforced on the raw wire bytes while streaming: a declared
+``Content-Length`` over it is refused before a byte is read, and the running total abandons the
+fetch at the ceiling. A ``Content-Encoding`` other than :data:`_IDENTITY` is refused before the body
+is read, so wire bytes are served bytes and nothing is ever inflated. Also the disk cache's read
+ceiling, checked against the file's size before it is read."""
 
 FETCH_SPACING_SECONDS = 0.1
 """The minimum gap between two outbound fetch **starts**, process-wide (AD-11): a good-citizen and
@@ -174,14 +181,17 @@ def is_fetchable(url: str) -> bool:
         url: The URL stored on the card row.
 
     Returns:
-        True when the URL may be fetched; False for anything else, including an unparseable one.
+        True when the URL may be fetched; False for anything else, including an unparseable one
+        or one whose port will not parse.
     """
     try:
         parts = urlsplit(url)
+        # Inside the `try`: `.port` parses lazily and raises on `:99999` or `:abc`.
+        port = parts.port
     except ValueError:
         # A stored value that will not even parse is a refusal, not an exception in a handler.
         return False
-    if parts.scheme != _ALLOWED_SCHEME or parts.port is not None:
+    if parts.scheme != _ALLOWED_SCHEME or port is not None:
         return False
     return (parts.hostname or "") in ALLOWED_IMAGE_HOSTS
 
@@ -195,6 +205,8 @@ def build_image_client(*, transport: httpx.AsyncBaseTransport | None = None) -> 
     ``Location`` an allowed host answered, including loopback and link-local addresses; a 3xx is an
     ordinary fetch failure. ``trust_env`` stays True, unlike the loopback probe in
     ``src/companion/client.py``: a user behind a corporate proxy has no other way out.
+    ``Accept-Encoding: identity`` replaces httpx's ``gzip, deflate``, so the byte ceiling counts
+    what arrives rather than what a decoder inflates it into.
 
     Args:
         transport: Replaces the network transport; the seam every unit test uses.
@@ -206,7 +218,7 @@ def build_image_client(*, transport: httpx.AsyncBaseTransport | None = None) -> 
         timeout=_FETCH_TIMEOUT,
         follow_redirects=False,
         transport=transport,
-        headers={"User-Agent": _user_agent(), "Accept": _ACCEPT},
+        headers={"User-Agent": _user_agent(), "Accept": _ACCEPT, "Accept-Encoding": _IDENTITY},
     )
 
 
@@ -332,7 +344,7 @@ def cache_extension(content_type: str) -> str | None:
     return _EXTENSION_BY_MEDIA_TYPE.get(media_type)
 
 
-def _cache_path(root: Path, card_id: str, size: str, face: int, extension: str) -> Path:
+def _cache_path(root: Path, card_id: str, size: ImageSize, face: int, extension: str) -> Path:
     """Build AD-11's cache path: ``<root>/<id[0:2]>/<id>/<size>_<face>.<ext>``.
 
     Only ever constructed, never parsed back: ``art_crop_0.jpg`` is ambiguous to ``rsplit("_")``.
@@ -355,11 +367,13 @@ def _cache_path(root: Path, card_id: str, size: str, face: int, extension: str) 
 # measures 4.97 ms, so a warm 99-tile paint inline would block it for ~0.49 s (NFR-05).
 
 
-def _read_cached(root: Path, card_id: str, size: str, face: int) -> tuple[bytes, str] | None:
+def _read_cached(root: Path, card_id: str, size: ImageSize, face: int) -> tuple[bytes, str] | None:
     """Read this key's entry off disk, trying each known extension in turn.
 
     Every failure is a miss costing one ordinary fetch, including an empty entry (served, it would
-    be stamped immutable for a year) and one over :data:`_MAX_IMAGE_BYTES`.
+    be stamped immutable for a year) and one over :data:`_MAX_IMAGE_BYTES`. The size is read from
+    ``stat`` first, so an oversized or empty entry is never loaded; the same checks run again on the
+    bytes, because the file can change between the two calls.
 
     Args:
         root: The cache root.
@@ -373,6 +387,8 @@ def _read_cached(root: Path, card_id: str, size: str, face: int) -> tuple[bytes,
     for extension, media_type in CACHE_MEDIA_TYPES.items():
         candidate = _cache_path(root, card_id, size, face, extension)
         try:
+            if not _is_servable_size(candidate, candidate.stat().st_size):
+                continue
             payload = candidate.read_bytes()
         except FileNotFoundError:
             continue
@@ -383,19 +399,34 @@ def _read_cached(root: Path, card_id: str, size: str, face: int) -> tuple[bytes,
                 type(exc).__name__,
             )
             continue
-        if not payload:
-            logger.warning("Cached image at %s is empty; fetching it instead", candidate)
-            continue
-        if len(payload) > _MAX_IMAGE_BYTES:
-            logger.warning(
-                "Cached image at %s is %d bytes, over the %d-byte ceiling; fetching it instead",
-                candidate,
-                len(payload),
-                _MAX_IMAGE_BYTES,
-            )
+        if not _is_servable_size(candidate, len(payload)):
             continue
         return payload, media_type
     return None
+
+
+def _is_servable_size(candidate: Path, size: int) -> bool:
+    """Return whether a cached entry of *size* bytes may be served, logging why when it may not.
+
+    Args:
+        candidate: The entry's path, for the log line.
+        size: Its size in bytes, from ``stat`` before the read or from the bytes after it.
+
+    Returns:
+        False for an empty entry or one over :data:`_MAX_IMAGE_BYTES`; True otherwise.
+    """
+    if size == 0:
+        logger.warning("Cached image at %s is empty; fetching it instead", candidate)
+        return False
+    if size > _MAX_IMAGE_BYTES:
+        logger.warning(
+            "Cached image at %s is %d bytes, over the %d-byte ceiling; fetching it instead",
+            candidate,
+            size,
+            _MAX_IMAGE_BYTES,
+        )
+        return False
+    return True
 
 
 def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> bool:
@@ -403,8 +434,10 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
 
     Follows ``discovery.write_discovery`` minus ``os.fsync`` (a cache entry lost to a power cut
     costs one refetch) and ``os.chmod`` (public images, not a credential). Displaced siblings are
-    unlinked **before** the replace: :func:`_read_cached` probes extensions in fixed order, so a
-    stale ``normal_0.jpg`` would otherwise permanently shadow a fresh ``normal_0.png``.
+    unlinked **after** this call's own replace lands, and only then: :func:`_read_cached` probes
+    extensions in fixed order, so a stale ``normal_0.jpg`` would otherwise permanently shadow a
+    fresh ``normal_0.png``, but unlinking first would leave no servable copy at all when the replace
+    fails. A lost same-key race unlinks nothing; the winner displaced them.
 
     Args:
         target: The final path, from :func:`_cache_path`.
@@ -431,16 +464,6 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
             raise
         with handle:
             handle.write(payload)
-        for stale in displaces:
-            try:
-                stale.unlink(missing_ok=True)
-            except OSError as exc:
-                logger.warning(
-                    "Could not remove the superseded cache entry at %s (%s); the older spelling "
-                    "will shadow the one being written",
-                    stale,
-                    type(exc).__name__,
-                )
         try:
             os.replace(temp_path, target)
         except PermissionError:
@@ -462,6 +485,16 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
         with suppress(OSError):
             temp_path.unlink(missing_ok=True)
         raise
+    for stale in displaces:
+        try:
+            stale.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Could not remove the superseded cache entry at %s (%s); the older spelling "
+                "will shadow the one just written",
+                stale,
+                type(exc).__name__,
+            )
     return True
 
 
@@ -492,7 +525,7 @@ class DiskCache:
         """The directory this cache's entries live under."""
         return self._root
 
-    def path_for(self, card_id: str, size: str, face: int, extension: str) -> Path:
+    def path_for(self, card_id: str, size: ImageSize, face: int, extension: str) -> Path:
         """Return where one entry lives: AD-11's path, character for character.
 
         Args:
@@ -506,7 +539,7 @@ class DiskCache:
         """
         return _cache_path(self._root, card_id, size, face, extension)
 
-    async def read(self, card_id: str, size: str, face: int) -> tuple[bytes, str] | None:
+    async def read(self, card_id: str, size: ImageSize, face: int) -> tuple[bytes, str] | None:
         """Return this key's cached image, or ``None`` for a miss; the read runs in a worker thread.
 
         Args:
@@ -533,7 +566,7 @@ class DiskCache:
         self,
         *,
         card_id: str,
-        size: str,
+        size: ImageSize,
         face: int,
         content_type: str,
         body: bytes,
@@ -695,7 +728,7 @@ class NegativeCache:
         self._max_entries = max_entries
         self._clock = clock
         # The same id + size + face key AD-11 gives the disk cache, never the URL.
-        self._entries: dict[tuple[str, str, int], _RememberedFailure] = {}
+        self._entries: dict[tuple[str, ImageSize, int], _RememberedFailure] = {}
 
     @property
     def entry_count(self) -> int:
@@ -703,7 +736,7 @@ class NegativeCache:
         them, since a map that only ignores expiry fills with garbage and evicts live ones."""
         return len(self._entries)
 
-    def is_backing_off(self, card_id: str, size: str, face: int) -> bool:
+    def is_backing_off(self, card_id: str, size: ImageSize, face: int) -> bool:
         """Return whether this key is inside a backoff window and must not be fetched.
 
         The hot path, free of side effects: one lookup and one comparison, no pruning, because it
@@ -720,7 +753,7 @@ class NegativeCache:
         remembered = self._entries.get((card_id, size, face))
         return remembered is not None and self._clock() < remembered.retry_after
 
-    def record_failure(self, card_id: str, size: str, face: int) -> float:
+    def record_failure(self, card_id: str, size: ImageSize, face: int) -> float:
         """Remember that this key just failed, and return the backoff now applied to it.
 
         A failure inside an open window still escalates, because the count measures the outage.
@@ -749,7 +782,7 @@ class NegativeCache:
         self._entries[key] = _RememberedFailure(delay=delay, retry_after=now + delay)
         return delay
 
-    def clear(self, card_id: str, size: str, face: int) -> None:
+    def clear(self, card_id: str, size: ImageSize, face: int) -> None:
         """Forget this key's failure history entirely: recovery, completed.
 
         Ending the window is only half of recovery; the next failure must start at the base delay.
@@ -893,6 +926,16 @@ async def _fetch_within_deadline(client: httpx.AsyncClient, url: str) -> tuple[b
                         url,
                     )
                     raise CompanionError("image_fetch_failed")
+                encoding = response.headers.get("content-encoding", _IDENTITY).strip().lower()
+                if encoding != _IDENTITY:
+                    # Asked for `identity`; an encoded body would be inflated past the ceiling's
+                    # count before it was checked, so it is refused unread rather than decoded.
+                    logger.warning(
+                        "Card image at %s arrived with Content-Encoding %r; refusing to read it",
+                        url,
+                        encoding,
+                    )
+                    raise CompanionError("image_fetch_failed")
                 declared = response.headers.get("content-length", "")
                 if declared.isdigit() and int(declared) > _MAX_IMAGE_BYTES:
                     logger.warning(
@@ -900,7 +943,9 @@ async def _fetch_within_deadline(client: httpx.AsyncClient, url: str) -> tuple[b
                     )
                     raise CompanionError("image_fetch_failed")
                 body = bytearray()
-                async for chunk in response.aiter_bytes():
+                # Raw wire bytes, never `aiter_bytes`: with the encoding refused above, these are
+                # the bytes served, so the ceiling bounds both.
+                async for chunk in response.aiter_raw():
                     body.extend(chunk)
                     if len(body) > _MAX_IMAGE_BYTES:
                         logger.warning(
