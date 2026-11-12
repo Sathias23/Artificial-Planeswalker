@@ -179,8 +179,8 @@ export default function App() {
           <>
             <CardGrid boards={surface.boards} />
             <AnalysisRow>
-              <ManaCurve boards={surface.boards} />
-              <ColourDistribution boards={surface.boards} />
+              <ManaCurve statistics={surface.detail.statistics} />
+              <ColourDistribution statistics={surface.detail.statistics} />
             </AnalysisRow>
           </>
         ) : surface.kind ===

@@ -449,6 +449,8 @@ describe('CONSERVATION — nothing is lost and the counts still sum', () => {
     created_at: '2025-08-02T00:00:00Z',
     updated_at: '2025-08-02T00:00:00Z',
     cards,
+    // Not read by the derivation; all zeros.
+    statistics: { land_count: 0, spell_count: 0, curve: [0, 0, 0, 0, 0, 0, 0], colour_pips: [] },
   }
 
   it('places every single row in exactly one board-or-group', () => {

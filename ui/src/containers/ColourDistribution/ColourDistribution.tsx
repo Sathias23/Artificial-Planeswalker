@@ -1,10 +1,9 @@
 import type { CSSProperties } from 'react'
 
+import type { DeckStatistics } from '../../api/schema'
 import { ManaPip } from '../../components/ManaPip/ManaPip'
 import { Panel } from '../../components/Panel/Panel'
 import type { ManaColour } from '../../components/ManaCost/parse'
-import { useCardStore } from '../../state/cards'
-import type { DeckBoards } from '../../state/deckGroups'
 import './ColourDistribution.css'
 import {
   CHART_LABEL,
@@ -13,7 +12,7 @@ import {
   percentLabel,
   pipCount,
 } from './copy'
-import { coloursOf } from './colours'
+import { segmentsOf } from './colours'
 
 /**
  * The colour distribution — one proportional bar and its legend, beside the mana curve
@@ -25,31 +24,13 @@ import { coloursOf } from './colours'
  * two are exactly 1:1. This panel lands by adding a sibling inside it and editing neither that
  * component nor `AppShell.tsx`.
  *
- * ================= AND IT WALKS BACK INTO THE HYDRATION WINDOW ==========================
+ * ================= COMPLETE AT FIRST PAINT, AND THE COUNTS ARE THE SERVER'S ============
  *
- * The mana curve needs nothing from the deck-wide sweep, because `cmc` rides on `CardSummary`.
- * **A pip count does not**: 87.75% of faced cards carry a blank top-level `mana_cost`, and
- * hydration is worth **+48 pips across 16 of 40 real decks**. So this is a panel whose
- * **percentages move after first paint**, which is exactly why *"no `aria-live`"* below is
- * load-bearing rather than a formality.
- *
- * **THE CACHE IS READ THROUGH ONE SUBSCRIPTION TO THE WHOLE MAP, AND THE ALTERNATIVES ARE BOTH
- * WRONG.** `DeckList` reads the cache with `useCardEntry(cardId)` inside `DeckRow` — one
- * component per row, one unconditional hook each. This panel is **one** component aggregating up
- * to 99 rows, and a hook in a loop over a list whose length changes with the deck is the
- * rules-of-hooks violation React actually breaks on. `readCardEntry` is imperative and **not
- * reactive**, so the bar would settle on its pre-hydration numbers and never correct itself —
- * silently plausible and wrong, the worst of the three.
- *
- * `useCardStore((state) => state.cards)` returns the **stored map reference**, so zustand v5's
- * dropped equality argument is not a hazard here: a selector building an array or an object
- * (`Object.values(s.cards)`) returns a new value every call and re-renders forever. The cost is
- * real and stated: this panel re-renders on **every one of ~99 hydrations** during a cold-open
- * sweep, each running `coloursOf` over ~99 rows at ~48 µs — **~4.8 ms of derivation across the
- * whole sweep**, which is why there is no `useMemo` (see `colours.ts`).
- *
- * **It starts nothing.** `hydrateCard` is not called here; `App.tsx` owns
- * the sweep, and this panel reads what it has already put in the cache.
+ * The pip counts arrive on the deck payload as `statistics.colour_pips`, computed by
+ * `src/logic/card_statistics.py` — the same function the agent's `analyze_mana_curve` reports
+ * its `colour_pips` from. So the bar and the tool cannot give a deck different counts, and
+ * **this panel reads no card cache, subscribes to nothing and starts nothing**. Its percentages
+ * no longer move after first paint, because nothing it reads arrives later than the deck.
  *
  * ================= THE ACCESSIBLE SHAPE IS THE EXACT INVERSE OF THE CURVE'S ============
  *
@@ -70,8 +51,8 @@ import { coloursOf } from './colours'
  *   - **The `<figure>` carries a name distinct from the panel title**, for the same reason
  *     `ManaCurve`'s does: two nested named things sharing one name makes a screen reader say it
  *     twice with nothing to distinguish them.
- *   - **No `aria-live`.** A percentage that re-announced through ~99 hydrations is the exact
- *     flood UX-DR45 bans, and louder than a pip appearing in a deck row.
+ *   - **No `aria-live`.** A percentage that re-announced on every deck change is the flood
+ *     UX-DR45 bans.
  *
  * ================= DISPLAY-ONLY, LITERALLY ============================================
  *
@@ -84,17 +65,17 @@ import { coloursOf } from './colours'
  * The panel renders nothing when the pip TOTAL is zero — the condition is on the data, not on the
  * deck's card count, the same condition the curve uses. Measured: **no deck in the corpus
  * reaches this state** (all 40 have at least 2 pips), so it is not producible from live data and
- * `colours.test.ts` asserts it against the derivation rather than against a hand-built deck.
+ * `ColourDistribution.test.tsx` is its only witness.
  *
  * An `.analysis-row` whose only child renders null would otherwise sit **empty** in the DOM with
  * a phantom 24px column gap. `AnalysisRow.css` hides it with `:empty`, which needs no gate in
  * `App.tsx`, no curve total and **no second derivation of anything**.
  */
 
-/** What the bar draws. One prop, and it is the derivation — never the raw payload. */
+/** What the bar draws. One prop: the deck payload's statistics. */
 export interface ColourDistributionProps {
-  /** `surfaceOf`'s answer for a loaded deck, verbatim. The SAME value `CardGrid` receives. */
-  boards: DeckBoards
+  /** `DeckDetail.statistics` for the loaded deck, verbatim. Only its `colour_pips` is read. */
+  statistics: DeckStatistics
 }
 
 /**
@@ -129,11 +110,8 @@ export type EveryLabelIsAColour = Assert<
   [Exclude<keyof typeof COLOUR_LABELS, ManaColour>] extends [never] ? true : false
 >
 
-export function ColourDistribution({ boards }: ColourDistributionProps) {
-  // ONE subscription, to the stored map reference — see the header for why neither `useCardEntry`
-  // in a loop nor `readCardEntry` is available here.
-  const cards = useCardStore((state) => state.cards)
-  const distribution = coloursOf(boards, cards)
+export function ColourDistribution({ statistics }: ColourDistributionProps) {
+  const distribution = segmentsOf(statistics.colour_pips)
 
   // The only branch in this component. `total` rather than a count of rows: a
   // deck of only lands, or only generic costs, has cards and nothing for a colour bar to say.

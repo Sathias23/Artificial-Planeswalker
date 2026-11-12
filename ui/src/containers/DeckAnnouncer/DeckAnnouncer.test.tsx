@@ -38,6 +38,14 @@ import { INITIAL_DECK_STATE, useDeckStore } from '../../state/deck'
 import { DeckAnnouncer } from './DeckAnnouncer'
 import { deckUpdatedAnnouncement } from './copy'
 
+/** `DeckDetail.statistics` for a fixture whose panels this file does not draw: all zeros. */
+const NO_STATISTICS: DeckDetail['statistics'] = {
+  land_count: 0,
+  spell_count: 0,
+  curve: [0, 0, 0, 0, 0, 0, 0],
+  colour_pips: [],
+}
+
 const detail = (mainboard: number, sideboard: number, id = 'deck-a'): DeckDetail => ({
   id,
   name: 'Atraxa Counter Cabinet v2 (owned)',
@@ -51,6 +59,7 @@ const detail = (mainboard: number, sideboard: number, id = 'deck-a'): DeckDetail
   created_at: '2025-07-01T00:00:00Z',
   updated_at: '2025-08-01T00:00:00Z',
   cards: [],
+  statistics: NO_STATISTICS,
 })
 
 const EMPTY_BOARDS = {

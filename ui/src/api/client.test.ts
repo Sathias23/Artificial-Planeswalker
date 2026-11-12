@@ -486,6 +486,7 @@ const deckBody = (overrides: Record<string, unknown> = {}) =>
     created_at: '2025-07-01T00:00:00Z',
     updated_at: '2025-08-01T00:00:00Z',
     cards: [],
+    statistics: { land_count: 0, spell_count: 0, curve: [0, 0, 0, 0, 0, 0, 0], colour_pips: [] },
     ...overrides,
   })
 
@@ -616,6 +617,18 @@ describe('a 200 from /api/deck/<id>: three fields, and cards is one of them', ()
     // the whole product of this read. Answering "a deck with no cards" would put a calm,
     // confidently-empty decklist on the glass — the failure `namesOf` refuses for the poll.
     responding(deckBody({ cards: undefined }), 200)
+
+    expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
+  })
+
+  it.each([
+    ['missing statistics', deckBody({ statistics: undefined })],
+    ['statistics without a curve', deckBody({ statistics: { colour_pips: [] } })],
+    ['statistics without colour pips', deckBody({ statistics: { curve: [0, 0, 0, 0, 0, 0, 0] } })],
+  ])('reports %s as a violation — the panels draw them verbatim', async (_label, body) => {
+    // The curve and colour panels render `statistics.curve` and `statistics.colour_pips` as
+    // given, so a body without them would throw in render rather than reach a state panel.
+    responding(body, 200)
 
     expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
   })

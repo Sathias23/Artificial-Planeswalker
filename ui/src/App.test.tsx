@@ -224,7 +224,34 @@ const pathwayFaces = (name: string): Record<string, unknown> =>
       }
     : {}
 
-/** `GET /api/deck/{id}`'s body, with the fields the header and the derivation actually read. */
+/**
+ * `statistics` for a fixture deck, as the server would compute it. The curve and colour panels
+ * draw these figures verbatim — the card rules behind them are Python's
+ * (`src/logic/card_statistics.py`) and are not re-derived in this harness.
+ */
+const statistics = (
+  curve: readonly number[] = [0, 0, 0, 0, 0, 0, 0],
+  pips: Record<string, number> = {},
+  lands = 0,
+) => ({
+  land_count: lands,
+  spell_count: curve.reduce((sum, count) => sum + count, 0),
+  curve,
+  colour_pips: ['W', 'U', 'B', 'R', 'G', 'C'].map((colour) => ({
+    colour,
+    count: pips[colour] ?? 0,
+  })),
+})
+
+/** The default deck's figures: one `{G}` Llanowar Elves at mana value 1, and ten Forests. */
+const DEFAULT_STATISTICS = statistics([1, 0, 0, 0, 0, 0, 0], { G: 1 }, 10)
+
+/**
+ * `GET /api/deck/{id}`'s body, with the fields the header and the derivation actually read.
+ *
+ * A test that overrides `cards` gets all-zero `statistics` unless it passes its own: the panels
+ * draw the server's figures, so a fixture whose curve should show says what the curve is.
+ */
 const deckDetail = (overrides: Record<string, unknown> = {}) =>
   new Response(
     JSON.stringify({
@@ -242,12 +269,12 @@ const deckDetail = (overrides: Record<string, unknown> = {}) =>
       cards: [
         // The real printing's real values: `{G}`, cmc 1. (The corpus
         // also holds a TOKEN `Llanowar Elves` with a blank cost and the type line
-        // `'Token Creature — Elf Druid'`; this is the other one.) The curve is unmoved —
-        // `bucketOf` folds `cmc <= 1` into bucket 1 either way — and the colour bar now has
-        // exactly one green pip to draw, which is what makes the colour bar's mount observable here.
+        // `'Token Creature — Elf Druid'`; this is the other one.) Its one green pip is what makes
+        // the colour bar's mount observable here — see `DEFAULT_STATISTICS`.
         deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
         deckCard('Forest', 'Basic Land — Forest', 10),
       ],
+      statistics: 'cards' in overrides ? statistics() : DEFAULT_STATISTICS,
       ...overrides,
     }),
     { status: 200 },
@@ -1351,6 +1378,12 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code', 
           created_at: '2025-07-01T00:00:00Z',
           updated_at: '2025-08-01T00:00:00Z',
           cards: [],
+          statistics: {
+            land_count: 0,
+            spell_count: 0,
+            curve: [0, 0, 0, 0, 0, 0, 0],
+            colour_pips: [],
+          },
         },
         boards: {
           commander: [],
@@ -3879,6 +3912,8 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins', () =>
           deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
           deckCard('Forest', 'Basic Land — Forest', 10),
         ],
+        // The server's figures for those rows: the Bears' 2-drop and its green pip join.
+        statistics: statistics([1, 1, 0, 0, 0, 0, 0], { G: 2 }, 10),
       }),
     )
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
@@ -4278,6 +4313,8 @@ describe('refetch never tears down what’s on screen', () => {
           deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
           deckCard('Forest', 'Basic Land — Forest', 10),
         ],
+        // The server's figures for those rows: the Bears' 2-drop and its green pip join.
+        statistics: statistics([1, 1, 0, 0, 0, 0, 0], { G: 2 }, 10),
       }),
     )
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
@@ -4356,6 +4393,8 @@ describe('refetch never tears down what’s on screen', () => {
           deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
           deckCard('Forest', 'Basic Land — Forest', 10),
         ],
+        // The server's figures for those rows: the Bears' 2-drop and its green pip join.
+        statistics: statistics([1, 1, 0, 0, 0, 0, 0], { G: 2 }, 10),
       }),
     )
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
@@ -5385,6 +5424,8 @@ describe('UJ-1 end to end - the loop closes', () => {
         deckCard('Grizzly Bears', 'Creature — Bear', 2, '{1}{G}', 2),
         deckCard('Forest', 'Basic Land — Forest', 10),
       ],
+      // The server's figures for those rows: two 2-drop Bears, a green pip per copy.
+      statistics: statistics([1, 2, 0, 0, 0, 0, 0], { G: 3 }, 10),
     })
 
   /**

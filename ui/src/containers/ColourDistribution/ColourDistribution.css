@@ -116,7 +116,7 @@
    TRANSPARENT segment that no test can see.
 
    `background`, which is on the `MANA_INK_PROPERTY` allowlist. There is no `.colour-bar-segment`
-   default fill: unlike a pip, a segment with no colour class cannot exist — `coloursOf` emits
+   default fill: unlike a pip, a segment with no colour class cannot exist — `segmentsOf` emits
    only the six `ManaColour` letters, and the both-directions type assert in
    ColourDistribution.tsx is what keeps that true. */
 .colour-bar-segment-w {

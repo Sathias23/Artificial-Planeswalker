@@ -3,7 +3,7 @@
  *
  * The epic's reason is verbatim and it is the whole point of this module existing rather than a
  * `useMemo` in a component: *"so the grid and the list panel cannot disagree"*. The card-art
- * grid, the deck-list panel and the mana curve all read the same derived
+ * grid and the deck-list panel both read the same derived
  * value; two consumers each writing `filter(c => !c.sideboard)` slightly differently is exactly
  * the drift this is written to prevent, and it is invisible until someone counts the tiles.
  *
@@ -21,34 +21,25 @@
  * **Latent, not live** — declared here rather than closed by fetching 99 card records to fix a
  * case no deck contains.
  *
- * ================= THE REPO HAS TWO LAND POLICIES AND THEY DISAGREE ====================
+ * ================= GROUPING IS NOT THE LAND QUESTION ===================================
  *
- * `src/viewer/view_model.py::is_land` classifies on the **front face** (`type_line.split("//")[0]`)
- * *"so a modal/double-faced card whose front is a spell is treated as a nonland"*;
- * `src/logic/assessment/mana_base.py::_is_land` and `src/logic/mana_curve.py` use a **whole-string**
- * `"land" in type_line.lower()` and document that as v1 policy. FR-05 and UX-DR17 both say FRONT
- * FACE, so this module follows `view_model.py`.
- *
- * **82 corpus cards** are misgrouped by the whole-string policy *through the front-face split* —
- * that is, because their `type_line` names two faces — and **four of them are in real decks
- * today**.
- *
- * ⚠️ **82 is not the whole disagreement.** {@link groupOf} and the whole-string policy disagree
- * on **116** corpus cards in
- * total. The other **34** are SINGLE-faced cards that disagree for an unrelated reason —
- * first-match-wins precedence, not the split: `Artifact Land` (25 of them) groups as **Artifact**
- * because Artifact precedes Land in {@link TYPE_GROUPS}, and `Land Creature — Island Fish` groups
- * as **Creature**. The split clause below does not address those and is not meant to. Re-measure
- * with `('Land' in type_line) !== (groupOf(type_line) === 'Land')`, then partition on whether the
- * type line contains `//`: 82 that do, 34 that do not.
+ * Grouping follows the **front face**, as FR-05 and UX-DR17 say and as
+ * `src/viewer/view_model.py::is_land` does (`type_line.split("//")[0]`). So the four MDFCs below,
+ * which are in real decks today, group by their spell side:
  *
  *   | Agadeem's Awakening // Agadeem, the Undercrypt      | `Sorcery // Land`                            | **Sorcery**     |
  *   | Kazandu Mammoth // Kazandu Valley                   | `Creature — Elephant // Land`                | **Creature**    |
  *   | Dowsing Dagger // Lost Vale                         | `Artifact — Equipment // Land`               | **Artifact**    |
  *   | Journey to Eternity // Atzal, Cave of Eternity      | `Legendary Enchantment — Aura // Legendary Land` | **Enchantment** |
  *
- * **The curve's policy is NOT fixed here.** That is `src/logic/mana_curve.py`, a Python change
- * with MCP blast radius.
+ * **"Is this card a land?" is answered elsewhere, once.** The land count, the curve and the colour
+ * pips the panels draw come from the server's `statistics` (`src/logic/card_statistics.py`), whose
+ * land rule is the word `Land` in the front face's type half — the same front-face reading, minus
+ * this module's first-match-wins precedence. The two still differ on single-faced cards that
+ * precedence decides: `Artifact Land` GROUPS as **Artifact** (Artifact precedes Land in
+ * {@link TYPE_GROUPS}) and `Land Creature — Island Fish` as **Creature**, while both COUNT as
+ * lands. That is right for each question — a section heading is not a land count — and nothing
+ * here should be "fixed" to agree.
  *
  * ================= WHICH TYPE LINES ACTUALLY DISCRIMINATE THE RULE =====================
  *
@@ -196,9 +187,10 @@ export interface CardGroup {
  * (41 rows). A commander filed under "Creatures" misstates the deck to anyone reading the list,
  * and the sideboard is not part of the deck the curve and colour panels describe —
  * `view_model.py` already partitions `sideboard is False` for exactly that reason. Doing it once
- * here means the grid, the list and the curve inherit ONE partition. Measured cost of not doing
- * it: 41 sideboard rows and 16 commander rows would join the type groups and inflate every count
- * on screen.
+ * here means the grid and the list inherit ONE partition (the curve and colour panels draw the
+ * server's statistics, which apply the same commander + mainboard policy). Measured cost of not
+ * doing it: 41 sideboard rows and 16 commander rows would join the type groups and inflate every
+ * count on screen.
  */
 export interface DeckBoards {
   /** The commander(s): `commander && !sideboard`. Empty for the 24 of 40 decks without one. */
@@ -227,7 +219,7 @@ const quantityOf = (cards: readonly DeckCardSummary[]): number =>
  * Two properties matter and both are deliberate:
  *
  *   - `cmc` is a FLOAT, not an int — `Little Girl` is 0.5 — so the comparison is numeric
- *     subtraction, never a bucket. (`curve.ts`'s `bucketOf` clamps at 7+ and folds 0/1, which is
+ *     subtraction, never a bucket. (The server's curve buckets clamp at 7+ and fold 0/1, which is
  *     right for a histogram and wrong for an ordering.)
  *   - The tiebreak is `localeCompare` on `name`, so the comparator is total and deterministic and
  *     an all-cmc-0 Lands group comes out alphabetical rather than in key order.

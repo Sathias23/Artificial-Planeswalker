@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 
+import type { DeckStatistics } from '../../api/schema'
 import { Panel } from '../../components/Panel/Panel'
-import type { DeckBoards } from '../../state/deckGroups'
 import './ManaCurve.css'
 import {
   CHART_LABEL,
@@ -18,24 +18,21 @@ import { LAST_BUCKET, curveOf } from './curve'
  * The mana curve — seven bars and a count, beneath the card grid (FR-05, UX-DR3, UX-DR7,
  * UX-DR17, UX-DR40, UX-DR42, UX-DR44, UX-DR47).
  *
- * ================= COMPLETE AT FIRST PAINT =============================================
+ * ================= COMPLETE AT FIRST PAINT, AND THE COUNTS ARE THE SERVER'S ============
  *
- * `CardSummary.cmc` rides on the deck payload, so **this file fetches nothing, subscribes to
- * nothing and waits for nothing**. It is the third reader of `surface.boards`, after `CardGrid`
- * and `DeckList`, and it adds no fourth derivation of the deck — `curve.ts` walks the boards
- * along a different axis (mana value) rather than re-partitioning them (AD-12).
+ * The seven counts arrive on the deck payload as `statistics.curve`, computed by
+ * `src/logic/card_statistics.py` — the same function the agent's `analyze_mana_curve` reports
+ * its `distribution` from. So **this file fetches nothing, subscribes to nothing, decides no card
+ * rule and waits for nothing**, and the panel and the tool cannot give a deck different curves.
+ * UX-DR17's *"recomputed from the decklist"* still holds: the server recomputes it on every read
+ * of the deck, and nothing caches it.
  *
- * **The hydration sweep and its no-re-drive window are NOT TRIGGERED HERE.** The sweep exists
- * for `card_faces` and `card_faces[0].mana_cost`; this panel needs neither.
+ * **The hydration sweep and its no-re-drive window are NOT TRIGGERED HERE.**
  *
  * ================= WHAT IS DERIVED, AND WHERE ==========================================
  *
- * `curveOf` is called **in render, with no `useMemo`**. UX-DR17 says the curve is *"recomputed
- * from the decklist"* rather than cached, a memo is a cache, and the memo's dependency would be
- * `boards` — whose REFERENCE IDENTITY is the deck's identity for `deckMemory.ts` and
- * `CardDetail.tsx`. Measured over a 99-row board (the largest real deck's shape), V8 warm:
- * **~24 µs per call** (mean of 20,000 calls; a single warm call reads ~21 µs) — a single pass
- * with one `Map` of seven entries. A memo would have to beat 24 µs to earn its hazard.
+ * `curveOf` is called **in render, with no `useMemo`**: it pairs seven counts with their buckets
+ * and finds the tallest, which no memo could beat.
  *
  * ================= THE ACCESSIBLE PATH, AND WHY IT IS NOT THE PAINTED ONE ==============
  *
@@ -72,10 +69,10 @@ import { LAST_BUCKET, curveOf } from './curve'
  * data and `ManaCurve.test.tsx` is its only witness.
  */
 
-/** What the curve draws. One prop, and it is the derivation — never the raw payload. */
+/** What the curve draws. One prop: the deck payload's statistics. */
 export interface ManaCurveProps {
-  /** `surfaceOf`'s answer for a loaded deck, verbatim. The SAME value `CardGrid` receives. */
-  boards: DeckBoards
+  /** `DeckDetail.statistics` for the loaded deck, verbatim. Only its `curve` is read. */
+  statistics: DeckStatistics
 }
 
 /**
@@ -98,8 +95,8 @@ export interface ManaCurveProps {
  */
 const heightPercent = (share: number): string => `${Number.parseFloat((share * 100).toFixed(2))}%`
 
-export function ManaCurve({ boards }: ManaCurveProps) {
-  const curve = curveOf(boards)
+export function ManaCurve({ statistics }: ManaCurveProps) {
+  const curve = curveOf(statistics.curve)
 
   // The only branch in this component. `curve.total` rather than a count of
   // rows: see the module header for why a land-only deck takes this path too.
