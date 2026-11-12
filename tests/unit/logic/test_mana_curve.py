@@ -63,7 +63,8 @@ class TestAnalyzeManaCurve:
 
         result = analyze_mana_curve(cards)
 
-        assert result.distribution == {1: 2, 2: 1, 3: 1}
+        # All seven buckets, zeros kept.
+        assert result.distribution == {1: 2, 2: 1, 3: 1, 4: 0, 5: 0, 6: 0, 7: 0}
         assert result.total_lands == 2
         assert result.total_spells == 4
 
@@ -206,9 +207,9 @@ class TestAnalyzeManaCurve:
 
         result = analyze_mana_curve(cards)
 
-        # CMC 0 should not appear in distribution (land excluded)
+        # The 0-cost land is not counted in bucket 1 (land excluded)
         assert 0 not in result.distribution
-        assert result.distribution == {1: 1}
+        assert result.distribution == {1: 1, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0}
 
     def test_spell_lands_counted_as_lands(self) -> None:
         """Test that cards with 'Land' in type_line are counted as lands."""
@@ -225,7 +226,7 @@ class TestAnalyzeManaCurve:
         assert result.total_spells == 1
 
     def test_zero_cmc_spells_in_distribution(self) -> None:
-        """Test that 0 CMC spells (non-lands) appear in distribution."""
+        """0-CMC spells (non-lands) count in bucket 1, the shared curve's first bucket."""
         cards = [
             make_card("Mountain", 0, "Land"),
             make_card("Mox Ruby", 0, "Artifact"),  # 0 CMC spell
@@ -235,7 +236,29 @@ class TestAnalyzeManaCurve:
         result = analyze_mana_curve(cards)
 
         assert result.total_spells == 2
-        assert result.distribution[0] == 1  # Mox Ruby at CMC 0
+        assert 0 not in result.distribution
+        assert result.distribution[1] == 2  # Mox Ruby folds in beside Lightning Bolt
+
+    def test_seven_or_more_shares_the_last_bucket(self) -> None:
+        """Mana values of 7 and above all count in bucket 7, and no bucket exceeds it."""
+        cards = [
+            make_card("Avenger", 7, "Creature — Elemental"),
+            make_card("Ghalta", 12, "Creature — Dinosaur"),
+        ]
+
+        result = analyze_mana_curve(cards)
+
+        assert result.distribution[7] == 2
+        assert max(result.distribution) == 7
+
+    def test_front_face_spell_mdfc_is_a_spell(self) -> None:
+        """A ``Sorcery // Land`` MDFC is a spell: the front face decides."""
+        cards = [make_card("Agadeem's Awakening", 3, "Sorcery // Land")]
+
+        result = analyze_mana_curve(cards)
+
+        assert (result.total_lands, result.total_spells) == (0, 1)
+        assert result.distribution[3] == 1
 
     def test_analysis_dataclass_structure(self) -> None:
         """Test that analysis result has correct dataclass structure."""

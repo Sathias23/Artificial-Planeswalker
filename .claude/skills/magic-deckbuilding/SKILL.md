@@ -75,9 +75,13 @@ You need either a saved `deck_id` or a pasted decklist.
 Call all three, every time, passing `format`/`games` where accepted. These are **observational
 only** — they never modify the deck.
 
-1. `mcp__artificial-planeswalker__analyze_mana_curve` (`deck_id`) → read `distribution`,
-   `total_lands`/`total_spells`, `average_cmc`, `land_ratio`, `issues`, `recommendations`, and the
-   turn-by-turn playability. This is your evidence for **curve gaps** and **land-count** problems.
+1. `mcp__artificial-planeswalker__analyze_mana_curve` (`deck_id`) → read `distribution` (always
+   seven buckets `"1"` … `"7"`, `"7"` = 7 or more, 0-cost spells in `"1"`), `total_lands`/`total_spells`
+   (a card is a land by its **front face**, so a `Sorcery // Land` MDFC is a spell), `colour_pips`
+   (W, U, B, R, G, C pip demand), `average_cmc`, `land_ratio`, `issues`, `recommendations`, and the
+   turn-by-turn playability. This is your evidence for **curve gaps** and **land-count** problems;
+   `distribution` and `colour_pips` are what the companion's curve and colour panels draw (its deck-list
+   "Lands" group files by first matching type group and can differ from `total_lands`).
 2. `mcp__artificial-planeswalker__detect_synergies` (`deck_id`) → read `synergies[]` (each names the
    cards involved), `synergy_count`, and `deck_cohesion` (`low`/`moderate`/`high`). Low cohesion is
    your evidence for **missing-synergy** swaps; the named synergies tell you what the deck is *trying*
@@ -190,7 +194,7 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 | `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `invalid` · `error` |
 | `update_deck` | `deck_id`, `changes` (`{name?, strategy?, tags?}` — omitted = keep, `null` = clear for `strategy`/`tags`, blank `strategy` also clears; unknown keys are rejected) | `ok` (reloaded `deck`) · `not_found` · `invalid` (empty `changes`, blank/`null` `name`, over-cap value) · `error` |
 | `delete_deck` | `deck_id` | `ok` (deleted) · `not_found` · `error` |
-| `analyze_mana_curve` | `deck_id` | `ok` (`distribution`, `total_lands/total_spells`, `average_cmc`, `land_ratio`, `issues`, `recommendations`) · `empty` · `deck_not_found` · `error` |
+| `analyze_mana_curve` | `deck_id` | `ok` (`distribution`, `total_lands/total_spells`, `colour_pips`, `average_cmc`, `land_ratio`, `issues`, `recommendations`) · `empty` · `deck_not_found` · `error` |
 | `detect_synergies` | `deck_id` | `ok` (`synergies[]`, `synergy_count`, `deck_cohesion`) · `empty` · `deck_not_found` · `error` |
 | `validate_deck` | `deck_id`, `format`, `games?` | `ok` (`report.is_legal` + violations + `unchecked[]`, the rules not checked) · `deck_not_found` · `invalid` · `error` |
 | `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each with `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` · `error` |

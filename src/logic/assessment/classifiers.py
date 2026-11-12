@@ -24,6 +24,7 @@ from typing import Final
 
 from src.data.schemas.card import Card
 from src.data.schemas.deck import DeckCard
+from src.logic.card_statistics import has_land_face
 
 # ---------------------------------------------------------------------------
 # The closed category-token set — this module owns it; downstream modules
@@ -273,11 +274,12 @@ def classify_card(card: Card) -> frozenset[str]:
     text = _match_text(card)
     tags: set[str] = set()
 
-    # FR6 — ramp. Land-typed cards are never ramp: lands produce mana rather than
-    # accelerate it, and this also keeps fetchlands out. The top-level type_line joins all
-    # faces with "//", so any land face excludes the card — a deliberate conservative choice
-    # for mana math (an MDFC playable as a land is land-slot material, not acceleration).
-    is_land = "land" in card.type_line.lower()
+    # FR6 — ramp. Cards with a land face are never ramp: lands produce mana rather than
+    # accelerate it, and this also keeps fetchlands out. ANY land face excludes the card
+    # (``has_land_face``: the whole word, on any face) — a deliberate conservative choice for
+    # mana math (an MDFC playable as a land is land-slot material, not acceleration), and a
+    # different question from the front-face ``is_land`` the curve and pip counts use.
+    is_land = has_land_face(card)
     if not is_land and (_MANA_ADD_RE.search(text) or _LAND_FETCH_RE.search(text)):
         tags.add(RAMP)
 

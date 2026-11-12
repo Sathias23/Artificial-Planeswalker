@@ -76,6 +76,13 @@ const detail = (overrides: Partial<DeckDetail> = {}): DeckDetail => ({
   created_at: '2025-07-01T00:00:00Z',
   updated_at: '2025-08-01T00:00:00Z',
   cards: [row('Llanowar Elves', 'Creature — Elf Druid'), row('Forest', 'Basic Land — Forest')],
+  // The figures the server reports for those two rows. The slice stores them verbatim.
+  statistics: {
+    land_count: 1,
+    spell_count: 1,
+    curve: [1, 0, 0, 0, 0, 0, 0],
+    colour_pips: [],
+  },
   ...overrides,
 })
 

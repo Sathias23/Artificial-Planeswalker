@@ -107,7 +107,7 @@ export const COLOUR_LABELS = {
  * available, unlike the mana curve's `barName` where two nouns singularise on two different
  * things.
  *
- * A segment with a zero count never reaches this function: `coloursOf` omits it entirely.
+ * A segment with a zero count never reaches this function: `segmentsOf` omits it entirely.
  *
  * Args:
  *   count: The summed quantity of pips of one colour.
@@ -120,7 +120,7 @@ export const pipCount = (count: number): string => `${count} ${count === 1 ? 'pi
 /**
  * A whole-number percentage, with its sign.
  *
- * The NUMBER is data — `coloursOf` rounds it — and the `%` is authored, which is the copy/data
+ * The NUMBER is data — `segmentsOf` rounds it — and the `%` is authored, which is the copy/data
  * line this module's header draws and the reason this one-line builder exists rather than a
  * `+ '%'` at the call site.
  *

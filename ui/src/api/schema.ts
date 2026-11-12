@@ -88,19 +88,32 @@ export type CardSummary = Card
 export type DeckCardSummary = Schemas['DeckCardFull']
 
 /**
- * The body of `GET /api/deck/{deck_id}`: a saved deck's metadata, its three counts and its
- * whole card list.
+ * The body of `GET /api/deck/{deck_id}`: a saved deck's metadata, its three counts, its whole
+ * card list and its card statistics.
  *
  * **Consumer: `readDeck` in `src/api/client.ts`, and the `deck` arm of the deck slice**
  * (`src/state/deck.ts`). This is the payload the app's whole deck view is derived from — the
- * type grouping, the header's name and badges, and (via {@link DeckCardSummary}) the card cache
- * itself, every entry hydrated, all out of ONE request.
+ * type grouping, the header's name and badges, the curve and colour panels (via
+ * {@link DeckStatistics}), and (via {@link DeckCardSummary}) the card cache itself, every entry
+ * hydrated, all out of ONE request.
  *
  * The wire's own docstring records the fact the derivation rests on: *"The order of `cards` is
  * not meaningful… A consumer that wants a stable presentation order (by type, by mana value, by
  * name) must sort them itself."* `src/state/deckGroups.ts` is that consumer.
  */
-export type DeckDetail = Schemas['DeckDetailFull']
+export type DeckDetail = Schemas['DeckDetailWithStatistics']
+
+/**
+ * `DeckDetail.statistics`: the deck's land count, spell count, seven-bucket mana curve and colour
+ * pips, over the commander and mainboard.
+ *
+ * **Consumers: `ManaCurve` and `ColourDistribution`**, which draw these figures as given. They are
+ * computed by `src/logic/card_statistics.py`, the same function the agent's `analyze_mana_curve`
+ * reports from, so the panels and the tool cannot disagree about a deck. `curve` is a seven-tuple
+ * in the generated type (openapi-typescript emits the schema's `prefixItems` as one), which is
+ * what lets `ManaCurve/curve.ts` build its bars without a cast.
+ */
+export type DeckStatistics = DeckDetail['statistics']
 
 /**
  * The body of `GET /api/active-deck`: which deck the companion is displaying, or `null`.

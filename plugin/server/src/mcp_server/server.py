@@ -1009,11 +1009,27 @@ def build_server(
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:
         """Analyze a deck's mana curve by id.
 
-        Loads the deck and analyzes its mainboard only (sideboard excluded),
-        returning the CMC distribution, land/spell counts, average CMC,
-        turn-by-turn playability, land ratio, and any detected issues with
-        recommendations. Observational — it does not modify the deck. Use
-        ``load_deck`` for the card list. Stateless: pass ``deck_id`` every call.
+        Loads the deck and analyzes its mainboard only (sideboard excluded; the
+        commander counts), returning the mana-value distribution, land/spell
+        counts, colour pips, average CMC, turn-by-turn playability, land ratio,
+        and any detected issues with recommendations. ``distribution`` always
+        has all seven buckets ``"1"`` … ``"7"``: mana values round half up, a
+        0-cost spell counts in ``"1"``, and ``"7"`` means 7 or more. A card is a
+        land when its FRONT face's type has the word "Land", so a modal
+        double-faced card whose front is a spell counts as a spell.
+        ``colour_pips`` lists W, U, B, R, G, C (colourless) in that order, zeros
+        kept: the mana symbols in non-land front-face costs crediting each colour,
+        by quantity — a hybrid symbol credits both of its colours, a Phyrexian
+        symbol its colour, generic and ``{X}`` none. ``distribution`` and
+        ``colour_pips`` are what the companion's curve and colour panels draw;
+        ``total_lands``/``total_spells`` use the same rule as the deck payload's
+        statistics. The companion's deck-list type groups (e.g. "Lands") file a
+        card under its first matching type group, so they can differ from
+        ``total_lands`` (an Artifact Land or Dryad Arbor is a land here, not in
+        "Lands").
+        ``average_cmc`` and ``playable_cards_by_turn`` use each spell's exact
+        CMC. Observational — it does not modify the deck. Use ``load_deck`` for
+        the card list. Stateless: pass ``deck_id`` every call.
 
         Args:
             deck_id: The deck id (from ``create_deck`` or ``list_decks``).

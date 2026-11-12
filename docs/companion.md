@@ -15,6 +15,16 @@ agent's.
 the companion tools simply report `app_not_running`, and no other tool ever looks for it. The
 companion adds a visual channel; it never replaces chat output.
 
+**The curve and colour panels report what the agent reports.** Beneath the card grid, the mana
+curve and the colour distribution draw the seven-bar curve (`distribution`) and the colour pips
+(`colour_pips`) that `analyze_mana_curve` returns for the same deck — one set of rules computes
+both, and the tool's `total_lands`/`total_spells` use the same rule. A card is a land when its
+front face is (so a `Sorcery // Land` card is a spell); mana values round half up, a 0-cost spell
+sits in the first bar and the last bar is 7 or more; pips come from each non-land card's
+front-face cost, a hybrid symbol counting for both of its colours; the commander counts and the
+sideboard does not. The deck list's type-group headers (such as "Lands") are a different thing:
+they file each card under its first matching type group, so an Artifact Land sits under
+Artifacts and Dryad Arbor under Creatures, and the "Lands" count can differ from `total_lands`.
 
 This page is the whole operating manual: launching and stopping, ports, the single-instance rule,
 how the MCP tools find a running companion, what it exposes, first-run states, and the on-disk

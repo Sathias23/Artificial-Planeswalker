@@ -27,6 +27,7 @@ from typing import Final, Literal
 from src.data.schemas.card import Card
 from src.data.schemas.deck import DeckCard
 from src.logic.assessment.classifiers import CARD_DRAW, RAMP, classify_card
+from src.logic.card_statistics import is_land, type_line_is_land
 
 #: The five colors in canonical WUBRG order (project convention) — the fixed closed
 #: shape of :func:`compute_pip_signals` (AD-7 spirit: no colors-present-conditional keys).
@@ -62,20 +63,11 @@ _FORMULA_COEFFICIENTS: Final[dict[KarstenFormula, tuple[float, float, float]]] =
 }
 
 # ---------------------------------------------------------------------------
-# Land detection — one helper owns the policy
+# Land detection is the shared front-face rule, ``src.logic.card_statistics.is_land``: the word
+# "land" in the type half of the card's front face. So a "Creature // Land" MDFC is a spell here
+# (its curve slot, average mana value, pip demand and Karsten land count all read it as one), and
+# a front-face land is a land whatever its other face is.
 # ---------------------------------------------------------------------------
-
-
-def _is_land(type_line: str) -> bool:
-    """True when the type line marks a land — the shared substring policy.
-
-    Matches ``classifiers.py`` / ``mana_curve.py``: ``"land" in type_line.lower()``.
-    Consequence (documented v1 policy): a multi-face card whose ``//``-joined top-level
-    type line contains a Land face (an MDFC "Creature // Land") counts as a land and is
-    excluded from the curve and average mana value — the conservative "land-slot material"
-    reading the classifier uses for ramp exclusion.
-    """
-    return "land" in type_line.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +86,7 @@ class CurveSignals:
             front-face value). Empty when the deck has no non-land cards.
         average_mana_value: Quantity-weighted mean ``cmc`` over non-land cards;
             ``0.0`` when there are no spells (never raises on empty input).
-        land_count: Quantity-aware count of Land-typed cards.
+        land_count: Quantity-aware count of land cards.
         spell_count: Quantity-aware count of non-land cards.
     """
 
@@ -122,7 +114,7 @@ def compute_curve(deck_cards: Sequence[DeckCard]) -> CurveSignals:
 
     for deck_card in deck_cards:
         card = deck_card.card
-        if _is_land(card.type_line):
+        if is_land(card):
             land_count += deck_card.quantity
             continue
         spell_count += deck_card.quantity
@@ -149,7 +141,7 @@ class KarstenLandSignal:
 
     Attributes:
         recommended_lands: The formula's recommended land count (float, unrounded).
-        actual_lands: Quantity-aware count of Land-typed cards in the input.
+        actual_lands: Quantity-aware count of land cards in the input.
         delta: ``actual_lands - recommended_lands`` (negative = fewer lands than
             recommended).
         cheap_draw_ramp_count: The 0.28-term input — quantity-aware count of non-land
@@ -173,12 +165,12 @@ def _cheap_draw_ramp_count(deck_cards: Sequence[DeckCard]) -> int:
     Joins the classifier tags back to ``cmc`` (the intended ``classify_card`` join):
     a non-land card tagged ``RAMP`` or ``CARD_DRAW`` with ``cmc`` at most
     :data:`CHEAP_DRAW_RAMP_CMC_MAX` counts once per copy — a card holding both tags is
-    still one spell slot. Land-typed cards are never spell slots.
+    still one spell slot. Land cards are never spell slots.
     """
     cheap = 0
     for deck_card in deck_cards:
         card = deck_card.card
-        if _is_land(card.type_line):
+        if is_land(card):
             continue
         if card.cmc <= CHEAP_DRAW_RAMP_CMC_MAX and classify_card(card) & {RAMP, CARD_DRAW}:
             cheap += deck_card.quantity
@@ -227,7 +219,7 @@ def karsten_land_delta(
 # "{1}{G} // {2}{U}" joined cost, which parses as written (mild double-count, accepted v1).
 _MANA_SYMBOL_RE: Final = re.compile(r"\{([^}]+)\}")
 
-# Colored-source detection over Land-typed cards. No produced-mana field exists in the
+# Colored-source detection over land cards. No produced-mana field exists in the
 # schema/DB, so sources are derived from two signals plus the any-color phrase:
 #   1. basic land types in the type line (basics, snow basics, typed duals like
 #      "Land — Island Mountain");
@@ -284,7 +276,7 @@ class ColorPipSignal:
             costs.
         max_pips_single_card: The largest pip count of this color in any single card's
             cost — the Karsten source-requirement determinant.
-        source_count: Quantity-aware count of Land-typed cards that can produce this
+        source_count: Quantity-aware count of land cards that can produce this
             color (detection policy documented on the module constants).
         recommended_sources: The anchor value for ``max_pips_single_card`` (``0`` when
             the deck has no demand for this color).
@@ -316,19 +308,29 @@ def _pip_cost(card: Card) -> str:
 
 
 def _source_text(card: Card) -> str:
-    """Return the raw lowercased oracle text for source detection (faces joined).
+    """Return the raw lowercased oracle text for source detection (land faces joined).
 
     Mirrors the classifier's empty-top-level fallback but deliberately without reminder-stripping
-    (see the detection-policy comment on the module constants).
+    (see the detection-policy comment on the module constants). When the top-level text is empty,
+    only the LAND faces are read: a face counts when its own ``type_line`` names a land, so a
+    front-face land's spell half never makes it a source of that spell's mana. A face that carries
+    no ``type_line`` falls back to the matching ``" // "`` half of the top-level ``type_line``, and
+    is kept when neither says anything.
     """
     text = card.oracle_text
     if not text and card.card_faces:
-        text = "\n".join(face.oracle_text or "" for face in card.card_faces)
+        halves = card.type_line.split(" // ")
+        land_faces = []
+        for index, face in enumerate(card.card_faces):
+            face_type = face.type_line or (halves[index] if index < len(halves) else None)
+            if face_type is None or type_line_is_land(face_type):
+                land_faces.append(face.oracle_text or "")
+        text = "\n".join(land_faces)
     return text.lower()
 
 
 def _land_source_colors(card: Card) -> frozenset[str]:
-    """Return the colors a Land-typed card can produce, per the documented v1 policy."""
+    """Return the colors a land card can produce, per the documented v1 policy."""
     type_line = card.type_line.lower()
     text = _source_text(card)
     if _ANY_COLOR_UNCONDITIONAL_RE.search(text):
@@ -361,7 +363,7 @@ def compute_pip_signals(
 
     for deck_card in deck_cards:
         card = deck_card.card
-        if _is_land(card.type_line):
+        if is_land(card):
             for color in _land_source_colors(card):
                 source_counts[color] += deck_card.quantity
             continue

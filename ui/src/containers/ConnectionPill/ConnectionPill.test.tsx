@@ -31,6 +31,14 @@ import { ConnectionPill } from './ConnectionPill'
 import { CONNECTION_WORDS, pillText, tooltipText } from './copy'
 import { pagePort } from './port'
 
+/** `DeckDetail.statistics` for a fixture whose panels this file does not draw: all zeros. */
+const NO_STATISTICS: DeckDetail['statistics'] = {
+  land_count: 0,
+  spell_count: 0,
+  curve: [0, 0, 0, 0, 0, 0, 0],
+  colour_pips: [],
+}
+
 const detail = (name: string): DeckDetail => ({
   id: 'a7f3c2d1-0000-4000-8000-000000000001',
   name,
@@ -44,6 +52,7 @@ const detail = (name: string): DeckDetail => ({
   created_at: '2025-07-01T00:00:00Z',
   updated_at: '2025-08-01T00:00:00Z',
   cards: [],
+  statistics: NO_STATISTICS,
 })
 
 const loadDeck = (name: string) =>

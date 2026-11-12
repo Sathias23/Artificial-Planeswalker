@@ -18,8 +18,7 @@ import { render, screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { CardSummary, DeckCardSummary } from '../../api/schema'
-import { boardsOf } from '../../state/deckGroups'
+import type { DeckStatistics } from '../../api/schema'
 import { ManaCurve } from './ManaCurve'
 import {
   CHART_LABEL,
@@ -28,51 +27,41 @@ import {
   MANA_CURVE_TITLE,
   TABLE_CAPTION,
 } from './copy'
+import { BUCKETS } from './curve'
 
-interface RowOptions {
-  cmc?: number
-  quantity?: number
-  sideboard?: boolean
-  commander?: boolean
+type Curve = DeckStatistics['curve']
+
+/** A payload's statistics with this curve; the pips are not this panel's to read. */
+const statisticsWith = (curve: Curve): DeckStatistics => ({
+  land_count: 0,
+  spell_count: curve.reduce((sum, count) => sum + count, 0),
+  curve,
+  colour_pips: [],
+})
+
+/** A curve of `[2, 5, 0, 1, 0, 0, 3]` — an empty bucket at both ends of the middle. */
+const MIXED: Curve = [2, 5, 0, 1, 0, 0, 3]
+
+const renderCurve = (curve: Curve = MIXED) =>
+  render(<ManaCurve statistics={statisticsWith(curve)} />)
+
+/**
+ * The verify deck's figures as the agent reports them, from the committed fixture the Python
+ * parity test compares `analyze_mana_curve` and `GET /api/deck/{id}` against.
+ *
+ * `import.meta.glob` with `eager` rather than a plain JSON import, so the fixture is read at the
+ * one path both toolchains name and no import list grows a JSON specifier.
+ */
+interface StatisticsFixture {
+  analyze_mana_curve: { distribution: Record<string, number> }
+  statistics: DeckStatistics
 }
-
-const summary = (name: string, typeLine: string, cmc: number): CardSummary => ({
-  id: `id-${name}`,
-  name,
-  mana_cost: '',
-  cmc,
-  type_line: typeLine,
-  oracle_text: '',
-  colors: [],
-  rarity: 'rare',
-  set_code: 'tst',
-  set_name: 'Test Set',
-  collector_number: '1',
-  oracle_id: 'oracle-1',
-  color_identity: [],
-  legalities: {},
-  games: [],
-})
-
-const row = (name: string, typeLine: string, options: RowOptions = {}): DeckCardSummary => ({
-  card_id: `id-${name}`,
-  quantity: options.quantity ?? 1,
-  sideboard: options.sideboard ?? false,
-  commander: options.commander ?? false,
-  card: summary(name, typeLine, options.cmc ?? 1),
-})
-
-/** A deck whose curve is `[2, 5, 0, 1, 0, 0, 3]` — an empty bucket at both ends of the middle. */
-const MIXED = [
-  row('Lightning Bolt', 'Instant', { cmc: 1, quantity: 2 }),
-  row('Counterspell', 'Instant', { cmc: 2, quantity: 5 }),
-  row('Wrath of God', 'Sorcery', { cmc: 4 }),
-  row('Ghalta, Primal Hunger', 'Legendary Creature — Elder Dinosaur', { cmc: 12, quantity: 3 }),
-  row('Forest', 'Basic Land — Forest', { cmc: 0, quantity: 24 }),
-]
-
-const renderCurve = (rows: DeckCardSummary[] = MIXED) =>
-  render(<ManaCurve boards={boardsOf(rows)} />)
+const FIXTURE = Object.values(
+  import.meta.glob<StatisticsFixture>('../../test-fixtures/deck-statistics.json', {
+    eager: true,
+    import: 'default',
+  }),
+)[0]
 
 describe('the panel and the figure', () => {
   it('renders a titled Panel whose title is the section name', () => {
@@ -133,31 +122,22 @@ describe('the bar heights are a custom property, and the scale is the tallest ba
 
   it('survives the 39-versus-0 extreme a real deck actually contains', () => {
     // `Infinite Guideline Station v2 (owned)`: 39 cards in one bucket beside two that are empty.
-    const { container } = renderCurve([
-      row('Big', 'Instant', { cmc: 2, quantity: 39 }),
-      row('Mid', 'Instant', { cmc: 3, quantity: 13 }),
-    ])
+    const { container } = renderCurve([0, 39, 13, 0, 0, 0, 0])
     expect(heightsOf(container)).toEqual(['0%', '100%', '33.33%', '0%', '0%', '0%', '0%'])
   })
 
   it('draws the one-card deck with six empty bars and no divide-by-zero', () => {
     // `Iron Man, Modern Marvel — reminder` is one card and six empty buckets, and it is the
     // deck that makes `Math.max(1, …)` exercised by data rather than by a fixture.
-    const { container } = renderCurve([
-      row('Iron Man', 'Legendary Artifact Creature — Robot', { cmc: 4 }),
-    ])
+    const { container } = renderCurve([0, 0, 0, 1, 0, 0, 0])
     expect(heightsOf(container)).toEqual(['0%', '0%', '0%', '100%', '0%', '0%', '0%'])
   })
 
-  it('never writes NaN into a DRAWN curve, fractional cmc included', () => {
-    // A land-only fixture would render null, leaving `container.innerHTML` as `''` and
-    // `.not.toContain('NaN')` passing on NOTHING. This one draws: a real fractional cmc
-    // (`Little Girl`, 0.5 — the only one in 38,261 cards) beside ordinary rows, so seven height
-    // values genuinely pass through heightPercent first.
-    const { container } = renderCurve([
-      row('Little Girl', 'Creature — Human Child', { cmc: 0.5 }),
-      row('Counterspell', 'Instant', { cmc: 2, quantity: 3 }),
-    ])
+  it('never writes NaN into a DRAWN curve', () => {
+    // An all-zero curve would render null, leaving `container.innerHTML` as `''` and
+    // `.not.toContain('NaN')` passing on NOTHING. This one draws, so seven height values
+    // genuinely pass through heightPercent first.
+    const { container } = renderCurve([1, 3, 0, 0, 0, 0, 0])
     expect(container.querySelectorAll('.mana-curve-bar')).toHaveLength(7)
     expect(container.innerHTML).not.toContain('NaN')
   })
@@ -215,10 +195,7 @@ describe('the accessible alternative', () => {
   it('singularises both nouns on one, and keeps the plural on the open-ended bucket', () => {
     // UX-DR17 gives one worked example and no rule, so this pluralisation is INVENTED — see
     // copy.ts. `7+` names a RANGE, so "7+ drop" would be wrong even for a single card.
-    const { container } = renderCurve([
-      row('Solo', 'Instant', { cmc: 1 }),
-      row('Titan', 'Creature — Giant', { cmc: 9 }),
-    ])
+    const { container } = renderCurve([1, 0, 0, 0, 0, 0, 1])
     const names = [...container.querySelectorAll('.mana-curve-bar')].map((b) =>
       b.getAttribute('aria-label'),
     )
@@ -275,40 +252,37 @@ describe('the accessible alternative', () => {
 })
 
 describe('the empty-curve behaviour', () => {
-  it('renders NOTHING when the deck has no cards', () => {
-    const { container } = renderCurve([])
-    expect(container.innerHTML).toBe('')
-  })
-
-  it('renders nothing for a deck of ONLY LANDS — cards, but no curve to draw', () => {
+  it('renders NOTHING for an all-zero curve — an empty deck or one of ONLY LANDS', () => {
     // The subtlety that makes this more than "zero cards": the condition is
     // ZERO CARDS IN THE CURVE, not zero cards in the deck. A land-only deck has cards and
-    // nothing for a curve to say, and seven empty wells under seven zeroes is a worse answer
-    // than absence.
+    // nothing for a curve to say, and the server reports it as seven zeroes, which is a worse
+    // thing to draw than absence.
     //
     // Measured: NO deck in the corpus reaches this state — all 40 have rows and the smallest
     // curve is 1 — so it is not producible from live data and this test is its only witness.
-    const { container } = renderCurve([
-      row('Forest', 'Basic Land — Forest', { quantity: 24, cmc: 0 }),
-      row('Island', 'Basic Land — Island', { quantity: 12, cmc: 0 }),
-    ])
+    const { container } = renderCurve([0, 0, 0, 0, 0, 0, 0])
     expect(container.innerHTML).toBe('')
   })
 
   it('renders the panel for a deck holding a SINGLE spell', () => {
-    renderCurve([row('Iron Man', 'Legendary Artifact Creature — Robot', { cmc: 4 })])
+    renderCurve([0, 0, 0, 1, 0, 0, 0])
     expect(screen.getByRole('region', { name: MANA_CURVE_TITLE })).toBeTruthy()
   })
 })
 
-describe('the board policy, through the rendered panel', () => {
-  it('counts the commander and ignores the sideboard', () => {
-    const { container } = renderCurve([
-      row('Atraxa', 'Legendary Creature — Phyrexian Angel', { cmc: 7, commander: true }),
-      row('Abrade', 'Instant', { cmc: 2, sideboard: true }),
-    ])
+describe('the bars are the figures the agent reports', () => {
+  it('draws the committed verify deck with the counts `analyze_mana_curve` reports', () => {
+    // `deck-statistics.json` is what the Python parity test holds the tool AND the payload to,
+    // so this ties the painted bars to the agent's distribution through one file.
+    expect(FIXTURE).toBeDefined()
+    const { container } = render(<ManaCurve statistics={FIXTURE.statistics} />)
     const counts = [...container.querySelectorAll('.mana-curve-count')].map((n) => n.textContent)
-    expect(counts).toEqual(['0', '0', '0', '0', '0', '0', '1'])
+    const toolCounts = BUCKETS.map((bucket) =>
+      String(FIXTURE.analyze_mana_curve.distribution[String(bucket)]),
+    )
+    expect(counts).toEqual(toolCounts)
+    // Non-vacuity: the fixture's curve is not all zeros, so the panel drew rather than hid.
+    expect(counts).toEqual(['2', '0', '2', '1', '0', '0', '2'])
   })
 })
 

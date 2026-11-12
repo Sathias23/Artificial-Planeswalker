@@ -114,6 +114,8 @@ const settleDeck = (rows: DeckCardSummary[]) => {
     created_at: '2025-07-01T00:00:00Z',
     updated_at: '2025-08-01T00:00:00Z',
     cards: rows,
+    // Not drawn by this view; all zeros.
+    statistics: { land_count: 0, spell_count: 0, curve: [0, 0, 0, 0, 0, 0, 0], colour_pips: [] },
   }
   useDeckStore.setState({ deck: { status: 'deck', detail, boards: boardsOfDeck(detail) } })
 }

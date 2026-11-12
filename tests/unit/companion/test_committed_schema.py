@@ -242,6 +242,11 @@ class TestTheComponentSet:
         #
         # THIRTY-ONE as of quick wins ticket 4: `UncheckedRule`, the `{rule, detail}` entries of
         # `FormatCheckReport.unchecked` — the format's known rules the check did not examine.
+        #
+        # THIRTY-THREE as of quality story 7.5: `GET /api/deck/{deck_id}` answers with
+        # `DeckDetailWithStatistics`, `DeckDetailFull` plus logic's shared `DeckStatistics` (and
+        # its `ColourPips` entries), so the companion draws the figures `analyze_mana_curve`
+        # reports. `DeckDetailFull` is still the base class but no route names it, so it leaves.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
             "ActiveDeckChangedEvent",
@@ -250,10 +255,12 @@ class TestTheComponentSet:
             "ActiveDeckSetReceipt",
             "Card",
             "CardFace",
+            "ColourPips",
             "DeckCardFull",
             "DeckChangedEvent",
             "DeckChangedPayload",
-            "DeckDetailFull",
+            "DeckDetailWithStatistics",
+            "DeckStatistics",
             "DeckSummary",
             "ErrorResponse",
             "EventIngestReceipt",

@@ -16,12 +16,13 @@ import type { CardEntry } from '../state/cards'
  *
  * ================= WHY IT SITS AT THE TREE ROOT RATHER THAN IN `DeckList/` =============
  *
- * It has two consumers in two different container directories: the deck row, and the colour bar,
- * which needs the same three-shape resolution — a pip count is a count of the FRONT FACE's pips,
- * and 87.8% of faced cards carry a blank top-level cost.
+ * It has consumers in several container directories: the deck row and the agent views
+ * (`SuggestionsView`, `TierListView`, `GroupsView`). It is DISPLAY-ONLY: the colour bar used it to
+ * count pips until the deck payload began carrying `statistics`, and the counted rule now lives in
+ * `src/logic/card_statistics.py::front_face_mana_cost`, which resolves the same three shapes.
  *
- * The alternative was a cross-tree import (`../DeckList/frontFaceCost` from
- * `ColourDistribution/`), and it is declined rather than merely not chosen: `filled.ts`'s header
+ * The alternative was a cross-tree import (`../DeckList/frontFaceCost` from a sibling
+ * container), and it is declined rather than merely not chosen: `filled.ts`'s header
  * already states the rule in words — *"a helper shared by two components does not live inside one
  * of them"* — and `imagedFaces.ts` and `useCardArt.ts` sit at this tree's root for precisely this
  * reason. `imageUrl.ts` stays inside `CardTile/` because it still has one consumer, which is the

@@ -110,7 +110,7 @@
     "/api/deck/{deck_id}": {
       "get": {
         "summary": "Read Deck",
-        "description": "Return one saved deck in full: its metadata, its counts and every card in it.\n\nThe whole decklist, with each entry naming its quantity, which board it belongs\nto, whether it is the commander, and the whole card record itself — legalities, image\nURLs and faces included — so a client needs no follow-up request per card. The order of\n``cards`` is not meaningful — see ``DeckDetailFull``.",
+        "description": "Return one saved deck in full: its metadata, counts, every card in it, and its statistics.\n\nThe whole decklist, with each entry naming its quantity, which board it belongs\nto, whether it is the commander, and the whole card record itself — legalities, image\nURLs and faces included — so a client needs no follow-up request per card. The order of\n``cards`` is not meaningful — see ``DeckDetailFull``. ``statistics`` carries the land\ncount, spell count, mana curve and colour pips the agent's ``analyze_mana_curve`` reports\nfor the same deck, computed by the same rules.",
         "operationId": "read_deck_api_deck__deck_id__get",
         "parameters": [
           {
@@ -129,7 +129,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeckDetailFull"
+                  "$ref": "#/components/schemas/DeckDetailWithStatistics"
                 }
               }
             }
@@ -1071,6 +1071,33 @@
         "title": "CardFace",
         "description": "One face of a multi-faced card printing, exactly as Scryfall publishes it.\n\nA card's ``card_faces`` entries carry each half of its identity — that face's own name, mana\ncost, type line and oracle text — and, on some cards, its own artwork. Five fields are named\nbelow; **every other key Scryfall sends is kept and served unchanged**, so a consumer that\nknows about ``power``, ``flavor_text``, ``loyalty``, ``defense``, ``artist``, ``printed_name``\nor ``color_indicator`` still finds them.\n\nA card having faces does **not** mean its faces have artwork. The ``image_uris`` field below\ncarries the rule that decides it; this summary deliberately does not repeat it."
       },
+      "ColourPips": {
+        "properties": {
+          "colour": {
+            "type": "string",
+            "enum": [
+              "W",
+              "U",
+              "B",
+              "R",
+              "G",
+              "C"
+            ],
+            "title": "Colour"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "colour",
+          "count"
+        ],
+        "title": "ColourPips",
+        "description": "How many mana symbols in a deck's costs credit one colour."
+      },
       "DeckCardFull": {
         "properties": {
           "card_id": {
@@ -1167,7 +1194,7 @@
         "title": "DeckChangedPayload",
         "description": "The contents of a deck were edited — refetch it (FR-11).\n\nA system signal, not a view: it carries no items and renders nothing. NFR-04's model is\n\"something changed, refetch\", so this says which deck and stops.\n\n``deck_id`` is **nullable, and that is deliberate rather than lax**. A deck-agnostic version of\nthis same signal — \"some deck you may be showing changed\" — is anticipated, and if the field\nshipped required, adding it would break a contract already committed into a ``.d.ts`` and two\nmirrored plugin bundles. The nullability is bought now, for free."
       },
-      "DeckDetailFull": {
+      "DeckDetailWithStatistics": {
         "properties": {
           "id": {
             "type": "string",
@@ -1245,6 +1272,9 @@
             "type": "array",
             "title": "Cards",
             "default": []
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/DeckStatistics"
           }
         },
         "type": "object",
@@ -1253,10 +1283,68 @@
           "name",
           "format",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "statistics"
         ],
-        "title": "DeckDetailFull",
-        "description": "A saved deck's metadata, card counts and full card list.\n\nEverything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardFull`` per entry,\neach embedding the complete card record. This is what a browser client renders a\ndeck view from in a single request.\n\nThe order of ``cards`` is **not** meaningful and is not the order the cards were\nadded. A consumer that wants a stable presentation order (by type, by mana value, by\nname) must sort them itself."
+        "title": "DeckDetailWithStatistics",
+        "description": "A saved deck's metadata, card counts, full card list, and its card statistics.\n\nEverything ``DeckSummary`` carries, plus ``cards`` — one ``DeckCardFull`` per entry, each\nembedding the complete card record — and ``statistics``: the land count, spell count, mana\ncurve and colour pips over the commander and mainboard, the same figures the agent's\n``analyze_mana_curve`` tool reports for the deck. This is what a browser client renders a deck\nview from in a single request, and it draws the statistics as given rather than recomputing\nthem.\n\nThe order of ``cards`` is **not** meaningful and is not the order the cards were added. A\nconsumer that wants a stable presentation order (by type, by mana value, by name) must sort\nthem itself."
+      },
+      "DeckStatistics": {
+        "properties": {
+          "land_count": {
+            "type": "integer",
+            "title": "Land Count"
+          },
+          "spell_count": {
+            "type": "integer",
+            "title": "Spell Count"
+          },
+          "curve": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 7,
+            "title": "Curve"
+          },
+          "colour_pips": {
+            "items": {
+              "$ref": "#/components/schemas/ColourPips"
+            },
+            "type": "array",
+            "title": "Colour Pips"
+          }
+        },
+        "type": "object",
+        "required": [
+          "land_count",
+          "spell_count",
+          "curve",
+          "colour_pips"
+        ],
+        "title": "DeckStatistics",
+        "description": "A deck's land count, spell count, mana curve and colour pips, over commander and mainboard.\n\nThe sideboard is not counted. A card is a land when the word \"land\" appears in the type part\nof its front face, so a modal double-faced card whose front is a spell counts as a spell."
       },
       "DeckSummary": {
         "properties": {

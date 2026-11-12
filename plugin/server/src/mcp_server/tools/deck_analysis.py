@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import Card
+from src.logic.card_statistics import ColourPips, curve_distribution, deck_statistics
 from src.logic.deck_validator import UNCHECKED_PHRASES, DeckValidationReport
 from src.logic.deck_validator import validate_deck as _logic_validate_deck
 from src.logic.mana_curve import analyze_mana_curve as _logic_analyze_mana_curve
@@ -41,21 +42,37 @@ _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
 class ManaCurveResult(BaseModel):
     """Structured result of ``analyze_mana_curve``.
 
-    The eight analysis fields are flattened from the logic's ``ManaCurveAnalysis``
-    dataclass (D-1.6e) rather than nested. ``distribution`` and
-    ``playable_cards_by_turn`` map CMC/turn to a count — note JSON serializes
-    their integer keys as strings at the MCP client boundary.
+    The analysis fields are flattened from the logic's ``ManaCurveAnalysis``
+    dataclass (D-1.6e) rather than nested. ``total_lands``, ``total_spells``,
+    ``distribution`` and ``colour_pips`` come from ``src.logic.card_statistics``'s
+    ``deck_statistics``. ``distribution`` and ``colour_pips`` are what the companion's
+    curve and colour panels draw; ``total_lands``/``total_spells`` use the same rule as the
+    deck payload's ``statistics``. The companion's deck-list type groups (e.g. "Lands") file
+    a card by its first matching type group, so they can differ from ``total_lands`` (an
+    Artifact Land or Dryad Arbor counts as a land here but is grouped elsewhere there).
+    ``distribution`` and ``playable_cards_by_turn`` map bucket/turn to a count — note
+    JSON serializes their integer keys as strings at the MCP client boundary.
 
     Attributes:
         status: ``ok`` (curve analyzed), ``empty`` (no mainboard cards),
             ``deck_not_found`` (no such deck), or ``error`` (database failure).
         deck_id: The deck id reflected back to the caller.
         deck_name: The deck's name when it was found, else ``None``.
-        distribution: CMC -> spell count.
-        total_lands: Number of land cards (mainboard, by quantity).
-        total_spells: Number of non-land spells (mainboard, by quantity).
-        average_cmc: Mean CMC of non-land spells.
-        playable_cards_by_turn: Turn -> count of cards playable by that turn.
+        distribution: Mana-value bucket -> spell count, always all seven buckets
+            ``"1"`` … ``"7"`` (zeros kept). Mana values round half up, a 0-cost spell
+            counts in ``"1"``, and ``"7"`` means 7 or more.
+        total_lands: Number of land cards (mainboard and commander, by quantity). A
+            card is a land when its FRONT face's type (before the em-dash) has the word
+            "Land", so a modal double-faced card whose front is a spell is a spell.
+        total_spells: Number of non-land spells (mainboard and commander, by quantity).
+        colour_pips: One ``{colour, count}`` entry per colour, in the order W, U, B, R,
+            G, C (colourless), zeros kept — the mana symbols in non-land front-face costs
+            crediting that colour, by quantity. A hybrid symbol credits both colours, a
+            Phyrexian symbol its colour, a ``{2/R}`` symbol its colour; generic and
+            ``{X}`` credit none.
+        average_cmc: Mean exact CMC of non-land spells.
+        playable_cards_by_turn: Turn -> count of spells whose exact CMC is at most
+            that turn.
         land_ratio: Percentage of the deck that is lands.
         issues: Detected curve issues (flood/screw risk, gaps).
         recommendations: Suggested improvements.
@@ -68,6 +85,7 @@ class ManaCurveResult(BaseModel):
     distribution: dict[int, int] = {}
     total_lands: int = 0
     total_spells: int = 0
+    colour_pips: list[ColourPips] = []
     average_cmc: float = 0.0
     playable_cards_by_turn: dict[int, int] = {}
     land_ratio: float = 0.0
@@ -126,13 +144,19 @@ class ValidateDeckResult(BaseModel):
 
 
 async def analyze_mana_curve(session: AsyncSession, *, deck_id: str) -> ManaCurveResult:
-    """Analyze a deck's mana curve (CMC distribution, lands/spells, issues, advice).
+    """Analyze a deck's mana curve (CMC distribution, lands/spells, colour pips, issues, advice).
 
     Loads the deck by ``deck_id`` and analyzes its **mainboard only** (sideboard
-    excluded), expanding cards by quantity. Returns a structured curve analysis —
-    distribution, land/spell counts, average CMC, turn-by-turn playability, land
-    ratio, and any detected issues with recommendations. Use ``load_deck`` for the
-    deck's card list, or ``lookup_card_by_name`` for full detail on a card.
+    excluded; the commander counts), expanding cards by quantity. Returns a structured
+    curve analysis — the seven-bucket distribution (``"1"`` … ``"7"``, a 0-cost spell in
+    ``"1"``, ``"7"`` meaning 7 or more), land/spell counts (a card is a land when its
+    front face is), colour pips per colour, average CMC, turn-by-turn playability,
+    land ratio, and any detected issues with recommendations. The distribution and colour
+    pips are what the companion's curve and colour panels draw; the land/spell counts use
+    the same rule as the deck payload's statistics, though the companion's deck-list
+    "Lands" group (by first matching type group) can differ from them. Use
+    ``load_deck`` for the deck's card list, or ``lookup_card_by_name`` for full detail on
+    a card.
 
     Args:
         session: Async database session to load the deck from.
@@ -182,20 +206,24 @@ async def analyze_mana_curve(session: AsyncSession, *, deck_id: str) -> ManaCurv
         )
 
     analysis = _logic_analyze_mana_curve(all_cards)
+    # The counts, curve and pips come from the shared rules; the companion's deck detail
+    # serves the same ``deck_statistics``, and its curve and colour panels draw them.
+    statistics = deck_statistics(deck.deck_cards)
     return ManaCurveResult(
         status="ok",
         deck_id=deck_id,
         deck_name=deck.name,
-        distribution=analysis.distribution,
-        total_lands=analysis.total_lands,
-        total_spells=analysis.total_spells,
+        distribution=curve_distribution(statistics),
+        total_lands=statistics.land_count,
+        total_spells=statistics.spell_count,
+        colour_pips=list(statistics.colour_pips),
         average_cmc=analysis.average_cmc,
         playable_cards_by_turn=analysis.playable_cards_by_turn,
         land_ratio=analysis.land_ratio,
         issues=analysis.issues,
         recommendations=analysis.recommendations,
         message=(
-            f"Curve analyzed: {analysis.total_spells} spells / {analysis.total_lands} lands, "
+            f"Curve analyzed: {statistics.spell_count} spells / {statistics.land_count} lands, "
             f"avg CMC {analysis.average_cmc:.2f}."
         ),
     )

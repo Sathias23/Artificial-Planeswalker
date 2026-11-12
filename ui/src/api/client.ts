@@ -295,7 +295,9 @@ const activeDeckIdOf = (body: unknown): string | null | undefined => {
 /**
  * The deck out of a `200` body, or `null` if the body was not the promised record. `id` and
  * `name` for {@link cardOf}'s reason, plus `cards` because it is the WHOLE PRODUCT of this read:
- * a body without it would put a calm, empty, confidently-wrong decklist on the glass.
+ * a body without it would put a calm, empty, confidently-wrong decklist on the glass. And
+ * `statistics`' two arrays, because the curve and colour panels draw them verbatim: a body without
+ * them would throw in render rather than reach a state panel.
  */
 const deckOf = (body: unknown): DeckDetail | null => {
   if (typeof body !== 'object' || body === null) return null
@@ -304,6 +306,10 @@ const deckOf = (body: unknown): DeckDetail | null => {
   if (typeof record.id !== 'string' || record.id.trim() === '') return null
   if (typeof record.name !== 'string' || record.name.trim() === '') return null
   if (!Array.isArray(record.cards)) return null
+  const statistics: unknown = record.statistics
+  if (typeof statistics !== 'object' || statistics === null) return null
+  const { curve, colour_pips: colourPips } = statistics as Partial<DeckDetail['statistics']>
+  if (!Array.isArray(curve) || !Array.isArray(colourPips)) return null
   return body as DeckDetail
 }
 

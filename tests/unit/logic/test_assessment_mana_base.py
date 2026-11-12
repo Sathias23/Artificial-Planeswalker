@@ -119,9 +119,9 @@ class TestComputeCurve:
         assert signals.land_count == 40
         assert signals.spell_count == 0
 
-    def test_mdfc_with_land_face_counts_as_land(self) -> None:
-        # Land detection is "land" in type_line — an MDFC "Creature // Land" joins faces
-        # in the top-level type_line, so it counts as a land (documented v1 policy).
+    def test_mdfc_with_spell_front_face_counts_as_spell(self) -> None:
+        # Land detection is the shared front-face rule (card_statistics.is_land): an MDFC
+        # "Creature // Land" is a creature by its front face, so it is a spell slot.
         mdfc = make_card(
             name="Tangled Florahedron // Tangled Vale",
             type_line="Creature — Elemental // Land",
@@ -129,9 +129,19 @@ class TestComputeCurve:
             cmc=2.0,
         )
         signals = compute_curve([make_deck_card(mdfc, quantity=2)])
-        assert signals.land_count == 2
-        assert signals.spell_count == 0
-        assert signals.distribution == ()
+        assert signals.land_count == 0
+        assert signals.spell_count == 2
+        assert signals.distribution == ((2, 2),)
+
+    def test_land_front_face_counts_as_land(self) -> None:
+        westvale = make_card(
+            name="Westvale Abbey // Ormendahl, Profane Prince",
+            type_line="Land // Legendary Creature — Demon",
+            mana_cost="",
+            cmc=0.0,
+        )
+        signals = compute_curve([make_deck_card(westvale)])
+        assert (signals.land_count, signals.spell_count) == (1, 0)
 
     def test_fractional_cmc_buckets_by_floor(self) -> None:
         half = make_card(name="Little Girl", mana_cost="{HW}", cmc=0.5)
@@ -353,9 +363,9 @@ class TestPipDemand:
         signals = by_color(compute_pip_signals([make_deck_card(dfc)], formula="sixty_card"))
         assert signals["R"].pip_count == 1
 
-    def test_land_mdfc_is_excluded_from_pip_demand(self) -> None:
-        # The land-detection policy wins: a "Creature // Land" MDFC is land-slot material,
-        # so its front-face cost contributes no pip demand (documented v1 consequence).
+    def test_spell_front_mdfc_contributes_its_front_face_pips(self) -> None:
+        # The shared front-face land rule: a "Creature // Land" MDFC is a spell, so its
+        # front-face cost is pip demand and it is not a colored source.
         mdfc = make_card(
             name="Tangled Florahedron // Tangled Vale",
             type_line="Creature — Elemental // Land",
@@ -364,7 +374,8 @@ class TestPipDemand:
             card_faces=[{"mana_cost": "{1}{G}"}, {"mana_cost": None}],
         )
         signals = by_color(compute_pip_signals([make_deck_card(mdfc)], formula="sixty_card"))
-        assert signals["G"].pip_count == 0
+        assert signals["G"].pip_count == 1
+        assert signals["G"].source_count == 0
 
     def test_split_card_joined_cost_parses_as_written(self) -> None:
         split = make_card(
@@ -502,6 +513,30 @@ class TestColoredSources:
         assert signals["W"].source_count == 3
         assert signals["U"].source_count == 3
         assert all(signals[color].source_count == 0 for color in "BRG")
+
+    def test_front_face_land_reads_only_its_land_faces_for_sources(self) -> None:
+        # A front-face land whose other face is a spell with mana text: only the land face is
+        # read, so the spell half's "Add {R}" never makes the land a red source.
+        land = make_card(
+            name="Green Vale // Red Beast",
+            type_line="Land // Creature — Beast",
+            mana_cost="",
+            cmc=0.0,
+            oracle_text="",
+            card_faces=[
+                {"name": "Green Vale", "type_line": "Land", "oracle_text": "{T}: Add {G}."},
+                {
+                    "name": "Red Beast",
+                    "type_line": "Creature — Beast",
+                    "oracle_text": "{T}: Add {R}.",
+                },
+            ],
+        )
+        signals = by_color(
+            compute_pip_signals([make_deck_card(land, quantity=2)], formula="sixty_card")
+        )
+        assert signals["G"].source_count == 2
+        assert signals["R"].source_count == 0
 
     def test_multi_face_land_with_a_null_face_text_reads_it_as_empty(self) -> None:
         # Scryfall can send a face's oracle_text as null; that face contributes nothing and the

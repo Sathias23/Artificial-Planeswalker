@@ -59,3 +59,9 @@ Fix findings Brad dropped at the board review; ids are those stamped in `review-
 - source_plan: `_bmad-output/initiative-artificial-planeswalker/tickets/epic-quality-analysis/tickets/story-assessment-dimensions-are-pinned-before-they-change-plan.md`
   summary: "`dimension_vector`'s docstring (`src/logic/assessment/dimensions.py`) still says the curves' tests \"verify shape, clamps, and the monotone directions only\"; since 7.6 the suite pins exact `mana_efficiency`, `resilience`, `card_advantage` and `combo_potential` values. Fix the sentence with the next story that edits `dimensions.py` (7.5 or 7.8), rebuilding `plugin/` in that PR."
   evidence: "Found by 7.6's quick review lens; verified against the docstring at baseline `fb82633`. 7.6 is tests-only by intent (no `src/` or docstring change), so the stale sentence could not be corrected there. Low: it misleads a contributor about which pins exist, it does not change behaviour."
+
+## Deferred from: story 7.5 (the agent and the companion report the same card statistics), 2026-11-12
+
+- source_plan: `_bmad-output/initiative-artificial-planeswalker/tickets/epic-quality-analysis/tickets/story-the-agent-and-the-companion-report-the-same-card-statistics-plan.md`
+  summary: "`src/logic/mana_curve.py::generate_contextual_feedback` and its helpers keep their own `int(cmc)` buckets (a sparse distribution with a 0 bucket and no 7+ cap), the last bucketing rule outside `card_statistics.py`; delete the function (it has no caller in `src/`) or route it through `mana_value_bucket`."
+  evidence: '7.5 quick review, 2026-11-12: `mana_curve.py` `generate_contextual_feedback` and `_is_good_addition` / `_generate_*` read `int(added_card.cmc)`; `grep -rn generate_contextual_feedback src/` finds only its definition. Its land rule already moved to `is_land` in 7.5; its numbers reach no tool output, so nothing a user sees disagrees today.'

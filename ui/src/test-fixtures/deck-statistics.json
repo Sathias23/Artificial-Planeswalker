@@ -1,0 +1,28 @@
+{
+  "analyze_mana_curve": {
+    "total_lands": 2,
+    "total_spells": 7,
+    "distribution": { "1": 2, "2": 0, "3": 2, "4": 1, "5": 0, "6": 0, "7": 2 },
+    "colour_pips": [
+      { "colour": "W", "count": 5 },
+      { "colour": "U", "count": 0 },
+      { "colour": "B", "count": 0 },
+      { "colour": "R", "count": 0 },
+      { "colour": "G", "count": 10 },
+      { "colour": "C", "count": 0 }
+    ]
+  },
+  "statistics": {
+    "land_count": 2,
+    "spell_count": 7,
+    "curve": [2, 0, 2, 1, 0, 0, 2],
+    "colour_pips": [
+      { "colour": "W", "count": 5 },
+      { "colour": "U", "count": 0 },
+      { "colour": "B", "count": 0 },
+      { "colour": "R", "count": 0 },
+      { "colour": "G", "count": 10 },
+      { "colour": "C", "count": 0 }
+    ]
+  }
+}

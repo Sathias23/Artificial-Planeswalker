@@ -19,99 +19,56 @@
  * queries `getByRole('banner')`.
  */
 
-import { act, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import type { CardSummary, DeckCardSummary } from '../../api/schema'
-import { boardsOf } from '../../state/deckGroups'
-import { type CardEntry, resetCardCache, useCardStore } from '../../state/cards'
+import type { DeckStatistics } from '../../api/schema'
+import { useCardStore } from '../../state/cards'
 import { ColourDistribution } from './ColourDistribution'
 import { CHART_LABEL, COLOUR_DISTRIBUTION_TITLE } from './copy'
 
-interface RowOptions {
-  quantity?: number
-  sideboard?: boolean
-  commander?: boolean
-}
+type WireColour = DeckStatistics['colour_pips'][number]['colour']
 
-/** A real corpus card, spelled as the wire spells it — `colors` included, verbatim. */
-const card = (
-  name: string,
-  manaCost: string,
-  typeLine: string,
-  cmc: number,
-  colors: string[] = [],
-): CardSummary => ({
-  id: `id-${name}`,
-  name,
-  mana_cost: manaCost,
-  cmc,
-  type_line: typeLine,
-  oracle_text: '',
-  colors,
-  rarity: 'rare',
-  set_code: 'tst',
-  set_name: 'Test Set',
-  collector_number: '1',
-  oracle_id: 'oracle-1',
-  color_identity: [],
-  legalities: {},
-  games: [],
-})
-
-const row = (summary: CardSummary, options: RowOptions = {}): DeckCardSummary => ({
-  card_id: summary.id,
-  quantity: options.quantity ?? 1,
-  sideboard: options.sideboard ?? false,
-  commander: options.commander ?? false,
-  card: summary,
+/** A payload's statistics with these pip counts; the curve is not this panel's to read. */
+const statisticsWith = (counts: Partial<Record<WireColour, number>>): DeckStatistics => ({
+  land_count: 0,
+  spell_count: 0,
+  curve: [0, 0, 0, 0, 0, 0, 0],
+  colour_pips: (['W', 'U', 'B', 'R', 'G', 'C'] as const).map((colour) => ({
+    colour,
+    count: counts[colour] ?? 0,
+  })),
 })
 
 /**
- * A three-colour deck of real corpus rows — 6 black, 3 red, 1 green, ten pips in all, so the
- * percentages are 60 / 30 / 10 and every one of them is a whole number. Deliberately NOT three
- * equal colours: the rounding case has its own test in `colours.test.ts`.
+ * A three-colour deck — 6 black, 3 red, 1 green, ten pips in all, so the percentages are
+ * 60 / 30 / 10 and every one of them is a whole number. Deliberately NOT three equal colours:
+ * the rounding case has its own test in `colours.test.ts`.
  */
-const THREE_COLOURS = [
-  row(card('Doom Blade', '{1}{B}', 'Instant', 2, ['B']), { quantity: 3 }),
-  row(card('Ayara, First of Locthwain', '{B}{B}{B}', 'Legendary Creature — Elf Noble', 3, ['B']), {
-    commander: true,
-  }),
-  row(card('Lightning Bolt', '{R}', 'Instant', 1, ['R']), { quantity: 3 }),
-  row(card('Giant Growth', '{G}', 'Instant', 1, ['G'])),
-  // Excluded, both of them — and both are real: the land carries a coloured cost, and the
-  // sideboard row would be a fifth colour if it counted.
-  row(card('Glade of the Pump Spells', '{2}{G}', 'Land', 3, ['G']), { quantity: 4 }),
-  row(
-    card(
-      'Sokka, Lateral Strategist',
-      '{1}{W/U}{W/U}',
-      'Legendary Creature — Human Warrior Ally',
-      3,
-      ['U', 'W'],
-    ),
-    {
-      sideboard: true,
-      quantity: 4,
-    },
-  ),
-]
+const THREE_COLOURS = statisticsWith({ B: 6, R: 3, G: 1 })
 
-const renderBar = (rows: DeckCardSummary[] = THREE_COLOURS) =>
-  render(<ColourDistribution boards={boardsOf(rows)} />)
+const renderBar = (statistics: DeckStatistics = THREE_COLOURS) =>
+  render(<ColourDistribution statistics={statistics} />)
 
 const segmentsIn = (container: HTMLElement) => [
   ...container.querySelectorAll<HTMLElement>('.colour-bar-segment'),
 ]
 
-beforeEach(() => {
-  resetCardCache()
-})
-
-afterEach(() => {
-  resetCardCache()
-})
+/**
+ * The verify deck's figures as the agent reports them, from the committed fixture the Python
+ * parity test compares `analyze_mana_curve` and `GET /api/deck/{id}` against.
+ */
+interface StatisticsFixture {
+  analyze_mana_curve: { colour_pips: DeckStatistics['colour_pips'] }
+  statistics: DeckStatistics
+}
+const FIXTURE = Object.values(
+  import.meta.glob<StatisticsFixture>('../../test-fixtures/deck-statistics.json', {
+    eager: true,
+    import: 'default',
+  }),
+)[0]
 
 describe('the panel and the figure', () => {
   it('renders a titled Panel whose title is the section name', () => {
@@ -255,8 +212,8 @@ describe('the legend is the accessible data path (UX-DR18)', () => {
   })
 
   it('is NOT a live region and adds no aria-live anywhere', () => {
-    // LOAD-BEARING HERE in a way it was not for the curve: this panel's numbers MOVE during the
-    // hydration sweep, so a live region would announce a changing percentage ~99 times.
+    // A bar that announced on every deck change would be a second announcer beside
+    // CardDetail's single polite region.
     const { container } = renderBar()
     expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
     expect(container.querySelectorAll('[role="status"], [role="alert"]')).toHaveLength(0)
@@ -283,97 +240,42 @@ describe('the panel is display-only (UX-DR40, UX-DR47)', () => {
   })
 })
 
-describe('the panel reads the hydration cache, and starts nothing', () => {
-  // `Ayara, Widow of the Realm // Ayara, Furnace Queen` — blank at the top level, `{1}{B}{B}` on
-  // its front face, and the namesake of the deck with the largest bar in the corpus.
-  const AYARA_DFC = card(
-    'Ayara, Widow of the Realm // Ayara, Furnace Queen',
-    '',
-    'Legendary Creature — Elf Noble // Legendary Creature — Phyrexian Elf Noble',
-    3,
-  )
-
-  it('renders NOTHING before the sweep reaches a deck of only blank-cost cards', () => {
-    const { container } = renderBar([row(AYARA_DFC)])
-    expect(container.innerHTML).toBe('')
-  })
-
-  it('RE-RENDERS with the real pips when the cache fills — the numbers move after first paint', () => {
-    // The reason "no `aria-live`" is load-bearing: this panel's PERCENTAGES change after the deck
-    // has painted. Live that is +48 pips across 16 of 40 decks.
-    const rows = [row(AYARA_DFC), row(card('Lightning Bolt', '{R}', 'Instant', 1, ['R']))]
-    const { container } = renderBar(rows)
-
-    // Before: one red pip, 100% red.
-    expect(
-      [...container.querySelectorAll('.colour-legend-name')].map((n) => n.textContent),
-    ).toEqual(['Red'])
-
-    // `act` because the write is a store update outside React's own event handling: without it
-    // the subscription fires and the re-render is never flushed, which would make this test pass
-    // for the wrong reason if it were asserting an absence.
-    act(() => {
-      // The cast is on the CARD alone, not the whole state object — `colours.test.ts`'s
-      // `hydrated` helper narrows the same way, and for the same reason: `card_faces` is
-      // untyped on the wire so the face literal must widen, but `status` and the shape of the
-      // `cards` record stay checked against the union, so a `CardEntry` drift fails `tsc` here
-      // instead of leaving this fixture writing a state the store could never contain.
-      useCardStore.setState({
-        cards: {
-          [AYARA_DFC.id]: {
-            status: 'hydrated',
-            card: { ...AYARA_DFC, card_faces: [{ mana_cost: '{1}{B}{B}' }] } as unknown as Extract<
-              CardEntry,
-              { status: 'hydrated' }
-            >['card'],
-          },
-        },
-      })
-    })
-
-    // After: two black and one red, and the subscription is what made it re-render.
-    expect(
-      [...container.querySelectorAll('.colour-legend-name')].map((n) => n.textContent),
-    ).toEqual(['Black', 'Red'])
-    expect(
-      segmentsIn(container).map((s) => s.style.getPropertyValue('--colour-bar-share')),
-    ).toEqual(['2', '1'])
-  })
-
-  it('leaves the cache untouched — it reads, and starts no fetch', () => {
-    // `hydrateCard`/`hydrateDeckCards` are `App.tsx`'s alone. If this panel ever called one, the
-    // cache would gain a `loading` entry on render.
+describe('the panel reads no card cache, and starts nothing', () => {
+  it('leaves the cache untouched — the counts are the payload’s, complete at first paint', () => {
+    // The pips used to come from the hydration cache and moved as the sweep landed. They now
+    // ride on the deck payload, so rendering reads nothing and starts nothing.
     expect(useCardStore.getState().cards).toEqual({})
     renderBar()
     expect(useCardStore.getState().cards).toEqual({})
   })
 })
 
-describe('the empty case', () => {
-  it('renders NOTHING when the deck has no cards', () => {
-    const { container } = renderBar([])
-    expect(container.innerHTML).toBe('')
+describe('the legend is the figures the agent reports', () => {
+  it('draws the committed verify deck with the counts `analyze_mana_curve` reports', () => {
+    // `deck-statistics.json` is what the Python parity test holds the tool AND the payload to,
+    // so this ties the painted legend to the agent's colour pips through one file.
+    expect(FIXTURE).toBeDefined()
+    const { container } = renderBar(FIXTURE.statistics)
+    const legend = [...container.querySelectorAll('.colour-legend-count')].map((n) => n.textContent)
+    const toolCounts = FIXTURE.analyze_mana_curve.colour_pips
+      .filter((entry) => entry.count > 0)
+      .map((entry) => `${entry.count} pips`)
+    expect(legend).toEqual(toolCounts)
+    // Non-vacuity: the verify deck's white and green, in WUBRG order.
+    expect(legend).toEqual(['5 pips', '10 pips'])
   })
+})
 
-  it('renders nothing for a land-only deck — cards, but no colour balance to describe', () => {
+describe('the empty case', () => {
+  it('renders NOTHING when every count is zero — an empty, land-only or generic-only deck', () => {
     // Measured: NO deck in the corpus reaches this state (all 40 have at least 2 pips), so it is
     // not producible from live data and this is its only rendered witness.
-    const { container } = renderBar([
-      row(card('Forest', '', 'Basic Land — Forest', 0), { quantity: 24 }),
-      row(card('Glade of the Pump Spells', '{2}{G}', 'Land', 3), { quantity: 4 }),
-    ])
-    expect(container.innerHTML).toBe('')
-  })
-
-  it('renders nothing for a deck of purely generic costs', () => {
-    const { container } = renderBar([row(card('Sol Ring', '{1}', 'Artifact', 1), { quantity: 4 })])
+    const { container } = renderBar(statisticsWith({}))
     expect(container.innerHTML).toBe('')
   })
 
   it('draws ONE segment at 100% for a mono-colour deck — 9 of the 40 real decks', () => {
-    const { container } = renderBar([
-      row(card('Ayara, First of Locthwain', '{B}{B}{B}', 'Legendary Creature — Elf Noble', 3)),
-    ])
+    const { container } = renderBar(statisticsWith({ B: 3 }))
     expect(segmentsIn(container)).toHaveLength(1)
     expect(container.querySelector('.colour-legend-percent')!.textContent).toBe('100%')
     expect(container.querySelector('.colour-legend-count')!.textContent).toBe('3 pips')
