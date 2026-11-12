@@ -211,8 +211,8 @@ async def test_analyze_mana_curve_ok(session: AsyncSession) -> None:
     assert result.status == "ok"
     assert result.total_lands == 4
     assert result.total_spells == 6  # 4 Shock + 2 Divination, expanded by quantity
-    assert result.distribution == {1: 4, 3: 2}
-    assert 6 not in result.distribution  # the CMC-6 sideboard card is excluded
+    assert result.distribution == {1: 4, 2: 0, 3: 2, 4: 0, 5: 0, 6: 0, 7: 0}
+    assert result.distribution[6] == 0  # the CMC-6 sideboard card is excluded
     assert result.land_ratio == 40.0  # 4 lands / 10 mainboard cards
     assert result.average_cmc == pytest.approx((4 * 1 + 2 * 3) / 6)
     assert result.playable_cards_by_turn[1] == 4

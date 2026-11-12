@@ -23,7 +23,8 @@ from fastapi import APIRouter
 from src.companion.app.deps import DbSession
 from src.companion.app.errors import CompanionError, error_responses
 from src.data.repositories.deck import DeckRepository
-from src.data.schemas.deck import DeckDetailFull, DeckSummary
+from src.data.schemas.deck import DeckSummary
+from src.logic.card_statistics import DeckDetailWithStatistics
 from src.logic.deck_validator import FormatCheckReport, format_check
 
 router = APIRouter(prefix="/api")
@@ -56,16 +57,18 @@ async def read_decks(session: DbSession) -> list[DeckSummary]:
 
 @router.get(
     "/deck/{deck_id}",
-    response_model=DeckDetailFull,
+    response_model=DeckDetailWithStatistics,
     responses=error_responses("deck_not_found"),
 )
-async def read_deck(deck_id: str, session: DbSession) -> DeckDetailFull:
-    """Return one saved deck in full: its metadata, its counts and every card in it.
+async def read_deck(deck_id: str, session: DbSession) -> DeckDetailWithStatistics:
+    """Return one saved deck in full: its metadata, counts, every card in it, and its statistics.
 
     The whole decklist, with each entry naming its quantity, which board it belongs
     to, whether it is the commander, and the whole card record itself — legalities, image
     URLs and faces included — so a client needs no follow-up request per card. The order of
-    ``cards`` is not meaningful — see ``DeckDetailFull``.
+    ``cards`` is not meaningful — see ``DeckDetailFull``. ``statistics`` carries the land
+    count, spell count, mana curve and colour pips the agent's ``analyze_mana_curve`` reports
+    for the same deck, computed by the same rules.
 
     Args:
         deck_id: The deck's id. A deck id has no declared shape, so any id this
@@ -84,7 +87,7 @@ async def read_deck(deck_id: str, session: DbSession) -> DeckDetailFull:
     deck = await DeckRepository(session).get_deck_with_cards(deck_id)
     if deck is None:
         raise CompanionError("deck_not_found")
-    return DeckDetailFull.from_deck(deck)
+    return DeckDetailWithStatistics.from_deck(deck)
 
 
 @router.get(

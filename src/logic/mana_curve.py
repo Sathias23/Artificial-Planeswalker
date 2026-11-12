@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from src.data.schemas import Card
+from src.logic.card_statistics import CURVE_BUCKETS, is_land, mana_value_bucket
 
 
 @dataclass
@@ -35,11 +36,12 @@ class ManaCurveAnalysis:
     """Analysis results for a deck's mana curve.
 
     Attributes:
-        distribution: CMC → card count mapping
-        total_lands: Number of land cards
+        distribution: Mana-value bucket → spell count, over all seven ``CURVE_BUCKETS``
+            (zeros kept; 0-cost spells in 1, 7 means "7 or more")
+        total_lands: Number of land cards (front-face rule, ``card_statistics.is_land``)
         total_spells: Number of spell cards
-        average_cmc: Mean CMC of all non-land spells
-        playable_cards_by_turn: Turn → count of cards playable on that turn
+        average_cmc: Mean exact CMC of all non-land spells
+        playable_cards_by_turn: Turn → count of spells whose exact CMC is at most that turn
         land_ratio: Percentage of deck that is lands
         issues: List of detected issues (flood/screw risk, gaps)
         recommendations: Suggested improvements
@@ -70,31 +72,26 @@ def analyze_mana_curve(cards: list[Card]) -> ManaCurveAnalysis:
     if not cards:
         raise ValueError("Cannot analyze mana curve of empty deck")
 
-    # Separate lands from spells
-    lands = [c for c in cards if c.type_line and "Land" in c.type_line]
-    spells = [c for c in cards if c not in lands]
+    # Separate lands from spells (the shared front-face land rule)
+    spells = [c for c in cards if not is_land(c)]
 
-    total_lands = len(lands)
     total_spells = len(spells)
+    total_lands = len(cards) - total_spells
     total_cards = total_lands + total_spells
 
-    # Build CMC distribution
-    distribution: dict[int, int] = {}
-    cmc_sum = 0
-
+    # Build the shared seven-bucket distribution (all seven keys, zeros kept)
+    distribution: dict[int, int] = dict.fromkeys(CURVE_BUCKETS, 0)
     for spell in spells:
-        cmc = int(spell.cmc) if spell.cmc is not None else 0
-        distribution[cmc] = distribution.get(cmc, 0) + 1
-        cmc_sum += cmc
+        distribution[mana_value_bucket(spell.cmc)] += 1
 
-    # Calculate average CMC (excluding lands)
+    # Calculate average CMC (excluding lands), on the exact cmc
+    cmc_sum = sum(spell.cmc for spell in spells)
     average_cmc = cmc_sum / total_spells if total_spells > 0 else 0.0
 
-    # Calculate playable cards per turn (assuming 1 land/turn on the play)
+    # Calculate playable cards per turn (assuming 1 land/turn on the play), on the exact cmc
     playable_by_turn: dict[int, int] = {}
     for turn in range(1, 8):  # Analyze turns 1-7
-        playable_count = sum(count for cmc, count in distribution.items() if cmc <= turn)
-        playable_by_turn[turn] = playable_count
+        playable_by_turn[turn] = sum(1 for spell in spells if spell.cmc <= turn)
 
     # Calculate land ratio
     land_ratio = (total_lands / total_cards * 100) if total_cards > 0 else 0.0
@@ -273,9 +270,8 @@ def generate_contextual_feedback(deck_cards: list[Card], added_card: Card) -> Cu
     if not deck_cards:
         return None
 
-    # Separate lands from spells for analysis
-    lands = [c for c in deck_cards if c.type_line and "Land" in c.type_line]
-    spells = [c for c in deck_cards if c not in lands]
+    # Separate lands from spells for analysis (the shared front-face land rule)
+    spells = [c for c in deck_cards if not is_land(c)]
 
     total_cards = len(deck_cards)
     total_spells = len(spells)

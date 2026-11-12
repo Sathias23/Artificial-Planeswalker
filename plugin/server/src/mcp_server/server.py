@@ -1009,11 +1009,22 @@ def build_server(
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:
         """Analyze a deck's mana curve by id.
 
-        Loads the deck and analyzes its mainboard only (sideboard excluded),
-        returning the CMC distribution, land/spell counts, average CMC,
-        turn-by-turn playability, land ratio, and any detected issues with
-        recommendations. Observational — it does not modify the deck. Use
-        ``load_deck`` for the card list. Stateless: pass ``deck_id`` every call.
+        Loads the deck and analyzes its mainboard only (sideboard excluded; the
+        commander counts), returning the mana-value distribution, land/spell
+        counts, colour pips, average CMC, turn-by-turn playability, land ratio,
+        and any detected issues with recommendations. ``distribution`` always
+        has all seven buckets ``"1"`` … ``"7"``: mana values round half up, a
+        0-cost spell counts in ``"1"``, and ``"7"`` means 7 or more. A card is a
+        land when its FRONT face's type has the word "Land", so a modal
+        double-faced card whose front is a spell counts as a spell.
+        ``colour_pips`` lists W, U, B, R, G, C (colourless) in that order, zeros
+        kept: the mana symbols in non-land front-face costs crediting each colour,
+        by quantity — a hybrid symbol credits both of its colours, a Phyrexian
+        symbol its colour, generic and ``{X}`` none. These counts, distribution
+        and pips are the same figures the companion's deck view shows.
+        ``average_cmc`` and ``playable_cards_by_turn`` use each spell's exact
+        CMC. Observational — it does not modify the deck. Use ``load_deck`` for
+        the card list. Stateless: pass ``deck_id`` every call.
 
         Args:
             deck_id: The deck id (from ``create_deck`` or ``list_decks``).

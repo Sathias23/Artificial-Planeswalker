@@ -746,7 +746,7 @@ class TestCommittedSchema:
         # parse gives an empty set, which would satisfy any "in" check by accident of ordering.
         assert names, "no component schemas parsed — the fixture is not reading a real document"
 
-        assert {"DeckSummary", "DeckDetailFull", "DeckCardFull", "Card"} <= names
+        assert {"DeckSummary", "DeckDetailWithStatistics", "DeckCardFull", "Card"} <= names
         # The bounded shapes are NOT here, and their absence is the change rather than a gap:
         # they still exist in `src/data/schemas` and still ride on the MCP `load_deck` payload,
         # but nothing on this wire references them any more, and a model no route reaches never
@@ -777,7 +777,7 @@ class TestCommittedSchema:
         assert "413" not in listing
 
     def test_the_success_bodies_are_unwrapped(self, schema):
-        """AC 1, AC 2: a bare array of ``DeckSummary``, and ``DeckDetailFull`` itself."""
+        """AC 1, AC 2: a bare array of ``DeckSummary``, and ``DeckDetailWithStatistics`` itself."""
         listing = schema["paths"][_LIST_PATH]["get"]["responses"]["200"]["content"][
             "application/json"
         ]["schema"]
@@ -787,10 +787,14 @@ class TestCommittedSchema:
         detail = schema["paths"][_DETAIL_PATH]["get"]["responses"]["200"]["content"][
             "application/json"
         ]["schema"]
-        assert detail["$ref"].endswith("/DeckDetailFull")
+        assert detail["$ref"].endswith("/DeckDetailWithStatistics")
         # …and its rows carry the whole `Card`, which is the property the cold-open request diet
         # rests on: a deck view renders from this one response and asks the card route for nothing.
-        row = schema["components"]["schemas"]["DeckDetailFull"]["properties"]["cards"]["items"]
+        detail_schema = schema["components"]["schemas"]["DeckDetailWithStatistics"]
+        row = detail_schema["properties"]["cards"]["items"]
+        # …and it carries the shared card statistics the agent's `analyze_mana_curve` reports.
+        assert detail_schema["properties"]["statistics"]["$ref"].endswith("/DeckStatistics")
+        assert "statistics" in detail_schema["required"]
         assert row["$ref"].endswith("/DeckCardFull")
         card = schema["components"]["schemas"]["DeckCardFull"]["properties"]["card"]
         assert card["$ref"].endswith("/Card")

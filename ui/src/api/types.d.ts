@@ -72,12 +72,14 @@ export interface paths {
         };
         /**
          * Read Deck
-         * @description Return one saved deck in full: its metadata, its counts and every card in it.
+         * @description Return one saved deck in full: its metadata, counts, every card in it, and its statistics.
          *
          *     The whole decklist, with each entry naming its quantity, which board it belongs
          *     to, whether it is the commander, and the whole card record itself — legalities, image
          *     URLs and faces included — so a client needs no follow-up request per card. The order of
-         *     ``cards`` is not meaningful — see ``DeckDetailFull``.
+         *     ``cards`` is not meaningful — see ``DeckDetailFull``. ``statistics`` carries the land
+         *     count, spell count, mana curve and colour pips the agent's ``analyze_mana_curve`` reports
+         *     for the same deck, computed by the same rules.
          */
         get: operations["read_deck_api_deck__deck_id__get"];
         put?: never;
@@ -562,6 +564,19 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * ColourPips
+         * @description How many mana symbols in a deck's costs credit one colour.
+         */
+        ColourPips: {
+            /**
+             * Colour
+             * @enum {string}
+             */
+            colour: "W" | "U" | "B" | "R" | "G" | "C";
+            /** Count */
+            count: number;
+        };
+        /**
          * DeckCardFull
          * @description One card entry in a deck, carrying the whole card record rather than a summary.
          *
@@ -629,18 +644,21 @@ export interface components {
             deck_id?: string | null;
         };
         /**
-         * DeckDetailFull
-         * @description A saved deck's metadata, card counts and full card list.
+         * DeckDetailWithStatistics
+         * @description A saved deck's metadata, card counts, full card list, and its card statistics.
          *
-         *     Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardFull`` per entry,
-         *     each embedding the complete card record. This is what a browser client renders a
-         *     deck view from in a single request.
+         *     Everything ``DeckSummary`` carries, plus ``cards`` — one ``DeckCardFull`` per entry, each
+         *     embedding the complete card record — and ``statistics``: the land count, spell count, mana
+         *     curve and colour pips over the commander and mainboard, the same figures the agent's
+         *     ``analyze_mana_curve`` tool reports for the deck. This is what a browser client renders a deck
+         *     view from in a single request, and it draws the statistics as given rather than recomputing
+         *     them.
          *
-         *     The order of ``cards`` is **not** meaningful and is not the order the cards were
-         *     added. A consumer that wants a stable presentation order (by type, by mana value, by
-         *     name) must sort them itself.
+         *     The order of ``cards`` is **not** meaningful and is not the order the cards were added. A
+         *     consumer that wants a stable presentation order (by type, by mana value, by name) must sort
+         *     them itself.
          */
-        DeckDetailFull: {
+        DeckDetailWithStatistics: {
             /** Id */
             id: string;
             /** Name */
@@ -683,6 +701,32 @@ export interface components {
              * @default []
              */
             cards: components["schemas"]["DeckCardFull"][];
+            statistics: components["schemas"]["DeckStatistics"];
+        };
+        /**
+         * DeckStatistics
+         * @description A deck's land count, spell count, mana curve and colour pips, over commander and mainboard.
+         *
+         *     The sideboard is not counted. A card is a land when the word "land" appears in the type part
+         *     of its front face, so a modal double-faced card whose front is a spell counts as a spell.
+         */
+        DeckStatistics: {
+            /** Land Count */
+            land_count: number;
+            /** Spell Count */
+            spell_count: number;
+            /** Curve */
+            curve: [
+                number,
+                number,
+                number,
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Colour Pips */
+            colour_pips: components["schemas"]["ColourPips"][];
         };
         /**
          * DeckSummary
@@ -1415,7 +1459,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeckDetailFull"];
+                    "application/json": components["schemas"]["DeckDetailWithStatistics"];
                 };
             };
             /** @description reason: invalid_request */
