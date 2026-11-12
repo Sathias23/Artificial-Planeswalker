@@ -27,7 +27,7 @@ import pytest
 from src.companion.app import images
 from src.companion.app.errors import CompanionError
 from src.data.schemas.card import CardFace
-from tests.unit.companion.conftest import FakeClock, StallableUpstream
+from tests.unit.companion.conftest import FakeClock, StallableUpstream, streamed
 
 _SIX = {
     "small": "https://cards.scryfall.io/small/x.jpg?1",
@@ -248,7 +248,7 @@ class TestFetchImage:
     async def test_a_200_image_returns_its_bytes_and_its_own_content_type(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
-                200, content=b"\x89PNG-body", headers={"content-type": "image/png"}
+                200, content=streamed(b"\x89PNG-body"), headers={"content-type": "image/png"}
             )
 
         async with _client(handler) as client:
@@ -262,7 +262,9 @@ class TestFetchImage:
 
         def handler(request: httpx.Request) -> httpx.Response:
             seen.append(request)
-            return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                200, content=streamed(b"x"), headers={"content-type": "image/jpeg"}
+            )
 
         async with _client(handler) as client:
             await images.fetch_image(client, _SIX["normal"], _pacer())
@@ -278,7 +280,9 @@ class TestFetchImage:
 
         def handler(request: httpx.Request) -> httpx.Response:
             seen.append(str(request.url))
-            return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                200, content=streamed(b"x"), headers={"content-type": "image/jpeg"}
+            )
 
         url = "https://cards.scryfall.io/normal/front/a/b/c.jpg?1700000000"
         async with _client(handler) as client:
@@ -290,7 +294,9 @@ class TestFetchImage:
     @pytest.mark.parametrize("status", [404, 403, 429, 500, 503])
     async def test_a_non_200_upstream_status_is_a_fetch_failure(self, status: int) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(status, content=b"nope", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                status, content=streamed(b"nope"), headers={"content-type": "image/jpeg"}
+            )
 
         async with _client(handler) as client:
             with pytest.raises(CompanionError) as raised:
@@ -302,7 +308,9 @@ class TestFetchImage:
         # A captive portal, an error page, or an HTML "soon" placeholder. Serving it through
         # would put attacker-influenced HTML on the companion's own origin.
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, content=b"<html>", headers={"content-type": "text/html"})
+            return httpx.Response(
+                200, content=streamed(b"<html>"), headers={"content-type": "text/html"}
+            )
 
         async with _client(handler) as client:
             with pytest.raises(CompanionError) as raised:
@@ -312,7 +320,7 @@ class TestFetchImage:
 
     async def test_a_missing_content_type_is_a_fetch_failure(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, content=b"x", headers={})
+            return httpx.Response(200, content=streamed(b"x"), headers={})
 
         async with _client(handler) as client:
             with pytest.raises(CompanionError) as raised:
@@ -345,7 +353,9 @@ class TestFetchImage:
 
         def handler(request: httpx.Request) -> httpx.Response:
             attempted.append(str(request.url))
-            return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                200, content=streamed(b"x"), headers={"content-type": "image/jpeg"}
+            )
 
         async with _client(handler) as client:
             with pytest.raises(CompanionError) as raised:
@@ -362,7 +372,9 @@ class TestFetchImage:
 
         def handler(request: httpx.Request) -> httpx.Response:
             attempted.append(str(request.url))
-            return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                200, content=streamed(b"x"), headers={"content-type": "image/jpeg"}
+            )
 
         async with _client(handler) as client:
             await images.fetch_image(client, _SIX["normal"], _pacer())
@@ -377,7 +389,9 @@ class TestFetchImage:
 
         def handler(request: httpx.Request) -> httpx.Response:
             attempted.append(str(request.url))
-            return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                200, content=streamed(b"x"), headers={"content-type": "image/jpeg"}
+            )
 
         async with _client(handler) as client:
             with pytest.raises(CompanionError) as raised:
@@ -391,7 +405,9 @@ class TestFetchImage:
         # would be served — then cached immutable for a year: a permanently broken tile through
         # the success door (Greptile P1, PR #33). Zero bytes is not a picture.
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, content=b"", headers={"content-type": "image/jpeg"})
+            return httpx.Response(
+                200, content=streamed(b""), headers={"content-type": "image/jpeg"}
+            )
 
         async with _client(handler) as client:
             with pytest.raises(CompanionError) as raised:
@@ -423,7 +439,7 @@ class TestFetchImage:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
-                content=b"<svg onload=alert(1)/>",
+                content=streamed(b"<svg onload=alert(1)/>"),
                 headers={"content-type": "image/svg+xml; charset=utf-8"},
             )
 

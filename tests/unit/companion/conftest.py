@@ -749,6 +749,24 @@ async def image_shapes(ready_db):
 # =============================================================================================
 
 
+async def streamed(body: bytes) -> AsyncIterator[bytes]:
+    """Yield *body* as one chunk, so a fake CDN's response arrives the way a real one does.
+
+    ``httpx.Response(content=b"...")`` reads its body at construction, so a ``MockTransport``
+    handler that returns one hands the client a response whose stream is already consumed — a
+    shape no network transport produces. ``images.fetch_image`` counts ``aiter_raw()``, the wire
+    bytes, and httpx refuses that on a consumed stream with ``StreamConsumed``. Every fake image
+    upstream in this package therefore wraps its body in this.
+
+    Args:
+        body: The response body.
+
+    Yields:
+        *body*, once.
+    """
+    yield body
+
+
 class FakeClock:
     """Virtual time: the clock moves only when the pacer sleeps on it (c3-6 AC 9, Q3).
 
@@ -873,4 +891,6 @@ class StallableUpstream:
         finally:
             self.in_flight -= 1
         self.completed += 1
-        return httpx.Response(200, content=self._body, headers={"content-type": self._content_type})
+        return httpx.Response(
+            200, content=streamed(self._body), headers={"content-type": self._content_type}
+        )

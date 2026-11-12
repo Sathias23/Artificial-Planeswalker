@@ -50,6 +50,7 @@ from tests.unit.companion.conftest import (
     _point_at,
     _seed,
     _uuid,
+    streamed,
 )
 
 # --------------------------------------------------------------------------------------------
@@ -89,7 +90,7 @@ class Recorder:
         # c3-1's R3 finding was that identical fixtures prove nothing.
         body = self._body + str(request.url).encode().split(b"/")[-1]
         return httpx.Response(
-            self.status, content=body, headers={"content-type": self._content_type}
+            self.status, content=streamed(body), headers={"content-type": self._content_type}
         )
 
     def body_for(self, url: str) -> bytes:
