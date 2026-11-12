@@ -3,7 +3,7 @@ title: 'The agent and the companion report the same card statistics'
 type: 'bugfix'
 ticket: '5'
 created: '2026-11-12'
-status: 'review'
+status: done
 baseline_revision: '06190977325b2e3c3c47868e328c29054e1aef45'
 route: 'full'
 route_source: 'auto'
