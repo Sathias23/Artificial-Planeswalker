@@ -82,10 +82,11 @@ describe('the front face is the whole rule (FR-05, UX-DR17)', () => {
   })
 })
 
-describe('the four cards the repo’s two land policies disagree about', () => {
-  // src/viewer/view_model.py::is_land splits on the front face; src/logic/mana_curve.py and
-  // src/logic/assessment/mana_base.py test the WHOLE string for "land". FR-05 and UX-DR17 both
-  // say front face, so all four of these are NOT lands — and all four are in real decks.
+describe('the four MDFCs a whole-string land test gets wrong', () => {
+  // src/viewer/view_model.py::is_land and src/logic/card_statistics.py::is_land both read the
+  // front face; a whole-string "land" test, which the agent's tools used before the shared card
+  // statistics, does not. FR-05 and UX-DR17 both say front face, so all four of these are NOT
+  // lands — and all four are in real decks.
   it.each([
     ['Agadeem’s Awakening // Agadeem, the Undercrypt', 'Sorcery // Land', 'Sorcery'],
     ['Kazandu Mammoth // Kazandu Valley', 'Creature — Elephant // Land', 'Creature'],
@@ -100,11 +101,11 @@ describe('the four cards the repo’s two land policies disagree about', () => {
     expect(groupOf(typeLine)).not.toBe('Land')
   })
 
-  it('would call all four LANDS under src/logic/mana_curve.py’s whole-string policy', () => {
-    // The disagreement spelled out: `"land" in type_line.lower()` is that module's rule, and
+  it('would call all four LANDS under a whole-string policy', () => {
+    // The disagreement spelled out: `"land" in type_line.lower()` was the old Python rule, and
     // running it here shows the four are real rather than theoretical. **This is a statement
-    // about the PYTHON policy, not a discriminating test of the code below** — see the block
-    // that follows, which is the one that actually holds `groupOf` to the front face.
+    // about that policy, not a discriminating test of the code below** — see the block that
+    // follows, which is the one that actually holds `groupOf` to the front face.
     const wholeString = (typeLine: string) => typeLine.toLowerCase().includes('land')
     for (const typeLine of [
       'Sorcery // Land',

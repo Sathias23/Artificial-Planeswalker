@@ -154,8 +154,8 @@ export const frontFace = (typeLine: string): string => typeLine.split(/\s*\/\/\s
  *      the match is against whole words, and a subtype list is exactly where a stray `Creature`
  *      or `Land` can appear without the card being one.
  *
- * The match is against WHOLE WORDS, not a substring: `'land' in type_line` is the whole-string
- * policy this module's header rejects, and a substring test would additionally group anything
+ * The match is against WHOLE WORDS, not a substring: `'land' in type_line` is a whole-string
+ * test this module does not use, and a substring test would additionally group anything
  * containing `Landfall`-shaped text wrongly.
  *
  * Args:
