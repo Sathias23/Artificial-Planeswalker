@@ -207,9 +207,9 @@ The panel reads:
 >
 > In your agent session, ask it to initialize the database (`initialize_database`).
 
-It means that literally. Readiness is re-probed on every request and never cached, so a database
-built while the companion is running is picked up with **no restart** — leave the page open and it
-will fill itself in.
+It means that literally. Readiness is re-probed on every request that reads the database and never
+cached, so a database built while the companion is running is picked up with **no restart** — leave
+the page open and it will fill itself in.
 
 **Recovering from a failed first import.** The importer creates the schema *before* it downloads, so
 an import that fails partway can leave a `cards.db` with tables but no cards. The page is still
