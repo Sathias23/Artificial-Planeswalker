@@ -3,7 +3,7 @@ title: 'Assessment dimensions are pinned before they change'
 type: 'chore'
 ticket: '6'
 created: '2026-11-12'
-status: 'review'
+status: done
 baseline_revision: 'fb82633053eacd091e47996b6e5c7c3ad1d01d35'
 route: 'full'
 route_source: 'auto'
