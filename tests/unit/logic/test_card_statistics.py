@@ -77,6 +77,9 @@ class TestFrontFaceTypeLine:
         ("Token Artifact — Lander", False),
         ("Instant", False),
         ("Card", False),
+        # Synthetic: no printed subtype is the word "Land", so this holds the type-half split
+        # (before the em-dash) on its own.
+        ("Enchantment Creature — Land Spirit", False),
     ],
 )
 def test_is_land_reads_the_front_face_type_half(type_line: str, expected: bool) -> None:
