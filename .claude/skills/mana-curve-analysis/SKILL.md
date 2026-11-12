@@ -107,16 +107,20 @@ the tool's output as a **floor, not a verdict**, and cover what it's blind to:
   38–42%/60-card assumptions. **You** establish the format and adjust the math (see *Format-aware
   interpretation*). Do **not** try to pass a `format` argument to `analyze_mana_curve` — it doesn't have
   one; supply the lens in your reasoning instead.
-- **Ramp / mana rocks / dorks.** The tool counts a "land" **only** as `"Land" in type_line` — it does
-  **not** count Llanowar Elves, Signets, Treasure-makers, or rituals as mana sources. A ramp deck
+- **Ramp / mana rocks / dorks.** The tool counts a "land" **only** when the card's **front face** has
+  the word "Land" in its type (before the em-dash) — it does **not** count Llanowar Elves, Signets, Treasure-makers, or rituals as mana sources. A ramp deck
   legitimately running 22 lands + 10 accelerants reads as "mana screw + top-heavy" when it's perfectly
   fine. Always check for ramp before endorsing a "screw risk" or "top-heavy" flag.
-- **MDFC / "spell // land" cards.** A modal double-faced card whose `type_line` contains "Land" (e.g.
-  `... // ... Land`) is counted as a **land**, inflating `total_lands` / `land_ratio`; a card whose front
-  is a spell may still register as a land. Note the distortion when a deck runs them.
+- **MDFC / "spell // land" cards.** The **front face decides**: `Sorcery // Land` (Agadeem's
+  Awakening) or `Creature — Elephant // Land` (Kazandu Mammoth) counts as a **spell** — its front-face
+  cost is in `distribution` and `colour_pips`, and it is **not** in `total_lands`. Yet in play it is often
+  a land drop, so a deck running several of them is **less land-light than `land_ratio` says**; count them
+  as half-lands when you judge the mana base. A front-face land (`Land // Creature — Demon`) is a land.
 - **Printed CMC ≠ effective cost.** X-spells use printed CMC (so `{X}{R}` reads as cheap), and cost
-  reducers / affinity / convoke / alternative costs make cards cheaper in practice. **`cmc=None` spells
-  land in the CMC-0 bucket.** The histogram is *printed-cost*, not *play-cost* — say so when it matters.
+  reducers / affinity / convoke / alternative costs make cards cheaper in practice. **0-cost spells sit in
+  bucket `"1"`** (there is no `"0"` bucket), and **`"7"` means 7 or more** — a 12-drop is in `"7"`. The
+  histogram is *printed-cost*, not *play-cost* — say so when it matters. A true split card's CMC is
+  Scryfall's sum of both halves, so it buckets high.
 - **`playable_cards_by_turn` is a rough proxy.** It assumes **1 land/turn on the play** and is cumulative
   (cards with `cmc ≤ turn`); it ignores whether you'll actually have the right **colors**. Use it to
   illustrate early-game density, not as a guarantee.
@@ -134,8 +138,8 @@ deck.
 2. **Establish the format** (see *Format-aware interpretation*) — infer it; if ambiguous, **ask**; only
    fall back to `"standard"` as a last resort.
 3. **Analyze.** `analyze_mana_curve(deck_id)` → read **every** field: `distribution`,
-   `total_lands`/`total_spells`, `average_cmc`, `land_ratio`, `playable_cards_by_turn`, `issues`,
-   `recommendations`. Branch on `status` (`ok`/`empty`/`deck_not_found`/`error`) — never assume `ok`.
+   `total_lands`/`total_spells`, `colour_pips`, `average_cmc`, `land_ratio`, `playable_cards_by_turn`,
+   `issues`, `recommendations`. Branch on `status` (`ok`/`empty`/`deck_not_found`/`error`) — never assume `ok`.
    **Read `distribution` with string keys** — `distribution["5"]`, not `distribution[5]` (see the contract
    note) — or your bucket lookups silently miss.
 4. **Classify the deck** (archetype from avg-CMC band + the real card contents/plan; format from step 2).
@@ -152,7 +156,7 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 
 | Tool | Key params | `status` values (payload on success) |
 |------|-----------|--------------------------------------|
-| `analyze_mana_curve` | `deck_id` **only** (no `format`) | `ok` (`distribution`, `total_lands`, `total_spells`, `average_cmc`, `playable_cards_by_turn`, `land_ratio`, `issues[]`, `recommendations[]`, `deck_name`) · `empty` (no mainboard cards) · `deck_not_found` · `error` |
+| `analyze_mana_curve` | `deck_id` **only** (no `format`) | `ok` (`distribution`, `total_lands`, `total_spells`, `colour_pips[]`, `average_cmc`, `playable_cards_by_turn`, `land_ratio`, `issues[]`, `recommendations[]`, `deck_name`) · `empty` (no mainboard cards) · `deck_not_found` · `error` |
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `error` |
 | `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each a `card` + `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` · `error` |
@@ -166,15 +170,22 @@ is no remembered format or "active deck."
 
 **Notes that bite if ignored:**
 
-- **`analyze_mana_curve` reads the mainboard only** (sideboard excluded) and **expands by quantity** — a
-  4-of counts 4×. It needs a **saved `deck_id`**; there is no pasted-list path.
+- **`analyze_mana_curve` reads the mainboard only** (sideboard excluded; the commander counts) and
+  **expands by quantity** — a 4-of counts 4×. It needs a **saved `deck_id`**; there is no pasted-list path.
 - **`distribution` and `playable_cards_by_turn` keys serialize as *strings* at the MCP client boundary**
-  (JSON object keys are strings even though the Python dict keys are ints — confirmed live:
-  `distribution` came back as `{"1":2,"2":1,"3":2,"4":5,"5":17,"6":8}`). Read `distribution["5"]`, not
-  `distribution[5]`; don't let an int-key lookup silently return nothing. **The dict is also *sparse* — a
-  CMC slot with zero spells is *absent*, not `0`** (the tool only emits buckets that have ≥ 1 spell), so read
-  every bucket defensively with `.get("2", 0)`; a direct `distribution["2"]` on a deck with no 2-drops
-  raises/misses — the same silent-miss failure in a different guise.
+  (JSON object keys are strings even though the Python dict keys are ints). Read `distribution["5"]`, not
+  `distribution[5]`; don't let an int-key lookup silently return nothing. **`distribution` always has all
+  seven buckets `"1"` … `"7"`**, zeros kept (`{"1":2,"2":0,"3":2,"4":1,"5":0,"6":0,"7":2}`): mana values
+  round half up, a 0-cost spell counts in `"1"`, and `"7"` is **7 or more**. `average_cmc` and
+  `playable_cards_by_turn` use each spell's **exact** CMC, so they can see a 9-drop the `"7"` bucket folds.
+- **`colour_pips`** is six `{colour, count}` entries in the order `W, U, B, R, G, C` (colourless), zeros
+  kept — the mana symbols in **non-land front-face costs**, by quantity. A hybrid `{G/W}` credits **both**
+  colours (so the counts can sum past the symbols printed), Phyrexian `{U/P}` credits its colour, `{2/R}`
+  credits red, and generic / `{X}` credit nothing. It is **demand**, not sources — compare it with the
+  lands' colours yourself.
+- **The companion shows the same numbers.** The companion app's mana-curve and colour panels draw the
+  deck's `total_lands`, `distribution` and `colour_pips` from the same function, so when the user reads
+  the browser view, cite these figures rather than re-counting.
 - **`mana_value_min/max` on the search tools is your curve-targeting filter** — use it to fetch exactly the
   slot you're filling (e.g. `mana_value_max=2` for early plays, `mana_value_min=1, mana_value_max=2` for a
   pure 2-drop).
