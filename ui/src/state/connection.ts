@@ -78,9 +78,9 @@
  * payload is never read, because *which deck am I looking at* has exactly one correct
  * answer and it is the server's — the full boot asks `GET /api/active-deck` FIRST, so the client
  * structurally cannot refetch the deck it is leaving. And `deck.ts` re-asserts the same humility
- * on the edited-deck path: any window where the settled deck id is not current truth (mid-boot,
- * `'none'`, `'refused'`) falls back to that same full re-drive rather than adjudicating ids
- * client-side. This module still decides nothing about ids — it folds one field and picks a
+ * on the edited-deck path: any window where the settled deck id is not current truth falls back
+ * to that same full re-drive rather than adjudicating ids client-side — at once from `'none'` or
+ * `'refused'`, and mid-boot deferred behind the boot in flight, which paints first. This module still decides nothing about ids — it folds one field and picks a
  * verb; every comparison lives in the deck slice beside the state it compares against.
  */
 

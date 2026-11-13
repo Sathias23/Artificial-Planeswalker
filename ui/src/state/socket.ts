@@ -118,7 +118,9 @@ export const SOCKET_MULTIPLIER = 2
 export const SOCKET_CEILING_MS = 30_000
 
 /**
- * How long the socket must have been down CONTINUOUSLY before the Disconnected panel is shown.
+ * How long the socket must have been down CONTINUOUSLY before the Disconnected panel is shown —
+ * where an open that dropped within {@link SOCKET_STABLE_MS} does not break the run: it was one
+ * more failed attempt, so the clock keeps counting from the first failure.
  *
  * 60 s, the two-gate escalation shape `poller.ts` already uses. At the schedule above that is
  * at least six consecutive failed
@@ -148,6 +150,25 @@ export const DISCONNECTED_AFTER_MS = 60_000
  * generation counter is what keeps THAT safe, and the two mechanisms are separate on purpose.
  */
 export const DISCONNECTED_MIN_FAILURES = 4
+
+/**
+ * How long a socket must have STAYED open before its drop counts as a fresh start.
+ *
+ * An open alone proves only that the upgrade was accepted. A backend that accepts and then drops
+ * at once (`ws.py` closes `1011` on a post-accept fault) used to reset the backoff, the failure
+ * count and the elapsed clock on every open, so it reconnected every 2 s forever — a `'live'`
+ * re-drive and a reconnect's poll restart each time, about six requests a cycle — and never reached
+ * `'down'`, so the Disconnected panel never showed. Now an open that does not last this long is
+ * one more failed attempt: the schedule keeps growing (2, 4, 8, 16, 30 s) and the two gates above
+ * are counted from the first failure, exactly as for a backend that refuses outright.
+ *
+ * 5 s: far longer than a post-accept fault takes to close (one round trip), and shorter than an
+ * edit-save-restart cycle, so a `uvicorn --reload` after a healthy session still retries at the
+ * base delay. Checked when the socket closes, against `Date.now()`, so it needs no timer of its own
+ * and nothing for `stop()` to cancel; a socket left open across a laptop sleep was healthy, and
+ * wall time says so.
+ */
+export const SOCKET_STABLE_MS = 5_000
 
 /**
  * What the app knows about its socket. Three values, and they are genuinely three:
@@ -362,8 +383,13 @@ export const createAgentSocket = ({
   let delay = SOCKET_BASE_MS
   /** The open socket, or `null`. Held ONLY so `stop()` and a superseded attempt can abandon it. */
   let socket: AgentSocketHandle | null = null
-  /** Consecutive failed attempts since the last successful open. The observation gate. */
+  /**
+   * Consecutive failed attempts since a socket last stayed open {@link SOCKET_STABLE_MS}. The
+   * observation gate. An open that drops sooner is one of these failures.
+   */
   let failures = 0
+  /** When the current attempt's socket opened, or `null` if it has not. Read by {@link fail}. */
+  let openedAt: number | null = null
   /** When the current run of failures began, or `null` if there is no run. The elapsed gate. */
   let failingSince: number | null = null
   /** The last status handed to `onStatus`, so an identical one is not re-emitted. */
@@ -420,6 +446,16 @@ export const createAgentSocket = ({
     const next = generation
     abandon()
 
+    // A socket that stayed open long enough was a real connection, so this drop starts a new run
+    // of failures from the base delay. One that dropped sooner is just another failed attempt, and
+    // the run it belongs to keeps its count, its clock and its grown delay (SOCKET_STABLE_MS).
+    if (openedAt !== null && Date.now() - openedAt >= SOCKET_STABLE_MS) {
+      failures = 0
+      failingSince = null
+      delay = SOCKET_BASE_MS
+    }
+    openedAt = null
+
     failures += 1
     failingSince ??= Date.now()
     const status = statusAfterFailure()
@@ -435,12 +471,12 @@ export const createAgentSocket = ({
 
   const succeed = (gen: number): void => {
     if (gen !== generation || !live) return
-    // Read BEFORE the reset, because the reset is what destroys the evidence: "did this open
-    // follow a failure" is the whole of the re-drive's trigger.
+    // NO RESET HERE. An open proves the upgrade was accepted, not that the connection holds:
+    // `fail()` resets the run only for a socket that stayed open SOCKET_STABLE_MS. So "did this
+    // open follow a failure" still reads the run as it stands, and an accept-then-drop backend's
+    // every reopen is a reconnect, at a backoff that keeps growing.
     const reconnected = failures > 0
-    failures = 0
-    failingSince = null
-    delay = SOCKET_BASE_MS
+    openedAt = Date.now()
     emit('live')
     if (reconnected) onReconnected()
   }
@@ -563,6 +599,7 @@ export const createAgentSocket = ({
       delay = SOCKET_BASE_MS
       failures = 0
       failingSince = null
+      openedAt = null
       void attempt(generation)
     },
     stop: () => {

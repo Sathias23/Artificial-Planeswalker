@@ -89,25 +89,31 @@ export default function App() {
   // identity IS the deck's, so a report landing would read as a deck replacement and release the
   // user's pin.
   //
-  // Keyed on `detail` itself, not the id string: `detail`'s identity changes exactly when a
-  // settled boot or a settled refetch writes the store, which is the staleness signal the panel
-  // needs after an agent edit. The pin is a count — one request per settled detail
-  // (App.test.tsx) — so a render, a poll transition or a socket status change issue nothing.
+  // TWO effects, because asking and forgetting have different keys (M39). The LOAD is keyed on
+  // `detail` itself, not the id string: `detail`'s identity changes exactly when a settled boot or
+  // a settled refetch writes the store, which is the staleness signal the panel needs after an
+  // agent edit. The pin is a count — one request per settled detail (App.test.tsx) — so a render,
+  // a poll transition or a socket status change issue nothing. It has no cleanup: a re-ask about
+  // the same deck keeps the old report on the glass until the answer lands (`formatCheck.ts`).
   //
-  // Every path clears, or a deck deleted between two polls would leave a legality verdict about
-  // a deck no longer on the glass. `clearFormatCheck` bumps the slice's generation, so an
-  // in-flight read writes nothing; as the cleanup it also covers unmount and a StrictMode remount.
-  // The empty/null arm clears eagerly instead: it has no in-flight read, and what it must kill is
-  // the previous deck's report, now. An empty deck does not ask at all, for the reason no request
-  // is made behind a state panel: an unseen panel must not be a round trip on the path NFR-05
-  // measures. `emptyDeck` stays in the deps because the lint contract wants every read named.
+  // The CLEAR is keyed on the deck id and the empty flag: it runs when the id changes, the deck
+  // empties, the deck leaves the glass, and on unmount (and a StrictMode remount), or a deck
+  // deleted between two polls would leave a legality verdict about a deck no longer on the glass.
+  // `clearFormatCheck` bumps the slice's generation, so an in-flight read writes nothing. Declared
+  // first, so on a deck switch the old report is gone before the new deck's read begins. An empty
+  // deck does not ask at all, for the reason no request is made behind a state panel: an unseen
+  // panel must not be a round trip on the path NFR-05 measures.
+  const deckId = detail?.id ?? null
   useEffect(() => {
-    if (detail === null || emptyDeck) {
+    if (deckId === null || emptyDeck) {
       clearFormatCheck()
       return
     }
-    void loadFormatCheck(detail.id)
     return clearFormatCheck
+  }, [deckId, emptyDeck])
+  useEffect(() => {
+    if (detail === null || emptyDeck) return
+    void loadFormatCheck(detail.id)
   }, [detail, emptyDeck])
 
   /**

@@ -648,9 +648,10 @@ describe('the panel is chosen by the wire, not by a constant', () => {
     'issues NO format-check request behind the %s panel',
     async (_label, arrange) => {
       // ABSENCE OF THE PANEL IS NOT ABSENCE OF THE REQUEST, and only one of the two is visible in
-      // the DOM. The effect that drives the read is keyed on the deck id, so a non-deck surface
-      // must not reach the wire at all — otherwise the app would be paying a duplicated
-      // `get_deck_with_cards` on the backend to populate a panel nothing renders.
+      // the DOM. The effect that drives the read is keyed on the settled detail and never runs
+      // without one, so a non-deck surface must not reach the wire at all — otherwise the app
+      // would be paying a duplicated `get_deck_with_cards` on the backend to populate a panel
+      // nothing renders.
       arrange()
       // The current mock, read off the global rather than returned by `arrange` — whose signature
       // is `() => void` and whose members re-stub `fetch` themselves.
@@ -1772,6 +1773,56 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
     expect(deckDetailCalls(fetchMock)).toBe(5)
     // The frame's own `restartPollIfStopped` is one poll; no probe was earned on a 200.
     expect(callsTo(fetchMock, '/api/decks')).toBe(pollsSoFar + 1)
+  })
+
+  it('re-arms the probe on a NONE settle too — refusal, none, refusal in one healthy episode', async () => {
+    // The third reset: an honest `'none'` ends the episode exactly as a loaded deck does. Here the
+    // poll is healthy and stopped throughout, so nothing else resets the spent probe between the
+    // two refusals: without the `'none'` re-arm the second one strands the updating panel.
+    // Active-deck script: the deck, then no deck (the probe's re-drive), then the deck again (the
+    // first `'live'`'s reconciliation boot), and the deck from then on.
+    const activeAnswers = [ATRAXA_DECK_ID, null, ATRAXA_DECK_ID]
+    let activeIndex = 0
+    const deckAnswers = [
+      () => refusal('database_unavailable', 503), // the mount's boot
+      () => refusal('database_unavailable', 503), // the reconciliation boot, after the none
+      () => deckDetail({ name: 'Atraxa, after the none' }), // the second probe's re-drive
+    ]
+    let deckIndex = 0
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') {
+        const deckId = activeAnswers[Math.min(activeIndex, activeAnswers.length - 1)]
+        activeIndex += 1
+        return Promise.resolve(activeDeck(deckId))
+      }
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        const answer = deckAnswers[Math.min(deckIndex, deckAnswers.length - 1)]
+        deckIndex += 1
+        return Promise.resolve(answer())
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(decks('Atraxa Counter Cabinet v2 (owned)'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const counts = fetchMock as unknown as ReturnType<typeof answering>
+
+    render(<App />)
+    await settle()
+    // The first episode: the mount's refusal, its probe, and the probe's re-drive settling none.
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(deckDetailCalls(counts)).toBe(1)
+    expect(callsTo(counts, '/api/decks')).toBe(2)
+
+    // The socket goes live; its reconciliation boot finds the deck again and it refuses. The poll
+    // is still stopped healthy, so only a re-armed probe can recover this.
+    await connect()
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, after the none' })).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
+    expect(deckDetailCalls(counts)).toBe(3)
+    expect(callsTo(counts, '/api/decks')).toBe(3)
   })
 
   it('re-arms the probe when the poll leaves and re-enters healthy — the other reset', async () => {
@@ -2938,6 +2989,36 @@ describe('the page reconnects on its own', () => {
     ).toBeVisible()
   })
 
+  // ==================== M40 — AN UPGRADE THAT DROPS AT ONCE IS NOT A CONNECTION ==========
+  it('shows the DISCONNECTED panel against a backend that accepts every upgrade and drops it', async () => {
+    // `ws.py` closes `1011` on a post-accept fault. The loop used to reset its backoff on every
+    // open, so this backend was retried every 2 s forever (a `'live'` re-drive and a poll
+    // restart each time) and the panel never showed. An open that does not hold is now one more
+    // failed attempt, on the normal schedule, and both gates are met at 60 s.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    await drop()
+    for (const wait of [2_000, 4_000, 8_000, 16_000, 30_000]) {
+      await advance(wait)
+      await connect()
+      await drop()
+    }
+
+    // Six sockets in sixty seconds — the schedule of a dead backend, not thirty.
+    expect(sockets).toHaveLength(6)
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+
+    // …and behind the panel it keeps backing off at the ceiling: one attempt in the next 30 s.
+    const mints = callsTo(fetchMock, '/api/session')
+    await advance(30_000)
+    expect(callsTo(fetchMock, '/api/session') - mints).toBe(1)
+    expect(sockets).toHaveLength(7)
+  })
+
   // ==================== UX-DR35 — THE DECK STAYS UP WHILE RECONNECTING =================
   it('leaves a loaded deck on the glass for the whole pre-exhaustion window', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
@@ -3279,6 +3360,116 @@ describe('the page reconnects on its own', () => {
     await advance(10 * 60_000)
     expect(activeDeckReads()).toBe(2)
     expect(detailReleases).toHaveLength(2)
+  })
+
+  it('paints the in-flight boot when a deck_changed lands mid-boot, then re-drives exactly once', async () => {
+    // M38: a `deck_changed` frame while the boot is unsettled used to RESTART it, discarding the
+    // read in flight, so a burst of agent edits during a slow cold open held the glass blank. It
+    // now defers through the same flag the socket's `'live'` uses: the in-flight read paints, and
+    // ONE follow-up boot (which began after the frame, so it reads the edit) runs on its settle.
+    const detailReleases: ((response: Response) => void)[] = []
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        return new Promise<Response>((resolve) => {
+          detailReleases.push(resolve)
+        })
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(decks('Atraxa Counter Cabinet v2 (owned)'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const activeDeckReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/active-deck').length
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(activeDeckReads()).toBe(1)
+    expect(detailReleases).toHaveLength(1)
+
+    // Two agent edits land while the cold boot's deck read is still in flight. Neither restarts it.
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await push('deck_changed', { deck_id: null })
+    expect(activeDeckReads()).toBe(1)
+    expect(detailReleases).toHaveLength(1)
+
+    // The in-flight read resolves and PAINTS — it was not discarded.
+    await act(async () => {
+      detailReleases[0](deckDetail({ name: 'Atraxa, the in-flight read' }))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, the in-flight read' }),
+    ).toBeVisible()
+    // ONE follow-up boot for the open and both frames together.
+    expect(activeDeckReads()).toBe(2)
+    expect(detailReleases).toHaveLength(2)
+
+    await act(async () => {
+      detailReleases[1](deckDetail({ name: 'Atraxa, after the edits' }))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, after the edits' })).toBeVisible()
+    await advance(10 * 60_000)
+    expect(activeDeckReads()).toBe(2)
+    expect(detailReleases).toHaveLength(2)
+  })
+
+  it('owes the deferred re-drive to the FRAME alone when the socket was already live', async () => {
+    // The case above shares its deferral with the socket's `'live'`. Here the socket is live and
+    // the boot settled; an `active_deck_changed` re-drives (which forgets any deferral), and a
+    // `deck_changed` lands while THAT boot is in flight. Only the frame can owe the follow-up, so
+    // a frame dropped instead of deferred would leave the edit off the glass.
+    const detailReleases: ((response: Response) => void)[] = []
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        return new Promise<Response>((resolve) => {
+          detailReleases.push(resolve)
+        })
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(decks('Atraxa Counter Cabinet v2 (owned)'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const activeDeckReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/active-deck').length
+    const paint = async (index: number, name: string) =>
+      act(async () => {
+        detailReleases[index](deckDetail({ name }))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
+    render(<App />)
+    await settle()
+    await connect()
+    // The cold boot paints, and the open's deferred reconcile runs and paints too.
+    await paint(0, 'Atraxa, cold')
+    await paint(1, 'Atraxa, reconciled')
+    expect(activeDeckReads()).toBe(2)
+
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(activeDeckReads()).toBe(3)
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    // Deferred, not restarted and not refetched.
+    expect(activeDeckReads()).toBe(3)
+    expect(detailReleases).toHaveLength(3)
+
+    await paint(2, 'Atraxa, the frame re-drive')
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, the frame re-drive' }),
+    ).toBeVisible()
+    // The frame's follow-up boot.
+    expect(activeDeckReads()).toBe(4)
+    await paint(3, 'Atraxa, after the edit')
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, after the edit' })).toBeVisible()
+    await advance(10 * 60_000)
+    expect(activeDeckReads()).toBe(4)
   })
 
   it('re-drives the deck exactly ONCE per reconnect — the live transition, not a second wiring', async () => {
@@ -3638,8 +3829,8 @@ describe('the glass follows the agent’s active-deck choice', () => {
   /**
    * Deck-DETAIL reads of ONE id. Exact equality, not `startsWith`: `/api/deck/{id}/format-check`
    * shares the prefix, and a switch legitimately fires one of those for the NEW deck (`App.tsx`'s
-   * `[deckId, emptyDeck]` effect). Counting by prefix would fold the two together and make every
-   * assertion below either flaky or vacuous.
+   * load effect, keyed on `[detail, emptyDeck]`). Counting by prefix would fold the two together
+   * and make every assertion below either flaky or vacuous.
    */
   const detailReadsOf = (paths: readonly string[], deckId: string) =>
     paths.filter((path) => path === `/api/deck/${deckId}`).length
@@ -4063,7 +4254,10 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins', () =>
   })
 
   // ==================== EVERY OTHER REFUSAL DROPS ======================================
-  it('keeps the loaded deck on screen through a non-404 refusal — staleness accepted', async () => {
+  it('keeps the loaded deck on screen through a non-404 refusal, and asks once more — bounded', async () => {
+    // MOVED in 9.7 (F2-D1): the drop used to be the end of it ("staleness accepted"), one read
+    // and nothing after. The refusal now earns the CAP-3 probe, and the poll's healthy answer
+    // re-asks once; a deck route that keeps refusing costs exactly that one extra read.
     const fetchMock = await bootedDeck()
     const marker = fetchMock.mock.calls.length
 
@@ -4075,11 +4269,16 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins', () =>
 
     expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
     expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
-    // Non-vacuity: the refusal really was fetched and really was dropped — not a no-op branch.
+    // Non-vacuity: the refusal really was fetched and dropped, then re-asked once after the probe.
     expect(
       detailReadsOf(pathsSince(fetchMock, marker), ATRAXA_DECK_ID),
-      'the refusal was actually read (and then dropped), not skipped',
-    ).toBe(1)
+      'the refusal was read, dropped, and re-asked exactly once after the probe',
+    ).toBe(2)
+    // …and that is the bound: ten idle minutes add no read and no active-deck re-drive.
+    await advance(10 * 60_000)
+    const paths = pathsSince(fetchMock, marker)
+    expect(detailReadsOf(paths, ATRAXA_DECK_ID)).toBe(2)
+    expect(activeDeckReads(paths)).toBe(0)
   })
 
   // ==================== NO DECK LOADED: THE FULL RE-DRIVE STANDS =======================
@@ -4129,10 +4328,188 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins', () =>
     expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
     expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
     // …and the refusal really was fetched and dropped (non-vacuity for all three lines above).
+    // MOVED in 9.7 (F2-D1): two reads, not one — the probe's healthy answer re-asks once, and the
+    // second refusal is dropped the same way behind the dialog.
+    const paths = pathsSince(fetchMock, marker)
     expect(
-      detailReadsOf(pathsSince(fetchMock, marker), ATRAXA_DECK_ID),
-      'the refusal was read once and dropped — not skipped, not re-driven',
-    ).toBe(1)
+      detailReadsOf(paths, ATRAXA_DECK_ID),
+      'the refusal was read and dropped, and re-asked once after the probe — not re-driven',
+    ).toBe(2)
+    expect(activeDeckReads(paths)).toBe(0)
+  })
+})
+
+// =====================================================================================
+// THE FORMAT-CHECK PANEL THROUGH A RELOAD OF ITS OWN DECK (M39)
+// =====================================================================================
+
+/**
+ * Every agent edit used to blank the format-check panel for one round trip: the effect keyed on
+ * `detail` cleared the slice in its cleanup, the new read wrote `'loading'`, and the panel draws
+ * nothing unless it holds a report. These tests WITHHOLD the format-check route (as
+ * `withholdDeckRead` does for the deck route), because `answering` serves it in the same flush as
+ * the refetch and a test that did not hold it open would pass on the old code. The clear paths are
+ * pinned beside them: once the same-deck reload keeps its report, they are the regression surface.
+ */
+describe('the format-check panel keeps its report through a reload of the same deck', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const OLD_VERDICT = 'Every card is legal in standard.'
+  const NEW_VERDICT = 'Every card is legal in standard, after the edit.'
+
+  const formatCheckRegion = () => screen.queryByRole('region', { name: 'Format check' })
+
+  /** A real-shaped report whose legality row says `legality`, so two reports can be told apart. */
+  const reportSaying = (legality: string) =>
+    formatCheckReport({
+      rows: [
+        { check: 'legality', status: 'pass', detail: legality },
+        { check: 'size', status: 'pass', detail: 'Mainboard has 60 cards; the minimum is 60.' },
+        {
+          check: 'copy_limit',
+          status: 'pass',
+          detail: 'No card exceeds the copy limit; basic lands are exempt.',
+        },
+        { check: 'sideboard', status: 'pass', detail: 'Sideboard has 0 cards; the maximum is 15.' },
+        { check: 'banned', status: 'pass', detail: 'No card is banned in standard.' },
+        {
+          check: 'rotation',
+          status: 'advisory',
+          detail:
+            'Rotation exposure cannot be checked: the local card data carries no set release dates.',
+        },
+      ],
+    })
+
+  /** Withhold every further format-check read, and hand back the release for the latest one. */
+  const withholdFormatCheck = (fetchMock: ReturnType<typeof answering>) => {
+    const answer = fetchMock.getMockImplementation()!
+    let release: ((response: Response) => void) | null = null
+    fetchMock.mockImplementation((input?: unknown) =>
+      String(input).endsWith('/format-check')
+        ? new Promise<Response>((resolve) => {
+            release = resolve
+          })
+        : answer(input),
+    )
+    return (response: Response) => release!(response)
+  }
+
+  const editedDeck = () =>
+    deckDetail({
+      mainboard_count: 101,
+      distinct_cards: 3,
+      cards: [
+        deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
+        deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
+        deckCard('Forest', 'Basic Land — Forest', 10),
+      ],
+    })
+
+  beforeEach(() => {
+    resetAgentView()
+  })
+
+  it('keeps the rows on the glass through an agent edit until the new report lands', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    expect(within(formatCheckRegion()!).getByText(OLD_VERDICT)).toBeVisible()
+
+    const release = withholdFormatCheck(fetchMock)
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // The refetch has settled (the new card is on the glass) and the new check is still in
+    // flight: the old report is still drawn, rows and all — no blank, no reflow.
+    expect(screen.getAllByText('Grizzly Bears').length).toBeGreaterThanOrEqual(2)
+    expect(formatCheckCalls(fetchMock)).toBe(3)
+    const region = formatCheckRegion()
+    expect(region, 'the format check panel left the glass during the refetch').not.toBeNull()
+    expect(within(region!).getByText(OLD_VERDICT)).toBeVisible()
+    expect(within(region!).getAllByRole('listitem').length).toBeGreaterThanOrEqual(6)
+
+    // The new report replaces it in place.
+    await act(async () => {
+      release(reportSaying(NEW_VERDICT))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(within(formatCheckRegion()!).getByText(NEW_VERDICT)).toBeVisible()
+    expect(screen.queryByText(OLD_VERDICT)).toBeNull()
+  })
+
+  it('keeps the rows through the CAP-2 reconcile of a connected cold open too', async () => {
+    // The other same-deck reload: the first `'live'` re-drives one full boot, which settles a new
+    // `detail` for the deck already on the glass. A fix scoped to the refetch path alone would
+    // still blank the panel here, on every connected cold open.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    expect(within(formatCheckRegion()!).getByText(OLD_VERDICT)).toBeVisible()
+
+    const release = withholdFormatCheck(fetchMock)
+    await connect()
+    // The reconcile boot settled and re-asked; its answer is withheld, and the report stays.
+    expect(formatCheckCalls(fetchMock)).toBe(2)
+    expect(within(formatCheckRegion()!).getByText(OLD_VERDICT)).toBeVisible()
+
+    await act(async () => {
+      release(reportSaying(NEW_VERDICT))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(within(formatCheckRegion()!).getByText(NEW_VERDICT)).toBeVisible()
+  })
+
+  it('shows NO old report after a switch to another deck while its check is in flight', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME, 'Deck B'))
+    render(<App />)
+    await settle()
+    await connect()
+    expect(within(formatCheckRegion()!).getByText(OLD_VERDICT)).toBeVisible()
+
+    const release = withholdFormatCheck(fetchMock)
+    booting(activeDeck('deck-b'), deckDetail({ id: 'deck-b', name: 'Deck B' }))
+    await push('active_deck_changed', { deck_id: 'deck-b' })
+    await settle()
+
+    // Deck B is on the glass and its check is in flight: Atraxa's verdict must not stand beside it.
+    expect(screen.getByRole('heading', { level: 1, name: 'Deck B' })).toBeVisible()
+    expect(formatCheckRegion()).toBeNull()
+    expect(screen.queryByText(OLD_VERDICT)).toBeNull()
+
+    await act(async () => {
+      release(reportSaying('Every card is legal in standard, for Deck B.'))
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(
+      within(formatCheckRegion()!).getByText('Every card is legal in standard, for Deck B.'),
+    ).toBeVisible()
+  })
+
+  it('removes the panel when a refetch empties the deck', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    expect(formatCheckRegion()).not.toBeNull()
+    const checksBefore = formatCheckCalls(fetchMock)
+
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [], mainboard_count: 0, distinct_cards: 0 }),
+    )
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // The same deck id, now empty: the old report goes, and an empty deck asks nothing.
+    expect(screen.queryByText(OLD_VERDICT)).toBeNull()
+    expect(formatCheckRegion()).toBeNull()
+    expect(formatCheckCalls(fetchMock)).toBe(checksBefore)
   })
 })
 
@@ -4267,16 +4644,17 @@ describe('refetch never tears down what’s on screen', () => {
   })
 
   // ==================== THE MARKER CLEARS ON A DROPPED OUTCOME TOO =====================
-  it('clears the marker when the refetch DROPS — a 503 blip ends the window it marked', async () => {
+  it('clears the marker when the refetch DROPS — a 500 ends the window it marked', async () => {
     // The dropped paths never settle, so nothing keyed to a settle could clear this marker —
     // the exact reason the flag's clear is a `finally` (deck.test.ts drives every such path;
-    // this pins the one the glass shows).
+    // this pins the one the glass shows). MOVED in 9.7: a 503 here now earns a re-ask (the test
+    // below), so the plain drop is pinned with a 500, which `RETRIES_QUIETLY` says not to retry.
     const fetchMock = await bootedDeck()
     const release = withholdDeckRead(fetchMock)
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
     expect(marker()).not.toBeNull()
 
-    release(refusal('database_unavailable', 503))
+    release(refusal('internal_error', 500))
     await settle()
 
     // The marker is gone AND the deck stayed — a marker that outlived its window would promise
@@ -4284,7 +4662,133 @@ describe('refetch never tears down what’s on screen', () => {
     expect(marker()).toBeNull()
     expect(updatingText()).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
+  })
+
+  // ==================== A TRANSIENT REFUSAL IS ASKED AGAIN, NOT LEFT STALE (F2-D1) ========
+  it('refetches after a refusal once the healthy probe answers — the edit reaches the glass', async () => {
+    // The silent stale state this story removes: a `deck_changed` refetch refused
+    // `database_unavailable` used to be dropped with no later edge, so the agent's edit never
+    // reached the glass. Now the refusal asks the stopped poll for one verdict (CAP-3), and the
+    // healthy answer refetches the settled id. No timer: the probe IS the poll's own read.
+    const fetchMock = await bootedDeck()
+    const release = withholdDeckRead(fetchMock)
+    const from = fetchMock.mock.calls.length
+    const detailReads = () =>
+      fetchMock.mock.calls
+        .slice(from)
+        .filter(([input]) => String(input) === `/api/deck/${ATRAXA_DECK_ID}`).length
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    const pollsBefore = callsTo(fetchMock, '/api/decks')
+
+    release(refusal('database_unavailable', 503))
+    await settle()
+
+    // The probe ran (one poll read) and its healthy answer re-asked: the marker is up again for
+    // the re-ask's own window, and the deck is still on the glass, with no panel.
+    expect(callsTo(fetchMock, '/api/decks')).toBe(pollsBefore + 1)
+    expect(detailReads()).toBe(2)
+    expect(marker()).not.toBeNull()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
     expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
+
+    // The backend answers the re-ask: the agent's edit lands.
+    release(
+      deckDetail({
+        mainboard_count: 101,
+        distinct_cards: 3,
+        cards: [
+          deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
+          deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
+          deckCard('Forest', 'Basic Land — Forest', 10),
+        ],
+      }),
+    )
+    await settle()
+    expect(marker()).toBeNull()
+    expect(screen.getAllByText('Grizzly Bears').length).toBeGreaterThanOrEqual(2)
+    // A refetch, never a re-drive: the active-deck route was not asked.
+    expect(
+      fetchMock.mock.calls.slice(from).filter(([input]) => String(input) === '/api/active-deck'),
+    ).toHaveLength(0)
+  })
+
+  it('refetches through the poll’s own recovery edge when the poll was still retrying — no probe', async () => {
+    // The other ordering: the refetch is refused while the poll is refusing too. The poll is
+    // working, so the probe has nothing to restart; the poll's 503 -> 200 transition is the edge
+    // that pays the owed refetch.
+    const fetchMock = await bootedDeck()
+    const release = withholdDeckRead(fetchMock)
+    const from = fetchMock.mock.calls.length
+    const detailReads = () =>
+      fetchMock.mock.calls
+        .slice(from)
+        .filter(([input]) => String(input) === `/api/deck/${ATRAXA_DECK_ID}`).length
+
+    // The database starts updating: the frame's poll restart sees it refuse and keeps retrying.
+    const answer = fetchMock.getMockImplementation()!
+    let pollHealthy = false
+    fetchMock.mockImplementation((input?: unknown) =>
+      String(input) === '/api/decks' && !pollHealthy
+        ? Promise.resolve(refusal('database_unavailable', 503))
+        : answer(input),
+    )
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    release(refusal('database_unavailable', 503))
+    await settle()
+    // Nothing re-asked yet: the poll is retrying on its own schedule, and the deck stays up.
+    expect(detailReads()).toBe(1)
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+
+    pollHealthy = true
+    await advance(2_000)
+    // The poll recovered: its edge re-asked the deck, once.
+    expect(detailReads()).toBe(2)
+    release(deckDetail({ name: 'Atraxa, after the edge' }))
+    await settle()
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, after the edge' })).toBeVisible()
+    await advance(10 * 60_000)
+    expect(detailReads()).toBe(2)
+  })
+
+  it('lets a boot already in flight pay the owed refetch — no second boot behind it', async () => {
+    // The owed refetch meets a re-drive: the refetch was refused while the poll was retrying,
+    // then an `active_deck_changed` re-drives the boot, and the poll heals while that boot is
+    // still reading. The boot began after the lost refetch, so its settle is the fresher read;
+    // deferring another boot behind it would read the deck twice for one debt.
+    const fetchMock = await bootedDeck()
+    const release = withholdDeckRead(fetchMock)
+    const from = fetchMock.mock.calls.length
+    const reads = (path: string) =>
+      fetchMock.mock.calls.slice(from).filter(([input]) => String(input) === path).length
+    const answer = fetchMock.getMockImplementation()!
+    let pollHealthy = false
+    fetchMock.mockImplementation((input?: unknown) =>
+      String(input) === '/api/decks' && !pollHealthy
+        ? Promise.resolve(refusal('database_unavailable', 503))
+        : answer(input),
+    )
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    release(refusal('database_unavailable', 503))
+    await settle()
+
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(reads('/api/active-deck')).toBe(1)
+    pollHealthy = true
+    await advance(2_000)
+
+    release(deckDetail({ name: 'Atraxa, from the re-drive' }))
+    await settle()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa, from the re-drive' }),
+    ).toBeVisible()
+    await advance(10 * 60_000)
+    // The refetch, the re-drive's one read, and nothing after it.
+    expect(reads('/api/active-deck')).toBe(1)
+    expect(reads(`/api/deck/${ATRAXA_DECK_ID}`)).toBe(2)
   })
 
   // ==================== THE PIN SURVIVES A SAME-DECK REFETCH ===========================
@@ -5048,13 +5552,15 @@ describe('deck deletion, and agent views during a refetch', () => {
     expect(dialog()).toHaveAccessibleName('Resilience options')
     expect(settleCount()).toBe(0)
     expect(region()!.textContent).toBe('')
+    // MOVED in 9.7 (F2-D1): read twice — the probe's re-ask is refused and dropped too, and a
+    // dropped refetch never settles, so the counter still never moves.
     expect(
       fetchMock.mock.calls
         .slice(marker)
         .map(([input]) => String(input))
         .filter((path) => path === `/api/deck/${ATRAXA_DECK_ID}`),
-      'the refusal was really read and then dropped — not skipped',
-    ).toHaveLength(1)
+      'the refusal was really read and dropped, then re-asked once — not skipped',
+    ).toHaveLength(2)
   })
 
   // ==================== DELETION BEHIND AN OPEN VIEW ===================================

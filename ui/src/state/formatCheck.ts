@@ -37,6 +37,11 @@
  * route once each, and so does the first-connect reconciliation boot — once per connected cold
  * open, after first paint.)
  *
+ * **A re-ask about the SAME deck keeps the old report on the glass until the new one lands.** The
+ * clear is a separate effect in `App.tsx`, keyed on the deck id and the empty flag, so an agent
+ * edit's refetch re-asks without resetting the slice; only a different id, an emptied deck or no
+ * deck clears it (M39). A refused re-ask then draws nothing, as any refusal does.
+ *
  * **There is no refetch IN THIS MODULE, and no timer.** The refetch trigger is the deck
  * slice's, the debounce is the deck slice's supersede-and-restart coalescing (one settle per
  * burst, so one re-ask here), and this module is one read per call with a generation guard.
@@ -144,15 +149,24 @@ const applyFormatCheckState = (formatCheck: FormatCheckState): void =>
 let generation = 0
 
 /**
+ * The deck id the slice's current state is about: the id of the last {@link loadFormatCheck},
+ * or `null` after a clear. What lets a reload of the SAME deck keep its report on the glass while
+ * the new one is asked for, without ever letting one deck's report stand beside another's.
+ */
+let loadedFor: string | null = null
+
+/**
  * Forget the format check, and abandon anything in flight.
  *
- * Called by `App.tsx` when there is no deck — a state panel, a cold open, a deck that went away.
- * **This is production behaviour, not a test hook** (unlike `resetDeckState`), and it is what
- * stops a report outliving its deck: without it, a deck deleted between two polls would leave its
- * legality verdict on the glass beside nothing.
+ * Called by `App.tsx` when there is no deck, when the deck id changes and when the deck empties —
+ * a state panel, a cold open, a deck that went away, an agent switching decks. **This is
+ * production behaviour, not a test hook** (unlike `resetDeckState`), and it is what stops a report
+ * outliving its deck: without it, a deck deleted between two polls would leave its legality
+ * verdict on the glass beside nothing.
  */
 export const clearFormatCheck = (): void => {
   generation += 1
+  loadedFor = null
   applyFormatCheckState(INITIAL_FORMAT_CHECK_STATE)
 }
 
@@ -188,6 +202,8 @@ export const loadFormatCheck = async (
 ): Promise<void> => {
   generation += 1
   const startedIn = generation
+  const sameDeck = loadedFor === deckId
+  loadedFor = deckId
 
   if (deckId.trim() === '') {
     // No request, and `'refused'` rather than `'idle'`: the panel draws nothing either way, but
@@ -198,7 +214,14 @@ export const loadFormatCheck = async (
     return
   }
 
-  applyFormatCheckState({ status: 'loading' })
+  // A re-ask about the deck already on the glass (an agent edit's refetch, the CAP-2 reconcile)
+  // keeps its report up until the answer lands, so the panel never blinks out for a round trip
+  // (M39; EXPERIENCE.md's "Right column, always present"). The generation bump above still
+  // supersedes any older read. A different deck, or one asked about after a clear, starts from
+  // `'loading'`, so no report ever stands beside a deck it does not describe.
+  if (!(sameDeck && useFormatCheckStore.getState().formatCheck.status === 'report')) {
+    applyFormatCheckState({ status: 'loading' })
+  }
 
   let outcome: FormatCheckOutcome
   try {

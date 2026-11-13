@@ -156,6 +156,71 @@ describe('a deck change mid-flight cannot land the old deck’s report', () => {
   })
 })
 
+describe('a reload of the SAME deck keeps its report on the glass (M39)', () => {
+  const loaded = async (deckId: string) => {
+    await loadFormatCheck(deckId, () =>
+      Promise.resolve({ kind: 'report', report: ALL_PASS_REPORT }),
+    )
+    expect(stateNow()).toEqual({ status: 'report', report: ALL_PASS_REPORT })
+  }
+
+  it('keeps the old report while the same id is re-asked, then replaces it', async () => {
+    // An agent edit refetches the deck, and `App.tsx` re-asks with the same id. Writing
+    // `'loading'` here blanked the panel for a round trip on every edit.
+    await loaded('deck-1')
+    const { read, release } = deferred()
+
+    const pending = loadFormatCheck('deck-1', read)
+    expect(stateNow()).toEqual({ status: 'report', report: ALL_PASS_REPORT })
+
+    release({ kind: 'report', report: FORMATLESS_REPORT })
+    await pending
+    expect(stateNow()).toEqual({ status: 'report', report: FORMATLESS_REPORT })
+  })
+
+  it('goes loading at once for a DIFFERENT id — one deck never wears another’s report', async () => {
+    await loaded('deck-1')
+    const { read } = deferred()
+
+    void loadFormatCheck('deck-2', read)
+
+    expect(stateNow()).toEqual({ status: 'loading' })
+  })
+
+  it('starts from loading after a clear, even for the same id — the clear forgets the id', async () => {
+    await loaded('deck-1')
+    clearFormatCheck()
+    const { read } = deferred()
+
+    void loadFormatCheck('deck-1', read)
+
+    expect(stateNow()).toEqual({ status: 'loading' })
+  })
+
+  it('draws nothing when the same id’s re-ask is refused, as any refusal does', async () => {
+    await loaded('deck-1')
+
+    await loadFormatCheck('deck-1', () => Promise.resolve({ kind: 'unreachable' }))
+
+    expect(stateNow()).toEqual({ status: 'refused' })
+  })
+
+  it('drops a superseded re-ask of the same id, even when it settles LAST', async () => {
+    await loaded('deck-1')
+    const first = deferred()
+    const second = deferred()
+
+    const a = loadFormatCheck('deck-1', first.read)
+    const b = loadFormatCheck('deck-1', second.read)
+    second.release({ kind: 'report', report: FORMATLESS_REPORT })
+    await b
+    first.release({ kind: 'report', report: ALL_PASS_REPORT })
+    await a
+
+    expect(stateNow()).toEqual({ status: 'report', report: FORMATLESS_REPORT })
+  })
+})
+
 describe('one request per call, and never a retry', () => {
   const RETRY_OUTCOMES: [string, FormatCheckOutcome][] = [
     ['a refusal', { kind: 'error', reason: 'database_not_initialized' }],
