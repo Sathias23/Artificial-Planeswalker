@@ -320,8 +320,9 @@ def build_app() -> FastAPI:
     # `/health` takes no session, so it can answer neither 503 token. `payload_too_large` is
     # declared only at the two operations that can answer it, never in a shared set.
     health_responses = error_responses("invalid_request", "database_unavailable", "internal_error")
-    # `database_not_initialized` is a property of `deps.get_session`, so every data route inherits
-    # it; both 503 tokens share a status and `error_responses` collapses them into one entry.
+    # `database_not_initialized` is a property of `deps.ready_session`, which every data route
+    # reaches (through `get_session`, or directly on an image-cache miss); both 503 tokens share a
+    # status and `error_responses` collapses them into one entry.
     database_responses = error_responses(
         "invalid_request",
         "database_not_initialized",

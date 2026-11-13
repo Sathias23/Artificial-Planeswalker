@@ -26,8 +26,9 @@ the busy-timeout (``connect_args={"timeout": 5}``) and ``expire_on_commit=False`
 drift from ``src/mcp_server/server.py``. Readiness is likewise
 :func:`src.data.database.is_database_initialized`, the same function every MCP tool uses: a second
 definition here would let the two shells disagree about the same file (AD-1). The verdict is
-re-probed on every request and never cached — that is what lets a database created while the backend
-runs be picked up with no restart, at a cost of a few tiny SELECTs against local SQLite.
+re-probed on every request that reads the database and never cached — that is what lets a database
+created while the backend runs be picked up with no restart, at a cost of a few tiny SELECTs against
+local SQLite.
 
 **Why there is no ``mode=ro``.** ``mode=ro`` drags in the WAL ``-shm`` Windows landmine and
 ``immutable`` would foreclose FR-16 (AD-2). Read-only is enforced structurally instead, by
@@ -43,6 +44,7 @@ mapping.
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -237,28 +239,31 @@ def database(app: FastAPI) -> Database | None:
     return holder
 
 
-async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """Yield a session for one request, refusing early if the database is not ready.
+@asynccontextmanager
+async def ready_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """Open a session for one request, refusing early if the database is not ready.
 
-    Raising here is correct, and the opposite of the send-don't-raise rule middleware follows: a
-    dependency is solved inside the router, which is *inside* Starlette's ``ExceptionMiddleware``,
-    so a :class:`~src.companion.app.errors.CompanionError` raised from here does reach its handler
-    and does answer with its own token (verified). Middleware sits on the other side of that
-    boundary — the difference is position in the stack, not the exception.
+    The one place the lazy engine, the readiness probe and both refusal tokens meet. A route that
+    annotates ``DbSession`` reaches it through :func:`get_session`; ``GET /api/card-image/…`` enters
+    it directly with ``async with``, and only on a disk-cache miss, so it can close the session
+    before it waits on the pacer and the CDN.
 
-    Readiness is re-probed on **every** request and never cached. That is deliberate: a database
+    Readiness is re-probed on **every** entry and never cached. That is deliberate: a database
     created while the backend is running must be picked up with no restart (FR-22), which a
     remembered ``True`` would break as surely as a remembered ``False``.
 
-    Nothing runs after the ``yield`` beyond letting the ``async with`` close the session. An
-    exception raised *after* the response has been sent escapes every handler and every middleware
-    (verified), so no cleanup that can throw may be added here.
+    Raising here is correct, and the opposite of the send-don't-raise rule middleware follows: a
+    dependency or a handler body runs inside the router, which is *inside* Starlette's
+    ``ExceptionMiddleware``, so a :class:`~src.companion.app.errors.CompanionError` raised from
+    here does reach its handler and does answer with its own token (verified). Middleware sits on
+    the other side of that boundary — the difference is position in the stack, not the exception.
 
     Args:
         request: The request being served; the holder is read from ``request.app``.
 
     Yields:
-        An ``AsyncSession`` from the shared factory, against a database confirmed ready.
+        An ``AsyncSession`` from the shared factory, against a database confirmed ready. It is
+        closed, and its connection returned to the pool, when the ``async with`` block exits.
 
     Raises:
         CompanionError: ``database_not_initialized`` when the file is absent or the database is not
@@ -283,33 +288,42 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """Yield a ready session for one request: :func:`ready_session`, as a FastAPI dependency.
+
+    FastAPI runs a ``yield``-dependency's teardown *after* the endpoint returns, so the session is
+    held for the whole handler body. That is right for a route whose body is only database reads,
+    and it is why the image route enters :func:`ready_session` itself instead.
+
+    Nothing runs after the ``yield`` beyond letting the ``async with`` close the session. An
+    exception raised *after* the response has been sent escapes every handler and every middleware
+    (verified), so no cleanup that can throw may be added here.
+
+    Args:
+        request: The request being served; the holder is read from ``request.app``.
+
+    Yields:
+        An ``AsyncSession`` from the shared factory, against a database confirmed ready.
+
+    Raises:
+        CompanionError: Whatever :func:`ready_session` raises.
+    """
+    async with ready_session(request) as session:
+        yield session
+
+
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 """The annotation every data-backed handler writes, and the only one it should.
 
-``GET /api/decks``, ``GET /api/deck/{deck_id}``, ``GET /api/deck/{deck_id}/format-check``,
-``GET /api/cards/{card_id}`` and ``GET /api/card-image/{scryfall_id}`` annotate a parameter with
-this and inherit the whole contract: the lazy engine, the readiness probe, the ``503`` tokens and
-the shared recipe. None of them re-derives any of it — none constructs an engine, calls
-``is_database_initialized``, reads ``request.app.state`` or writes a ``try/except DatabaseError``.
+``GET /api/decks``, ``GET /api/deck/{deck_id}``, ``GET /api/deck/{deck_id}/format-check`` and
+``GET /api/cards/{card_id}`` annotate a parameter with this and inherit the whole contract: the lazy
+engine, the readiness probe, the ``503`` tokens and the shared recipe. None of them re-derives any
+of it — none constructs an engine, calls ``is_database_initialized``, reads ``request.app.state``
+or writes a ``try/except DatabaseError``.
 
-The image route goes on to do something the database knows nothing about: it reads one row, then
-fetches a URL from that row over the internet — **while the session is still open**. FastAPI runs a
-``yield``-dependency's teardown *after* the endpoint returns, so the session — and its checked-out
-connection — is held for the **whole** handler body, the outbound fetch included. Measured
-directly: the pool reports ``checkedout() == 1`` while ``fetch_image`` is awaited, and ``0`` once
-the response is out.
-
-That is load-bearing rather than trivia, because a pacing **queue** sits in front of that fetch, so
-a request can hold a connection while waiting its turn. The pool is SQLAlchemy's default —
-``AsyncAdaptedQueuePool``, size 5 + overflow 10 = **15 connections**, ``pool_timeout`` **30 s**
-(all four read off the live pool object). Under the shipped pacing a 99-tile burst drains in
-~9.9 s, so at most 15 requests sit inside the route at once and the rest wait outside it: a second
-queue in front of the first, inefficient and harmless. **It works by arithmetic, not by design.**
-A pacer slower than roughly 0.3 s per tile would push a deck-sized burst past the pool timeout and
-raise ``sqlalchemy.exc.TimeoutError``, which is **not** a ``DatabaseError`` and would therefore
-surface as ``500 internal_error`` rather than ``503``. Pinned by
-``test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool``; releasing the session
-before fetching is the clean answer and belongs beside a hydration cache, not here.
+``GET /api/card-image/{scryfall_id}`` is not a ``DbSession`` route: it serves a warm tile from disk
+without touching the database, and on a miss it enters :func:`ready_session` for the row read alone,
+closing the session before the pacer and the fetch (see ``routes/cards.py::read_card_image``).
 
 The outbound client and the pacer are *separate* app-state resources (``images.image_client``,
 ``images.image_pacer``), created by the same lifespan and deliberately not routed through here:

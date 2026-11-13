@@ -18,12 +18,18 @@ wrong-but-JSON answer is precisely the shape that slips through on a binary endp
 """
 
 import asyncio
+import gzip
 import json
 import logging
+import tracemalloc
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from src.companion.app import images
 from src.companion.app.main import build_app
@@ -35,6 +41,7 @@ from src.data.models.deck_card import DeckCardModel
 from tests.unit.companion.conftest import (
     _TOP_LEVEL_IMAGES,
     ABSENT_ID,
+    ANCHOR_ID,
     MANY_FACE_ID,
     MULTI_FACE_ID,
     NO_IMAGE_ID,
@@ -46,6 +53,7 @@ from tests.unit.companion.conftest import (
     _point_at,
     _seed,
     _uuid,
+    streamed,
 )
 
 # --------------------------------------------------------------------------------------------
@@ -85,7 +93,7 @@ class Recorder:
         # c3-1's R3 finding was that identical fixtures prove nothing.
         body = self._body + str(request.url).encode().split(b"/")[-1]
         return httpx.Response(
-            self.status, content=body, headers={"content-type": self._content_type}
+            self.status, content=streamed(body), headers={"content-type": self._content_type}
         )
 
     def body_for(self, url: str) -> bytes:
@@ -110,6 +118,29 @@ def cdn(monkeypatch):
         lambda **kwargs: real(transport=httpx.MockTransport(recorder.handle)),
     )
     return recorder
+
+
+@contextmanager
+def _statements() -> Iterator[list[str]]:
+    """Record every SQL statement any engine in this process sends while the block runs.
+
+    A class-level ``before_cursor_execute`` listener on ``Engine``, so it sees the companion's
+    lazily created engine without the test reaching for it (a warm hit may never create one).
+    Removed in ``finally``, so a failing assertion cannot leak it into the next test.
+
+    Yields:
+        The statements, in the order they were sent; empty means the database was not touched.
+    """
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:
+        seen.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        yield seen
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
 
 
 # =============================================================================================
@@ -372,16 +403,19 @@ class TestParameterContract:
 
 
 # =============================================================================================
-# AC 5: the 503-before-400 precedence, re-measured for THIS route
+# AC 5, re-measured at 8.1: the image route takes no session dependency, so nothing outranks the
+# 400 and a warm tile does not wait on the database at all
 # =============================================================================================
 
 
-class TestDatabaseStatesOutrankParameterValidation:
-    """Dependencies resolve before parameter validation is reported. Both orders pinned."""
+class TestTheDatabaseIsConsultedOnlyOnACacheMiss:
+    """No dependency resolves before parameter validation, and a warm hit opens no session."""
 
-    async def test_a_bogus_size_against_an_absent_database_answers_503(
+    async def test_a_bogus_size_against_an_absent_database_answers_400(
         self, tmp_path, monkeypatch, lifespan_client, cdn
     ):
+        """MOVED in 8.1 (was ``..._answers_503``): the route no longer takes ``DbSession``, so
+        validation is reported before any database state can be."""
         _point_at(monkeypatch, tmp_path / "missing.db")
 
         async with lifespan_client(build_app()) as client:
@@ -389,18 +423,19 @@ class TestDatabaseStatesOutrankParameterValidation:
                 _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": "bogus"}
             )
 
-        assert response.status_code == 503
-        assert response.json() == {"reason": "database_not_initialized"}
+        assert response.status_code == 400
+        assert response.json() == {"reason": "invalid_request"}
 
-    async def test_a_warm_tile_against_an_absent_database_still_answers_503(
+    async def test_a_warm_tile_against_an_absent_database_is_served_from_disk(
         self, image_shapes, lifespan_client, cdn, tmp_path, monkeypatch
     ):
-        """The disk cache is consulted before the card row, but never before the session.
+        """MOVED in 8.1 (was ``test_a_warm_tile_against_an_absent_database_still_answers_503``).
 
-        ``DbSession`` is a dependency, so it resolves before the handler body runs — a warm tile
-        cannot answer ``200`` from disk while the database is unusable. The cache lives under the
-        data directory, not beside the database file, so re-pointing ``CARDS_DATABASE_URL`` leaves
-        the warmed file exactly where the second app will look for it.
+        The disk cache is consulted before any database work, so a warm tile answers ``200``
+        while the database is absent, and a fresh app serving one never creates its engine. The
+        cache lives under the data directory, not beside the database file, so re-pointing
+        ``CARDS_DATABASE_URL`` leaves the warmed file exactly where the second app will look for
+        it. A cold key against the same app is still ``503``: a miss still probes.
         """
         path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
 
@@ -410,19 +445,27 @@ class TestDatabaseStatesOutrankParameterValidation:
         assert len(cdn.requested) == 1
 
         _point_at(monkeypatch, tmp_path / "missing.db")
-        async with lifespan_client(build_app()) as client:
+        app = build_app()
+        async with lifespan_client(app) as client:
             warm = await client.get(path)
+            engine_after_warm = app.state.database.engine
+            miss = await client.get(path, params={"size": "large"})
 
-        assert warm.status_code == 503
-        assert warm.json() == {"reason": "database_not_initialized"}
-        # The disk hit was never reached: no second CDN request, and no image bytes.
+        assert warm.status_code == 200
+        assert warm.content == cold.content
+        assert engine_after_warm is None, "a warm hit created the database engine"
+        # Non-vacuity: the same app, a key it has not cached, the database consulted and absent.
+        assert miss.status_code == 503
+        assert miss.json() == {"reason": "database_not_initialized"}
+        # Neither request reached the CDN: the warm one never left the disk, the miss stopped at
+        # the probe.
         assert len(cdn.requested) == 1
 
     async def test_the_same_bogus_size_against_a_ready_database_answers_400(
         self, image_shapes, lifespan_client, cdn
     ):
-        """The other half of the ordering, from the same request shape — without it the test
-        above would pass against a route that answered 503 unconditionally."""
+        """The same request shape against a ready database, so the ``400`` above is visibly
+        independent of the database state rather than an artefact of its absence."""
         async with lifespan_client(build_app()) as client:
             response = await client.get(
                 _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": "bogus"}
@@ -484,6 +527,113 @@ class TestTheOutboundRequest:
         assert "Artificial-Planeswalker" in agent
         assert "github.com/Sathias23" in agent
         assert cdn.headers[0]["accept"].startswith("image/")
+
+    async def test_the_request_asks_for_an_unencoded_body(self, image_shapes, lifespan_client, cdn):
+        """MOVED in 8.1 (was ``test_the_request_carries_httpx_default_accept_encoding``, which
+        pinned httpx's ``gzip, deflate``): the client asks for the bytes as they are stored."""
+        async with lifespan_client(build_app()) as client:
+            await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert cdn.headers[0]["accept-encoding"] == "identity"
+
+    async def test_a_row_with_a_port_that_will_not_parse_is_a_fetch_failure_not_a_500(
+        self, ready_db, lifespan_client, cdn
+    ):
+        """``parts.port`` raises for ``:99999`` and ``:abc``; read outside the allow-list's
+        ``try`` it escaped as ``500 internal_error``. It is a refusal, remembered like any other
+        fetch failure, and no request is made."""
+        from tests.unit.companion.conftest import _card
+
+        card_id = _uuid("b0a7")
+
+        async def seeder(session):
+            session.add(
+                _card(
+                    card_id,
+                    "Bad Port",
+                    image_uris={
+                        "normal": "https://cards.scryfall.io:99999/x",
+                        "large": "https://cards.scryfall.io:abc/x",
+                    },
+                )
+            )
+            await session.commit()
+
+        await _seed(ready_db, seeder)
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            responses = [
+                await client.get(_IMAGE_PATH.format(scryfall_id=card_id), params={"size": size})
+                for size in ("normal", "large")
+            ]
+            entries = images.negative_cache(app).entry_count
+
+        assert [r.status_code for r in responses] == [502, 502]
+        assert [r.json() for r in responses] == [{"reason": "image_fetch_failed"}] * 2
+        assert cdn.requested == []
+        assert entries == 2, "a refused URL is a fetch failure and is negative-cached as one"
+
+    async def test_a_gzip_bomb_is_refused_without_being_inflated(
+        self, ready_db, lifespan_client, monkeypatch
+    ):
+        """An upstream that ignores ``identity`` and sends a gzip body inflating past the ceiling.
+
+        Decoded, ~17 KB on the wire becomes more than ``_MAX_IMAGE_BYTES`` in memory before the
+        running total can see it. Refused unread, the request's traced peak stays a small fraction
+        of that — which is the observable that tells "refused" from "inflated, then abandoned",
+        since both answer ``502``.
+        """
+        from tests.unit.companion.conftest import _card
+
+        bomb = gzip.compress(b"\0" * (images._MAX_IMAGE_BYTES + 1024 * 1024))
+        seen: list[httpx.Headers] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.headers)
+            return httpx.Response(
+                200,
+                content=streamed(bomb),
+                headers={"content-type": "image/jpeg", "content-encoding": "gzip"},
+            )
+
+        real = images.build_image_client
+        monkeypatch.setattr(
+            images,
+            "build_image_client",
+            lambda **kwargs: real(transport=httpx.MockTransport(handler)),
+        )
+        card_id = _uuid("b0b")
+
+        async def seeder(session):
+            session.add(
+                _card(
+                    card_id,
+                    "Gzip Bomb",
+                    image_uris={"normal": "https://cards.scryfall.io/normal/bomb.jpg?1"},
+                )
+            )
+            await session.commit()
+
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            tracemalloc.start()
+            try:
+                response = await client.get(_IMAGE_PATH.format(scryfall_id=card_id))
+                _, peak = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+        assert len(bomb) < 64 * 1024, "the fixture is meant to be small on the wire"
+        assert len(seen) == 1, "the request never reached the upstream; nothing was refused"
+        assert seen[0]["accept-encoding"] == "identity"
+        assert response.status_code == 502
+        assert response.json() == {"reason": "image_fetch_failed"}
+        assert peak < images._MAX_IMAGE_BYTES, (
+            f"the request traced a {peak}-byte peak: the encoded body was inflated before it was "
+            "refused"
+        )
 
     async def test_a_row_pointing_off_the_allow_list_is_a_fetch_failure_never_a_fetch(
         self, ready_db, lifespan_client, cdn, monkeypatch
@@ -1028,22 +1178,77 @@ class TestNothingIsEverPreFetched:
 
 
 class TestTheBurstDoesNotOutlastTheConnectionPool:
-    """Q6, pinned rather than fixed: the session is held ACROSS the queue wait.
+    """Q6, fixed at 8.1: the session is released BEFORE the queue wait.
 
-    Measured at Task 0 and not inherited: FastAPI runs a ``yield``-dependency's teardown *after*
-    the endpoint returns, so the route's ``DbSession`` — and its checked-out connection — is held
-    for the whole endpoint body, including the pacer wait. The pool is SQLAlchemy's default
-    ``AsyncAdaptedQueuePool``, **size 5 + overflow 10 = 15 connections, ``pool_timeout`` 30 s**
-    (all four values read off the live pool object, not off a document).
-
-    The consequence is that at most 15 requests sit *inside* the route at once and the rest wait
-    outside it — a second queue in front of the first, which is inefficient and harmless at the
-    shipped constants: a 99-tile burst drains in ~9.9 s, comfortably inside 30 s. **It works by
-    arithmetic, not by design**, so this test exists to make the interaction visible to whichever
-    later story slows the pacer down. Above roughly 0.3 s per tile the burst would outlast the
-    pool timeout and raise ``sqlalchemy.exc.TimeoutError`` — which is **not** a ``DatabaseError``
-    and would therefore surface as ``500 internal_error``, not ``503``. Ledgered on **c4-1**.
+    Until 8.1 the route took ``DbSession``, whose teardown FastAPI runs after the endpoint
+    returns, so every request held a pooled connection through the pacer wait and the fetch. At
+    most 15 requests (pool size 5 + overflow 10) could sit inside the route, and a pacer slower
+    than ~0.3 s per tile would have pushed a deck-sized burst past the 30 s pool timeout as ``500
+    internal_error``. The route now reads the row inside ``deps.ready_session`` and closes it
+    before the negative cache, the pacer and the fetch, so a queued request holds no connection
+    and the pool no longer bounds the burst at all.
     """
+
+    async def test_a_request_queued_at_the_pacer_holds_no_pool_connection(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        """MOVED in 8.1 (was ``..._holds_a_pool_connection``, which measured six held).
+
+        Six requests: four parked upstream, two waiting their turn at the pacer, and every one of
+        them has already given its connection back. Counted from the pool's own instance-level
+        ``checkout``/``checkin`` events, so "zero checked out" is a positive observation of six
+        returns rather than a pool that was never used.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            # Warm the engine through an ordinary data route first: the pool only exists once a
+            # request has created the engine, and its listeners must be on before the burst.
+            assert (await client.get(f"/api/cards/{ANCHOR_ID}")).status_code == 200
+            pool = app.state.database.engine.sync_engine.pool
+            checkouts: list[object] = []
+            checkins: list[object] = []
+
+            def on_checkout(dbapi_connection, record, proxy) -> None:
+                checkouts.append(record)
+
+            def on_checkin(dbapi_connection, record) -> None:
+                checkins.append(record)
+
+            event.listen(pool, "checkout", on_checkout)
+            event.listen(pool, "checkin", on_checkin)
+            try:
+                burst = [
+                    asyncio.create_task(
+                        client.get(
+                            _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": size}
+                        )
+                    )
+                    for size in ("small", "normal", "large", "png", "art_crop", "border_crop")
+                ]
+                await _until(lambda: len(checkins) >= 6, what="six sessions to be released")
+                await _until(
+                    lambda: len(stalled_cdn.requested) >= images.FETCH_CONCURRENCY,
+                    what="the burst to fill the concurrency cap",
+                )
+                # Six concurrent sessions need one overflow connection (pool size 5). Returned to
+                # a full queue it is closed rather than kept, and closing an aiosqlite connection
+                # awaits its worker thread, so the overflow count lags the sixth `checkin` event
+                # by a turn or two. Settled here, while every image is still parked upstream.
+                await _until(lambda: pool.checkedout() == 0, what="the pool to report none held")
+                held = pool.checkedout()
+                requested = len(stalled_cdn.requested)
+                completed = stalled_cdn.completed
+                stalled_cdn.release.set()
+                responses = await asyncio.gather(*burst)
+            finally:
+                event.remove(pool, "checkout", on_checkout)
+                event.remove(pool, "checkin", on_checkin)
+
+        assert held == 0, f"{held} connections held while requests waited on the pacer and CDN"
+        assert len(checkouts) == 6, "each of the six requests read its row through the pool"
+        assert requested == images.FETCH_CONCURRENCY
+        assert completed == 0, "an image finished, so nothing was actually waiting"
+        assert [r.status_code for r in responses] == [200] * 6
 
     async def test_a_full_deck_sized_burst_completes_without_a_pool_timeout(
         self, image_shapes, lifespan_client, monkeypatch
@@ -1059,9 +1264,12 @@ class TestTheBurstDoesNotOutlastTheConnectionPool:
         was wrong.
 
         Fixed rather than relaxed, because the assertion is what makes this a *pool* test: 99
-        distinct keys means 99 requests really traverse the whole route, which is the condition
-        the pool arithmetic below is about. Reading which of "CM-2 working" or "a key collision"
-        had happened was the point — it was the first.
+        distinct keys means 99 requests really traverse the whole route. Reading which of "CM-2
+        working" or "a key collision" had happened was the point — it was the first.
+
+        At 8.1 the pool-timeout tripwire (``99 * FETCH_SPACING_SECONDS < pool._timeout / 2``) and
+        the pool-constant assertions were dropped: no request holds a connection across the pacer
+        any more, so the spacing no longer has to fit inside the pool's timeout.
         """
         from tests.unit.companion.conftest import _seed
 
@@ -1088,24 +1296,6 @@ class TestTheBurstDoesNotOutlastTheConnectionPool:
                     client.get(_IMAGE_PATH.format(scryfall_id=card_id), params={"face": 0})
                     for card_id in burst_ids
                 )
-            )
-            pool = app.state.database.engine.sync_engine.pool
-
-            # The measurement this test is really about, asserted rather than described.
-            assert pool.size() == 5
-            assert pool._max_overflow == 10
-            assert pool._timeout == 30.0
-            # The tripwire that makes "pinned" true (review 2026-08-01): the burst above runs at
-            # spacing=0.0, so the SHIPPED constant never participates in it — a later story could
-            # slow the pacer tenfold and the gather would still drain instantly. THIS line is
-            # where that goes red, in the same register the hazard exists in: arithmetic. Margin
-            # of 2 because the drain time assumes an instant CDN and production does not have one.
-            assert 99 * images.FETCH_SPACING_SECONDS < pool._timeout / 2, (
-                f"a deck-sized burst no longer fits the pool: 99 tiles at "
-                f"{images.FETCH_SPACING_SECONDS} s spacing approaches the {pool._timeout} s pool "
-                "timeout, and sqlalchemy.exc.TimeoutError surfaces as 500 internal_error, NOT "
-                "503. Release the session before fetching (ledgered on c4-1) before slowing the "
-                "pacer."
             )
 
         assert [r.status_code for r in responses] == [200] * 99, (
@@ -1699,6 +1889,50 @@ class TestTheWarmAnswerMatchesTheColdOne:
         # …and no CDN request either, which is what makes this a WARM hit rather than a second
         # cold one that happened to skip the row.
         assert len(cdn.requested) == 1
+
+    async def test_a_warm_hit_runs_no_sql_and_checks_out_no_connection(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """MOVED in 8.1 (was ``test_a_warm_hit_still_runs_the_readiness_probe``, three probe
+        statements per warm tile).
+
+        Counted on every engine in the process and on the companion's own pool, so the zero is
+        not an artefact of watching the wrong one; the cold miss after it, under the same
+        instruments, is the non-vacuity half.
+        """
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            cold = await client.get(path)
+            pool = app.state.database.engine.sync_engine.pool
+            checkouts: list[object] = []
+
+            def on_checkout(dbapi_connection, record, proxy) -> None:
+                checkouts.append(record)
+
+            event.listen(pool, "checkout", on_checkout)
+            try:
+                with _statements() as warm_sql:
+                    warm = await client.get(path)
+                warm_checkouts = len(checkouts)
+                with _statements() as miss_sql:
+                    miss = await client.get(path, params={"size": "large"})
+                miss_checkouts = len(checkouts) - warm_checkouts
+            finally:
+                event.remove(pool, "checkout", on_checkout)
+
+        assert cold.status_code == warm.status_code == miss.status_code == 200
+        assert len(cdn.requested) == 2, (
+            "expected exactly two fetches, the cold request and the size=large miss: one more "
+            "means the warm request fetched, one fewer means the miss did not"
+        )
+        assert warm_sql == [], warm_sql
+        assert warm_checkouts == 0
+        # Non-vacuity: the miss runs the readiness probe and the row read on one connection.
+        assert any("sqlite_master" in sql for sql in miss_sql), miss_sql
+        assert any("FROM cards" in sql and "WHERE" in sql for sql in miss_sql), miss_sql
+        assert miss_checkouts == 1
 
     async def test_a_warm_tile_survives_its_card_row_being_deleted(
         self, image_shapes, lifespan_client, cdn
@@ -2406,12 +2640,12 @@ class TestACancelledRequestIsNotAFailure:
     already miss it and this catch cannot see it at all.
 
     **The cancellation is parked MID-FETCH, and that placement is the test** (review 2026-08-02).
-    The first draft cancelled after one bare yield, which lands the ``CancelledError`` at the
-    route's *first* await — the database read — before the ``try`` block is ever entered, with the
-    CDN in success mode: a zero that would survive a record-on-``BaseException`` mutation, proving
-    nothing about the catch. ``stalled_cdn`` holds the fetch open so the cancel arrives inside
-    ``fetch_image``, and the recorded upstream request is the positive observation that there was
-    genuinely something in flight to mis-record.
+    The first draft cancelled after one bare yield, which lands the ``CancelledError`` at one of
+    the route's first awaits — the disk read or the database read — before the ``try`` block is
+    ever entered, with the CDN in success mode: a zero that would survive a
+    record-on-``BaseException`` mutation, proving nothing about the catch. ``stalled_cdn`` holds
+    the fetch open so the cancel arrives inside ``fetch_image``, and the recorded upstream request
+    is the positive observation that there was genuinely something in flight to mis-record.
     """
 
     async def test_a_cancelled_request_leaves_no_entry_behind(
