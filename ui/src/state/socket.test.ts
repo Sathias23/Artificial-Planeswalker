@@ -900,4 +900,44 @@ describe('the loop survives a socket factory that fails outright', () => {
 
     socket.stop()
   })
+
+  it('keeps retrying when the STATUS consumer throws — the schedule sits in a finally', async () => {
+    // `fail()` emits and then schedules, and the schedule is in a `finally` so a consumer that
+    // throws on the status (a render bug: the system store is subscribed selector-less) cannot
+    // stop a loop that promises never to give up. Every other `onStatus` in this file only
+    // records, so without this case `emit(); schedule()` would pass the whole suite.
+    const mintedAt: number[] = []
+    const opened: AgentSocketHandlers[] = []
+    const socket = createAgentSocket({
+      onStatus: (status) => {
+        if (status === 'reconnecting') throw new Error('a render bug in the status consumer')
+      },
+      onReconnected: () => undefined,
+      onSystemEvent: () => undefined,
+      onSuggestions: () => undefined,
+      onSwaps: () => undefined,
+      onTierList: () => undefined,
+      onGroups: () => undefined,
+      mint: () => {
+        mintedAt.push(Date.now())
+        return Promise.resolve(TICKET)
+      },
+      open: (_ticket, handlers) => {
+        opened.push(handlers)
+        return { close: () => undefined }
+      },
+    })
+
+    socket.start()
+    await settle()
+    opened[0].onOpen()
+    // The drop reaches `fail()`, whose status emit throws. The error still surfaces to the caller
+    // (nothing swallows it), and the retry is already committed.
+    expect(() => opened[0].onClose()).toThrow('a render bug in the status consumer')
+
+    await vi.advanceTimersByTimeAsync(SOCKET_BASE_MS)
+    expect(mintedAt).toEqual([0, SOCKET_BASE_MS])
+
+    socket.stop()
+  })
 })

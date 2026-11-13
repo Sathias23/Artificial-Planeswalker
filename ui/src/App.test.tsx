@@ -1774,6 +1774,56 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
     expect(callsTo(fetchMock, '/api/decks')).toBe(pollsSoFar + 1)
   })
 
+  it('re-arms the probe on a NONE settle too — refusal, none, refusal in one healthy episode', async () => {
+    // The third reset: an honest `'none'` ends the episode exactly as a loaded deck does. Here the
+    // poll is healthy and stopped throughout, so nothing else resets the spent probe between the
+    // two refusals: without the `'none'` re-arm the second one strands the updating panel.
+    // Active-deck script: the deck, then no deck (the probe's re-drive), then the deck again (the
+    // first `'live'`'s reconciliation boot), and the deck from then on.
+    const activeAnswers = [ATRAXA_DECK_ID, null, ATRAXA_DECK_ID]
+    let activeIndex = 0
+    const deckAnswers = [
+      () => refusal('database_unavailable', 503), // the mount's boot
+      () => refusal('database_unavailable', 503), // the reconciliation boot, after the none
+      () => deckDetail({ name: 'Atraxa, after the none' }), // the second probe's re-drive
+    ]
+    let deckIndex = 0
+    const fetchMock = vi.fn((input?: unknown) => {
+      const path = String(input)
+      if (path === '/api/active-deck') {
+        const deckId = activeAnswers[Math.min(activeIndex, activeAnswers.length - 1)]
+        activeIndex += 1
+        return Promise.resolve(activeDeck(deckId))
+      }
+      if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
+      if (path.startsWith('/api/deck/')) {
+        const answer = deckAnswers[Math.min(deckIndex, deckAnswers.length - 1)]
+        deckIndex += 1
+        return Promise.resolve(answer())
+      }
+      if (path === '/api/session') return Promise.resolve(sessionTicket())
+      return Promise.resolve(decks('Atraxa Counter Cabinet v2 (owned)'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const counts = fetchMock as unknown as ReturnType<typeof answering>
+
+    render(<App />)
+    await settle()
+    // The first episode: the mount's refusal, its probe, and the probe's re-drive settling none.
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(deckDetailCalls(counts)).toBe(1)
+    expect(callsTo(counts, '/api/decks')).toBe(2)
+
+    // The socket goes live; its reconciliation boot finds the deck again and it refuses. The poll
+    // is still stopped healthy, so only a re-armed probe can recover this.
+    await connect()
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Atraxa, after the none' })).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
+    expect(deckDetailCalls(counts)).toBe(3)
+    expect(callsTo(counts, '/api/decks')).toBe(3)
+  })
+
   it('re-arms the probe when the poll leaves and re-enters healthy — the other reset', async () => {
     // The mirror: the probe was spent against a deck that kept refusing; then the poll itself
     // refuses (the episode ends) and recovers. A refusal in the NEW healthy episode must be able

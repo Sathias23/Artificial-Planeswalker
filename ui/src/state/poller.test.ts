@@ -369,6 +369,36 @@ describe('the stalled escalation fires on ONE token only', () => {
 
     poller.stop()
   })
+
+  it('resets on a network rejection too — the guard runs before the unreachable early return', async () => {
+    // An `unreachable` decides no panel and returns early, but the escalation guard runs FIRST, so
+    // a blip still resets the clock, as `unavailableSince`'s docstring says. Polls land at 0, 2, 6
+    // and 14 s (four refusals), 30 s (the blip, which also resets the backoff), then 32, 34, 38,
+    // 46, 62 and 92 s: the second outage starts at 32 s.
+    const { read } = script(
+      UNAVAILABLE,
+      UNAVAILABLE,
+      UNAVAILABLE,
+      UNAVAILABLE,
+      UNREACHABLE,
+      UNAVAILABLE,
+    )
+    const { poller, panel } = drive(read)
+
+    poller.start()
+    await settle()
+    // 62 s: past sixty seconds since the FIRST refusal, with nine refusals observed. A clock the
+    // blip had not reset would read stalled on this poll.
+    await vi.advanceTimersByTimeAsync(62_000)
+    expect(panel()).toBe('database-updating')
+
+    // 92 s: sixty seconds after the post-blip refusals began — and now it escalates.
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(Date.now()).toBe(92_000)
+    expect(panel()).toBe('database-updating-stalled')
+
+    poller.stop()
+  })
 })
 
 describe('an unreachable backend claims no state and keeps trying', () => {
