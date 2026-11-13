@@ -1252,7 +1252,9 @@ directory needs adding to one of those two `include` lists.
   `src/state/socket.ts` takes the factory INJECTED so the loop
   module never contains the banned identifier. The loop mints a fresh ticket per attempt, backs
   off 2/4/8/16/30 s, and announces `disconnected` after 60 s AND 4 failures while continuing to
-  retry behind the panel.
+  retry behind the panel. A socket that drops less than `SOCKET_STABLE_MS` (5 s) after opening
+  counts as one more failed attempt rather than a reset, so a backend that accepts the upgrade and
+  drops it at once backs off and reaches the panel like any other lost backend.
 - **What still does NOT exist:** any `fetch` for image BYTES — art
   reaches the screen through `<img src="/api/card-image/…">` and the browser's own HTTP cache,
   backed by `IMAGE_CACHE_CONTROL` and the backend's disk cache. There is no image cache in
@@ -1321,7 +1323,11 @@ paints first and re-drives once on its settle); the poll answering healthy to th
 transient deck refusal earns (a `'refused'` settle whose panel `RETRIES_QUIETLY` says retries,
 landing after the poll had already stopped healthy, restarts the poll once and its healthy write
 re-drives the boot once — bounded per healthy episode, never a loop); and any `deck_changed` /
-`active_deck_changed` frame. A loaded deck is still never re-driven by the POLL edge.
+`active_deck_changed` frame (a `deck_changed` that lands while a boot is unsettled defers behind
+it, so the in-flight read paints and one boot follows). A loaded deck is still never re-driven by
+the POLL edge; the one exception is a `deck_changed` refetch dropped on an `unreachable` or a
+retrying refusal, which takes the same one probe (or the poll's own recovery edge, if it was still
+retrying) and is refetched once when the poll answers healthy.
 
 **The stalled threshold:** `STALLED_AFTER_MS = 60_000` in `src/state/poller.ts` — 60
 seconds of _continuous_ `database_unavailable`, and that token only. `database_not_initialized`

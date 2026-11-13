@@ -15,9 +15,9 @@
  * WebSocket is a TRIGGER, never a writer: a `deck_changed` frame drives a refetch, and what is
  * written is still a REST response, through one writer. No timer: recovery is edge-triggered — the
  * poll recovering into `no-active-deck`, the poll answering healthy to the ONE probe a transient
- * deck refusal earns (CAP-3), the socket going live (CAP-2), or a `deck_changed`/
- * `active_deck_changed` frame. No render, and no cache reset (reconnect re-arms card attempt
- * budgets in `cards.ts` rather than discarding hydration the agent views share).
+ * deck refusal or a dropped refetch earns (CAP-3, F2-D1), the socket going live (CAP-2), or a
+ * `deck_changed`/`active_deck_changed` frame. No render, and no cache reset (reconnect re-arms card
+ * attempt budgets in `cards.ts` rather than discarding hydration the agent views share).
  */
 
 import { useEffect } from 'react'
@@ -111,6 +111,9 @@ export const resetDeckState = (): void => {
   applyDeckState(INITIAL_DECK_STATE)
   applyUpdating(false)
   applyRefetchSettles(0)
+  // A test that drives `driveDeckChanged` against an unsettled boot of its own leaves the deferral
+  // set, with no `useDeckState` mounted to consume it.
+  redriveOnSettle = false
 }
 
 /**
@@ -175,7 +178,8 @@ export interface DeckBoot {
    * restarts"* with no timer; the supersession IS the coalescing. A no-op unless the boot has
    * settled: racing an unsettled sequence could strand the slice at `'booting'`. Only
    * `deck_not_found` settles (the 404-clear); every other refusal, an unreachable, an abort and a
-   * malformed row are DROPPED so the loaded deck stays on the glass (UX-DR35 never-teardown).
+   * malformed row are DROPPED so the loaded deck stays on the glass (UX-DR35 never-teardown); a
+   * drop that may pass is reported through {@link DeckBootOptions.onRefetchRefused}.
    */
   refetch: (deckId: string) => void
   /** Whether the most recent `start()`'s sequence has settled. A refetch neither needs nor clears it. */
@@ -185,6 +189,15 @@ export interface DeckBoot {
 export interface DeckBootOptions {
   /** Emitted once per state the boot decides. */
   readonly onUpdate: (state: DeckState) => void
+  /**
+   * A refetch was DROPPED for a reason that may pass: an `unreachable`, or a refusal whose panel
+   * `RETRIES_QUIETLY` says retries. The deck on the glass is now stale and nothing in the boot
+   * will ask again, so the composition routes it through the CAP-3 probe (`useDeckState`). Not
+   * called for the 404-clear (that settles), a malformed row (asking again re-reads the same
+   * rows) or a superseded or stopped run (the generation guard). Optional: a test boot that does
+   * not care passes nothing.
+   */
+  readonly onRefetchRefused?: () => void
   /** Injected so tests need no global `fetch` stub, exactly as `createPoller`'s `read?:` is. */
   readonly readActive?: () => Promise<ActiveDeckOutcome>
   /** Likewise. **Production passes neither.** `signal` is the refetch's abort handle. */
@@ -201,6 +214,7 @@ export interface DeckBootOptions {
  */
 export const createDeckBoot = ({
   onUpdate,
+  onRefetchRefused = () => undefined,
   readActive = readActiveDeckRoute,
   readDetail = readDeckRoute,
 }: DeckBootOptions): DeckBoot => {
@@ -298,6 +312,10 @@ export const createDeckBoot = ({
    * down to a panel on a transient blip is the teardown UX-DR35 forbids. The `invalid_request`
    * override does NOT clear here: THIS id is the settled `detail.id`, which just resolved, so a 400
    * about it mid-session reads as a blip, not a verdict.
+   *
+   * Dropped is not forgotten: an `unreachable` or a retrying refusal (read from `RETRIES_QUIETLY`,
+   * as the boot's own probe reads it) reports through `onRefetchRefused`, so the deck the agent
+   * just edited is asked for again once the poll says the backend is healthy (F2-D1).
    */
   const refetchSequence = async (
     gen: number,
@@ -314,9 +332,13 @@ export const createDeckBoot = ({
     }
     if (gen !== generation || !live) return
 
-    if (detail.kind === 'unreachable') return
+    if (detail.kind === 'unreachable') {
+      onRefetchRefused()
+      return
+    }
     if (detail.kind === 'error') {
       if (detail.reason === 'deck_not_found') settle(deckRefusalState(detail.reason))
+      else if (RETRIES_QUIETLY[deckPanelFor(detail.reason)]) onRefetchRefused()
       return
     }
 
@@ -442,7 +464,8 @@ let mounted: DeckBoot | null = null
 /**
  * Whether the mounted boot owes one re-drive the moment its in-flight sequence settles (CAP-2).
  *
- * Set by {@link reconcileDeckBoot} when the socket goes live while the boot has not settled;
+ * Set by {@link reconcileDeckBoot} when the socket goes live while the boot has not settled, and
+ * likewise by {@link driveDeckChanged} for a `deck_changed` frame and by `useDeckState`'s poll edge;
  * consumed, once, by `useDeckState`'s `onUpdate`; CLEARED by {@link restartBoot}, because any
  * other re-drive that lands first (a frame, a poll edge, the probe) starts a sequence that already
  * began after the socket was live, and letting it consume the flag would boot a redundant third
@@ -495,14 +518,21 @@ export const reconcileDeckBoot = (): void => {
  * The decision table over one `deck_changed`. Exported so `deck.test.ts` can drive it with an
  * injected boot; production reaches it through {@link refetchOnDeckChanged}.
  *
- * A settled `'deck'` with a matching or deck-agnostic id → {@link DeckBoot.refetch} of the
- * SETTLED `detail.id` (the event's copy was only ever a routing hint). A settled `'deck'` with a
- * DIFFERENT id → nothing. Anything else — `'none'`, `'refused'`, `'booting'`, or an unsettled
- * re-drive → the full two-request re-drive: the server is the referee, because adjudicating ids
- * client-side while the settled id is not current truth is how a refetch of a DEPARTING deck beats
- * an in-flight re-drive and strands the glass on the old deck. A STOPPED boot dies silently at
- * `refetch()`'s `!live` no-op; unreachable through the production seam. There is no stored
- * `activeDeckId` anywhere — inventing one would be a second source of truth.
+ * A boot still in flight — `'booting'`, or an unsettled re-drive → DEFERRED: {@link redriveOnSettle}
+ * is set, the in-flight sequence paints, and exactly one full re-drive follows its settle, as CAP-2
+ * and CAP-3 already defer (M38). Restarting here used to discard the in-flight response, so a burst
+ * of frames during a slow boot could hold the glass blank. The follow-up begins after the frame,
+ * so it reads the edit. A settled `'deck'` with a matching or deck-agnostic id →
+ * {@link DeckBoot.refetch} of the SETTLED `detail.id` (the event's copy was only ever a routing
+ * hint). A settled `'deck'` with a DIFFERENT id → nothing. A settled `'none'` or `'refused'` → the
+ * full two-request re-drive: the server is the referee, because adjudicating ids client-side while
+ * the settled id is not current truth is how a refetch of a DEPARTING deck beats an in-flight
+ * re-drive and strands the glass on the old deck. A STOPPED boot dies silently at `refetch()`'s
+ * `!live` no-op; unreachable through the production seam. There is no stored `activeDeckId`
+ * anywhere — inventing one would be a second source of truth.
+ *
+ * The deferral is consumed by `useDeckState`'s `onUpdate`, so a test driving its OWN boot sees the
+ * paint but not the follow-up; `App.test.tsx` pins the follow-up from a real mount.
  *
  * Args:
  *   boot: The boot to drive — production's mounted instance, or a test's own.
@@ -510,8 +540,12 @@ export const reconcileDeckBoot = (): void => {
  *     is active").
  */
 export const driveDeckChanged = (boot: DeckBoot, deckId: string | null): void => {
+  if (!boot.settled()) {
+    redriveOnSettle = true
+    return
+  }
   const { deck } = useDeckStore.getState()
-  if (deck.status !== 'deck' || !boot.settled()) {
+  if (deck.status !== 'deck') {
     restartBoot(boot)
     return
   }
@@ -561,7 +595,9 @@ export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice
  * The recovery re-drive (FR-22) is an EDGE, not a level: the poll's panel transitioning INTO
  * `no-active-deck` is the poll saying "the backend went from refusing to healthy". On it a
  * `'refused'` or `'none'` state is re-booted once; a `'deck'` never is (`App.test.tsx`'s "boots
- * exactly once" crosses this edge with a loaded deck). Level-triggering would loop forever against
+ * exactly once" crosses this edge with a loaded deck), unless a refetch of it was dropped and is
+ * owed (F2-D1, below), which the edge pays with one refetch.
+ * Level-triggering would loop forever against
  * an id that refuses forever. The listener reads `useDeckStore.getState()` rather than a render's
  * closure, because the decision must be made against the state of NOW.
  *
@@ -580,6 +616,15 @@ export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice
  * attempt, never a loop, and `internal_error` (a `false` in the map) probes nothing. A refusal
  * that settles while the poll is still RETRYING spends nothing: the poll's own recovery edge is
  * the re-drive then, and the probe stays available for the healthy episode that edge begins.
+ *
+ * A REFETCH dropped the same way takes the same probe (F2-D1, option (a), no timer). A
+ * `deck_changed` refetch that answers `unreachable`, or a refusal whose panel retries, leaves the
+ * deck on the glass (UX-DR35) but marks it owed; the probe's healthy answer, or the poll's recovery
+ * edge if it was still retrying, then refetches it through {@link driveDeckChanged}. It shares the
+ * episode's one probe, so a deck route that refuses forever beside a healthy poll costs one poll
+ * read and one extra refetch, then waits for the next frame, reconnect or poll edge. The second
+ * refusal after a probe's re-drive is the stated bound, not a recovery path: re-arming per re-drive
+ * would need a cap of its own and was not built.
  *
  * A poll write is told apart from the connection and identity writes that share this store by
  * the `panel`/`decks` fields moving: the poller emits a fresh `decks` array on every write and
@@ -603,27 +648,48 @@ export const useDeckState = (): DeckState => {
      * not name the store. The initial panel is the poll's own starting value.
      */
     let pollPanel: StateKey = INITIAL_SYSTEM_STATE.panel
+    /**
+     * Whether the deck on the glass is owed a refetch: a refetch was dropped on a refusal that may
+     * pass (F2-D1). Paid by the next healthy poll write that is an edge or answers the probe, and
+     * cleared by any settle, since a settle is itself a fresher read than the one that was lost.
+     */
+    let refetchOwed = false
     redriveOnSettle = false
+
+    /**
+     * Ask the stopped poll for ONE fresh verdict, at most once per healthy episode (CAP-3). A poll
+     * that is still retrying needs no probe and must not be charged one: its recovery edge is the
+     * re-drive (or the owed refetch), and the probe belongs to the healthy episode that edge begins.
+     */
+    const probeOnce = (): void => {
+      if (probeSpent || RETRIES_QUIETLY[pollPanel]) return
+      probeSpent = true
+      probeArmed = true
+      restartPollIfStopped()
+    }
 
     const boot = createDeckBoot({
       onUpdate: (state) => {
         applyDeckState(state)
+        refetchOwed = false
         // A loaded deck or an honest `'none'` ends the episode: the next transient refusal may
         // probe again.
         if (state.status === 'deck' || state.status === 'none') probeSpent = false
-        // The re-drive the socket's `'live'` deferred while this sequence was in flight (CAP-2):
-        // the paint above happened first, and the follow-up boot begins after the socket is live.
+        // The re-drive deferred while this sequence was in flight (the socket's `'live'`, CAP-2; a
+        // `deck_changed` frame, M38; a poll edge): the paint above happened first, and the
+        // follow-up boot begins after whatever deferred it.
         if (redriveOnSettle) {
           restartBoot(boot)
           return
         }
-        if (state.status !== 'refused' || !RETRIES_QUIETLY[state.panel] || probeSpent) return
-        // A poll that is still retrying needs no probe and must not be charged one: its recovery
-        // edge re-drives the boot, and the probe belongs to the healthy episode that edge begins.
-        if (RETRIES_QUIETLY[pollPanel]) return
-        probeSpent = true
-        probeArmed = true
-        restartPollIfStopped()
+        if (state.status !== 'refused' || !RETRIES_QUIETLY[state.panel]) return
+        probeOnce()
+      },
+      // The same probe for a refetch dropped on a refusal that may pass: the deck stays on the
+      // glass, now stale, and is owed a refetch whichever edge pays it.
+      onRefetchRefused: () => {
+        refetchOwed = true
+        probeOnce()
       },
     })
     mounted = boot
@@ -632,7 +698,7 @@ export const useDeckState = (): DeckState => {
       pollPanel = state.panel
       if (state.panel !== 'no-active-deck') {
         // The poll is on a refusal of its own: its eventual recovery is the edge below, so the
-        // probe is neither armed nor spent.
+        // probe is neither armed nor spent. An owed refetch stays owed; that edge pays it.
         probeArmed = false
         probeSpent = false
         return
@@ -646,7 +712,20 @@ export const useDeckState = (): DeckState => {
       if (!edge && !probeArmed) return
       probeArmed = false
       const { deck } = useDeckStore.getState()
-      if (deck.status === 'deck' || deck.status === 'booting') return
+      if (deck.status === 'booting') return
+      if (deck.status === 'deck') {
+        // A loaded deck is never re-booted on a poll edge (`App.test.tsx`'s "boots exactly once"),
+        // unless a refetch of it was dropped: then the healthy verdict pays it, through the same
+        // decision table a deck-agnostic `deck_changed` takes (refetch the settled id, or defer
+        // behind a boot in flight). Cleared first, so a second refusal re-owes it and, with the
+        // probe spent for this episode, costs nothing more. A boot already in flight began after
+        // the lost refetch, so its settle pays the debt (and clears the flag): deferring a second
+        // boot behind it would read the deck twice.
+        if (!refetchOwed || !boot.settled()) return
+        refetchOwed = false
+        driveDeckChanged(boot, null)
+        return
+      }
       // THE EDGE NEVER SUPERSEDES A BOOT IN FLIGHT; IT QUEUES BEHIND IT. On a reconnect the
       // socket's `'live'` re-drives the boot FIRST and `restartPoll()` follows, and a restarted
       // poll always writes its first answer — so this healthy write routinely lands while that

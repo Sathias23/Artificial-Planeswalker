@@ -35,6 +35,7 @@ import {
   SOCKET_BASE_MS,
   SOCKET_CEILING_MS,
   SOCKET_MULTIPLIER,
+  SOCKET_STABLE_MS,
   type ConnectionStatus,
 } from './socket'
 
@@ -195,7 +196,9 @@ describe('the backoff grows and then STOPS growing', () => {
     expect(SOCKET_BASE_MS * SOCKET_MULTIPLIER ** 4).toBeGreaterThan(SOCKET_CEILING_MS)
   })
 
-  it('resets to the base after a successful connection, not to wherever it had grown', async () => {
+  it('resets to the base after a connection that HELD, not to wherever it had grown', async () => {
+    // MOVED in 9.7: the open alone used to reset the backoff, so this test closed the socket the
+    // instant it opened. The reset now needs the socket to have stayed open SOCKET_STABLE_MS.
     const { socket, mintedAt, latest } = driving(UNREACHABLE, UNREACHABLE, UNREACHABLE, TICKET)
 
     socket.start()
@@ -204,13 +207,92 @@ describe('the backoff grows and then STOPS growing', () => {
     await vi.advanceTimersByTimeAsync(4_000) // 6 s
     await vi.advanceTimersByTimeAsync(8_000) // 14 s — this one mints a ticket
     latest().handlers.onOpen()
+    await vi.advanceTimersByTimeAsync(SOCKET_STABLE_MS) // 19 s, still open
 
-    // …then it drops again. The next retry must be 2 s later, not 16 s: an inherited ceiling
-    // would make a second brief outage feel eight times worse than the first for no reason.
+    // …then it drops. The next retry must be 2 s later, not 16 s: an inherited ceiling would make
+    // a second brief outage feel eight times worse than the first for no reason.
     latest().handlers.onClose()
     await vi.advanceTimersByTimeAsync(SOCKET_BASE_MS)
 
-    expect(mintedAt).toEqual([0, 2_000, 6_000, 14_000, 16_000])
+    expect(mintedAt).toEqual([0, 2_000, 6_000, 14_000, 21_000])
+
+    socket.stop()
+  })
+})
+
+describe('an open that does not HOLD is one more failed attempt (M40)', () => {
+  /** Open the socket the loop just minted for, and drop it at once: an accept-then-drop backend. */
+  const openThenDrop = (driver: ReturnType<typeof driving>) => {
+    driver.latest().handlers.onOpen()
+    driver.latest().handlers.onClose()
+  }
+
+  it('backs off on the normal schedule and reaches down when every upgrade drops at once', async () => {
+    // `ws.py` closes `1011` on a post-accept fault, so the upgrade is accepted and the socket dies
+    // in the same moment. The loop used to reset on every open and retry every 2 s forever.
+    const driver = driving(TICKET)
+    const { socket, mintedAt, statuses } = driver
+
+    socket.start()
+    await settle()
+    openThenDrop(driver)
+    for (const wait of [2_000, 4_000, 8_000, 16_000, 30_000]) {
+      await vi.advanceTimersByTimeAsync(wait)
+      openThenDrop(driver)
+    }
+
+    // The schedule of a backend that refuses outright, not one attempt every two seconds.
+    expect(mintedAt).toEqual([0, 2_000, 6_000, 14_000, 30_000, 60_000])
+    // …and both gates are met at 60 s: six failed attempts, sixty seconds since the first. Each
+    // open still says `'live'` while it lasts; the last drop announces the loss.
+    expect(statuses.at(-1)).toBe('down')
+    expect(statuses.filter((status) => status === 'down')).toHaveLength(1)
+
+    // Behind the panel the loop keeps retrying at the ceiling, as it does for any lost backend.
+    await vi.advanceTimersByTimeAsync(SOCKET_CEILING_MS)
+    expect(mintedAt).toEqual([0, 2_000, 6_000, 14_000, 30_000, 60_000, 90_000])
+
+    socket.stop()
+  })
+
+  it('fires the reconnect signal on each reopen of the run — every open follows a failure', async () => {
+    const driver = driving(TICKET)
+
+    driver.socket.start()
+    await settle()
+    openThenDrop(driver) // the tab's first socket: no reconnect
+    await vi.advanceTimersByTimeAsync(SOCKET_BASE_MS)
+    openThenDrop(driver)
+    await vi.advanceTimersByTimeAsync(4_000)
+    openThenDrop(driver)
+
+    expect(driver.reconnects()).toBe(2)
+
+    driver.socket.stop()
+  })
+
+  it('treats an open just short of SOCKET_STABLE_MS as a failure, and one that reaches it as a reset', async () => {
+    const driver = driving(TICKET)
+    const { socket, mintedAt, latest } = driver
+
+    socket.start()
+    await settle()
+    latest().handlers.onOpen()
+    await vi.advanceTimersByTimeAsync(SOCKET_STABLE_MS - 1)
+    latest().handlers.onClose() // 4.999 s: did not hold, so the delay keeps growing
+    await vi.advanceTimersByTimeAsync(SOCKET_BASE_MS)
+    expect(mintedAt).toEqual([0, 6_999])
+
+    latest().handlers.onOpen()
+    latest().handlers.onClose() // at once: the run continues, so 4 s, not 2 s
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(mintedAt).toEqual([0, 6_999, 10_999])
+
+    latest().handlers.onOpen()
+    await vi.advanceTimersByTimeAsync(SOCKET_STABLE_MS)
+    latest().handlers.onClose() // held: back to the base
+    await vi.advanceTimersByTimeAsync(SOCKET_BASE_MS)
+    expect(mintedAt).toEqual([0, 6_999, 10_999, 17_999])
 
     socket.stop()
   })

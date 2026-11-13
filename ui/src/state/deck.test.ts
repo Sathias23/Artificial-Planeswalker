@@ -513,10 +513,15 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins', () =
     const readActive = vi.fn(() =>
       Promise.resolve<ActiveDeckOutcome>({ kind: 'active-deck', deckId: activeId }),
     )
+    // How many dropped refetches were reported as refusals that may pass (F2-D1).
+    const refetchRefusals = { count: 0 }
     const boot = createDeckBoot({
       onUpdate: (state) => {
         settles.push(state)
         useDeckStore.setState({ deck: state })
+      },
+      onRefetchRefused: () => {
+        refetchRefusals.count += 1
       },
       readActive,
       readDetail: (deckId, signal) =>
@@ -524,7 +529,7 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins', () =
           detailCalls.push({ deckId, signal, resolve })
         }),
     })
-    return { boot, readActive, detailCalls, settles }
+    return { boot, readActive, detailCalls, settles, refetchRefusals }
   }
 
   /** Flush the microtask chain a resolved reader continues on. */
@@ -671,14 +676,18 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins', () =
     expect(useDeckStore.getState().deck).toEqual({ status: 'none' })
   })
 
-  it.each<[string, DeckOutcome]>([
-    ['a 503 database_unavailable', { kind: 'error', reason: 'database_unavailable' }],
-    ['a 500 internal_error', { kind: 'error', reason: 'internal_error' }],
+  // The third column: whether the drop is REPORTED as a refusal that may pass (F2-D1), so the
+  // composition can ask again once the poll is healthy. Read from `RETRIES_QUIETLY` for the
+  // tokens; an unreachable is reported; a malformed row is not, because asking again re-reads it.
+  it.each<[string, DeckOutcome, boolean]>([
+    ['a 503 database_unavailable', { kind: 'error', reason: 'database_unavailable' }, true],
+    ['a 503 database_not_initialized', { kind: 'error', reason: 'database_not_initialized' }, true],
+    ['a 500 internal_error', { kind: 'error', reason: 'internal_error' }, false],
     // The boot's invalid_request override folds THIS token to 'none'; on a refetch of an id
     // that just resolved it is a blip, and dropping it is the row that stops the override
     // leaking here.
-    ['a 400 invalid_request', { kind: 'error', reason: 'invalid_request' }],
-    ['an unreachable backend', { kind: 'unreachable' }],
+    ['a 400 invalid_request', { kind: 'error', reason: 'invalid_request' }, false],
+    ['an unreachable backend', { kind: 'unreachable' }, true],
     [
       'a 200 with a malformed row',
       {
@@ -688,29 +697,70 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins', () =
           cards: [{ card_id: 'id-broken', quantity: 1 } as unknown as DeckCardSummary],
         },
       },
+      false,
     ],
-  ])('DROPS %s and leaves the loaded deck untouched (never-teardown)', async (_label, outcome) => {
+  ])(
+    'DROPS %s and leaves the loaded deck untouched (never-teardown)',
+    async (_label, outcome, reported) => {
+      const harness = buildBoot()
+      await settled(harness)
+      const before = useDeckStore.getState().deck
+      const settlesBefore = harness.settles.length
+
+      driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+      await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+      harness.detailCalls[1].resolve(outcome)
+      await flush()
+
+      // The boot maps every one of these to a panel or a clear, because a cold open has nothing
+      // on the glass to protect. A refetch has, so the DECK STORE is untouched: same state, by
+      // reference, and zero settles — staleness accepted, recovery owned by the next event, the
+      // reconnect re-drive or the poll edge. (The malformed-200 row's card CACHE is deliberately
+      // not asserted clean: seeding runs before the derivation throws, and the validly-shaped
+      // summaries it may retain are additive and harmless — `deck.ts`'s catch says why.)
+      expect(useDeckStore.getState().deck).toBe(before)
+      expect(harness.settles.length - settlesBefore).toBe(0)
+      expect(harness.refetchRefusals.count).toBe(reported ? 1 : 0)
+    },
+  )
+
+  it('reports nothing for the 404-clear, a superseded refetch or a stopped one', async () => {
     const harness = buildBoot()
     await settled(harness)
-    const before = useDeckStore.getState().deck
-    const settlesBefore = harness.settles.length
 
+    // Superseded: the older refetch's refusal lands after a newer one began.
     driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
-    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
-    harness.detailCalls[1].resolve(outcome)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(3))
+    harness.detailCalls[1].resolve({ kind: 'error', reason: 'database_unavailable' })
     await flush()
+    expect(harness.refetchRefusals.count).toBe(0)
 
-    // The boot maps every one of these to a panel or a clear, because a cold open has nothing
-    // on the glass to protect. A refetch has, so the DECK STORE is untouched: same state, by
-    // reference, and zero settles — staleness accepted, recovery owned by the next event, the
-    // reconnect re-drive or the poll edge. (The malformed-200 row's card CACHE is deliberately
-    // not asserted clean: seeding runs before the derivation throws, and the validly-shaped
-    // summaries it may retain are additive and harmless — `deck.ts`'s catch says why.)
-    expect(useDeckStore.getState().deck).toBe(before)
-    expect(harness.settles.length - settlesBefore).toBe(0)
+    // Stopped: the newer one's refusal lands after the boot stopped.
+    harness.boot.stop()
+    harness.detailCalls[2].resolve({ kind: 'error', reason: 'database_unavailable' })
+    await flush()
+    expect(harness.refetchRefusals.count).toBe(0)
+
+    // The 404-clear settles instead of reporting.
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(4))
+    harness.detailCalls[3].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(harness.settles.at(-1)?.status).toBe('deck'))
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(5))
+    harness.detailCalls[4].resolve({ kind: 'error', reason: 'deck_not_found' })
+    await flush()
+    expect(useDeckStore.getState().deck).toEqual({ status: 'none' })
+    expect(harness.refetchRefusals.count).toBe(0)
   })
 
-  it('folds a mid-boot event into a fresh FULL re-drive — never a refetch against a departing id', async () => {
+  it('defers a mid-boot event behind the re-drive in flight — never a refetch against a departing id', async () => {
+    // MOVED in 9.7 (M38, T1-4-P5): this used to fold the event into a RESTART, discarding the
+    // in-flight response. The event now defers, as CAP-2 and CAP-3 do: the re-drive in flight
+    // settles and paints, and `useDeckState` runs exactly one follow-up boot on that settle
+    // (`App.test.tsx` pins the follow-up from a real mount; this harness drives its own boot, so
+    // nothing here consumes the deferral).
     // Its own harness rather than `buildBoot`: the mid-boot window only exists while the
     // active-deck answer is WITHHELD, so this reader must be manually resolvable too.
     const detailCalls: DetailCall[] = []
@@ -742,19 +792,44 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins', () =
     expect(useDeckStore.getState().deck.status).toBe('deck')
 
     driveDeckChanged(boot, ATRAXA_DECK_ID)
-    await vi.waitFor(() => expect(readActive).toHaveBeenCalledTimes(3))
+    await flush()
 
-    // The fold is a full boot — active-deck FIRST (the server referees) — and no single-deck
-    // read was issued against the possibly-departing id: the
-    // only detail call so far is still the settled boot's own.
+    // No restart: the re-drive's active-deck read is still the one in flight, and no single-deck
+    // read was issued against the possibly-departing id — the only detail call so far is still
+    // the settled boot's own.
+    expect(readActive).toHaveBeenCalledTimes(2)
     expect(detailCalls).toHaveLength(1)
 
-    // …and the folded re-drive OWNS the store now. It answers a DIFFERENT deck — the exact
-    // supersession race the fold exists to win: a single-deck refetch here would have re-read
-    // the departing deck and beaten the re-drive to the store.
-    activeResolvers[2]({ kind: 'active-deck', deckId: 'the-newly-activated-deck' })
+    // The in-flight re-drive OWNS the store, and it answers a DIFFERENT deck — the race the
+    // server-refereed re-drive exists to win: a single-deck refetch here would have re-read the
+    // departing deck and beaten the re-drive to the store.
+    activeResolvers[1]({ kind: 'active-deck', deckId: 'the-newly-activated-deck' })
     await vi.waitFor(() => expect(detailCalls).toHaveLength(2))
     expect(detailCalls[1].deckId).toBe('the-newly-activated-deck')
+    detailCalls[1].resolve({
+      kind: 'deck',
+      deck: detail({ id: 'the-newly-activated-deck', name: 'Painted, not discarded' }),
+    })
+    await vi.waitFor(() => {
+      const { deck } = useDeckStore.getState()
+      expect(deck.status === 'deck' && deck.detail.name).toBe('Painted, not discarded')
+    })
+    expect(readActive).toHaveBeenCalledTimes(2)
+  })
+
+  it('defers a deck_changed during the COLD boot too — the booting row', async () => {
+    const harness = buildBoot()
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(1))
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await flush()
+    // Nothing restarted and nothing was refetched: the cold boot's deck read is the only one.
+    expect(harness.readActive).toHaveBeenCalledTimes(1)
+    expect(harness.detailCalls).toHaveLength(1)
+
+    harness.detailCalls[0].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
   })
 
   it('re-drives the full boot from a settled none state — the no-deck row', async () => {
