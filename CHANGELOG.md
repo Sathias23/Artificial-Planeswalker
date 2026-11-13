@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-13
+
 ### Added
 
 - **`clone_deck` tool.** Copies a saved deck's metadata and every card row, including
@@ -26,9 +28,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `card_not_found`), answers `unchanged` when the stored count already
   matches, and emits `deck_changed` on `ok`. The `exists` message from
   `add_card_to_deck` now points at it.
+- **Legality reports name what they did not check.** `validate_deck` returns an
+  `unchecked` list, one line per known rule it doesn't enforce for that format: deck
+  size, commander eligibility and colour identity for Commander-style formats,
+  rotation for rotating formats, and copy exceptions everywhere. Its message ends
+  with "Not checked: …". The companion's format-check panel shows the same list
+  under "Not checked". No verdict changed: 5,616 deck and format combinations
+  compared identical.
+- **Companion pushes name their deck.** The four `companion_show_*` tools take an
+  optional `deck_id`. A view and its history entry then read "For {deck name}",
+  with a "Stale" badge once that deck changes or another deck is on screen. A push
+  without `deck_id` renders as before. Suggestion rows now read "Agent
+  confidence: …".
+- **`analyze_mana_curve` reports colour pips.** A new `colour_pips` field counts
+  coloured mana symbols; a hybrid symbol counts for both of its colours. The
+  `distribution` field now always carries all seven buckets.
+
+### Changed
+
+- **The agent and the companion report the same card statistics.** One shared
+  rule now decides what is a land, which mana-value bucket a card falls in and
+  how colour pips are counted. The companion's curve and colour panels draw the
+  figures the server sends instead of counting them in the browser.
+  - A card is a land when its front face is a land, so a `Sorcery // Land`
+    double-faced card counts as a spell on the curve and in pip demand.
+  - A 0-cost spell goes in the first curve bucket, and the last bucket holds 7 or
+    more.
+  - **Power scores move** for decks with spell-front double-faced cards, because
+    those cards now count as spells in the assessment.
+- **One card-name resolver.** Lookup, add, set quantity, remove, import and
+  `find_similar_cards` resolve names the same way, through the NOCASE indexes.
+  - Partial matches come back in name order everywhere, and past 10 matches the
+    message says "more than 10".
+  - `%` and `_` in user text match literally in name matching and in the
+    `search_cards` type, keyword, oracle-text and games filters.
+  - `find_similar_cards`' seed match went from a table scan (about 180 ms) to an
+    index lookup.
+- **Arena imports keep mixed printings.** `import_decklist` adds up lines for the
+  same card in the same board, so `2 Island (ELD) 250` plus `2 Island (THB) 251`
+  imports 4 Islands with both lines `ok`. Lines that add up past 250 copies all
+  answer `invalid`, and none of that card is added. `exists` now means only that
+  the card was in the deck before the import.
+- **Filtered semantic searches come back full.** When a format or colour filter
+  leaves a search short, it retries once against the nearest 4,096 cards. On a
+  real index, Standard-filtered searches went from 149 of 160 results to 160 of
+  160. A search still short at that cap says how many matched and points to
+  `search_cards`.
+- **Every index build prunes orphan vectors.** Vectors whose card is gone are
+  removed on every build, except during the first-run import.
+  `build_search_index` reports `cards_pruned`.
+- **Infrastructure failures answer as a status.** Every tool answers a database or
+  search-index failure (corrupt or locked database, missing sqlite-vec, offline
+  first model load) with `status="error"` instead of an MCP error.
+  - `compare_deck_power` still assesses side B after side A fails.
+  - The semantic model loads only after the database and index checks pass.
+  - `initialize_database` tells a database cause from a network one.
+- **Companion recovery never leaves the deck silently stale.**
+  - **Disconnected panel:** a backend that accepts the connection and drops it
+    at once is retried with backoff, and the panel shows after 60 s. Before, the
+    companion retried every 2 s forever and never showed the panel. The backoff
+    resets only after a connection stays open 5 s.
+  - **Briefly refused edits:** an agent edit whose reload was briefly refused
+    reaches the screen once the backend answers healthy.
+  - **Edits during a cold open:** these no longer restart the load.
+  - **Format-check panel:** it keeps its last result through agent edits.
+- **Card images touch the database only on a cache miss.** A cached image is served
+  from disk with no database read, including while the database is missing or
+  broken (`200`, where it used to be `503`). An uncached image releases its
+  database session before waiting its turn to download.
+- **Plugin installs skip dev dependencies.** Both plugin launch configs run
+  `uv run --no-dev`, so a plugin install no longer pulls mypy, pytest, ruff or
+  pre-commit.
+
+### Removed
+
+- **`--prune` from `scripts/build_card_embeddings.py`, and the `prune` parameter
+  of `build_search_index`.** Pruning is now always on, so passing `--prune` exits
+  with code 2 (unknown flag). Drop it from any script that passes it.
 
 ### Fixed
 
+- **Import picks English printings and keeps WUBRG colour order.** The canonical
+  record for a card now prefers its English printing, and colour lists are stored
+  WUBRG-ordered. Reconciling identities keeps commander flags and caps merged
+  quantities at 250, with a warning when copies are dropped. Run
+  `initialize_database(update=true)` to repair a database imported before this
+  release.
+- **Snow basics and restricted cards get the right verdict.** Snow-covered basics
+  and Wastes are exempt from the copy limit. In a format that restricts a card, one
+  copy is legal and two or more are one `restricted_card` violation. Singleton
+  formats report it as `singleton`.
+- **The image cache handles bad input safely.**
+  - A stored image URL with an unparseable port answers `502 image_fetch_failed`
+    (the placeholder) instead of `500`.
+  - The 16 MB image ceiling now applies to the bytes on the wire, so a compressed
+    response can't expand past it. An upstream that compresses an image after
+    being asked not to gets `502`.
+  - Two overlapping writes of one image in different formats no longer delete
+    each other.
+- **Repo commands can't destroy or miss your database.** The import CLIs, startup
+  diagnostics and the search connection all resolve the database through
+  `CARDS_DATABASE_URL` when it is set, so they write and report the file the server
+  reads. The `cdp_harness panels` dev command refuses the real data directory.
+- **The migration scripts are safe to re-run.** Every `scripts/migrate_*.py` now
+  has a test that runs it twice on a populated database. `migrate_add_deck_strategy`
+  retries its index on a re-run.
 - `DeckRepository.update_deck` now rolls back its session on a
   `DatabaseError` before re-raising, as the other writers do.
 
@@ -507,7 +611,8 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
-[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.6.0
 [0.5.1]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.4.0
