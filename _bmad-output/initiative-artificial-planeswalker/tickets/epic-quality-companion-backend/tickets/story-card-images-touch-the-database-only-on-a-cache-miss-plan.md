@@ -3,7 +3,7 @@ title: 'Card images touch the database only on a cache miss'
 type: 'bugfix'
 ticket: '1'
 created: '2026-11-13'
-status: 'review'
+status: done
 baseline_revision: '4fc5aa2b6ea4a10ba331371b8164bcde12b5d678'
 route: 'full'
 route_source: 'auto'
