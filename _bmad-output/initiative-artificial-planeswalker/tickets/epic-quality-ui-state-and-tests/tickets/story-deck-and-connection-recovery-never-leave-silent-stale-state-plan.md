@@ -3,7 +3,7 @@ title: 'Deck and connection recovery never leave silent stale state'
 type: 'bugfix'
 ticket: '7'
 created: '2026-11-13'
-status: 'review'
+status: done
 baseline_revision: '9531ea2f3e2c865aa12a0e9263bd1488f8be7f66'
 route: 'full'
 route_source: 'auto'
