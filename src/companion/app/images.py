@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 import tempfile
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
@@ -429,6 +430,11 @@ def _is_servable_size(candidate: Path, size: int) -> bool:
     return True
 
 
+# Process-wide, not per key: replace-plus-unlink is microseconds against a network fetch, and the
+# companion is a singleton process (`singleton.py`), so no other writer shares this cache root.
+_REPLACE_LOCK = threading.Lock()
+
+
 def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> bool:
     """Write *payload* to *target* so no reader can ever observe a partial file.
 
@@ -437,7 +443,9 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
     unlinked **after** this call's own replace lands, and only then: :func:`_read_cached` probes
     extensions in fixed order, so a stale ``normal_0.jpg`` would otherwise permanently shadow a
     fresh ``normal_0.png``, but unlinking first would leave no servable copy at all when the replace
-    fails. A lost same-key race unlinks nothing; the winner displaced them.
+    fails. A lost same-key race unlinks nothing; the winner displaced them. The replace and the
+    unlinks run under :data:`_REPLACE_LOCK`, so two overlapping writes under different extensions
+    leave the later one's entry instead of deleting each other's.
 
     Args:
         target: The final path, from :func:`_cache_path`.
@@ -464,37 +472,42 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
             raise
         with handle:
             handle.write(payload)
-        try:
-            os.replace(temp_path, target)
-        except PermissionError:
-            # The Windows same-key race: the loser's replace over the winner's open file raises,
-            # and a lost race must not feed the failure counter. SERVABLE, not merely present:
-            # `_read_cached` treats a zero-byte or unreadable file as a miss, so a locked empty
-            # target swallowed as a race would refetch forever with the latch never announcing it.
+        # One lock across the replace AND the sibling unlinks: two overlapping writes of one key
+        # under different extensions could otherwise each replace, then each delete the other's
+        # fresh file, leaving no entry at all (Greptile, PR #134). Held, the later writer wins.
+        with _REPLACE_LOCK:
             try:
-                with target.open("rb") as existing:
-                    stored_by_winner = existing.read(1) != b""
-            except OSError:
-                stored_by_winner = False
-            if not stored_by_winner:
-                raise
-            with suppress(OSError):
-                temp_path.unlink(missing_ok=True)
-            return False
+                os.replace(temp_path, target)
+            except PermissionError:
+                # The Windows same-key race: the loser's replace over the winner's open file raises,
+                # and a lost race must not feed the failure counter. SERVABLE, not merely
+                # present: `_read_cached` treats a zero-byte or unreadable file as a miss, so a
+                # locked empty target swallowed as a race would refetch forever with the latch
+                # never announcing it.
+                try:
+                    with target.open("rb") as existing:
+                        stored_by_winner = existing.read(1) != b""
+                except OSError:
+                    stored_by_winner = False
+                if not stored_by_winner:
+                    raise
+                with suppress(OSError):
+                    temp_path.unlink(missing_ok=True)
+                return False
+            for stale in displaces:
+                try:
+                    stale.unlink(missing_ok=True)
+                except OSError as exc:
+                    logger.warning(
+                        "Could not remove the superseded cache entry at %s (%s); the older "
+                        "spelling will shadow the one just written",
+                        stale,
+                        type(exc).__name__,
+                    )
     except BaseException:
         with suppress(OSError):
             temp_path.unlink(missing_ok=True)
         raise
-    for stale in displaces:
-        try:
-            stale.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning(
-                "Could not remove the superseded cache entry at %s (%s); the older spelling "
-                "will shadow the one just written",
-                stale,
-                type(exc).__name__,
-            )
     return True
 
 

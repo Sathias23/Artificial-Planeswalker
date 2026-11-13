@@ -19,6 +19,8 @@ Every shape below is a **measured** row count against the shipped 38,261-card da
 """
 
 import asyncio
+import os
+import threading
 from pathlib import Path
 
 import httpx
@@ -1320,6 +1322,46 @@ class TestTheCacheReadAndWrite:
             "the stale sibling survived and, probed first, would shadow the fresh entry forever"
         )
         assert (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").is_file()
+
+    def test_overlapping_writes_under_different_extensions_leave_the_later_entry(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Greptile on PR #134: with the sibling unlinked after the replace, a JPEG write and a PNG
+        write of one key can both replace before either unlinks, and then each deletes the other's
+        fresh file. Here the PNG writer starts the moment the JPEG's replace lands; unlocked, it
+        replaces and unlinks the JPEG while the JPEG writer waits, and the JPEG writer then
+        unlinks the PNG. Locked, the PNG writer waits its turn and its entry survives.
+        """
+        root = tmp_path / "image_cache"
+        jpg = images._cache_path(root, _CARD, "png", 0, "jpg")
+        png = images._cache_path(root, _CARD, "png", 0, "png")
+        real_replace = os.replace
+        png_replaced = threading.Event()
+        outcome: dict[str, bool] = {}
+
+        def write_png() -> None:
+            outcome["png"] = images._write_atomically(png, b"\x89PNG-art", displaces=(jpg,))
+
+        png_writer = threading.Thread(target=write_png)
+
+        def interleaving_replace(
+            source: str | os.PathLike[str], target: str | os.PathLike[str]
+        ) -> None:
+            real_replace(source, target)
+            if Path(target) == png:
+                png_replaced.set()
+            elif Path(target) == jpg and not png_writer.is_alive():
+                png_writer.start()
+                png_replaced.wait(timeout=0.5)
+
+        monkeypatch.setattr(images.os, "replace", interleaving_replace)
+
+        assert images._write_atomically(jpg, b"\xff\xd8-placeholder", displaces=(png,))
+        png_writer.join(timeout=5)
+
+        assert outcome == {"png": True}
+        assert png.read_bytes() == b"\x89PNG-art", "the later write's entry was deleted"
+        assert not jpg.exists(), "the displaced JPEG survived and would shadow the PNG"
 
     async def test_a_failed_replace_leaves_the_sibling_servable(
         self, tmp_path, monkeypatch

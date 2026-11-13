@@ -137,6 +137,19 @@ Pass 1 (lens `quick`, 2026-11-13): 6 findings — high 0, medium 0, low 5, false
 
 After the patches: `ruff check .` and `ruff format --check .` clean; `mypy src/` and `mypy src/ --platform win32` no issues; `uv run pytest` 3697 passed, 2 skipped; `scripts.build_plugin` rebuilt `plugin/`; `npm run gen:api` gives no drift; `npm run format:check` clean.
 
+### Pass 2 (Greptile on PR #134)
+
+| # | Finding | Severity | Action | Reason |
+|---|---------|----------|--------|--------|
+| 1 | Two overlapping cold writes of one key under different extensions can both replace before either unlinks, then each delete the other's fresh file | P2 | patch | Verified, and introduced here: unlinking after the replace (P6) opened the window, while the old unlink-first order always left one file. Impact is one refetch. `_write_atomically` now holds a process-wide `_REPLACE_LOCK` across the replace and the sibling unlinks, so the later writer's entry survives. One lock rather than one per key: the held section is a rename plus at most one unlink, and the companion is a singleton process. New test `test_overlapping_writes_under_different_extensions_leave_the_later_entry` starts the PNG writer the moment the JPEG's replace lands. |
+
+Proof (plant: `with _REPLACE_LOCK:` replaced by `with suppress():`; harness exit 0, `git diff --exit-code` clean after the revert):
+
+```
+full suite (-m 'not integration'): 3673 collected, 1 failed, 0 errored, exit 1
+  RED    tests/unit/companion/test_images.py::TestTheCacheReadAndWrite::test_overlapping_writes_under_different_extensions_leave_the_later_entry
+```
+
 ## Design Notes
 
 **Why refuse an encoded body rather than decode it under a bound.** With `identity` requested, a conforming server sends raw bytes. A server that encodes anyway is misbehaving, and decoding under a bound would need a decoder per coding. So `aiter_raw` with the refusal means wire bytes equal served bytes, and the existing ceiling bounds both. The declared `Content-Length` check stays, since it now counts the same bytes.
