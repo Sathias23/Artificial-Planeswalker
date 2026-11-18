@@ -21,7 +21,7 @@ from src.arena.models import (
     StackItem,
     TurnView,
 )
-from src.arena.tracker import GameEvent, GameTracker, annotation_details
+from src.arena.tracker import GameEvent, GameTracker, PendingRequest, annotation_details
 
 MAX_RECENT_EVENTS = 50
 
@@ -222,17 +222,32 @@ class SnapshotBuilder:
     def _number_lookalikes(self) -> None:
         """Number the cards a bare name would leave ambiguous.
 
-        Two cards are interchangeable when they sit in the same place in the same state: the four
-        untapped Forests, the eleven identical tokens. A name needs a number only when it is
-        carried by cards that are *not* interchangeable (a Grizzly Bears on each side, one tapped
-        and one not), and then every interchangeable set gets one number, so a reference to "one
-        of these three" still reads as one entry with a ``count``. The hand is numbered apart
-        from the public zones: nothing targets a card in hand, so a copy held there does not
-        make the one on the battlefield ambiguous.
+        Two cards are interchangeable when they sit in the same place in the same state and the
+        same things point at them: the four untapped Forests, the eleven identical tokens. A name
+        needs a number only when it is carried by cards that are *not* interchangeable (a Grizzly
+        Bears on each side, one tapped and one not, one targeted and one not), and then every
+        interchangeable set gets one number, so a reference to "one of these three" still reads
+        as one entry with a ``count``. The hand is numbered apart from the public zones: nothing
+        targets a card in hand, so a copy held there does not make the one on the battlefield
+        ambiguous.
         """
-        hosting: dict[int, list[int]] = defaultdict(list)
+        # Everything that points at a card sets it apart from an otherwise identical one: which
+        # of two matching creatures a spell targets, an Aura sits on or a blocker stops is the
+        # whole question the number answers.
+        pointers: dict[int, list[str]] = defaultdict(list)
         for attachment, host in self._attached_to.items():
-            hosting[host].append(attachment)
+            pointers[host].append(f"attachment {attachment}")
+        for source, targets in self._targets.items():
+            for target in targets:
+                pointers[target].append(f"target of {source}")
+        for blocker_id, blocker in self._tracker.objects.items():
+            for attacker in self._attackers_blocked_by(blocker):
+                pointers[attacker].append(f"blocked by {blocker_id}")
+        pending = self._tracker.pending
+        if pending is not None:
+            for option in self._decision_options(self._decision_kind(pending), pending.message):
+                if isinstance(option, int):
+                    pointers[option].append("option")
         # (hand or public, name) -> state -> the instances in that state
         lookalikes: dict[tuple[bool, str], dict[str, list[int]]] = defaultdict(
             lambda: defaultdict(list)
@@ -248,18 +263,17 @@ class SnapshotBuilder:
                 view = self._card_view(
                     game_object, detailed=zone_type == "ZoneType_Battlefield", cost=False
                 )
-                block_info = game_object.get("blockInfo")
                 state = repr(
                     (
                         zone.get("zoneId"),
                         game_object.get("ownerSeatId"),
                         game_object.get("controllerSeatId"),
                         view.model_dump_json(),
-                        # What it is attached to, what is attached to it and what it blocks, by
-                        # id: the view names these, and a name is what is being disambiguated.
+                        # What it is attached to and what it blocks, by id: the view names
+                        # these, and a name is what is being disambiguated.
                         self._attached_to.get(instance_id),
-                        sorted(hosting.get(instance_id, [])),
-                        block_info.get("attackerIds") if isinstance(block_info, dict) else None,
+                        self._attackers_blocked_by(game_object),
+                        sorted(pointers.get(instance_id, [])),
                         # Order on the stack matters, so nothing there is interchangeable.
                         instance_id if zone_type == "ZoneType_Stack" else None,
                     )
@@ -326,7 +340,7 @@ class SnapshotBuilder:
         block_state = game_object.get("blockState")
         if block_state in ("BlockState_Blocked", "BlockState_Unblocked"):
             view.flags.append(_enum(block_state) or "blocked")
-        attackers = (game_object.get("blockInfo") or {}).get("attackerIds") or []
+        attackers = self._attackers_blocked_by(game_object)
         if attackers:
             view.flags.append("blocking")
             view.blocking = [self._name_of(attacker) for attacker in attackers]
@@ -339,6 +353,12 @@ class SnapshotBuilder:
             if instance_id in self._attached_to:
                 view.attached_to = self._name_of(self._attached_to[instance_id])
         return view
+
+    @staticmethod
+    def _attackers_blocked_by(game_object: dict[str, Any]) -> list[int]:
+        block_info = game_object.get("blockInfo")
+        attackers = block_info.get("attackerIds") if isinstance(block_info, dict) else None
+        return [attacker for attacker in _list(attackers) if isinstance(attacker, int)]
 
     @staticmethod
     def _type_line(game_object: dict[str, Any]) -> str | None:
@@ -465,9 +485,7 @@ class SnapshotBuilder:
         if pending is None or pending.message_type in _NOT_A_DECISION:
             return None
         message = pending.message
-        kind = _DECISION_KINDS.get(pending.message_type)
-        if kind is None:
-            kind = _enum(pending.message_type.removesuffix("Req")) or "unknown"
+        kind = self._decision_kind(pending)
         decision = PendingDecision(kind=kind, prompt=self._prompt(message.get("prompt")))
 
         if kind == "actions_available":
@@ -477,32 +495,51 @@ class SnapshotBuilder:
             request = message.get("selectTargetsReq") or {}
             if self._object(request.get("sourceId")):
                 decision.source = self._name_of(request.get("sourceId"))
-            for group in request.get("targets") or []:
+            for group in _list(request.get("targets")):
                 # The per-target prompt ("Target a creature.") says more than the outer one.
-                decision.prompt = self._prompt(group.get("prompt")) or decision.prompt
-            decision.options = self._names(
-                target.get("targetInstanceId")
-                for group in request.get("targets") or []
-                for target in group.get("targets") or []
-            )
-        elif kind == "declare_attackers":
-            request = message.get("declareAttackersReq") or {}
-            attackers = request.get("qualifiedAttackers") or request.get("attackers") or []
-            decision.options = self._names(a.get("attackerInstanceId") for a in attackers)
-        elif kind == "declare_blockers":
-            request = message.get("declareBlockersReq") or {}
-            decision.options = self._names(
-                b.get("blockerInstanceId") for b in request.get("blockers") or []
-            )
-        else:
-            # Selection-style requests name their candidates under one of these keys.
-            for body in message.values():
-                if isinstance(body, dict):
-                    candidates = body.get("ids") or body.get("instanceIds")
-                    if isinstance(candidates, list):
-                        decision.options = self._names(candidates)
-                        break
+                if isinstance(group, dict):
+                    decision.prompt = self._prompt(group.get("prompt")) or decision.prompt
+        decision.options = self._names(self._decision_options(kind, message))
         return decision
+
+    @staticmethod
+    def _decision_kind(pending: PendingRequest) -> str:
+        kind = _DECISION_KINDS.get(pending.message_type)
+        return kind or _enum(pending.message_type.removesuffix("Req")) or "unknown"
+
+    @staticmethod
+    def _decision_options(kind: str, message: dict[str, Any]) -> list[Any]:
+        """Return the ids a request offers to choose between, wherever its kind keeps them."""
+
+        def body(key: str) -> dict[str, Any]:
+            value = message.get(key)
+            return value if isinstance(value, dict) else {}
+
+        def ids(entries: Any, key: str) -> list[Any]:
+            return [entry.get(key) for entry in _list(entries) if isinstance(entry, dict)]
+
+        if kind == "actions_available":
+            return []
+        if kind == "select_targets":
+            return [
+                option
+                for group in _list(body("selectTargetsReq").get("targets"))
+                if isinstance(group, dict)
+                for option in ids(group.get("targets"), "targetInstanceId")
+            ]
+        if kind == "declare_attackers":
+            request = body("declareAttackersReq")
+            attackers = request.get("qualifiedAttackers") or request.get("attackers")
+            return ids(attackers, "attackerInstanceId")
+        if kind == "declare_blockers":
+            return ids(body("declareBlockersReq").get("blockers"), "blockerInstanceId")
+        # Selection-style requests name their candidates under one of these keys.
+        for value in message.values():
+            if isinstance(value, dict):
+                candidates = value.get("ids") or value.get("instanceIds")
+                if isinstance(candidates, list):
+                    return candidates
+        return []
 
     def _prompt(self, prompt: Any) -> str | None:
         """Return the client's own wording for a decision prompt, placeholders filled."""

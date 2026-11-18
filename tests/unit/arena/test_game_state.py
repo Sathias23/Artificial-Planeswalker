@@ -775,6 +775,69 @@ class TestTellingLookalikesApart:
         theirs = [v for v in result.opponent.battlefield if v.name == "Grizzly Bears"]
         assert [(view.ref, view.flags) for view in theirs] == [(311, ["attacking"]), (None, [])]
 
+    def _two_identical_opposing_bears(self, **attacker) -> dict:
+        return {
+            "zones": [
+                a.zone(a.BATTLEFIELD, "Battlefield", [210, 211, 212, 213, 214, 310, 311, 312]),
+                a.zone(a.STACK, "Stack", [400]),
+            ],
+            "gameObjects": [
+                a.card(311, a.BEAR, a.BATTLEFIELD, 1, **attacker, **a.stats(2, 2)),
+                a.card(312, a.BEAR, a.BATTLEFIELD, 1, **attacker, **a.stats(2, 2)),
+                a.card(400, a.GIANT_GROWTH, a.STACK, 2),
+            ],
+        }
+
+    def test_being_targeted_sets_one_of_two_identical_creatures_apart(self, read, opening):
+        diff = a.game_state(
+            2,
+            2,
+            **self._two_identical_opposing_bears(),
+            persistentAnnotations=[a.annotation(9, ["TargetSpec"], affector=400, affected=[312])],
+        )
+
+        result = read([*opening, a.gre_line(diff)])
+
+        assert result.stack[0].targets == ["Grizzly Bears #312"]
+        assert self._refs(result.opponent.battlefield) == [
+            ("Grizzly Bears", None, None),
+            ("Grizzly Bears", 312, None),
+        ]
+
+    def test_being_blocked_sets_one_of_two_identical_attackers_apart(self, read, opening):
+        fields = self._two_identical_opposing_bears(attackState="AttackState_Attacking")
+        fields["gameObjects"].append(
+            a.card(213, a.BEAR, a.BATTLEFIELD, 2, blockInfo={"attackerIds": [312]})
+        )
+
+        result = read([*opening, a.gre_line(a.game_state(2, 2, **fields))])
+
+        mine = next(view for view in result.you.battlefield if view.name == "Grizzly Bears")
+        assert mine.blocking == ["Grizzly Bears #312"]
+        assert self._refs(result.opponent.battlefield) == [
+            ("Grizzly Bears", None, None),
+            ("Grizzly Bears", 312, None),
+        ]
+
+    def test_being_the_only_legal_choice_sets_one_of_two_identical_creatures_apart(
+        self, read, opening
+    ):
+        choose = a.request(
+            "SelectTargetsReq",
+            2,
+            2,
+            selectTargetsReq={"targets": [{"targets": [{"targetInstanceId": 312}]}]},
+        )
+        diff = a.game_state(2, 2, **self._two_identical_opposing_bears())
+
+        result = read([*opening, a.gre_line(diff, choose)])
+
+        assert result.pending_decision.options == ["Grizzly Bears #312"]
+        assert self._refs(result.opponent.battlefield) == [
+            ("Grizzly Bears", None, None),
+            ("Grizzly Bears", 312, None),
+        ]
+
     def test_a_card_is_numbered_by_a_pointer_that_is_rendered_after_it(self, read, opening):
         # The opponent's Equipment sits on one of your two otherwise identical creatures; your
         # side is rendered before theirs.

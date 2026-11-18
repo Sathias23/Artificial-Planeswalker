@@ -49,9 +49,10 @@ def build_server(log_path: Path | None = None, card_database: Path | None = None
 
         Identical cards are merged into one entry with a ``count``, and fields with nothing to
         report are left out, so an absent ``flags`` means untapped and not in combat. Where two
-        cards share a name but not a place or state (one on each side, one tapped), anything
-        that points at one of them (a target, ``attached_to``, ``blocking``, an option) says
-        which as ``Name #N``, and that card's own entry carries ``ref: N``. Card names
+        cards share a name but are not interchangeable (one on each side, one tapped, only one
+        of them targeted), anything that points at one of them (a target, ``attached_to``,
+        ``blocking``, an option) says which as ``Name #N``, and that card's own entry carries
+        ``ref: N``. Card names
         match this plugin's card tools, so pass one (without the ``#N``) to
         ``lookup_card_by_name`` for full details, or set ``include_card_text`` for every card
         at once.
