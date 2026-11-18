@@ -114,10 +114,23 @@ Claude Code installs it:
       "env": {
         "MCP_TRANSPORT": "stdio"
       }
+    },
+    "arena-game-state": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-dev",
+        "--directory", "${CLAUDE_PLUGIN_ROOT}/server",
+        "python", "-m", "src.arena_server"
+      ]
     }
   }
 }
 ```
+
+The second entry is the Arena game-state server (`src/arena_server`), a separate process from the
+same `server/` tree: it reads the Arena client's log and loads neither the card database nor the
+embedding model.
 
 `--no-dev` matters because `uv run` syncs the project before it launches and includes the `dev`
 dependency group by default; without it every launch would install mypy, pytest, ruff and

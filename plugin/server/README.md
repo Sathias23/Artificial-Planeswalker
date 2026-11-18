@@ -27,6 +27,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning; `companion_show_tier_list` — puts cards ranked into named S–D tiers on the same view, each tier a lettered chip with its cards beside it; `companion_show_groups` — puts titled card groups on the same view, each a heading with its rationale paragraph and its cards beneath it; `companion_status` — read-only: reports whether the companion is running, its URL, how many tabs are open, and the exact command that launches it. The others all report `app_not_running` when the companion isn't up, and the agent can then open it for you |
 | **First-run setup** | `initialize_database`, `build_search_index` |
+| **[Live Arena game state](#live-arena-game-state)** *(separate `arena-game-state` server)* | `read_game_state` — reads the game you are playing in MTG Arena straight from the client's log, so the agent sees the board without a screenshot |
 
 Five **skills** layer expert reasoning on top of the tools — `magic-deckbuilding` (the
 orchestrator), `synergy-discovery`, `mana-curve-analysis`, and `format-legality` — so a client can
@@ -95,7 +96,7 @@ The launch command is the same everywhere — only the config file differs.
 <details>
 <summary><b>Claude Code</b> (plugin — tools + skills, two commands)</summary>
 
-Install the plugin from this repo's built-in marketplace to get all 27 tools **and** the five
+Install the plugin from this repo's built-in marketplace to get all 28 tools **and** the five
 skills in any project — no clone required:
 
 ```
@@ -133,7 +134,7 @@ codex plugin marketplace add Sathias23/Artificial-Planeswalker
 ```
 
 Open the `/plugins` browser inside Codex and install **artificial-planeswalker** — that gives
-you the 27 tools *and* the five skills. If Codex also auto-surfaces this repo's
+you the 28 tools *and* the five skills. If Codex also auto-surfaces this repo's
 *Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
 
@@ -191,7 +192,8 @@ No card data ships with the repo, so on first use ask the assistant to run the
 `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run
 `build_search_index` to index them). Desktop loads the 27 tools; the five skills are a Claude Code
-plugin feature.
+plugin feature. For [live Arena game state](#live-arena-game-state), add a second entry named
+`arena-game-state` with the same `args` ending in `src.arena_server`.
 </details>
 
 <details>
@@ -268,6 +270,31 @@ That is all most people need. The **[full companion guide](docs/companion.md)** 
   the launch at the plugin root
 * [Image cache](docs/companion.md#image-cache) — where card images land on disk, how big it gets,
   how to inspect and clear it
+
+## Live Arena game state
+
+`read_game_state` shows your agent the game you are playing in MTG Arena, so you can ask "what
+should I play?" without taking a screenshot. It returns what is on your screen as exact card names:
+life totals, the turn and phase, your hand, both battlefields (tapped, attacking, counters,
+attachments), graveyards, exile, the stack, the plays the game is offering you, and the last few
+things that happened. Hidden information stays hidden: the opponent's hand and both libraries are
+counts only.
+
+It works by reading the log file the Arena client writes, which is the same thing deck trackers do.
+One setting has to be on:
+
+1. In Arena, open **Options → Account** and tick **Detailed Logs (Plugin Support)**.
+2. Restart Arena.
+
+It runs as its own small MCP server, `arena-game-state`, registered beside the deckbuilding server
+by the plugin and by this repo's `.mcp.json`. It is read-only, cannot act in the game, needs no
+card download and makes no network calls. If Arena is not installed, the tool answers
+`log_not_found` and nothing else is affected.
+
+Verified on Windows (Steam and standalone installs). The macOS and Linux (Steam Proton) paths are
+best effort; set `MTGA_LOG_PATH` and `MTGA_INSTALL_DIR` if the log or the card names are not found
+(see `.env.example`). The log format is Wizards' own and undocumented, so a client update can
+change it.
 
 ## Where the data lives
 
