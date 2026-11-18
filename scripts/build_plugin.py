@@ -85,25 +85,34 @@ def _plugin_json(project: dict) -> dict:
 def _mcp_json() -> dict:
     """MCP server config anchored to the installed plugin via CLAUDE_PLUGIN_ROOT.
 
+    Two servers from the one ``server/`` tree: the deckbuilding server and the Arena game-state
+    server (``src.arena_server``), which reads the Arena client's log and shares nothing with the
+    first at runtime.
+
     ``--no-dev`` because ``uv run`` syncs the project before launching, and its default is to
     include the ``dev`` dependency group: without the flag every plugin launch installs mypy,
     pytest, ruff and pre-commit into an end user's plugin environment.
     """
+
+    def launch(module: str) -> list[str]:
+        return [
+            "run",
+            "--no-dev",
+            "--directory",
+            "${CLAUDE_PLUGIN_ROOT}/server",
+            "python",
+            "-m",
+            module,
+        ]
+
     return {
         "mcpServers": {
             "artificial-planeswalker": {
                 "command": "uv",
-                "args": [
-                    "run",
-                    "--no-dev",
-                    "--directory",
-                    "${CLAUDE_PLUGIN_ROOT}/server",
-                    "python",
-                    "-m",
-                    "src.mcp_server",
-                ],
+                "args": launch("src.mcp_server"),
                 "env": {"MCP_TRANSPORT": "stdio"},
-            }
+            },
+            "arena-game-state": {"command": "uv", "args": launch("src.arena_server")},
         }
     }
 
@@ -151,7 +160,12 @@ def _codex_mcp_json() -> dict:
                 "args": ["run", "--no-dev", "python", "-m", "src.mcp_server"],
                 "cwd": "./server",
                 "env": {"MCP_TRANSPORT": "stdio"},
-            }
+            },
+            "arena-game-state": {
+                "command": "uv",
+                "args": ["run", "--no-dev", "python", "-m", "src.arena_server"],
+                "cwd": "./server",
+            },
         }
     }
 

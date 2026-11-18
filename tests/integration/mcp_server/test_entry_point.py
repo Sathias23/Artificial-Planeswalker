@@ -423,6 +423,32 @@ class TestMcpJsonNeedsNoChange:
             "src.mcp_server",
         ]
 
+    def test_mcp_json_registers_the_arena_server(self):
+        """The repo-root .mcp.json launches the Arena game-state server as its own process."""
+        mcp_json = Path(__file__).parents[3] / ".mcp.json"
+        data = json.loads(mcp_json.read_text(encoding="utf-8"))
+
+        server = data["mcpServers"]["arena-game-state"]
+        assert server["command"] == "uv"
+        assert server["args"] == ["run", "python", "-m", "src.arena_server"]
+
+    def test_plugin_mcp_json_registers_the_arena_server(self):
+        """The committed plugin mirror launches it too, anchored at the plugin root."""
+        mcp_json = Path(__file__).parents[3] / "plugin" / ".mcp.json"
+        data = json.loads(mcp_json.read_text(encoding="utf-8"))
+
+        server = data["mcpServers"]["arena-game-state"]
+        assert server["command"] == "uv"
+        assert server["args"] == [
+            "run",
+            "--no-dev",
+            "--directory",
+            "${CLAUDE_PLUGIN_ROOT}/server",
+            "python",
+            "-m",
+            "src.arena_server",
+        ]
+
     @pytest.mark.parametrize("relative", [".mcp.json", "plugin/.mcp.json"])
     def test_no_subcommand_follows_the_module_path(self, relative):
         """The assertion that goes red if a future story rewrites either file into

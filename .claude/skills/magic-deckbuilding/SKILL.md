@@ -344,6 +344,31 @@ Rules that bite:
   (`companion_status` → its `launch_command` in a background shell). Never block, retry-loop, or
   apologise for it.
 
+## Live Arena games (see the board without a screenshot)
+
+When the user asks about a game they are playing or just played in MTG Arena ("what should I
+play?", "what's on the board?", "why did I lose that?"), call
+`mcp__arena-game-state__read_game_state` instead of asking for a screenshot. It is a separate
+server (id `arena-game-state`) with that one read-only tool.
+
+| Tool | Key params | `status` values (payload on `ok`) |
+|------|-----------|-----------------------------------|
+| `read_game_state` | `recent_events=15` (0–50), `include_card_text=False` | `ok` (`you`, `opponent`, `turn`, `stack`, `pending_decision`, `recent_events`; `in_progress` false + `result` once the game is over) · `no_game` · `detailed_logs_disabled` · `log_not_found` · `error` |
+
+- Call it again for every new question: it reads the current state each time and remembers nothing.
+- Fields with nothing to report are omitted, so no `flags` on a permanent means untapped and out
+  of combat; identical cards are merged with a `count`.
+- A target, `attached_to`, `blocking` entry or option written `Name #N` means the card whose own
+  entry has `ref: N`; it appears only when same-named cards are not interchangeable (different
+  side or state, or only one of them is pointed at). Drop the `#N` before passing the name to a
+  card tool.
+- The opponent's hand and both libraries are counts only. Never guess at hidden cards as fact.
+- Set `include_card_text=true` on the first call of a game or when a card is unfamiliar; card
+  names also work with `lookup_card_by_name`.
+- `pending_decision.actions[].affordable` is true when Arena can pay for the play right now.
+- On `detailed_logs_disabled`, relay the `message` (an Arena setting the user must switch on) and
+  fall back to whatever the user can describe. It is observational only: it cannot act in the game.
+
 ## Capability companions (deeper single-topic dives)
 
 This orchestrator works **standalone today** by calling the tools directly — it does not depend on

@@ -3,6 +3,10 @@
     "artificial-planeswalker": {
       "command": "uv",
       "args": ["run", "python", "-m", "src.mcp_server"]
+    },
+    "arena-game-state": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "src.arena_server"]
     }
   }
 }

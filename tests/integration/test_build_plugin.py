@@ -193,6 +193,11 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     # `uv run` syncs before launching and includes the dev group by default; an end user's
     # plugin install must never get mypy, pytest, ruff and pre-commit.
     assert "--no-dev" in args
+    # The Arena game-state server ships in the same tree and launches the same way.
+    arena_args = mcp_json["mcpServers"]["arena-game-state"]["args"]
+    assert arena_args == [*args[:-1], "src.arena_server"]
+    assert (server / "src" / "arena_server" / "__main__.py").is_file()
+    assert (server / "src" / "arena" / "reader.py").is_file()
 
     # Codex manifest must be the Claude manifest plus exactly the two Codex pointer keys —
     # anything else means the two clients' metadata has drifted.
@@ -216,6 +221,11 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     assert codex_server["cwd"] == "./server"
     assert codex_server["args"] == ["run", "--no-dev", "python", "-m", "src.mcp_server"]
     assert codex_server["env"] == {"MCP_TRANSPORT": "stdio"}
+    assert codex_mcp["mcpServers"]["arena-game-state"] == {
+        "command": "uv",
+        "args": ["run", "--no-dev", "python", "-m", "src.arena_server"],
+        "cwd": "./server",
+    }
 
 
 def test_codex_marketplace_points_at_committed_plugin() -> None:

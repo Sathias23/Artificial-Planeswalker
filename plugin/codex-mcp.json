@@ -13,6 +13,17 @@
       "env": {
         "MCP_TRANSPORT": "stdio"
       }
+    },
+    "arena-game-state": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-dev",
+        "python",
+        "-m",
+        "src.arena_server"
+      ],
+      "cwd": "./server"
     }
   }
 }

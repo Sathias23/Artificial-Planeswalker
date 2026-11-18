@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Live Arena game state.** A second MCP server, `arena-game-state`, with one read-only
+  tool, `read_game_state`. It replays the MTG Arena client's log into the current state
+  of the game being played (life totals, turn, your hand, both battlefields with
+  counters and attachments, graveyards, exile, the stack, the plays on offer and
+  recent events) and names the cards from the client's own card database, so an agent
+  can be shown the board without a screenshot. Needs Arena's "Detailed Logs (Plugin
+  Support)" option; answers a status rather than an error when the log, the option or
+  a game is missing. Registered in the plugin and in the repo's `.mcp.json`.
+
 ## [0.6.0] - 2026-11-13
 
 ### Added
