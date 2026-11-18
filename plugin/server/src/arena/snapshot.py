@@ -62,6 +62,20 @@ _ZONE_VERBS = {
     "SBA_Damage": "{card} died from damage",
 }
 _ABILITY_TEXT_LIMIT = 160
+# The zones whose cards the result lists, and so the only ones a reference can point into.
+_PUBLIC_ZONES = {
+    "ZoneType_Battlefield",
+    "ZoneType_Stack",
+    "ZoneType_Graveyard",
+    "ZoneType_Exile",
+    "ZoneType_Command",
+}
+_HAND_ZONE = "ZoneType_Hand"
+
+
+def _list(value: Any) -> list[Any]:
+    """Return ``value`` if it is a list, and an empty one for ``null`` or any other shape."""
+    return value if isinstance(value, list) else []
 
 
 def _enum(value: Any) -> str | None:
@@ -104,14 +118,19 @@ class SnapshotBuilder:
         self._attached_to: dict[int, int] = {}
         self._targets: dict[int, list[int]] = defaultdict(list)
         self._commanders: dict[int, list[int]] = defaultdict(list)
+        # instance id -> the number shared by the cards it is interchangeable with, for a card
+        # whose name alone does not say which one is meant; see _number_lookalikes.
+        self._refs: dict[int, int] = {}
+        self._referenced: set[int] = set()
         self._read_annotations()
+        self._number_lookalikes()
 
     # -- annotations --------------------------------------------------------------------------
 
     def _read_annotations(self) -> None:
         """Index the standing annotations: counters, attachments, targets and commanders."""
         for annotation in self._tracker.annotations.values():
-            types = annotation.get("type", [])
+            types = _list(annotation.get("type"))
             details = annotation_details(annotation)
             affector = annotation.get("affectorId")
             affected = [i for i in annotation.get("affectedIds") or [] if isinstance(i, int)]
@@ -180,18 +199,88 @@ class SnapshotBuilder:
         return self._tracker.objects.get(identifier) if isinstance(identifier, int) else None
 
     def _name_of(self, identifier: Any) -> str:
-        """Name whatever an id refers to: a player's seat or an object's instance."""
-        if identifier in self._tracker.players:
+        """Name whatever an id refers to: a player's seat or an object's instance.
+
+        A card that shares its name with a distinguishable one is named with its number
+        (``Grizzly Bears #213``), the same number its own entry carries as ``ref``.
+        """
+        if isinstance(identifier, int) and identifier in self._tracker.players:
             return self._seat(identifier)
         game_object = self._object(identifier)
-        return self._object_name(game_object) if game_object else "something no longer visible"
+        if not game_object:
+            return "something no longer visible"
+        return self._numbered(self._object_name(game_object), identifier)
+
+    def _numbered(self, name: str, identifier: Any) -> str:
+        """Append the card's number to ``name`` when it has one, and note that it was used."""
+        ref = self._refs.get(identifier) if isinstance(identifier, int) else None
+        if ref is None:
+            return name
+        self._referenced.add(ref)
+        return f"{name} #{ref}"
+
+    def _number_lookalikes(self) -> None:
+        """Number the cards a bare name would leave ambiguous.
+
+        Two cards are interchangeable when they sit in the same place in the same state: the four
+        untapped Forests, the eleven identical tokens. A name needs a number only when it is
+        carried by cards that are *not* interchangeable (a Grizzly Bears on each side, one tapped
+        and one not), and then every interchangeable set gets one number, so a reference to "one
+        of these three" still reads as one entry with a ``count``. The hand is numbered apart
+        from the public zones: nothing targets a card in hand, so a copy held there does not
+        make the one on the battlefield ambiguous.
+        """
+        hosting: dict[int, list[int]] = defaultdict(list)
+        for attachment, host in self._attached_to.items():
+            hosting[host].append(attachment)
+        # (hand or public, name) -> state -> the instances in that state
+        lookalikes: dict[tuple[bool, str], dict[str, list[int]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for zone in self._tracker.zones.values():
+            zone_type = zone.get("type")
+            if zone_type != _HAND_ZONE and zone_type not in _PUBLIC_ZONES:
+                continue
+            for game_object in self._objects_in(zone):
+                instance_id = game_object.get("instanceId")
+                if not isinstance(instance_id, int):
+                    continue
+                view = self._card_view(
+                    game_object, detailed=zone_type == "ZoneType_Battlefield", cost=False
+                )
+                block_info = game_object.get("blockInfo")
+                state = repr(
+                    (
+                        zone.get("zoneId"),
+                        game_object.get("ownerSeatId"),
+                        game_object.get("controllerSeatId"),
+                        view.model_dump_json(),
+                        # What it is attached to, what is attached to it and what it blocks, by
+                        # id: the view names these, and a name is what is being disambiguated.
+                        self._attached_to.get(instance_id),
+                        sorted(hosting.get(instance_id, [])),
+                        block_info.get("attackerIds") if isinstance(block_info, dict) else None,
+                        # Order on the stack matters, so nothing there is interchangeable.
+                        instance_id if zone_type == "ZoneType_Stack" else None,
+                    )
+                )
+                lookalikes[zone_type == _HAND_ZONE, view.name][state].append(instance_id)
+        for states in lookalikes.values():
+            if len(states) > 1:
+                for instances in states.values():
+                    ref = min(instances)
+                    self._refs.update(dict.fromkeys(instances, ref))
 
     # -- cards --------------------------------------------------------------------------------
 
     def _objects_in(self, zone: dict[str, Any]) -> list[dict[str, Any]]:
         """Return the zone's objects whose data this player can see, in zone order."""
         objects = self._tracker.objects
-        return [objects[i] for i in zone.get("objectInstanceIds", []) if i in objects]
+        return [
+            objects[i]
+            for i in _list(zone.get("objectInstanceIds"))
+            if isinstance(i, int) and i in objects
+        ]
 
     def _card_view(self, game_object: dict[str, Any], *, detailed: bool, cost: bool) -> CardView:
         """Build one card's view.
@@ -214,6 +303,10 @@ class SnapshotBuilder:
         owner = game_object.get("ownerSeatId")
         if isinstance(owner, int) and grp_id in self._commanders.get(owner, []):
             view.flags.append("commander")
+        instance_id = game_object.get("instanceId")
+        ref = self._refs.get(instance_id) if isinstance(instance_id, int) else None
+        if ref in self._referenced:
+            view.ref = ref
         if not detailed:
             return view
 
@@ -241,7 +334,6 @@ class SnapshotBuilder:
             view.flags.append("controlled_by_other_player")
         if isinstance(game_object.get("damage"), int) and game_object["damage"] > 0:
             view.damage = game_object["damage"]
-        instance_id = game_object.get("instanceId")
         if isinstance(instance_id, int):
             view.counters = dict(self._counters.get(instance_id, {}))
             if instance_id in self._attached_to:
@@ -253,7 +345,7 @@ class SnapshotBuilder:
         def words(key: str) -> list[str]:
             return [
                 str(value).partition("_")[2].replace("_", " ")
-                for value in game_object.get(key, [])
+                for value in _list(game_object.get(key))
                 if isinstance(value, str)
             ]
 
@@ -292,7 +384,7 @@ class SnapshotBuilder:
         view.commander = " + ".join(dict.fromkeys(name for name in commanders if name)) or None
         pool = [
             {"color": [mana.get("color")], "count": mana.get("count", 1)}
-            for mana in player.get("manaPool", [])
+            for mana in _list(player.get("manaPool"))
             if isinstance(mana, dict)
         ]
         view.mana_pool = _mana_cost(pool)
@@ -304,7 +396,7 @@ class SnapshotBuilder:
             if zone_type == "ZoneType_Battlefield":
                 mine = [o for o in visible if o.get("controllerSeatId") == seat]
                 # Stable: permanents that do something first, lands last.
-                mine.sort(key=lambda o: "CardType_Land" in o.get("cardTypes", []))
+                mine.sort(key=lambda o: "CardType_Land" in _list(o.get("cardTypes")))
                 view.battlefield = self._views(mine, detailed=True)
             elif zone_type == "ZoneType_Exile":
                 view.exile = self._views([o for o in visible if o.get("ownerSeatId") == seat])
@@ -315,11 +407,11 @@ class SnapshotBuilder:
             elif zone.get("ownerSeatId") != seat:
                 continue
             elif zone_type == "ZoneType_Hand":
-                view.hand_count = len(zone.get("objectInstanceIds", []))
+                view.hand_count = len(_list(zone.get("objectInstanceIds")))
                 known = [o for o in visible if isinstance(o.get("grpId"), int) and o["grpId"] > 0]
                 view.hand = self._views(known, cost=True)
             elif zone_type == "ZoneType_Library":
-                view.library_count = len(zone.get("objectInstanceIds", []))
+                view.library_count = len(_list(zone.get("objectInstanceIds")))
             elif zone_type == "ZoneType_Graveyard":
                 view.graveyard = self._views(visible)
         return view
@@ -358,8 +450,11 @@ class SnapshotBuilder:
                 else:
                     card = self._cards.card(grp_id if isinstance(grp_id, int) else None)
                     item.mana_cost = card.mana_cost if card is not None else None
-                targets = self._targets.get(game_object.get("instanceId", -1), [])
-                item.targets = [self._name_of(target) for target in targets]
+                instance_id = game_object.get("instanceId")
+                if isinstance(instance_id, int):
+                    ref = self._refs.get(instance_id)
+                    item.ref = ref if ref in self._referenced else None
+                    item.targets = [self._name_of(t) for t in self._targets.get(instance_id, [])]
                 items.append(item)
         return items
 
@@ -380,9 +475,8 @@ class SnapshotBuilder:
             decision.actions = self._legal_actions(actions)
         elif kind == "select_targets":
             request = message.get("selectTargetsReq") or {}
-            source = self._object(request.get("sourceId"))
-            if source:
-                decision.source = self._object_name(source)
+            if self._object(request.get("sourceId")):
+                decision.source = self._name_of(request.get("sourceId"))
             for group in request.get("targets") or []:
                 # The per-target prompt ("Target a creature.") says more than the outer one.
                 decision.prompt = self._prompt(group.get("prompt")) or decision.prompt
@@ -440,6 +534,8 @@ class SnapshotBuilder:
             card = self._grp_name(action.get("grpId")) or (
                 self._object_name(source) if source else None
             )
+            if card and source:
+                card = self._numbered(card, action.get("instanceId"))
             legal = LegalAction(
                 action=_enum(action.get("actionType")) or "unknown",
                 card=card,
@@ -510,7 +606,7 @@ class SnapshotBuilder:
             return True, None
         game_results = [
             r
-            for r in info.get("results", [])
+            for r in _list(info.get("results"))
             if isinstance(r, dict) and r.get("scope") == "MatchScope_Game"
         ]
         if not game_results:
@@ -537,6 +633,19 @@ class SnapshotBuilder:
                 return player.get("eventId")
         return None
 
+    def _board(
+        self, in_progress: bool
+    ) -> tuple[PlayerView | None, PlayerView | None, list[StackItem], PendingDecision | None]:
+        """Render both players, the stack and the pending decision."""
+        seat = self._tracker.seat
+        opponents = [s for s in self._tracker.players if s != seat]
+        return (
+            self._player(seat) if seat is not None else None,
+            self._player(opponents[0]) if opponents else None,
+            self._stack(),
+            self._pending_decision() if in_progress else None,
+        )
+
     def build(self, *, recent_events: int, include_card_text: bool, now_ms: int) -> GameStateResult:
         """Render the tracker's current state.
 
@@ -547,9 +656,15 @@ class SnapshotBuilder:
             now_ms: The current time in epoch milliseconds, for the staleness figure.
         """
         tracker = self._tracker
-        seat = tracker.seat
-        opponents = [s for s in tracker.players if s != seat]
         in_progress, outcome = self._game_result()
+
+        board = self._board(in_progress)
+        if self._referenced:
+            # A card only shows its number when something points at it, and a pointer can sit
+            # anywhere (the opponent's Aura on your creature, a decision built last), so the
+            # first pass finds every pointer and this one marks the cards they name.
+            board = self._board(in_progress)
+        you, opponent, stack, pending_decision = board
 
         result = GameStateResult(
             status="ok",
@@ -558,10 +673,10 @@ class SnapshotBuilder:
             event=self._event_name(),
             game_number=tracker.game_info.get("gameNumber"),
             turn=self._turn(),
-            you=self._player(seat) if seat is not None else None,
-            opponent=self._player(opponents[0]) if opponents else None,
-            stack=self._stack(),
-            pending_decision=self._pending_decision() if in_progress else None,
+            you=you,
+            opponent=opponent,
+            stack=stack,
+            pending_decision=pending_decision,
         )
         if tracker.last_timestamp_ms is not None:
             result.seconds_since_last_update = max(0, (now_ms - tracker.last_timestamp_ms) // 1000)

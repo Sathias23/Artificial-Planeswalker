@@ -358,6 +358,9 @@ server (id `arena-game-state`) with that one read-only tool.
 - Call it again for every new question: it reads the current state each time and remembers nothing.
 - Fields with nothing to report are omitted, so no `flags` on a permanent means untapped and out
   of combat; identical cards are merged with a `count`.
+- A target, `attached_to`, `blocking` entry or option written `Name #N` means the card whose own
+  entry has `ref: N`; it appears only when two same-named cards differ in place or state. Drop the
+  `#N` before passing the name to a card tool.
 - The opponent's hand and both libraries are counts only. Never guess at hidden cards as fact.
 - Set `include_card_text=true` on the first call of a game or when a card is unfamiliar; card
   names also work with `lookup_card_by_name`.

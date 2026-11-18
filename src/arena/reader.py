@@ -76,5 +76,13 @@ def read_game_state(
             include_card_text=include_card_text,
             now_ms=int(time.time() * 1000),
         )
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # The log's format is undocumented and the snapshot reads many fields; one of an
+        # unexpected shape must come back as a status, not as a failed tool call.
+        logger.exception("Arena game state could not be rendered")
+        return GameStateResult(
+            status="error",
+            message=f"The game in Arena's log could not be read ({type(exc).__name__}: {exc}).",
+        )
     finally:
         cards.close()

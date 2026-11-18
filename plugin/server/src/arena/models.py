@@ -32,6 +32,13 @@ class CardView(CompactModel):
     """One card, or several identical ones, in a zone."""
 
     name: str
+    ref: int | None = Field(
+        default=None,
+        description=(
+            "Set when something points at this card and its name alone is ambiguous: a target, "
+            "attachment, blocker or option written 'Name #N' means the entry whose ref is N."
+        ),
+    )
     count: int | None = Field(default=None, description="Identical copies, when more than one.")
     type_line: str | None = Field(default=None, description="Shown for tokens only.")
     mana_cost: str | None = Field(default=None, description="Shown in hand and on the stack.")
@@ -55,6 +62,7 @@ class StackItem(CompactModel):
     """A spell or ability on the stack."""
 
     name: str
+    ref: int | None = Field(default=None, description="As on a card: 'Name #N' points here.")
     kind: Literal["spell", "ability"]
     controller: Seat
     mana_cost: str | None = None
@@ -120,7 +128,8 @@ class PendingDecision(CompactModel):
     source: str | None = Field(default=None, description="The card asking for the decision.")
     actions: list[LegalAction] = Field(default_factory=list)
     options: list[str] = Field(
-        default_factory=list, description="Legal targets, attackers or blockers, by name."
+        default_factory=list,
+        description="Legal targets, attackers or blockers, by name ('Name #N' when ambiguous).",
     )
 
 

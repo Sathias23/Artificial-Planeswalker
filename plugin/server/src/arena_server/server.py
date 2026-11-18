@@ -48,9 +48,13 @@ def build_server(log_path: Path | None = None, card_database: Path | None = None
         in the game.
 
         Identical cards are merged into one entry with a ``count``, and fields with nothing to
-        report are left out, so an absent ``flags`` means untapped and not in combat. Card names
-        match this plugin's card tools, so pass one to ``lookup_card_by_name`` for full details,
-        or set ``include_card_text`` for every card at once.
+        report are left out, so an absent ``flags`` means untapped and not in combat. Where two
+        cards share a name but not a place or state (one on each side, one tapped), anything
+        that points at one of them (a target, ``attached_to``, ``blocking``, an option) says
+        which as ``Name #N``, and that card's own entry carries ``ref: N``. Card names
+        match this plugin's card tools, so pass one (without the ``#N``) to
+        ``lookup_card_by_name`` for full details, or set ``include_card_text`` for every card
+        at once.
 
         Args:
             recent_events: How many of the latest game events to list in ``recent_events``,

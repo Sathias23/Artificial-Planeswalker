@@ -69,8 +69,9 @@ class ArenaCardDatabase:
         if path is None:
             return
         try:
-            connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
-        except sqlite3.Error as exc:
+            # A file URI must be absolute; a path from an environment variable need not be.
+            connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        except (sqlite3.Error, OSError, ValueError) as exc:
             logger.warning("Arena card database %s could not be opened: %s", path, exc)
             return
         try:

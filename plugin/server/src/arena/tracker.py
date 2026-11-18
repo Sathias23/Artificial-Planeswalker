@@ -9,9 +9,13 @@ own dictionaries, unnamed and uninterpreted, and :mod:`src.arena.snapshot` reads
 The one thing it interprets is the transient annotations on each message (a spell cast, damage
 dealt), because the objects they refer to can be gone by the next message. Those become
 :class:`GameEvent` records, kept as ids so that naming stays the snapshot's job.
+
+The log format is undocumented, so every container is checked before it is walked: a field that
+is ``null`` or the wrong type where a list or an object was expected is treated as absent.
 """
 
 from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -63,19 +67,35 @@ class PendingRequest:
     message: dict[str, Any]
 
 
+def _dicts(value: Any) -> Iterator[dict[str, Any]]:
+    """Yield the objects in ``value`` if it is a list, and nothing otherwise."""
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                yield item
+
+
+def _ints(value: Any) -> list[int]:
+    """Return the integers in ``value`` if it is a list, and nothing otherwise."""
+    return [item for item in value if isinstance(item, int)] if isinstance(value, list) else []
+
+
+def _int(value: Any) -> int:
+    return value if isinstance(value, int) else 0
+
+
 def annotation_details(annotation: dict[str, Any]) -> dict[str, Any]:
     """Flatten an annotation's key/value detail list to ``{key: first value}``."""
     details: dict[str, Any] = {}
-    for detail in annotation.get("details", []):
+    for detail in _dicts(annotation.get("details")):
         values = (
             detail.get("valueInt32")
             or detail.get("valueString")
             or detail.get("valueUint32")
             or detail.get("valueInt64")
-            or []
         )
-        if values:
-            details[detail.get("key", "")] = values[0]
+        if isinstance(values, list) and values:
+            details[str(detail.get("key", ""))] = values[0]
     return details
 
 
@@ -116,7 +136,8 @@ class GameTracker:
 
     def feed_room(self, document: dict[str, Any]) -> None:
         """Record a match-room announcement (players, event name, final result)."""
-        room = document.get("matchGameRoomStateChangedEvent", {}).get("gameRoomInfo")
+        event = document.get("matchGameRoomStateChangedEvent")
+        room = event.get("gameRoomInfo") if isinstance(event, dict) else None
         if isinstance(room, dict):
             self.room = room
 
@@ -125,14 +146,14 @@ class GameTracker:
         timestamp = document.get("timestamp")
         if isinstance(timestamp, str) and timestamp.isdigit():
             self.last_timestamp_ms = int(timestamp)
-        messages = document.get("greToClientEvent", {}).get("greToClientMessages", [])
-        for message in messages:
-            if isinstance(message, dict):
+        event = document.get("greToClientEvent")
+        if isinstance(event, dict):
+            for message in _dicts(event.get("greToClientMessages")):
                 self._apply(message)
 
     def _apply(self, message: dict[str, Any]) -> None:
         message_type = str(message.get("type", ""))
-        seats = message.get("systemSeatIds") or []
+        seats = _ints(message.get("systemSeatIds"))
 
         if message_type == _CONNECT:
             self._reset()
@@ -153,12 +174,12 @@ class GameTracker:
         if message_type.endswith("Req") and (self.seat is None or self.seat in seats):
             self.pending = PendingRequest(
                 message_type=message_type,
-                game_state_id=int(message.get("gameStateId") or 0),
+                game_state_id=_int(message.get("gameStateId")),
                 message=message,
             )
 
     def _apply_game_state(self, state: dict[str, Any]) -> None:
-        game_state_id = int(state.get("gameStateId") or 0)
+        game_state_id = _int(state.get("gameStateId"))
         if state.get("type") == _FULL_STATE:
             self._reset_board()
             self.players = {}
@@ -179,29 +200,29 @@ class GameTracker:
             else:
                 # A partial update, e.g. only who decides next.
                 self.turn_info.update(turn_info)
-        for player in state.get("players", []):
+        for player in _dicts(state.get("players")):
             seat = player.get("systemSeatNumber")
             if isinstance(seat, int):
                 # A diff sends the whole player, so replace: a merged dict would keep a mana pool
                 # that has since emptied.
                 self.players[seat] = player
-        for zone in state.get("zones", []):
+        for zone in _dicts(state.get("zones")):
             if isinstance(zone.get("zoneId"), int):
                 self.zones[zone["zoneId"]] = zone
-        for game_object in state.get("gameObjects", []):
+        for game_object in _dicts(state.get("gameObjects")):
             if isinstance(game_object.get("instanceId"), int):
                 self.objects[game_object["instanceId"]] = game_object
-        for annotation in state.get("persistentAnnotations", []):
+        for annotation in _dicts(state.get("persistentAnnotations")):
             if isinstance(annotation.get("id"), int):
                 self.annotations[annotation["id"]] = annotation
-        for annotation_id in state.get("diffDeletedPersistentAnnotationIds", []):
+        for annotation_id in _ints(state.get("diffDeletedPersistentAnnotationIds")):
             self.annotations.pop(annotation_id, None)
 
         # Events are read before deletions are applied: an annotation may name an object this
         # same message removes.
-        for annotation in state.get("annotations", []):
+        for annotation in _dicts(state.get("annotations")):
             self._record_events(annotation)
-        for instance_id in state.get("diffDeletedInstanceIds", []):
+        for instance_id in _ints(state.get("diffDeletedInstanceIds")):
             self.objects.pop(instance_id, None)
 
     # -- events -------------------------------------------------------------------------------
@@ -216,10 +237,12 @@ class GameTracker:
         return grp_id if isinstance(grp_id, int) and grp_id > 0 else None
 
     def _record_events(self, annotation: dict[str, Any]) -> None:
-        types = annotation.get("type", [])
+        types = annotation.get("type")
+        if not isinstance(types, list):
+            return
         details = annotation_details(annotation)
         affector = annotation.get("affectorId")
-        affected = annotation.get("affectedIds") or []
+        affected = _ints(annotation.get("affectedIds"))
         turn = self.turn_info.get("turnNumber")
 
         if "AnnotationType_NewTurnStarted" in types:

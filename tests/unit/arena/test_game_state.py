@@ -9,6 +9,8 @@ import pytest
 from src.arena import locate
 from src.arena.locate import CARD_DATABASE_ENV, LOG_PATH_ENV
 from src.arena.reader import read_game_state
+from src.arena.snapshot import SnapshotBuilder
+from src.arena.tracker import GameTracker
 from src.arena_server.server import build_server
 from tests.fixtures import arena as a
 from tests.unit.arena.conftest import opening_state
@@ -673,6 +675,271 @@ class TestFindingTheFiles:
         monkeypatch.setenv(CARD_DATABASE_ENV, str(tmp_path / "absent.mtga"))
 
         assert locate.find_card_database(tmp_path) is None
+
+
+class TestTellingLookalikesApart:
+    """A reference to a card whose name is shared says which one, and that card says so too."""
+
+    def _refs(self, views) -> list[tuple[str, int | None, int | None]]:
+        return [(view.name, view.ref, view.count) for view in views if view.name == "Grizzly Bears"]
+
+    def test_a_unique_name_is_referred_to_bare(self, read, opening):
+        result = read(opening)
+
+        bears, equipment = result.you.battlefield[0], result.you.battlefield[1]
+        # The copy in hand cannot be equipped, so it does not make this one ambiguous.
+        assert equipment.attached_to == "Grizzly Bears"
+        assert bears.ref is None
+        assert "ref" not in bears.model_dump()
+
+    def test_a_target_names_the_right_one_of_two_same_named_creatures(self, read, opening):
+        diff = a.game_state(
+            2,
+            2,
+            zones=[
+                a.zone(a.STACK, "Stack", [400]),
+                a.zone(a.BATTLEFIELD, "Battlefield", [210, 211, 212, 213, 214, 310, 311]),
+            ],
+            gameObjects=[
+                a.card(311, a.BEAR, a.BATTLEFIELD, 1, **a.stats(2, 2)),
+                a.card(400, a.GIANT_GROWTH, a.STACK, 2),
+            ],
+            persistentAnnotations=[a.annotation(9, ["TargetSpec"], affector=400, affected=[311])],
+        )
+
+        result = read([*opening, a.gre_line(diff)])
+
+        assert result.stack[0].targets == ["Grizzly Bears #311"]
+        assert self._refs(result.opponent.battlefield) == [("Grizzly Bears", 311, None)]
+        # Its own Bonesplitter points at yours, so yours is numbered as well.
+        assert self._refs(result.you.battlefield) == [("Grizzly Bears", 213, None)]
+        assert result.you.battlefield[1].attached_to == "Grizzly Bears #213"
+        # Nothing points at the spell itself.
+        assert result.stack[0].ref is None
+
+    def test_interchangeable_copies_share_one_number_and_stay_merged(self, read, opening):
+        diff = a.game_state(
+            2,
+            2,
+            zones=[a.zone(a.BATTLEFIELD, "Battlefield", [210, 211, 212, 213, 214, 310, 311, 312])],
+            gameObjects=[
+                a.card(311, a.BEAR, a.BATTLEFIELD, 1, **a.stats(2, 2)),
+                a.card(312, a.BEAR, a.BATTLEFIELD, 1, **a.stats(2, 2)),
+            ],
+        )
+        choose = a.request(
+            "SelectTargetsReq",
+            2,
+            2,
+            selectTargetsReq={
+                "targets": [
+                    {
+                        "targets": [
+                            {"targetInstanceId": 213},
+                            {"targetInstanceId": 311},
+                            {"targetInstanceId": 312},
+                        ]
+                    }
+                ]
+            },
+        )
+
+        result = read([*opening, a.gre_line(diff, choose)])
+
+        assert result.pending_decision.options == ["Grizzly Bears #213", "Grizzly Bears #311"]
+        assert self._refs(result.opponent.battlefield) == [("Grizzly Bears", 311, 2)]
+
+    def test_a_blocker_names_which_attacker_it_blocks(self, read, opening):
+        diff = a.game_state(
+            2,
+            2,
+            zones=[a.zone(a.BATTLEFIELD, "Battlefield", [210, 211, 212, 213, 214, 310, 311, 312])],
+            gameObjects=[
+                a.card(
+                    311,
+                    a.BEAR,
+                    a.BATTLEFIELD,
+                    1,
+                    attackState="AttackState_Attacking",
+                    **a.stats(2, 2),
+                ),
+                a.card(312, a.BEAR, a.BATTLEFIELD, 1, **a.stats(2, 2)),
+                a.card(213, a.BEAR, a.BATTLEFIELD, 2, blockInfo={"attackerIds": [311]}),
+            ],
+        )
+
+        result = read([*opening, a.gre_line(diff)])
+
+        mine = next(view for view in result.you.battlefield if view.name == "Grizzly Bears")
+        assert mine.blocking == ["Grizzly Bears #311"]
+        theirs = [v for v in result.opponent.battlefield if v.name == "Grizzly Bears"]
+        assert [(view.ref, view.flags) for view in theirs] == [(311, ["attacking"]), (None, [])]
+
+    def test_a_card_is_numbered_by_a_pointer_that_is_rendered_after_it(self, read, opening):
+        # The opponent's Equipment sits on one of your two otherwise identical creatures; your
+        # side is rendered before theirs.
+        diff = a.game_state(
+            2,
+            2,
+            zones=[
+                a.zone(a.BATTLEFIELD, "Battlefield", [210, 211, 212, 213, 214, 215, 216, 310, 330])
+            ],
+            gameObjects=[
+                a.card(215, a.BEAR, a.BATTLEFIELD, 2, **a.stats(2, 2)),
+                a.card(216, a.BEAR, a.BATTLEFIELD, 2, **a.stats(2, 2)),
+                a.card(330, a.EQUIPMENT, a.BATTLEFIELD, 1),
+            ],
+            persistentAnnotations=[a.annotation(9, ["Attachment"], affector=330, affected=[215])],
+        )
+
+        result = read([*opening, a.gre_line(diff)])
+
+        theirs = next(view for view in result.opponent.battlefield if view.name == "Bonesplitter")
+        assert theirs.attached_to == "Grizzly Bears #215"
+        assert self._refs(result.you.battlefield) == [
+            ("Grizzly Bears", 213, None),
+            ("Grizzly Bears", 215, None),
+            ("Grizzly Bears", None, None),
+        ]
+
+
+class TestAnUnexpectedLogShape:
+    """Valid JSON of a shape the reader has never seen costs that field, not the game."""
+
+    _LIFE_CHANGE = a.game_state(3, 2, players=[a.player(2, life=11)])
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            '{"greToClientEvent": null}',
+            '{"greToClientEvent": []}',
+            '{"greToClientEvent": {"greToClientMessages": null}}',
+            '{"greToClientEvent": {"greToClientMessages": "none"}}',
+            '{"greToClientEvent": {"greToClientMessages": [null, 5, "text"]}}',
+            '{"matchGameRoomStateChangedEvent": null}',
+            '{"matchGameRoomStateChangedEvent": "closed"}',
+        ],
+    )
+    def test_an_event_with_no_usable_body_is_passed_over(self, read, opening, line, caplog):
+        result = read([*opening, line, a.gre_line(self._LIFE_CHANGE)])
+
+        assert result.status == "ok"
+        assert result.you.life == 11
+        assert _names(result.you.hand) == ["Giant Growth", "Grizzly Bears"]
+        # Recognised as empty, not rescued by the reader's catch-all.
+        assert "unexpected shape" not in caplog.text
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"players": None, "zones": None, "gameObjects": None, "annotations": None},
+            {"players": "x", "zones": 3, "gameObjects": {"a": 1}, "annotations": True},
+            {"players": [None], "zones": [7], "gameObjects": ["x"], "annotations": [None]},
+            {"persistentAnnotations": None, "diffDeletedPersistentAnnotationIds": None},
+            {"persistentAnnotations": [5], "diffDeletedPersistentAnnotationIds": [[1], "2"]},
+            {"diffDeletedInstanceIds": None},
+            {"diffDeletedInstanceIds": [[213], {"id": 213}]},
+            {"annotations": [{"id": 1, "type": None, "affectedIds": None, "details": None}]},
+            {
+                "annotations": [
+                    {
+                        "id": 1,
+                        "type": ["AnnotationType_ZoneTransfer", "AnnotationType_DamageDealt"],
+                        "affectedIds": 213,
+                        "details": [None, {"key": "zone_src", "valueInt32": 31}],
+                    }
+                ]
+            },
+            {"annotations": [{"type": ["AnnotationType_ZoneTransfer"], "affectedIds": [[213]]}]},
+        ],
+    )
+    def test_a_game_state_with_misshapen_fields_keeps_the_rest_of_the_game(
+        self, read, opening, fields, caplog
+    ):
+        odd = a.game_state(2, 2, **fields)
+
+        result = read([*opening, a.gre_line(odd), a.gre_line(self._LIFE_CHANGE)])
+
+        assert "unexpected shape" not in caplog.text
+        assert result.status == "ok"
+        assert result.you.life == 11
+        assert _names(result.you.battlefield) == [
+            "Grizzly Bears",
+            "Bonesplitter",
+            "Forest",
+            "Forest",
+        ]
+
+    @pytest.mark.parametrize(
+        "overrides", [{"systemSeatIds": 2}, {"systemSeatIds": None}, {"gameStateId": "soon"}]
+    )
+    def test_a_message_with_a_misshapen_envelope_is_survived(self, read, opening, overrides):
+        odd = {**a.game_state(2, 2), **overrides}
+        request = {**a.request("ActionsAvailableReq", 2, 2), **overrides}
+
+        result = read([*opening, a.gre_line(odd, request), a.gre_line(self._LIFE_CHANGE)])
+
+        assert result.status == "ok"
+        assert result.you.life == 11
+
+    def test_null_where_the_board_expects_a_list_costs_only_that_detail(self, read):
+        state = opening_state()
+        message = state["gameStateMessage"]
+        message["players"][1]["manaPool"] = None
+        message["gameInfo"]["results"] = None
+        message["gameObjects"][2]["cardTypes"] = None  # the first Forest
+        message["persistentAnnotations"].append({"id": 8, "type": None})
+        next(z for z in message["zones"] if z["zoneId"] == a.LIBRARY_1)["objectInstanceIds"] = None
+
+        result = read([a.gre_line(a.connect(2)), a.gre_line(state)])
+
+        assert result.status == "ok"
+        assert result.opponent.library_count == 0
+        assert result.you.library_count == 49
+        assert "Forest" in _names(result.you.battlefield)
+
+    def test_an_event_the_tracker_cannot_apply_costs_only_that_event(
+        self, read, opening, monkeypatch
+    ):
+        def broken(self, document):
+            raise TypeError("a shape nobody has seen yet")
+
+        monkeypatch.setattr(GameTracker, "feed_room", broken)
+
+        result = read([a.room_line("match-1", 2, "Brawl_Ladder"), *opening])
+
+        assert result.status == "ok"
+        assert result.event is None
+        assert result.you.life == 20
+
+    def test_a_board_that_cannot_be_rendered_is_an_error_status_not_an_exception(
+        self, read, opening, monkeypatch
+    ):
+        def broken(self, **_):
+            raise TypeError("a shape nobody has seen yet")
+
+        monkeypatch.setattr(SnapshotBuilder, "build", broken)
+
+        result = read(opening)
+
+        assert result.status == "error"
+        assert "a shape nobody has seen yet" in result.message
+
+
+class TestARelativeCardDatabasePath:
+    def test_the_override_may_be_relative_to_the_working_directory(
+        self, monkeypatch, tmp_path: Path, opening
+    ):
+        a.build_card_database(tmp_path / "cards.mtga")
+        log = a.write_log(tmp_path / "Player.log", opening)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv(CARD_DATABASE_ENV, "cards.mtga")
+
+        result = read_game_state(log_path=log)
+
+        assert result.status == "ok"
+        assert _names(result.you.hand) == ["Giant Growth", "Grizzly Bears"]
+        assert result.warnings == []
 
 
 class TestTheMcpTool:

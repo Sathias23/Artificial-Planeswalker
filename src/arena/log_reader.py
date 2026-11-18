@@ -11,10 +11,13 @@ skipped by a substring test before any JSON work is done.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.arena.tracker import GameTracker
+
+logger = logging.getLogger(__name__)
 
 _GRE_KEY = '"greToClientEvent"'
 _ROOM_KEY = '"matchGameRoomStateChangedEvent"'
@@ -68,10 +71,16 @@ def scan_log(path: Path, *, event_history: int = 50) -> LogScan:
                     continue
                 if not isinstance(document, dict):
                     continue
-                if is_game:
-                    scan.tracker.feed_gre(document)
-                else:
-                    scan.tracker.feed_room(document)
+                try:
+                    if is_game:
+                        scan.tracker.feed_gre(document)
+                    else:
+                        scan.tracker.feed_room(document)
+                except (AttributeError, KeyError, TypeError, ValueError) as exc:
+                    # The tracker checks the shapes it knows can vary; this is for the one it
+                    # does not. Every call replays the whole log, so an event that cannot be
+                    # applied must cost that event, never every message after it.
+                    logger.warning("Skipped an Arena log event of an unexpected shape: %r", exc)
             elif _DETAILED_LOGS in line:
                 scan.detailed_logs = "ENABLED" in line
             elif scan.install_dir is None and line.startswith(_MONO_PATH):
