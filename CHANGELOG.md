@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19
+
 ### Added
 
 - **Live Arena game state.** A second MCP server, `arena-game-state`, with one read-only
@@ -17,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can be shown the board without a screenshot. Needs Arena's "Detailed Logs (Plugin
   Support)" option; answers a status rather than an error when the log, the option or
   a game is missing. Registered in the plugin and in the repo's `.mcp.json`.
+  Where same-named cards are not interchangeable (one on each side, one tapped,
+  only one of them targeted), a target, attachment, block or option says which
+  as `Name #N`, and that card's entry carries `ref: N`.
 
 ## [0.6.0] - 2026-11-13
 
@@ -622,7 +627,8 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
-[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.6.0
 [0.5.1]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.0
