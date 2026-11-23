@@ -7,11 +7,15 @@ import pytest
 from src.arena.card_database import ArenaCardDatabase, format_mana_cost
 from tests.fixtures.arena import (
     ANGEL,
+    BATTLE,
     BEAR,
     BEAR_TRIGGER,
     FOREST,
     GIANT_GROWTH,
+    PLANESWALKER,
     UNKNOWN_CARD,
+    WALKER_MINUS,
+    WALKER_PLUS,
     build_card_database,
 )
 
@@ -69,6 +73,24 @@ class TestLookups:
             "When Grizzly Bears enters, you gain 1 life."
         )
 
+    def test_planeswalker_text_leads_each_ability_with_its_loyalty_cost(self, cards):
+        assert cards.card_text(PLANESWALKER) == (
+            "{3}{B}{B}{B} | Legendary Planeswalker — Sorin | Loyalty 4"
+            " | +2: Sorin Markov deals 2 damage to any target and you gain 2 life."
+            " / −3: Target opponent's life total becomes 10."
+            " / −7: You control target player during that player's next turn."
+        )
+
+    def test_a_battle_shows_its_defense(self, cards):
+        assert cards.card_text(BATTLE) == (
+            "{2}{W} | Battle — Siege | Defense 5 | When this Siege enters, you gain 4 life."
+        )
+
+    def test_an_activated_loyalty_ability_names_its_cost(self, cards):
+        assert cards.ability_text(WALKER_MINUS, "Sorin Markov") == (
+            "−3: Target opponent's life total becomes 10."
+        )
+
     def test_counter_kind_is_named(self, cards):
         assert cards.counter_name(1) == "+1/+1"
 
@@ -123,5 +145,14 @@ class TestDegradation:
         try:
             assert cards.available is True
             assert cards.card_name(ANGEL) == "Serra Angel"
+        finally:
+            cards.close()
+
+    def test_an_abilities_table_without_loyalty_costs_still_reads_the_text(self, tmp_path: Path):
+        cards = ArenaCardDatabase(build_card_database(tmp_path / "old.mtga", loyalty_column=False))
+        try:
+            assert cards.ability_text(WALKER_PLUS, "Sorin Markov") == (
+                "Sorin Markov deals 2 damage to any target and you gain 2 life."
+            )
         finally:
             cards.close()
