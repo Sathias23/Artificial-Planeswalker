@@ -343,6 +343,30 @@ class TestPendingDecisions:
         ]
         assert decision.actions[2].ability == "Equip {1}"
 
+    def test_a_loyalty_activation_names_its_cost(self, read, opening):
+        priority = a.request(
+            "ActionsAvailableReq",
+            1,
+            2,
+            actionsAvailableReq={
+                "actions": [
+                    {
+                        "actionType": "ActionType_Activate",
+                        "grpId": a.PLANESWALKER,
+                        "instanceId": 230,
+                        "abilityGrpId": a.WALKER_MINUS,
+                    },
+                    {"actionType": "ActionType_Pass"},
+                ]
+            },
+        )
+
+        decision = read([*opening, a.gre_line(priority)]).pending_decision
+
+        assert [(x.action, x.card, x.ability) for x in decision.actions] == [
+            ("activate", "Sorin Markov", "−3: Target opponent's life total becomes 10."),
+        ]
+
     def test_a_decision_is_dropped_once_the_game_moves_on(self, read, opening):
         moved_on = a.game_state(2, 2, players=[a.player(2, life=20)])
 

@@ -23,6 +23,8 @@ _BRACED_COST = re.compile(r"\{((?:o[^o{}]+)+)\}")
 _PROMPT_PARAMETER = re.compile(r"\{\d+,\s*(\w+)\}")
 _INTERNAL_TEXT_PREFIXES = ("CLASSLEVEL", "#Deprecated")
 _SELF_REFERENCE = "CARDNAME"
+# Oracle text writes a loyalty cost's minus with U+2212; the database writes a hyphen.
+_MINUS_SIGN = "−"
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,10 @@ class ArenaCard:
     mana_cost: str | None
     type_line: str | None
     power_toughness: str | None
-    ability_text_ids: tuple[int, ...]
+    printed_stat: str | None
+    """A planeswalker's starting loyalty (``Loyalty 4``) or a battle's defense (``Defense 5``)."""
+    abilities: tuple[tuple[int, int], ...]
+    """``(ability id, text id)`` for each ability, in printed order."""
 
 
 def format_mana_cost(old_school: str | None) -> str | None:
@@ -66,6 +71,8 @@ class ArenaCardDatabase:
         self._cards: dict[int, ArenaCard | None] = {}
         self._texts: dict[int, str | None] = {}
         self._card_columns: set[str] = set()
+        self._ability_columns: set[str] = set()
+        self._loyalty_costs: dict[int, str | None] = {}
         if path is None:
             return
         try:
@@ -79,6 +86,9 @@ class ArenaCardDatabase:
             self._text_query = self._find_text_query(connection)
             self._card_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(Cards)")
+            }
+            self._ability_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(Abilities)")
             }
         except sqlite3.Error as exc:
             logger.warning("Arena card database %s could not be read: %s", path, exc)
@@ -178,12 +188,20 @@ class ArenaCardDatabase:
         type_line = f"{types} — {subtypes}" if types and subtypes else types
         power, toughness = column("Power"), column("Toughness")
         has_stats = power not in (None, "") and toughness not in (None, "")
-        text_ids: list[int] = []
+        # A planeswalker's loyalty and a battle's defense sit in Toughness with Power empty.
+        printed_stat: str | None = None
+        if power in (None, "") and toughness not in (None, "") and type_line:
+            if "Planeswalker" in type_line:
+                printed_stat = f"Loyalty {toughness}"
+            elif "Battle" in type_line:
+                printed_stat = f"Defense {toughness}"
+        abilities: list[tuple[int, int]] = []
         for entry in str(column("AbilityIds") or "").split(","):
             # Each entry is "<ability id>:<text id>".
-            _, _, text_id = entry.partition(":")
+            ability_id, _, text_id = entry.partition(":")
             if text_id.strip().isdigit():
-                text_ids.append(int(text_id))
+                ability_id = ability_id.strip()
+                abilities.append((int(ability_id) if ability_id.isdigit() else 0, int(text_id)))
         return ArenaCard(
             name=name,
             mana_cost=format_mana_cost(
@@ -191,8 +209,33 @@ class ArenaCardDatabase:
             ),
             type_line=type_line,
             power_toughness=f"{power}/{toughness}" if has_stats else None,
-            ability_text_ids=tuple(text_ids),
+            printed_stat=printed_stat,
+            abilities=tuple(abilities),
         )
+
+    def loyalty_cost(self, ability_id: int | None) -> str | None:
+        """Return a loyalty ability's cost as Oracle prints it (``+1``, ``0``), or ``None``."""
+        if self._connection is None or not ability_id or "LoyaltyCost" not in self._ability_columns:
+            return None
+        if ability_id in self._loyalty_costs:
+            return self._loyalty_costs[ability_id]
+        cost: str | None = None
+        try:
+            row = self._connection.execute(
+                "SELECT LoyaltyCost FROM Abilities WHERE Id = ?", (ability_id,)
+            ).fetchone()
+        except sqlite3.Error as exc:
+            logger.debug("Arena loyalty cost lookup %s failed: %s", ability_id, exc)
+            row = None
+        if row is not None and row[0] not in (None, ""):
+            cost = str(row[0]).strip().replace("-", _MINUS_SIGN) or None
+        self._loyalty_costs[ability_id] = cost
+        return cost
+
+    def _with_loyalty_cost(self, ability_id: int | None, text: str) -> str:
+        """Prefix an ability's text with its loyalty cost, as printed (``+1: Draw a card.``)."""
+        cost = self.loyalty_cost(ability_id)
+        return f"{cost}: {text}" if cost else text
 
     def card_name(self, grp_id: int | None) -> str | None:
         """Return a card's name, or ``None`` when unknown."""
@@ -210,15 +253,23 @@ class ArenaCardDatabase:
         if card is None:
             return None
         abilities = [
-            text.replace(_SELF_REFERENCE, card.name)
-            for text in (self.text(text_id) for text_id in card.ability_text_ids)
+            self._with_loyalty_cost(ability_id, text.replace(_SELF_REFERENCE, card.name))
+            for ability_id, text in (
+                (ability_id, self.text(text_id)) for ability_id, text_id in card.abilities
+            )
             if text and not text.startswith(_INTERNAL_TEXT_PREFIXES)
         ]
-        parts = [card.mana_cost, card.type_line, card.power_toughness, " / ".join(abilities)]
+        parts = [
+            card.mana_cost,
+            card.type_line,
+            card.power_toughness,
+            card.printed_stat,
+            " / ".join(abilities),
+        ]
         return " | ".join(part for part in parts if part) or None
 
     def ability_text(self, ability_id: int | None, source_name: str | None = None) -> str | None:
-        """Return an ability's rules text.
+        """Return an ability's rules text, led by its loyalty cost when it has one.
 
         Args:
             ability_id: The ability's ``grpId`` as the game log gives it.
@@ -234,9 +285,11 @@ class ArenaCardDatabase:
             logger.debug("Arena ability lookup %s failed: %s", ability_id, exc)
             return None
         text = self.text(row[0]) if row is not None else None
-        if text and source_name:
+        if not text:
+            return text
+        if source_name:
             text = text.replace(_SELF_REFERENCE, source_name)
-        return text
+        return self._with_loyalty_cost(ability_id, text)
 
     def prompt_text(self, prompt_id: int | None, parameters: dict[str, str]) -> str | None:
         """Return the sentence the client shows for a decision prompt.
