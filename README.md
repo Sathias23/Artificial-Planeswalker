@@ -27,7 +27,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning; `companion_show_tier_list` — puts cards ranked into named S–D tiers on the same view, each tier a lettered chip with its cards beside it; `companion_show_groups` — puts titled card groups on the same view, each a heading with its rationale paragraph and its cards beneath it; `companion_status` — read-only: reports whether the companion is running, its URL, how many tabs are open, and the exact command that launches it. The others all report `app_not_running` when the companion isn't up, and the agent can then open it for you |
 | **First-run setup** | `initialize_database`, `build_search_index` |
-| **[Live Arena game state](#live-arena-game-state)** *(separate `arena-game-state` server)* | `read_game_state` — reads the game you are playing in MTG Arena straight from the client's log, so the agent sees the board without a screenshot |
+| **[Live Arena game state](#live-arena-game-state)** *(separate `arena-game-state` server)* | `read_game_state` — reads your latest MTG Arena game straight from the client's log, so the agent can review a game or explain a play without a screenshot |
 
 Five **skills** layer expert reasoning on top of the tools — `magic-deckbuilding` (the
 orchestrator), `synergy-discovery`, `mana-curve-analysis`, and `format-legality` — so a client can
@@ -273,8 +273,13 @@ That is all most people need. The **[full companion guide](docs/companion.md)** 
 
 ## Live Arena game state
 
-`read_game_state` shows your agent the game you are playing in MTG Arena, so you can ask "what
-should I play?" without taking a screenshot. It returns what is on your screen as exact card names:
+`read_game_state` lets your agent see the MTG Arena game you just played, or the one you are in,
+so you can talk it through without describing the board or taking a screenshot: "why did my
+creature die there?", "how did that trigger work?", "what did my opponent do that turn?", "which
+cards were stuck in my hand?". It is for learning and reviewing games, and it feeds back into
+deckbuilding: a deck that kept stalling on the same turn is something the other tools can fix. It
+is not a live assistant: it reads a snapshot when you ask, and cannot act in the game. It returns
+what is on your screen as exact card names:
 life totals, the turn and phase, your hand, both battlefields (tapped, attacking, counters,
 attachments), graveyards, exile, the stack, the plays the game is offering you, and the last few
 things that happened. Hidden information stays hidden: the opponent's hand and both libraries are
