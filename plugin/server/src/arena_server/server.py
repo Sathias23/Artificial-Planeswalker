@@ -32,10 +32,12 @@ def build_server(log_path: Path | None = None, card_database: Path | None = None
     async def read_game_state(
         recent_events: int = 15, include_card_text: bool = False
     ) -> GameStateResult:
-        """Read the current MTG Arena game straight from the running client: no screenshot needed.
+        """Read the latest MTG Arena game straight from the client's log: no screenshot needed.
 
-        Use this whenever the user asks about a game they are playing or just played in MTG
-        Arena ("what should I play?", "what's on the board?", "what just happened?"). It returns
+        Use this whenever the user wants to review or understand a game they just played or are
+        playing in MTG Arena ("what just happened?", "why did I lose that?", "how did that
+        trigger work?", "what's on the board?"). It is for learning, game review and feeding
+        real games back into deckbuilding, not for live play-by-play coaching. It returns
         what the user can see on screen, as exact card names: both life totals, the turn and
         phase, the user's hand, both battlefields (tapped, attacking and blocking state, current
         power/toughness, counters, attachments), graveyards, exile, the command zone, the stack

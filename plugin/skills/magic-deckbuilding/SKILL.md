@@ -346,9 +346,11 @@ Rules that bite:
 
 ## Live Arena games (see the board without a screenshot)
 
-When the user asks about a game they are playing or just played in MTG Arena ("what should I
-play?", "what's on the board?", "why did I lose that?"), call
-`mcp__arena-game-state__read_game_state` instead of asking for a screenshot. It is a separate
+When the user wants to review or understand a game they just played or are playing in MTG Arena
+("what just happened?", "why did I lose that?", "how did that trigger work?"), call
+`mcp__arena-game-state__read_game_state` instead of asking for a screenshot. Use it for learning,
+rules questions and game review, and to carry what a real game showed (a stalled curve, cards stuck
+in hand) back into deckbuilding; it is not for live play-by-play coaching. It is a separate
 server (id `arena-game-state`) with that one read-only tool.
 
 | Tool | Key params | `status` values (payload on `ok`) |
