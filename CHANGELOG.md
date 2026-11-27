@@ -7,13 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-28
+
 ### Changed
 
+- **`read_game_state` is pitched as game review, not live coaching.** The README, the
+  tool description and the deckbuilding skill now frame it as learning, rules help and
+  post-game review that feeds back into deckbuilding, rather than "what should I play?".
 - **`read_game_state` can reach back through the whole game.** `recent_events` now
   defaults to 50 (was 15) and accepts up to 500 (was 50), and the reader keeps every
   event of the game instead of the latest 50. A result that leaves older events out
   says how many in the new `earlier_events` field, so an agent reviewing a game knows
   when to ask for more.
+
+### Fixed
+
+- **Arena card text shows planeswalker loyalty costs.** `card_text` and `ability_text`
+  (stack, plays on offer, events) lead each loyalty ability with its cost, with minus
+  written as U+2212 as Oracle does, and a card's starting loyalty and a battle's defense
+  show as `Loyalty N` / `Defense N`. A client database without the loyalty-cost column
+  still answers the text, without costs.
 
 ## [0.7.0] - 2026-11-19
 
@@ -635,7 +648,8 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
-[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.8.0
 [0.7.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.6.0
 [0.5.1]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.1
