@@ -23,7 +23,8 @@ from src.arena.models import (
 )
 from src.arena.tracker import GameEvent, GameTracker, PendingRequest, annotation_details
 
-MAX_RECENT_EVENTS = 50
+DEFAULT_RECENT_EVENTS = 50
+MAX_RECENT_EVENTS = 500
 
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _MANA_LETTERS = {
@@ -719,9 +720,11 @@ class SnapshotBuilder:
             result.seconds_since_last_update = max(0, (now_ms - tracker.last_timestamp_ms) // 1000)
 
         wanted = max(0, min(recent_events, MAX_RECENT_EVENTS))
-        if wanted:
-            described = [self._describe(event) for event in list(tracker.events)[-wanted:]]
-            result.recent_events = [text for text in described if text]
+        first = max(0, len(tracker.events) - wanted)
+        described = [self._describe(event) for event in tracker.events[first:]]
+        result.recent_events = [text for text in described if text]
+        if first:
+            result.earlier_events = first
 
         if include_card_text:
             for name, grp_id in sorted(self._seen.items()):

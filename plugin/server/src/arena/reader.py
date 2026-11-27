@@ -8,7 +8,7 @@ from src.arena.card_database import ArenaCardDatabase
 from src.arena.locate import LOG_PATH_ENV, find_card_database, find_player_log
 from src.arena.log_reader import scan_log
 from src.arena.models import GameStateResult
-from src.arena.snapshot import SnapshotBuilder
+from src.arena.snapshot import DEFAULT_RECENT_EVENTS, SnapshotBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def read_game_state(
     *,
     log_path: Path | None = None,
     card_database: Path | None = None,
-    recent_events: int = 15,
+    recent_events: int = DEFAULT_RECENT_EVENTS,
     include_card_text: bool = False,
 ) -> GameStateResult:
     """Read the latest Arena game from the client's log.

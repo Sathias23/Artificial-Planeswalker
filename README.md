@@ -281,8 +281,8 @@ deckbuilding: a deck that kept stalling on the same turn is something the other 
 is not a live assistant: it reads a snapshot when you ask, and cannot act in the game. It returns
 what is on your screen as exact card names:
 life totals, the turn and phase, your hand, both battlefields (tapped, attacking, counters,
-attachments), graveyards, exile, the stack, the plays the game is offering you, and the last few
-things that happened. Hidden information stays hidden: the opponent's hand and both libraries are
+attachments), graveyards, exile, the stack, the plays the game is offering you, and what has
+happened so far (the latest 50 events, and further back through the game when the agent asks). Hidden information stays hidden: the opponent's hand and both libraries are
 counts only.
 
 It works by reading the log file the Arena client writes, which is the same thing deck trackers do.

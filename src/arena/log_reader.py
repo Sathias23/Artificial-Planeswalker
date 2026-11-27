@@ -43,13 +43,12 @@ class LogScan:
     install_dir: Path | None = None
 
 
-def scan_log(path: Path, *, event_history: int = 50) -> LogScan:
+def scan_log(path: Path) -> LogScan:
     """Read the log and return the state of the latest game in it.
 
     Args:
         path: The ``Player.log`` to read. The client holds it open for writing; a final line caught
             half-written fails to parse and is skipped, to be picked up by the next call.
-        event_history: How many recent events the tracker keeps.
 
     Returns:
         The scan.
@@ -57,7 +56,7 @@ def scan_log(path: Path, *, event_history: int = 50) -> LogScan:
     Raises:
         OSError: The file cannot be opened or read.
     """
-    scan = LogScan(tracker=GameTracker(event_history=event_history))
+    scan = LogScan()
     with path.open(encoding="utf-8", errors="replace") as log:
         for line in log:
             is_game = _GRE_KEY in line

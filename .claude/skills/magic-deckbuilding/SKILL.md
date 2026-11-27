@@ -355,9 +355,12 @@ server (id `arena-game-state`) with that one read-only tool.
 
 | Tool | Key params | `status` values (payload on `ok`) |
 |------|-----------|-----------------------------------|
-| `read_game_state` | `recent_events=15` (0–50), `include_card_text=False` | `ok` (`you`, `opponent`, `turn`, `stack`, `pending_decision`, `recent_events`; `in_progress` false + `result` once the game is over) · `no_game` · `detailed_logs_disabled` · `log_not_found` · `error` |
+| `read_game_state` | `recent_events=50` (0–500), `include_card_text=False` | `ok` (`you`, `opponent`, `turn`, `stack`, `pending_decision`, `recent_events`, `earlier_events`; `in_progress` false + `result` once the game is over) · `no_game` · `detailed_logs_disabled` · `log_not_found` · `error` |
 
 - Call it again for every new question: it reads the current state each time and remembers nothing.
+- `recent_events` lists the latest 50 events by default. `earlier_events: N` in the result means N
+  older events of this game were left out; to review further back, or the whole game, call again
+  with `recent_events` raised by N (500 at most).
 - Fields with nothing to report are omitted, so no `flags` on a permanent means untapped and out
   of combat; identical cards are merged with a `count`.
 - A target, `attached_to`, `blocking` entry or option written `Name #N` means the card whose own

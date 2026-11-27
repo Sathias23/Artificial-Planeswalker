@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`read_game_state` can reach back through the whole game.** `recent_events` now
+  defaults to 50 (was 15) and accepts up to 500 (was 50), and the reader keeps every
+  event of the game instead of the latest 50. A result that leaves older events out
+  says how many in the new `earlier_events` field, so an agent reviewing a game knows
+  when to ask for more.
+
 ## [0.7.0] - 2026-11-19
 
 ### Added

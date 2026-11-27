@@ -13,6 +13,7 @@ from mcp.types import ToolAnnotations
 
 from src.arena.models import GameStateResult
 from src.arena.reader import read_game_state as _read_game_state
+from src.arena.snapshot import DEFAULT_RECENT_EVENTS
 
 
 def build_server(log_path: Path | None = None, card_database: Path | None = None) -> FastMCP:
@@ -30,7 +31,7 @@ def build_server(log_path: Path | None = None, card_database: Path | None = None
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
     async def read_game_state(
-        recent_events: int = 15, include_card_text: bool = False
+        recent_events: int = DEFAULT_RECENT_EVENTS, include_card_text: bool = False
     ) -> GameStateResult:
         """Read the latest MTG Arena game straight from the client's log: no screenshot needed.
 
@@ -61,18 +62,21 @@ def build_server(log_path: Path | None = None, card_database: Path | None = None
 
         Args:
             recent_events: How many of the latest game events to list in ``recent_events``,
-                oldest first (0 to 50; default 15).
+                oldest first (0 to 500; default 50). When the result carries ``earlier_events``,
+                that many older events of this game were left out: to review further back, or
+                the whole game, call again asking for that many more.
             include_card_text: Also return ``card_text``, the cost, type and rules text of every
                 card named in the result (basic lands excepted). Set it on the first call of a
                 game or when unfamiliar cards appear; leave it off for quick follow-ups.
 
         Returns:
             A result whose ``status`` is ``ok`` (``you``, ``opponent``, ``turn``, ``stack``,
-            ``pending_decision`` and ``recent_events`` describe the game), ``no_game`` (Arena has
-            not played a game since it started), ``detailed_logs_disabled`` (``message`` says
-            how the user turns logging on), ``log_not_found`` (Arena is not installed here or
-            has never run) or ``error``. ``seconds_since_last_update`` is the age of the newest
-            game message; ``warnings`` lists anything that degraded the result.
+            ``pending_decision``, ``recent_events`` and ``earlier_events`` describe the game),
+            ``no_game`` (Arena has not played a game since it started),
+            ``detailed_logs_disabled`` (``message`` says how the user turns logging on),
+            ``log_not_found`` (Arena is not installed here or has never run) or ``error``.
+            ``seconds_since_last_update`` is the age of the newest game message; ``warnings``
+            lists anything that degraded the result.
         """
         return await asyncio.to_thread(
             _read_game_state,

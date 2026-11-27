@@ -14,7 +14,6 @@ The log format is undocumented, so every container is checked before it is walke
 is ``null`` or the wrong type where a list or an object was expected is treated as absent.
 """
 
-from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -22,7 +21,6 @@ from typing import Any
 _FULL_STATE = "GameStateType_Full"
 _CONNECT = "GREMessageType_ConnectResp"
 _GAME_STATE = "GREMessageType_GameStateMessage"
-_DEFAULT_EVENT_HISTORY = 50
 
 
 @dataclass(frozen=True)
@@ -104,12 +102,15 @@ class GameTracker:
 
     Feed it every message in log order; it resets itself when a new game starts, so after the last
     message it holds the latest game and no earlier one.
+
+    ``events`` is every event of that game, oldest first. It is not capped: a game runs to a few
+    hundred events, and how many of them an agent is shown is the snapshot's decision.
     """
 
-    def __init__(self, event_history: int = _DEFAULT_EVENT_HISTORY) -> None:
+    def __init__(self) -> None:
         self.room: dict[str, Any] = {}
         self.last_timestamp_ms: int | None = None
-        self.events: deque[GameEvent] = deque(maxlen=event_history)
+        self.events: list[GameEvent] = []
         self._reset()
 
     def _reset(self) -> None:
