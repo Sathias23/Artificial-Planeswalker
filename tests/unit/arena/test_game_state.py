@@ -520,6 +520,42 @@ class TestRecentEvents:
         assert read(lines, recent_events=0).recent_events == []
         assert len(read(lines, recent_events=10_000).recent_events) == 7
 
+    def _life_ticks(self, count: int) -> str:
+        """One message in which you lose 1, then 2, then 3 life: ``count`` events in all."""
+        ticks = [
+            a.annotation(100 + n, ["ModifiedLife"], affector=310, affected=[2], life=-n)
+            for n in range(1, count + 1)
+        ]
+        return a.gre_line(a.game_state(2, 2, annotations=ticks))
+
+    def test_the_latest_fifty_are_listed_unless_more_are_asked_for(self, read, opening):
+        lines = [*opening, self._life_ticks(60)]
+
+        latest = read(lines)
+        whole_game = read(lines, recent_events=60)
+
+        assert len(latest.recent_events) == 50
+        assert latest.recent_events[0] == "T5 you lost 11 life"
+        assert latest.recent_events[-1] == "T5 you lost 60 life"
+        assert latest.earlier_events == 10
+        assert len(whole_game.recent_events) == 60
+        assert whole_game.recent_events[0] == "T5 you lost 1 life"
+        assert whole_game.earlier_events is None
+
+    def test_events_left_out_are_counted(self, read, opening):
+        lines = [*opening, self._a_turn_of_play()]
+
+        assert read(lines, recent_events=2).earlier_events == 5
+        assert read(lines, recent_events=0).earlier_events == 7
+        assert read(lines, recent_events=7).earlier_events is None
+
+    def test_one_call_lists_five_hundred_at_most(self, read, opening):
+        result = read([*opening, self._life_ticks(510)], recent_events=10_000)
+
+        assert len(result.recent_events) == 500
+        assert result.recent_events[0] == "T5 you lost 11 life"
+        assert result.earlier_events == 10
+
     def test_a_triggered_ability_is_reported_with_its_text_and_a_mana_ability_is_not(
         self, read, opening
     ):
@@ -1054,6 +1090,25 @@ class TestTheMcpTool:
         assert "null" not in content[0].text
         untapped_forest = structured["you"]["battlefield"][3]
         assert untapped_forest == {"name": "Forest"}
+
+    async def test_the_tool_lists_fifty_events_unless_told_otherwise(
+        self, opening, tmp_path: Path, card_database: Path
+    ):
+        ticks = [
+            a.annotation(100 + n, ["ModifiedLife"], affector=310, affected=[2], life=-1)
+            for n in range(60)
+        ]
+        lines = [*opening, a.gre_line(a.game_state(2, 2, annotations=ticks))]
+        log = a.write_log(tmp_path / "Player.log", lines)
+        server = build_server(log_path=log, card_database=card_database)
+
+        _, by_default = await server.call_tool("read_game_state", {})
+        _, asked = await server.call_tool("read_game_state", {"recent_events": 60})
+
+        assert len(by_default["recent_events"]) == 50
+        assert by_default["earlier_events"] == 10
+        assert len(asked["recent_events"]) == 60
+        assert "earlier_events" not in asked
 
     async def test_a_missing_log_is_a_status_not_an_error(self, tmp_path: Path):
         server = build_server(log_path=tmp_path / "Player.log")

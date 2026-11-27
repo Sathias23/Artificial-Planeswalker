@@ -151,6 +151,13 @@ class GameStateResult(CompactModel):
     stack: list[StackItem] = Field(default_factory=list, description="Top of the stack first.")
     pending_decision: PendingDecision | None = None
     recent_events: list[str] = Field(default_factory=list, description="Oldest first.")
+    earlier_events: int | None = Field(
+        default=None,
+        description=(
+            "How many older events of this game were not listed; ask for more recent_events to "
+            "see them."
+        ),
+    )
     card_text: dict[str, str] = Field(
         default_factory=dict, description="Rules text by card name, when requested."
     )
